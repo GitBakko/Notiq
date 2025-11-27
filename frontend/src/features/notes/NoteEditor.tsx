@@ -251,12 +251,17 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     <button
                         onClick={() => setIsAttachmentSidebarOpen(!isAttachmentSidebarOpen)}
                         className={clsx(
-                            "p-2 rounded-full hover:bg-gray-100 transition-colors dark:hover:bg-gray-800",
+                            "p-2 rounded-full hover:bg-gray-100 transition-colors dark:hover:bg-gray-800 relative",
                             (note.attachments?.length || 0) > 0 ? "text-emerald-600 dark:text-emerald-500" : "text-gray-400 dark:text-gray-500"
                         )}
                         title={t('notes.attachments')}
                     >
                         <Paperclip size={20} />
+                        {(note.attachments?.length || 0) > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                                {note.attachments!.length}
+                            </span>
+                        )}
                     </button>
 
                     <button

@@ -1,230 +1,430 @@
-# 📝 Notiq
+<div align="center">
 
-### *A modern, full-stack note-taking application built with TypeScript*
+<img src="frontend/public/pwa-512x512.png" alt="Notiq Logo" width="120" height="120" />
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![Fastify](https://img.shields.io/badge/Fastify-000000?style=for-the-badge&logo=fastify&logoColor=white)](https://www.fastify.io/)
-[![Prisma](https://img.shields.io/badge/Prisma-3982CE?style=for-the-badge&logo=Prisma&logoColor=white)](https://www.prisma.io/)
+# Notiq
 
-*Organize your thoughts, boost your productivity*
+### ✨ Your thoughts, beautifully organized ✨
 
-[Features](#-features) • [Tech Stack](#-tech-stack) • [Getting Started](#-getting-started) • [API Documentation](#-api-documentation) • [License](#-license)
+**A modern, offline-first note-taking PWA with real-time sync, secure vault, and collaborative sharing**
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React_19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://reactjs.org/)
+[![Fastify](https://img.shields.io/badge/Fastify-000000?style=flat-square&logo=fastify&logoColor=white)](https://www.fastify.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![TailwindCSS](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white)](https://playwright.dev/)
+
+<br />
+
+[🚀 Features](#-features) • [🛠️ Tech Stack](#️-tech-stack) • [📦 Installation](#-installation) • [📖 API Reference](#-api-reference) • [🔐 Security](#-security)
+
+<br />
+
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" alt="rainbow line" />
 
 </div>
 
----
+<br />
+
+## 🌟 Why Notiq?
+
+Notiq is not just another note-taking app. It's a **privacy-focused**, **offline-first** PWA designed for users who demand:
+
+- 📴 **True offline capability** — Work without internet, sync when connected
+- 🔒 **Secure Vault** — PIN-protected encrypted notes for sensitive information  
+- 🎨 **Beautiful rich-text editing** — Font selection, formatting, tables, and more
+- 🌍 **Multi-language support** — English and Italian out of the box
+- 🌙 **Dark mode** — Easy on the eyes, day or night
+
+<br />
 
 ## ✨ Features
 
-- 🔐 **Secure Authentication** - User registration and login with JWT-based authentication
-- 📓 **Notebook Management** - Organize notes into customizable notebooks
-- 🏷️ **Smart Tagging** - Tag and categorize notes for quick retrieval
-- ✏️ **Rich Text Editor** - Create and edit notes with a powerful editor (TipTap)
-- 🔍 **Search & Filter** - Full-text search and tag filtering
-- 📎 **Attachments** - Drag & drop file uploads
-- 📶 **Offline-First** - Fully functional without internet (Dexie.js + Sync Queue)
-- 📱 **PWA Ready** - Installable on mobile and desktop
-- 🎨 **Clean UI/UX** - Intuitive and responsive design
+<table>
+<tr>
+<td width="50%">
 
----
+### 📝 Note Management
+- **Rich Text Editor** with TipTap
+- Font family selection (Arial, Times New Roman, Courier New, Georgia, Verdana)
+- Headings, lists, blockquotes, code blocks
+- Tables with resize support
+- Links and text alignment
+- Drag & drop file attachments
+- Attachment badge counter
+
+</td>
+<td width="50%">
+
+### 📓 Organization
+- **Notebooks** — Group related notes together
+- **Tags** — Flexible tagging system with quick search
+- **Pinned Notes** — Quick access to favorites
+- **Trash** — Soft delete with restore option
+- **Smart Search** — Full-text search across all content
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🔐 Security & Privacy
+- **Secure Vault** — PIN-protected area for sensitive notes
+- **PIN Warning** — Clear warnings about non-recoverable PIN
+- **Destructive Reset** — Safe vault reset with confirmation
+- JWT-based authentication
+- Password hashing with bcrypt
+
+</td>
+<td width="50%">
+
+### 🤝 Collaboration & Sharing
+- **Public Links** — Share notes via read-only links
+- **User Sharing** — Share with specific users (READ/WRITE)
+- **Notebook Sharing** — Share entire notebooks
+- **Shared With Me** — View all shared content
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### ⏰ Tasks & Reminders
+- **Inline Checkboxes** — Todo lists in notes
+- **Reminders** — Date & time based notifications
+- **Task View** — Unified view of all tasks
+- Overdue, Today, Upcoming categories
+
+</td>
+<td width="50%">
+
+### 📱 Progressive Web App
+- **Installable** — Add to home screen
+- **Offline Mode** — Full functionality without internet
+- **Background Sync** — Auto-sync when connected
+- **Responsive** — Desktop, tablet, mobile
+
+</td>
+</tr>
+</table>
+
+<br />
+
+## 🎨 UI Highlights
+
+| Feature | Description |
+|---------|-------------|
+| 🌙 **Dark Mode** | Full dark theme support across all components including search modal |
+| 🔍 **Command Palette** | Quick search with `Ctrl+K` / `Cmd+K` |
+| 🌐 **i18n** | Complete English and Italian translations |
+| 🏷️ **Tag Selector** | Portal-based dropdown that works anywhere |
+| 📎 **Attachment Badge** | Visual indicator of attachment count |
+
+<br />
 
 ## 🛠️ Tech Stack
 
+<table>
+<tr>
+<td align="center" width="33%">
+
 ### Frontend
-- **React 18** - Modern UI library with hooks
-- **TypeScript** - Type-safe development
-- **Vite** - Lightning-fast build tool
-- **Zustand** - Lightweight state management
-- **TanStack Query** - Server state & caching
-- **Dexie.js** - IndexedDB wrapper for offline storage
-- **React Router** - Client-side routing
-- **TailwindCSS** - Utility-first CSS framework
+
+![React](https://img.shields.io/badge/-React_19-61DAFB?style=flat-square&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/-Vite_7-646CFF?style=flat-square&logo=vite&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/-TailwindCSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+
+- **TipTap** — Rich text editor
+- **Zustand** — State management
+- **TanStack Query** — Server state
+- **Dexie.js** — IndexedDB for offline
+- **React Router v7** — Routing
+- **i18next** — Internationalization
+- **cmdk** — Command palette
+
+</td>
+<td align="center" width="33%">
 
 ### Backend
-- **Fastify** - High-performance Node.js framework
-- **Prisma ORM** - Type-safe database access
-- **TypeScript** - End-to-end type safety
-- **JWT** - Secure authentication tokens
-- **PostgreSQL/SQLite** - Flexible database support
 
----
+![Node.js](https://img.shields.io/badge/-Node.js-339933?style=flat-square&logo=node.js&logoColor=white)
+![Fastify](https://img.shields.io/badge/-Fastify-000000?style=flat-square&logo=fastify&logoColor=white)
+![Prisma](https://img.shields.io/badge/-Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/-PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 
-## 🚀 Getting Started
+- **JWT** — Authentication
+- **Nodemailer** — Email service
+- **Multipart** — File uploads
+- **Zod** — Schema validation
+- **bcrypt** — Password hashing
+
+</td>
+<td align="center" width="33%">
+
+### DevOps & Testing
+
+![Docker](https://img.shields.io/badge/-Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Playwright](https://img.shields.io/badge/-Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white)
+![ESLint](https://img.shields.io/badge/-ESLint-4B32C3?style=flat-square&logo=eslint&logoColor=white)
+
+- **18 E2E Tests** — Full coverage
+- **Docker Compose** — Easy deployment
+- **Hot Reload** — Fast development
+
+</td>
+</tr>
+</table>
+
+<br />
+
+## 📦 Installation
 
 ### Prerequisites
 
-- Node.js 18+ and npm/yarn
-- PostgreSQL or SQLite database
+- **Node.js** 18+ 
+- **PostgreSQL** or SQLite
+- **npm** or **yarn**
 
-### Installation
+### Quick Start
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/GitBakko/Notiq.git
-   cd Notiq
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/GitBakko/Notiq.git
+cd Notiq
 
-2. **Install backend dependencies**
-   ```bash
-   cd backend
-   npm install
-   ```
+# Backend setup
+cd backend
+npm install
+cp config.json.example config.json  # Configure SMTP settings
+npx prisma migrate dev
+npx prisma generate
 
-3. **Configure environment variables**
-   
-   Create a `.env` file in the `backend` directory:
-   ```env
-   DATABASE_URL="file:./dev.db"
-   JWT_SECRET="your-secret-key"
-   PORT=3001
-   ```
+# Frontend setup
+cd ../frontend
+npm install
 
-4. **Set up the database**
-   ```bash
-   npx prisma migrate dev
-   npx prisma generate
-   ```
+# Run both (in separate terminals)
+cd backend && npm run dev    # → http://localhost:3001
+cd frontend && npm run dev   # → http://localhost:5173
+```
 
-5. **Install frontend dependencies**
-   ```bash
-   cd ../frontend
-   npm install
-   ```
+### Environment Configuration
 
-### Running the Application
+**Backend** (`backend/.env`):
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/notiq"
+JWT_SECRET="your-super-secret-key"
+```
 
-**Backend Server**
+**SMTP** (`backend/config.json`):
+```json
+{
+  "smtp": {
+    "host": "smtp.example.com",
+    "port": 587,
+    "user": "your@email.com",
+    "pass": "your-password",
+    "secure": false
+  }
+}
+```
+
+### 🧪 Testing SMTP Configuration
+
 ```bash
 cd backend
-npm run dev
+npx ts-node src/scripts/testSmtp.ts your@email.com
 ```
-Server will start on `http://localhost:3001`
 
-**Frontend Application**
-```bash
-cd frontend
-npm run dev
-```
-Application will open on `http://localhost:5173`
+<br />
 
----
-
-## 📚 API Documentation
+## 📖 API Reference
 
 ### Authentication
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/login` | Login user |
-
-### Notebooks
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/notebooks` | Get all notebooks |
-| POST | `/api/notebooks` | Create notebook |
-| PUT | `/api/notebooks/:id` | Update notebook |
-| DELETE | `/api/notebooks/:id` | Delete notebook |
+|:------:|----------|-------------|
+| `POST` | `/api/auth/register` | Register new user |
+| `POST` | `/api/auth/login` | Login and receive JWT |
+| `POST` | `/api/auth/forgot-password` | Request password reset |
+| `POST` | `/api/auth/reset-password` | Reset password with token |
 
 ### Notes
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/notes` | Get all notes |
-| GET | `/api/notes/:id` | Get note by ID |
-| POST | `/api/notes` | Create note |
-| PUT | `/api/notes/:id` | Update note |
-| DELETE | `/api/notes/:id` | Delete note |
+|:------:|----------|-------------|
+| `GET` | `/api/notes` | List notes (with filters) |
+| `GET` | `/api/notes/:id` | Get single note |
+| `POST` | `/api/notes` | Create note |
+| `PUT` | `/api/notes/:id` | Update note |
+| `DELETE` | `/api/notes/:id` | Soft delete note |
+| `POST` | `/api/notes/:id/share` | Share with user |
+
+### Notebooks
+| Method | Endpoint | Description |
+|:------:|----------|-------------|
+| `GET` | `/api/notebooks` | List notebooks |
+| `POST` | `/api/notebooks` | Create notebook |
+| `PUT` | `/api/notebooks/:id` | Update notebook |
+| `DELETE` | `/api/notebooks/:id` | Delete notebook |
 
 ### Tags
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/tags` | Get all tags |
-| POST | `/api/tags` | Create tag |
-| DELETE | `/api/tags/:id` | Delete tag |
+|:------:|----------|-------------|
+| `GET` | `/api/tags` | List all tags |
+| `POST` | `/api/tags` | Create tag |
+| `DELETE` | `/api/tags/:id` | Delete tag |
+| `POST` | `/api/tags/:id/notes/:noteId` | Add tag to note |
+| `DELETE` | `/api/tags/:id/notes/:noteId` | Remove tag from note |
 
 ### Attachments
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/attachments` | Upload attachment |
-| DELETE | `/api/attachments/:id` | Delete attachment |
+|:------:|----------|-------------|
+| `POST` | `/api/attachments?noteId=` | Upload file |
+| `GET` | `/api/attachments/:noteId` | List attachments |
+| `DELETE` | `/api/attachments/:id` | Delete attachment |
 
----
+### Sharing
+| Method | Endpoint | Description |
+|:------:|----------|-------------|
+| `GET` | `/api/share/notes` | Notes shared with me |
+| `GET` | `/api/share/notebooks` | Notebooks shared with me |
+| `DELETE` | `/api/share/notes/:noteId/:userId` | Revoke note access |
+
+### User
+| Method | Endpoint | Description |
+|:------:|----------|-------------|
+| `GET` | `/api/user/profile` | Get profile |
+| `PUT` | `/api/user/profile` | Update profile |
+| `PUT` | `/api/user/password` | Change password |
+| `POST` | `/api/user/avatar` | Upload avatar |
+
+<br />
 
 ## 📁 Project Structure
 
 ```
 Notiq/
-├── backend/
+├── 🔧 backend/
 │   ├── prisma/
-│   │   └── schema.prisma      # Database schema
-│   └── src/
-│       ├── routes/            # API routes
-│       ├── services/          # Business logic
-│       ├── plugins/           # Fastify plugins
-│       └── app.ts             # Main application
+│   │   ├── schema.prisma        # Database models
+│   │   └── migrations/          # DB migrations
+│   ├── src/
+│   │   ├── routes/              # API endpoints
+│   │   ├── services/            # Business logic
+│   │   ├── plugins/             # Fastify plugins
+│   │   ├── scripts/             # Utility scripts (SMTP test)
+│   │   └── app.ts               # Server entry
+│   ├── uploads/                 # User files (gitignored)
+│   └── config.json              # SMTP configuration
 │
-└── frontend/
-    └── src/
-        ├── components/        # Reusable components
-        ├── features/          # Feature modules (Auth, Notes, Tags, Sync)
-        ├── store/             # Global state (Zustand)
-        ├── hooks/             # Custom hooks (Dexie, UI)
-        └── lib/               # Utilities (API, DB)
+├── 🎨 frontend/
+│   ├── public/                  # PWA assets & icons
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── editor/          # TipTap editor components
+│   │   │   ├── layout/          # Sidebar, headers
+│   │   │   ├── search/          # Command palette
+│   │   │   ├── sharing/         # Share modals
+│   │   │   └── ui/              # Buttons, dialogs, inputs
+│   │   ├── features/
+│   │   │   ├── auth/            # Login, register, forgot password
+│   │   │   ├── notes/           # Note editor, list
+│   │   │   ├── notebooks/       # Notebook management
+│   │   │   ├── tags/            # Tag system
+│   │   │   ├── vault/           # Secure vault
+│   │   │   ├── tasks/           # Reminders & tasks
+│   │   │   ├── trash/           # Deleted notes
+│   │   │   └── sync/            # Offline sync
+│   │   ├── store/               # Zustand stores
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── locales/             # i18n translations (en, it)
+│   │   └── lib/                 # Utilities
+│   └── e2e/                     # Playwright tests
+│
+└── 📋 docker-compose.yml        # Container orchestration
 ```
 
----
+<br />
 
-## 🎯 Roadmap
+## 🔐 Security
 
-### Phase 1: MVP Core (Completed ✅)
-- [x] **Authentication**: Secure JWT login/register flow
-- [x] **Notes Management**: CRUD operations for notes
-- [x] **Organization**: Notebooks and Tags system
-- [x] **Search**: Full-text search with filters
-- [x] **Editor**: Rich text editing with Tiptap
-- [x] **Testing**: E2E tests with Playwright
+| Feature | Implementation |
+|---------|----------------|
+| **Authentication** | JWT tokens with secure httpOnly cookies option |
+| **Password Storage** | bcrypt with salt rounds |
+| **Vault Encryption** | Client-side PIN hashing, encrypted note content |
+| **CORS** | Configurable origin whitelist |
+| **Input Validation** | Zod schemas on all endpoints |
+| **SQL Injection** | Prisma parameterized queries |
 
-### Phase 2: Advanced Features (In Progress 🚧)
-- [~] **Attachments**: File upload/download (Basic implementation done)
-- [~] **Offline & Sync**: Local-first architecture with Dexie.js (Sync queue implemented)
-- [x] **Tasks & Reminders**: 
-  - [x] Checkboxes in editor
-  - [x] Due dates and reminders
-  - [x] Task summary view
-- [x] **Sharing**: 
-  - [x] Public read-only links
-  - [ ] Collaborative editing (future)
+<br />
 
-### Phase 3: Polish & Mobile
-- [ ] **Mobile UX**: Optimized touch interactions and layout
-- [ ] **Accessibility**: ARIA roles and keyboard navigation
-- [ ] **Themes**: Dark/Light mode toggle
-- [ ] **Export**: PDF/Markdown export options
+## 🧪 Testing
 
----
+```bash
+# Run all E2E tests
+cd frontend
+npx playwright test
+
+# Run with UI
+npx playwright test --ui
+
+# View test report
+npx playwright show-report
+```
+
+**Test Coverage**: 18 tests covering auth, notes, notebooks, tags, sharing, search, tasks, and trash functionality.
+
+<br />
+
+## 🚀 Roadmap
+
+| Status | Feature |
+|:------:|---------|
+| ✅ | Core note-taking with rich text |
+| ✅ | Notebooks & Tags organization |
+| ✅ | Secure Vault with PIN |
+| ✅ | Dark mode & i18n |
+| ✅ | Sharing & collaboration |
+| ✅ | Tasks & reminders |
+| ✅ | Offline-first with sync |
+| ✅ | Font selection in editor |
+| 🔜 | Real-time collaborative editing |
+| 🔜 | PDF/Markdown export |
+| 🔜 | Mobile app (React Native) |
+| 🔜 | AI-powered note suggestions |
+
+<br />
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/GitBakko/Notiq/issues).
+Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
----
+<br />
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+<br />
 
 ---
 
 <div align="center">
 
-**Made with ❤️ and TypeScript**
+**Built with 💚 and TypeScript**
 
-⭐ Star this repo if you find it useful!
+<sub>Made by [GitBakko](https://github.com/GitBakko)</sub>
+
+<br />
+
+⭐ **Star this repo** if you find it useful!
 
 </div>

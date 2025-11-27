@@ -23,9 +23,12 @@ import {
   Rows,
   Trash2,
   Paperclip,
+  Type,
+  ChevronDown,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { useState, useRef, useEffect } from 'react';
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -63,6 +66,86 @@ const ToolbarButton = ({
   </button>
 );
 
+// Font family options
+const FONT_FAMILIES = [
+  { label: 'Default', value: '' },
+  { label: 'Arial', value: 'Arial' },
+  { label: 'Times New Roman', value: 'Times New Roman' },
+  { label: 'Courier New', value: 'Courier New' },
+  { label: 'Georgia', value: 'Georgia' },
+  { label: 'Verdana', value: 'Verdana' },
+];
+
+// Font size options (using inline styles)
+const FONT_SIZES = [
+  { label: 'Small', value: '12px' },
+  { label: 'Normal', value: '16px' },
+  { label: 'Large', value: '20px' },
+  { label: 'XL', value: '24px' },
+  { label: 'XXL', value: '32px' },
+];
+
+interface DropdownProps {
+  options: { label: string; value: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  title: string;
+}
+
+const ToolbarDropdown = ({ options, value, onChange, placeholder, title }: DropdownProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedLabel = options.find(o => o.value === value)?.label || placeholder;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        title={title}
+        className="flex items-center gap-1 px-2 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors min-w-[80px]"
+      >
+        <Type size={14} />
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDown size={12} className={clsx("transition-transform", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[140px]">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={clsx(
+                "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 first:rounded-t-lg last:rounded-b-lg transition-colors",
+                option.value === value
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                  : "text-gray-700 dark:text-gray-300"
+              )}
+              style={option.value ? { fontFamily: option.value } : undefined}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function EditorToolbar({ editor, onAttach }: EditorToolbarProps) {
   const { t } = useTranslation();
 
@@ -70,8 +153,27 @@ export default function EditorToolbar({ editor, onAttach }: EditorToolbarProps) 
     return null;
   }
 
+  const currentFontFamily = editor.getAttributes('textStyle').fontFamily || '';
+
   return (
     <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800">
+      {/* Font Family Dropdown */}
+      <ToolbarDropdown
+        options={FONT_FAMILIES}
+        value={currentFontFamily}
+        onChange={(value) => {
+          if (value) {
+            editor.chain().focus().setFontFamily(value).run();
+          } else {
+            editor.chain().focus().unsetFontFamily().run();
+          }
+        }}
+        placeholder={t('editor.fontFamily')}
+        title={t('editor.fontFamily')}
+      />
+
+      <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
+
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
         isActive={editor.isActive('bold')}

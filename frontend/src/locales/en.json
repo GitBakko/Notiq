@@ -22,7 +22,15 @@
     "noResults": "No results found for \"{{query}}\"",
     "searchPoweredBy": "Search powered by local DB",
     "escToClose": "ESC to close",
-    "actions": "Actions"
+    "actions": "Actions",
+    "language": "Language",
+    "theme": "Toggle Theme",
+    "select": "Select",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "warning": "Warning",
+    "info": "Info"
   },
   "sidebar": {
     "home": "Home",
@@ -74,7 +82,21 @@
     "selectNotebookFirst": "Please select a notebook first.",
     "found": "{{count}} notes found",
     "selectToView": "Select a note to view or create a new one.",
-    "createNew": "Create New Note"
+    "createNew": "Create New Note",
+    "saveFailed": "Failed to save note",
+    "deleted": "Note deleted",
+    "deleteConfirm": "Are you sure you want to delete this note?",
+    "attachments": "Attachments",
+    "noAttachments": "No attachments",
+    "addAttachment": "Add attachment",
+    "attachmentDeleted": "Attachment deleted",
+    "deleteAttachmentFailed": "Failed to delete attachment",
+    "selectNotebook": "Select Notebook",
+    "searchNotebooks": "Search notebooks...",
+    "noNotebooksFound": "No notebooks found",
+    "addReminder": "Add reminder",
+    "noNotebookSelectedTitle": "No notebook selected",
+    "noNotebookSelectedDescription": "Select a notebook from the sidebar to view its notes."
   },
   "notebooks": {
     "firstNotebook": "First Notebook",
@@ -102,6 +124,7 @@
   },
   "tags": {
     "newTagPlaceholder": "New tag...",
+    "create": "Create Tag",
     "createFailed": "Failed to create tag",
     "addTag": "Add Tag",
     "searchOrCreate": "Search or create tag...",
@@ -113,7 +136,13 @@
     "deleteConfirm": "Are you sure you want to delete this tag?",
     "manageDescription": "Manage your tags",
     "noTags": "No tags found. Create one to organize your notes.",
-    "duplicate_error": "A tag with this name already exists."
+    "duplicate_error": "A tag with this name already exists.",
+    "noNotes": "No notes associated with this tag.",
+    "createTitle": "New Tag",
+    "createDescription": "Enter the name for the new tag.",
+    "count": "{{count}} tags",
+    "addFailed": "Failed to add tag",
+    "removeFailed": "Failed to remove tag"
   },
   "trash": {
     "restored": "Note restored",
@@ -174,7 +203,19 @@
     "incorrectPin": "Incorrect PIN",
     "lock": "Lock Vault",
     "empty": "Your vault is empty. Create a secure note to get started.",
-    "decryptError": "Error decrypting note. PIN might be incorrect."
+    "decryptError": "Error decrypting note. PIN might be incorrect.",
+    "noNotes": "No secure notes found.",
+    "warningTitle": "Important Warning",
+    "warningDescription": "Your vault PIN cannot be recovered if forgotten. If you lose your PIN, you will permanently lose access to all notes stored in the vault. There is no recovery option available.",
+    "warningConfirm": "I understand that the PIN is not recoverable",
+    "forgotPin": "Forgot PIN?",
+    "resetVaultTitle": "Reset Vault",
+    "resetVaultDescription": "Since the PIN cannot be recovered, the only option is to completely reset your vault. This will permanently delete ALL notes stored in the vault.",
+    "resetVaultWarning": "This action is irreversible. All your secure notes will be permanently lost.",
+    "resetVaultConfirm": "Type 'DELETE' to confirm vault reset",
+    "resetVaultButton": "Reset Vault",
+    "resetVaultSuccess": "Vault has been reset. You can now set up a new PIN.",
+    "resetVaultPlaceholder": "Type DELETE to confirm"
   },
   "sharing": {
     "title": "Share Note",
@@ -194,12 +235,32 @@
     "sharedWithMeSubtitle": "Notes and notebooks shared by others",
     "noSharedNotes": "No notes shared with you yet",
     "noSharedNotebooks": "No notebooks shared with you yet",
-    "sharedBy": "Shared by"
+    "sharedBy": "Shared by",
+    "share": "Share"
   },
   "profile": {
     "title": "User Profile",
     "subtitle": "Manage your personal information",
-    "updated": "Profile updated successfully"
+    "updated": "Profile updated successfully",
+    "updateFailed": "Failed to update profile",
+    "passwordMismatch": "Passwords do not match",
+    "passwordUpdated": "Password updated successfully",
+    "passwordUpdateFailed": "Failed to update password",
+    "avatarUpdated": "Profile photo updated",
+    "avatarUpdateFailed": "Failed to update profile photo",
+    "personalInfo": "Personal Information",
+    "name": "Name",
+    "surname": "Surname",
+    "gender": "Gender",
+    "dob": "Date of Birth",
+    "pob": "Place of Birth",
+    "mobile": "Mobile",
+    "security": "Security",
+    "changePassword": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm Password",
+    "updatePassword": "Update Password"
   },
   "editor": {
     "bold": "Bold",
@@ -217,6 +278,21 @@
     "orderedList": "Ordered List",
     "blockquote": "Blockquote",
     "undo": "Undo",
-    "redo": "Redo"
+    "redo": "Redo",
+    "link": "Insert Link",
+    "unlink": "Remove Link",
+    "insertTable": "Insert Table",
+    "highlight": "Highlight",
+    "codeBlock": "Code Block",
+    "horizontalRule": "Horizontal Rule",
+    "fontFamily": "Font",
+    "fontSize": "Font Size",
+    "taskList": "Task List"
+  },
+  "gender": {
+    "male": "Male",
+    "female": "Female",
+    "other": "Other",
+    "preferNotToSay": "Prefer not to say"
   }
 }

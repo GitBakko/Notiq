@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as noteService from '../services/note.service';
+import { shareNote } from '../services/sharing.service';
 
 const createNoteSchema = z.object({
   id: z.string().uuid().optional(),
@@ -62,7 +63,7 @@ export default async function noteRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/share', async (request, reply) => {
     const { id } = request.params as { id: string };
     const { email, permission } = request.body as { email: string, permission: 'READ' | 'WRITE' };
-    const note = await noteService.shareNote(request.user.id, id, email, permission);
+    const note = await shareNote(request.user.id, id, email, permission);
     return note;
   });
 }

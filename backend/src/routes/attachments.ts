@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 
 export async function attachmentRoutes(app: FastifyInstance) {
-  app.post('/api/attachments', { preValidation: [app.authenticate] }, async (request, reply) => {
+  // POST /api/attachments?noteId=... - Upload attachment
+  app.post('/', { preValidation: [app.authenticate] }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ message: 'No file uploaded' });
@@ -31,13 +32,15 @@ export async function attachmentRoutes(app: FastifyInstance) {
     return attachment;
   });
 
-  app.get('/api/attachments/:noteId', { preValidation: [app.authenticate] }, async (request, reply) => {
+  // GET /api/attachments/:noteId - Get all attachments for a note
+  app.get('/:noteId', { preValidation: [app.authenticate] }, async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
     const attachments = await getAttachments(noteId);
     return attachments;
   });
 
-  app.get('/api/attachments/:noteId/history', { preValidation: [app.authenticate] }, async (request, reply) => {
+  // GET /api/attachments/:noteId/history?filename=... - Get version history
+  app.get('/:noteId/history', { preValidation: [app.authenticate] }, async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
     const { filename } = request.query as { filename: string };
     
@@ -49,23 +52,10 @@ export async function attachmentRoutes(app: FastifyInstance) {
     return history;
   });
 
-  app.delete('/api/attachments/:id', { preValidation: [app.authenticate] }, async (request, reply) => {
+  // DELETE /api/attachments/:id - Delete attachment
+  app.delete('/:id', { preValidation: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     await deleteAttachment(id);
     return { message: 'Attachment deleted' };
-  });
-  
-  // Serve static files
-  // Ideally this should be handled by a static file plugin or Nginx.
-  // For MVP, let's create a route to stream the file.
-  app.get('/uploads/:filename', async (request, reply) => {
-      const { filename } = request.params as { filename: string };
-      const filepath = path.join(__dirname, '../../uploads', filename);
-      if (fs.existsSync(filepath)) {
-          const stream = fs.createReadStream(filepath);
-          return reply.send(stream);
-      } else {
-          return reply.status(404).send({ message: 'File not found' });
-      }
   });
 }

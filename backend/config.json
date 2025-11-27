@@ -4,6 +4,6 @@
     "port": 587,
     "user": "s.brunelli@epartner.it",
     "pass": "PassBakko1983@",
-    "secure": false
+    "secure": true
   }
 }

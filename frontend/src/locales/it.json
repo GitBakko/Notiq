@@ -23,7 +23,14 @@
     "searchPoweredBy": "Ricerca basata su DB locale",
     "escToClose": "ESC per chiudere",
     "actions": "Azioni",
-    "language": "Lingua"
+    "language": "Lingua",
+    "theme": "Cambia Tema",
+    "select": "Seleziona",
+    "close": "Chiudi",
+    "yes": "Sì",
+    "no": "No",
+    "warning": "Attenzione",
+    "info": "Info"
   },
   "sidebar": {
     "home": "Home",
@@ -94,7 +101,9 @@
     "noNotes": "Nessuna nota associata a questo tag.",
     "createTitle": "Nuovo Tag",
     "createDescription": "Inserisci il nome del nuovo tag.",
-    "count": "{{count}} tag"
+    "count": "{{count}} tag",
+    "addFailed": "Impossibile aggiungere il tag",
+    "removeFailed": "Impossibile rimuovere il tag"
   },
   "trash": {
     "restored": "Nota ripristinata",
@@ -174,7 +183,18 @@
     "lock": "Blocca Vault",
     "empty": "Il tuo vault è vuoto. Crea una nota sicura per iniziare.",
     "decryptError": "Errore durante la decrittazione. Il PIN potrebbe essere errato.",
-    "noNotes": "Nessuna nota sicura trovata."
+    "noNotes": "Nessuna nota sicura trovata.",
+    "warningTitle": "Avviso Importante",
+    "warningDescription": "Il PIN del vault non può essere recuperato se dimenticato. Se perdi il PIN, perderai permanentemente l'accesso a tutte le note archiviate nel vault. Non esiste alcuna opzione di recupero.",
+    "warningConfirm": "Ho capito che il PIN non è recuperabile",
+    "forgotPin": "PIN dimenticato?",
+    "resetVaultTitle": "Reimposta Vault",
+    "resetVaultDescription": "Poiché il PIN non può essere recuperato, l'unica opzione è reimpostare completamente il vault. Questo eliminerà permanentemente TUTTE le note archiviate nel vault.",
+    "resetVaultWarning": "Questa azione è irreversibile. Tutte le tue note sicure andranno perse per sempre.",
+    "resetVaultConfirm": "Scrivi 'ELIMINA' per confermare il reset del vault",
+    "resetVaultButton": "Reimposta Vault",
+    "resetVaultSuccess": "Il vault è stato reimpostato. Ora puoi configurare un nuovo PIN.",
+    "resetVaultPlaceholder": "Scrivi ELIMINA per confermare"
   },
   "sharing": {
     "title": "Condividi Nota",
@@ -194,7 +214,8 @@
     "sharedWithMeSubtitle": "Note e taccuini condivisi da altri",
     "noSharedNotes": "Nessuna nota condivisa con te",
     "noSharedNotebooks": "Nessun taccuino condiviso con te",
-    "sharedBy": "Condiviso da"
+    "sharedBy": "Condiviso da",
+    "share": "Condividi"
   },
   "profile": {
     "title": "Profilo Utente",
@@ -217,7 +238,8 @@
     "changePassword": "Cambia Password",
     "currentPassword": "Password Attuale",
     "newPassword": "Nuova Password",
-    "confirmPassword": "Conferma Password"
+    "confirmPassword": "Conferma Password",
+    "updatePassword": "Aggiorna Password"
   },
   "notes": {
     "newNote": "Nuova Nota",
@@ -246,6 +268,9 @@
     "found": "{{count}} note trovate",
     "selectToView": "Seleziona una nota per visualizzarla o creane una nuova.",
     "createNew": "Crea Nuova Nota",
+    "saveFailed": "Salvataggio nota fallito",
+    "deleted": "Nota eliminata",
+    "deleteConfirm": "Sei sicuro di voler eliminare questa nota?",
     "attachments": "Allegati",
     "noAttachments": "Nessun allegato",
     "addAttachment": "Aggiungi allegato",
@@ -254,7 +279,6 @@
     "selectNotebook": "Seleziona Taccuino",
     "searchNotebooks": "Cerca taccuini...",
     "noNotebooksFound": "Nessun taccuino trovato",
-
     "addReminder": "Aggiungi promemoria",
     "noNotebookSelectedTitle": "Nessun taccuino selezionato",
     "noNotebookSelectedDescription": "Seleziona un taccuino dalla barra laterale per visualizzare le sue note."
@@ -275,6 +299,21 @@
     "orderedList": "Elenco numerato",
     "blockquote": "Citazione",
     "undo": "Annulla",
-    "redo": "Ripeti"
+    "redo": "Ripeti",
+    "link": "Inserisci Link",
+    "unlink": "Rimuovi Link",
+    "insertTable": "Inserisci Tabella",
+    "highlight": "Evidenzia",
+    "codeBlock": "Blocco Codice",
+    "horizontalRule": "Riga Orizzontale",
+    "fontFamily": "Font",
+    "fontSize": "Dimensione Testo",
+    "taskList": "Lista Attività"
+  },
+  "gender": {
+    "male": "Maschio",
+    "female": "Femmina",
+    "other": "Altro",
+    "preferNotToSay": "Preferisco non dirlo"
   }
 }

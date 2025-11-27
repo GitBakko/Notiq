@@ -56,3 +56,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# User uploads (attachments and avatars)
+backend/uploads/

@@ -6,6 +6,8 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Link from '@tiptap/extension-link';
+import TextStyle from '@tiptap/extension-text-style';
+import FontFamily from '@tiptap/extension-font-family';
 import { useEffect, useRef } from 'react';
 import EditorToolbar from './EditorToolbar';
 
@@ -32,6 +34,8 @@ const extensions = [
     openOnClick: false,
     autolink: true,
   }),
+  TextStyle,
+  FontFamily,
 ];
 
 export default function Editor({ content, onChange, editable = true, onAttach }: EditorProps) {

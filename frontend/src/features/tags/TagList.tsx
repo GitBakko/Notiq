@@ -89,13 +89,18 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
             placeholder={t('tags.newTagPlaceholder')}
             className="w-full text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-green-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
             autoFocus
-            onBlur={() => {
-              // Delay closing to allow form submission if clicking submit button (though we rely on Enter here)
-              // If empty, close immediately. If not empty, keep open or maybe close? 
-              // Better UX: if empty, close. If not, wait for user action.
-              if (!newTagName.trim()) {
-                handleCloseCreate();
+            onBlur={(e) => {
+              // Check if we're clicking on something within the same form
+              const relatedTarget = e.relatedTarget as HTMLElement;
+              if (relatedTarget && e.currentTarget.form?.contains(relatedTarget)) {
+                return;
               }
+              // Delay closing to allow form submission
+              setTimeout(() => {
+                if (!newTagName.trim()) {
+                  handleCloseCreate();
+                }
+              }, 150);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
