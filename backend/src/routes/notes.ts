@@ -18,13 +18,19 @@ const updateNoteSchema = z.object({
   reminderDate: z.string().nullable().optional(),
   isReminderDone: z.boolean().optional(),
   isPinned: z.boolean().optional(),
+  tags: z.array(z.object({
+    tag: z.object({
+      id: z.string().uuid(),
+      name: z.string().optional()
+    })
+  })).optional(),
 });
 
-export default async function noteRoutes(fastify: FastifyInstance) {
+export default async function (fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   fastify.post('/', async (request, reply) => {
-    const { id, title, notebookId, content } = createNoteSchema.parse(request.body);
+    const { notebookId, title, content, id } = createNoteSchema.parse(request.body);
     const note = await noteService.createNote(request.user.id, notebookId, title, content, id);
     return note;
   });
@@ -41,29 +47,28 @@ export default async function noteRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const note = await noteService.getNote(request.user.id, id);
-    if (!note) return reply.status(404).send({ message: 'Note not found' });
-    return note;
-  });
+  const { id } = request.params as { id: string };
+  const note = await noteService.getNote(request.user.id, id);
+  if (!note) return reply.status(404).send({ message: 'Note not found' });
+  return note;
+});
 
-  fastify.put('/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const data = updateNoteSchema.parse(request.body);
-    await noteService.updateNote(request.user.id, id, data);
-    return { message: 'Note updated' };
-  });
+fastify.put('/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const data = updateNoteSchema.parse(request.body);
+  await noteService.updateNote(request.user.id, id, data);
+  return { message: 'Note updated' };
+});
 
-  fastify.delete('/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await noteService.deleteNote(request.user.id, id);
-    return { message: 'Note deleted' };
-  });
+fastify.delete('/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  await noteService.deleteNote(request.user.id, id);
+  return { message: 'Note deleted' };
+});
 
-  fastify.post('/:id/share', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const { email, permission } = request.body as { email: string, permission: 'READ' | 'WRITE' };
-    const note = await shareNote(request.user.id, id, email, permission);
-    return note;
-  });
+fastify.post('/:id/share', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const note = await noteService.toggleShare(request.user.id, id);
+  return note;
+});
 }

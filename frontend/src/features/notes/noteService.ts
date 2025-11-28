@@ -20,6 +20,12 @@ export interface Note {
   isPinned?: boolean;
   isVault?: boolean;
   isEncrypted?: boolean;
+  sharedWith?: {
+    id: string;
+    userId: string;
+    permission: 'READ' | 'WRITE';
+    user: { id: string; name: string | null; email: string };
+  }[];
 }
 
 export const getNotes = async (notebookId?: string, search?: string, tagId?: string) => {
@@ -68,14 +74,16 @@ export const getPublicNote = async (shareId: string) => {
 
 import { db } from '../../lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import { useAuthStore } from '../../store/authStore';
 
 export const createNote = async (data: { title: string; notebookId: string; content?: string; isVault?: boolean; isEncrypted?: boolean }) => {
   const id = uuidv4();
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   const newNote = {
     id,
     ...data,
     content: data.content || '',
-    userId: 'current-user', // We need the user ID here. Ideally passed or retrieved from store.
+    userId,
     isTrashed: false,
     isVault: data.isVault || false,
     isEncrypted: data.isEncrypted || false,
@@ -94,6 +102,13 @@ export const createNote = async (data: { title: string; notebookId: string; cont
     data: { ...data, id }, // Send ID to backend if supported
     createdAt: Date.now()
   });
+
+  // Trigger immediate sync to ensure backend has the note before navigation/Hocuspocus connection
+  try {
+    await syncPush();
+  } catch (error) {
+    console.warn('Immediate sync failed, will retry in background', error);
+  }
 
   return newNote;
 };

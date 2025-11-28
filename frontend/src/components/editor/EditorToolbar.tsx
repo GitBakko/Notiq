@@ -26,14 +26,24 @@ import {
   Type,
   ChevronDown,
   ALargeSmall,
+  Mic,
+  MicOff,
+  AudioLines,
+  Lock
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
+import { HocuspocusProvider } from '@hocuspocus/provider';
+import TableSelector from './TableSelector';
+import 'regenerator-runtime/runtime';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 interface EditorToolbarProps {
   editor: Editor | null;
   onAttach?: () => void;
+  onVoiceMemo?: () => void;
+  provider?: HocuspocusProvider | null;
 }
 
 interface ToolbarButtonProps {
@@ -138,8 +148,59 @@ const ToolbarDropdown = ({ options, value, onChange, placeholder, title, icon }:
   );
 };
 
-export default function EditorToolbar({ editor, onAttach }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onAttach, onVoiceMemo, provider }: EditorToolbarProps) {
   const { t } = useTranslation();
+  const [users, setUsers] = useState<any[]>([]);
+
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition
+  } = useSpeechRecognition();
+
+  useEffect(() => {
+    if (transcript && editor) {
+      // Insert text at current selection
+      editor.chain().focus().insertContent(transcript).run();
+      // Reset transcript to avoid re-inserting the same text
+      resetTranscript();
+    }
+  }, [transcript, editor, resetTranscript]);
+
+  const toggleListening = () => {
+    if (listening) {
+      SpeechRecognition.stopListening();
+    } else {
+      SpeechRecognition.startListening({ continuous: true });
+    }
+  };
+
+  useEffect(() => {
+    const currentProvider = provider;
+    if (!currentProvider) {
+      setUsers([]);
+      return;
+    }
+
+    const updateUsers = () => {
+      if (currentProvider && currentProvider.awareness) {
+        const states = currentProvider.awareness.getStates();
+        setUsers(Array.from(states.values()));
+      }
+    };
+
+    if (currentProvider && currentProvider.awareness) {
+      currentProvider.awareness.on('change', updateUsers);
+      updateUsers();
+    }
+
+    return () => {
+      if (currentProvider && currentProvider.awareness) {
+        currentProvider.awareness.off('change', updateUsers);
+      }
+    };
+  }, [provider]);
 
   if (!editor) {
     return null;
@@ -159,7 +220,55 @@ export default function EditorToolbar({ editor, onAttach }: EditorToolbarProps) 
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
 
   return (
-    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800">
+    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800 items-center">
+      {/* Online Users */}
+      {users.length > 0 && (
+        <div className="flex -space-x-2 mr-4 border-r pr-4 border-gray-200 dark:border-gray-700">
+          {users.map((u, i) => (
+            <div
+              key={i}
+              className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 bg-gray-200 flex items-center justify-center text-xs font-bold text-white shadow-sm"
+              style={{ backgroundColor: u.user?.color || '#ccc' }}
+              title={u.user?.name || 'User'}
+            >
+              {u.user?.name?.[0]?.toUpperCase() || '?'}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Speech to Text */}
+      {browserSupportsSpeechRecognition && (
+        <>
+          <ToolbarButton
+            onClick={toggleListening}
+            isActive={listening}
+            title={listening ? t('editor.stopDictation') : t('editor.startDictation')}
+          >
+            {listening ? <MicOff size={18} className="text-red-500" /> : <Mic size={18} />}
+          </ToolbarButton>
+        </>
+      )}
+
+      {/* Voice Memo */}
+      {onVoiceMemo && (
+        <ToolbarButton
+          onClick={onVoiceMemo}
+          title={t('editor.voiceMemo')}
+        >
+          <AudioLines size={18} />
+        </ToolbarButton>
+      )}
+
+      <ToolbarButton
+        onClick={() => editor.chain().focus().insertContent('<encrypted-block></encrypted-block>').run()}
+        title={t('editor.insertEncryptedBlock')}
+      >
+        <Lock size={18} />
+      </ToolbarButton>
+
+      <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
+
       {/* Font Family Dropdown */}
       <ToolbarDropdown
         options={fontFamilies}
@@ -330,12 +439,21 @@ export default function EditorToolbar({ editor, onAttach }: EditorToolbarProps) 
 
       <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
 
-      <ToolbarButton
-        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-        title={t('editor.insertTable')}
-      >
-        <TableIcon size={18} />
-      </ToolbarButton>
+      <div className="relative group">
+        <ToolbarButton
+          onClick={() => { }} // No-op, handled by hover/dropdown
+          title={t('editor.insertTable')}
+        >
+          <TableIcon size={18} />
+        </ToolbarButton>
+        <div className="absolute top-full left-0 mt-1 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+          <TableSelector
+            onSelect={(rows, cols) => {
+              editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+            }}
+          />
+        </div>
+      </div>
 
       {editor.isActive('table') && (
         <>

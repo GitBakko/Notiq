@@ -67,9 +67,14 @@ server.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 
+
+import { hocuspocus } from './hocuspocus';
+
 const start = async () => {
   try {
     await server.listen({ port: 3001, host: '0.0.0.0' });
+    await hocuspocus.listen();
+    console.log('Hocuspocus running on port 1234');
   } catch (err) {
     server.log.error(err);
     process.exit(1);

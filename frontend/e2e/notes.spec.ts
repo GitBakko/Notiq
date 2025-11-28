@@ -17,17 +17,32 @@ test.describe('Notes', () => {
   });
 
   test('should create a new note', async ({ page }) => {
+    test.setTimeout(60000);
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
 
+    // Force English locale
+    await page.addInitScript(() => {
+      localStorage.setItem('i18nextLng', 'en');
+    });
+
+    const navLang = await page.evaluate(() => navigator.language);
+    console.log('Navigator Language:', navLang);
+
+    console.log('Current URL:', page.url());
     console.log('Waiting for sidebar...');
     // Wait for sidebar to be ready
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    try {
+      await expect(page.getByTestId('sidebar-item-notes')).toBeVisible({ timeout: 30000 });
+    } catch (e) {
+      console.log('Sidebar check failed. Page content:', await page.content());
+      throw e;
+    }
 
     console.log('Clicking New Note button...');
     // Click New Note button in sidebar
     // Use specific selector to avoid ambiguity with "Create New Note" in empty state
     // The sidebar button has 'rounded-full' and 'bg-emerald-600'
-    const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
+    const newNoteBtn = page.getByRole('button', { name: 'New Note', exact: true });
     await expect(newNoteBtn).toBeVisible();
     await newNoteBtn.click();
 
@@ -76,12 +91,18 @@ test.describe('Notes', () => {
 
   test('should delete a note', async ({ page }) => {
     console.log('Waiting for sidebar...');
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    console.log('Waiting for sidebar...');
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible({ timeout: 30000 });
 
     console.log('Creating note to delete...');
     // Create a note first
-    const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
-    await expect(newNoteBtn).toBeVisible();
+    const newNoteBtn = page.getByRole('button', { name: 'New Note', exact: true });
+    try {
+      await expect(newNoteBtn).toBeVisible({ timeout: 5000 });
+    } catch (e) {
+      console.log('New Note button not found. Page content:', await page.content());
+      throw e;
+    }
     await newNoteBtn.click();
     await expect(page).toHaveURL(/.*noteId=.*/, { timeout: 10000 });
 

@@ -16,10 +16,11 @@ test.describe('Search', () => {
 
   test('should open and use search', async ({ page }) => {
     // Wait for sidebar
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    // Wait for sidebar
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible({ timeout: 30000 });
 
     // Click the search button in sidebar
-    await page.click('button:has-text("Search")');
+    await page.getByRole('button', { name: 'Search' }).click();
 
     // Verify search modal opens (command menu)
     const searchInput = page.getByPlaceholder('Search notes, notebooks, tags...');
@@ -27,7 +28,7 @@ test.describe('Search', () => {
 
     // Type in the search box to verify it's functional
     await searchInput.fill('test query');
-    
+
     // Verify the input accepted the text
     await expect(searchInput).toHaveValue('test query');
   });

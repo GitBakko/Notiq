@@ -35,14 +35,14 @@ Questo piano dettagliato guida l'implementazione completa, partendo dalla correz
 - [x] **Backup System:** Script `backup.ts` creato.
 - [x] **Deploy:** Docker Compose, Dockerfiles e Nginx configurati.
 
-## Phase 5: Refinement & Polish (IN CORSO)
+## Phase 5: Refinement & Polish (COMPLETATO)
 **Obiettivo:** Migliorare l'esperienza utente e la qualità del codice.
 
 ### Steps
 - [x] **Rich Text Editor:** Implementata Toolbar di formattazione.
 - [x] **Search Experience:** Implementata ricerca globale (Cmd+K) su DB locale.
 - [x] **Authentication Flow:** Verificato redirect e gestione token.
-- [ ] **Testing:** Scrivere test E2E (Cypress/Playwright) per i flussi critici.
+- [x] **Testing:** Scrivere test E2E (Cypress/Playwright) per i flussi critici.
 
 ## Further Considerations
 1.  **Database:** L'ambiente di sviluppo è configurato per PostgreSQL.

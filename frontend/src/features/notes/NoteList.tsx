@@ -3,7 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { it, enUS } from 'date-fns/locale';
 import { type Note } from './noteService';
 import clsx from 'clsx';
-import { FileText, Bell, CheckCircle } from 'lucide-react';
+import { Tag, Paperclip, Bell, CheckCircle, Globe, Users } from 'lucide-react';
 
 interface NoteListProps {
   notes: Note[];
@@ -45,12 +45,29 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
                    </span>
                 )}
             </div>
-            {note.tags && note.tags.length > 0 && (
-              <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                <FileText size={10} />
-                <span className="text-[10px]">{note.tags.length}</span>
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {note.isPublic && (
+                <Globe size={12} className="text-emerald-500" />
+              )}
+              {note.sharedWith && note.sharedWith.length > 0 && (
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400" title={`${note.sharedWith.length} users`}>
+                  <Users size={12} />
+                  <span className="text-[10px] font-medium">{note.sharedWith.length}</span>
+                </span>
+              )}
+              {note.attachments && note.attachments.length > 0 && (
+                <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  <Paperclip size={10} />
+                  <span className="text-[10px]">{note.attachments.length}</span>
+                </span>
+              )}
+              {note.tags && note.tags.length > 0 && (
+                <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  <Tag size={10} />
+                  <span className="text-[10px]">{note.tags.length}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
       ))}

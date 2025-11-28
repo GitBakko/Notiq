@@ -1,4 +1,4 @@
-import { Paperclip, X } from 'lucide-react';
+import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File, Music, Video, FileArchive } from 'lucide-react';
 
 interface Attachment {
   id: string;
@@ -15,6 +15,55 @@ interface AttachmentListProps {
   readOnly?: boolean;
 }
 
+const getFileIconInfo = (filename: string) => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+
+  switch (ext) {
+    case 'pdf':
+      return { icon: FileText, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
+    case 'doc':
+    case 'docx':
+      return { icon: FileText, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' };
+    case 'xls':
+    case 'xlsx':
+    case 'csv':
+      return { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' };
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif':
+    case 'webp':
+    case 'svg':
+      return { icon: Image, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' };
+    case 'zip':
+    case 'rar':
+    case '7z':
+    case 'tar':
+    case 'gz':
+      return { icon: FileArchive, color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900/30' };
+    case 'mp3':
+    case 'wav':
+    case 'ogg':
+      return { icon: Music, color: 'text-pink-600', bg: 'bg-pink-100 dark:bg-pink-900/30' };
+    case 'mp4':
+    case 'mov':
+    case 'avi':
+    case 'webm':
+      return { icon: Video, color: 'text-indigo-600', bg: 'bg-indigo-100 dark:bg-indigo-900/30' };
+    case 'js':
+    case 'ts':
+    case 'tsx':
+    case 'jsx':
+    case 'html':
+    case 'css':
+    case 'json':
+    case 'py':
+      return { icon: FileCode, color: 'text-yellow-600', bg: 'bg-yellow-100 dark:bg-yellow-900/30' };
+    default:
+      return { icon: File, color: 'text-gray-500', bg: 'bg-gray-200 dark:bg-gray-700' };
+  }
+};
+
 export default function AttachmentList({ attachments, onDelete, onAdd, readOnly = false }: AttachmentListProps) {
   if (!attachments && !onAdd) return null;
 
@@ -25,44 +74,51 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
           <Paperclip size={12} />
           Attachments ({attachments?.length || 0})
         </h4>
-        {!readOnly && onAdd && (
-          <button onClick={onAdd} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium dark:text-emerald-500 dark:hover:text-emerald-400">
-            Add File
-          </button>
-        )}
       </div>
       <ul className="space-y-2">
-        {attachments?.map((att) => (
-          <li key={att.id} className="flex items-center justify-between bg-gray-50 p-2 rounded border border-gray-100 group dark:bg-gray-800 dark:border-gray-700">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="h-8 w-8 bg-gray-200 rounded flex items-center justify-center text-gray-500 font-bold text-xs uppercase dark:bg-gray-700 dark:text-gray-400">
-                {att.filename.split('.').pop()}
+        {attachments?.map((att) => {
+          const { icon: Icon, color, bg } = getFileIconInfo(att.filename);
+          const isAudio = ['mp3', 'wav', 'ogg', 'webm'].includes(att.filename.split('.').pop()?.toLowerCase() || '');
+
+          return (
+            <li key={att.id} className="flex flex-col bg-gray-50 p-2 rounded border border-gray-100 group dark:bg-gray-800 dark:border-gray-700">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className={`h-8 w-8 rounded flex items-center justify-center ${bg}`}>
+                    <Icon size={16} className={color} />
+                  </div>
+                  <div className="flex flex-col overflow-hidden">
+                    <a
+                      href={`http://localhost:3001${att.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-gray-700 truncate hover:text-emerald-600 hover:underline dark:text-gray-200 dark:hover:text-emerald-400"
+                    >
+                      {att.filename}
+                    </a>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {(att.size / 1024).toFixed(1)} KB {att.version && `• v${att.version}`}
+                    </span>
+                  </div>
+                </div>
+                {!readOnly && onDelete && (
+                  <button
+                    onClick={() => onDelete(att.id)}
+                    className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity dark:text-gray-500 dark:hover:text-red-400"
+                    title="Delete attachment"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
-              <div className="flex flex-col overflow-hidden">
-                <a
-                  href={`http://localhost:3001${att.url}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-gray-700 truncate hover:text-emerald-600 hover:underline dark:text-gray-200 dark:hover:text-emerald-400"
-                >
-                  {att.filename}
-                </a>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  {(att.size / 1024).toFixed(1)} KB {att.version && `• v${att.version}`}
-                </span>
-              </div>
-            </div>
-            {!readOnly && onDelete && (
-              <button
-                onClick={() => onDelete(att.id)}
-                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity dark:text-gray-500 dark:hover:text-red-400"
-                title="Delete attachment"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </li>
-        ))}
+              {isAudio && (
+                <div className="mt-2 w-full">
+                  <audio controls src={`http://localhost:3001${att.url}`} className="w-full h-8" />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

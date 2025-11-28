@@ -188,6 +188,7 @@ export default function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
+                data-testid={`sidebar-item-${item.path === '/' ? 'home' : item.path.substring(1)}`}
                 className={clsx(
                   'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
                   location.pathname === item.path
@@ -270,27 +271,31 @@ export default function Sidebar() {
                       </span>
                     </Link>
                     <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setSharingNotebookId(notebook.id);
-                        }}
-                        className="p-1 hover:text-emerald-600 transition-colors"
-                        title={t('sharing.share')}
-                      >
-                        <Share2 size={14} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setDeleteNotebookId(notebook.id);
-                          setDeleteNotebookName(notebook.name);
-                        }}
-                        className="p-1 hover:text-red-600 transition-colors"
-                        title={t('common.delete')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {notebook.userId === user?.id && (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSharingNotebookId(notebook.id);
+                            }}
+                            className="p-1 hover:text-emerald-600 transition-colors"
+                            title={t('sharing.share')}
+                          >
+                            <Share2 size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setDeleteNotebookId(notebook.id);
+                              setDeleteNotebookName(notebook.name);
+                            }}
+                            className="p-1 hover:text-red-600 transition-colors"
+                            title={t('common.delete')}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -332,20 +337,29 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
-          <button
-            onClick={toggleTheme}
-            className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
-            title={t('common.theme')}
-          >
-            {getThemeIcon()}
-          </button>
-          <button
-            onClick={logout}
-            className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
-            title={t('auth.logout')}
-          >
-            <LogOut size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <img src="/favicon.png" alt="Notiq" className="h-6 w-6 object-contain" />
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-gray-900 dark:text-white leading-none">Notiq</span>
+              <span className="text-[10px] text-gray-500 dark:text-gray-400 leading-none mt-0.5">v0.1.0</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTheme}
+              className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+              title={t('common.theme')}
+            >
+              {getThemeIcon()}
+            </button>
+            <button
+              onClick={logout}
+              className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+              title={t('auth.logout')}
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
       </div>
     </>

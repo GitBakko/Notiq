@@ -84,7 +84,7 @@ export default function CommandMenu() {
                   key={note.id}
                   value={`note-${note.id}`}
                   onSelect={() => runCommand(() => navigate(`/notes?noteId=${note.id}`))}
-                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100"
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   <span>{note.title || t('notes.untitled')}</span>
@@ -100,7 +100,7 @@ export default function CommandMenu() {
                   key={notebook.id}
                   value={`notebook-${notebook.id}`}
                   onSelect={() => runCommand(() => navigate(`/notes?notebookId=${notebook.id}`))}
-                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100"
                 >
                   <Book className="mr-2 h-4 w-4" />
                   <span>{notebook.name}</span>
@@ -116,7 +116,7 @@ export default function CommandMenu() {
                   key={tag.id}
                   value={`tag-${tag.id}`}
                   onSelect={() => runCommand(() => navigate(`/notes?tagId=${tag.id}`))}
-                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100"
                 >
                   <Tag className="mr-2 h-4 w-4" />
                   <span>{tag.name}</span>

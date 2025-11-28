@@ -29,8 +29,11 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
       <div className="w-full max-w-md space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+        <div className="flex flex-col items-center">
+          <div className="h-24 w-24 flex items-center justify-center mb-4">
+            <img src="/logo-no-bg.png" alt="Notiq Logo" className="h-full w-full object-contain" />
+          </div>
+          <h2 className="mt-2 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
             {t('auth.signInTitle')}
           </h2>
         </div>
@@ -72,7 +75,7 @@ export default function LoginPage() {
           </div>
           <div className="flex items-center justify-center gap-2 text-sm mt-4">
             <Link to="/forgot-password" className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-500 dark:hover:text-emerald-400">
-              Forgot your password?
+              {t('auth.forgotPasswordLink')}
             </Link>
             <span className="text-gray-300 dark:text-gray-600">|</span>
             <Link to="/register" className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-500 dark:hover:text-emerald-400">

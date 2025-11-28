@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { resetPassword } from '../../lib/api';
 
 // Schema moved inside component to access t()
 
@@ -42,24 +43,13 @@ export default function ResetPasswordPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          newPassword: data.password,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || t('auth.resetFailed'));
-      }
+      await resetPassword(token, data.password);
 
       toast.success(t('auth.resetSuccess'));
       navigate('/login');
-    } catch (error) {
-      toast.error((error as Error).message);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || t('auth.resetFailed');
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -92,18 +82,28 @@ export default function ResetPasswordPage() {
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
-            <Input
-              label={t('profile.newPassword')}
-              type="password"
-              {...register('password')}
-              error={errors.password?.message}
-            />
-            <Input
-              label={t('profile.confirmPassword')}
-              type="password"
-              {...register('confirmPassword')}
-              error={errors.confirmPassword?.message}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('profile.newPassword')}</label>
+              <Input
+                type="password"
+                {...register('password')}
+                error={!!errors.password?.message}
+              />
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-500">{errors.password.message}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('profile.confirmPassword')}</label>
+              <Input
+                type="password"
+                {...register('confirmPassword')}
+                error={!!errors.confirmPassword?.message}
+              />
+              {errors.confirmPassword && (
+                <p className="mt-1 text-sm text-red-500">{errors.confirmPassword.message}</p>
+              )}
+            </div>
           </div>
 
           <Button type="submit" className="w-full" isLoading={isLoading}>

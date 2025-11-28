@@ -169,7 +169,7 @@ Notiq is not just another note-taking app. It's a **privacy-focused**, **offline
 ![Playwright](https://img.shields.io/badge/-Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white)
 ![ESLint](https://img.shields.io/badge/-ESLint-4B32C3?style=flat-square&logo=eslint&logoColor=white)
 
-- **18 E2E Tests** — Full coverage
+- **19 E2E Tests** — Full coverage
 - **Docker Compose** — Easy deployment
 - **Hot Reload** — Fast development
 
@@ -390,7 +390,9 @@ npx playwright show-report
 | ✅ | Tasks & reminders |
 | ✅ | Offline-first with sync |
 | ✅ | Font selection in editor |
-| 🔜 | Real-time collaborative editing |
+| ✅ | Real-time collaborative editing |
+| ✅ | Speech-to-Text (Dictation & Voice Memos) |
+| ✅ | Advanced Table Tools |
 | 🔜 | PDF/Markdown export |
 | 🔜 | Mobile app (React Native) |
 | 🔜 | AI-powered note suggestions |

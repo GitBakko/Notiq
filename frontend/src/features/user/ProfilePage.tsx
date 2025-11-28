@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../components/ui/Button';
-import { User, Save, ArrowLeft, Phone, Lock, Camera, Shield, KeyRound } from 'lucide-react';
+import { User, Save, ArrowLeft, Phone, Camera, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import DatePicker from '../../components/ui/DatePicker';

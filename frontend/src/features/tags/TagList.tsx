@@ -121,6 +121,9 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
             >
               <TagIcon size={14} className="mr-2 text-gray-400" />
               <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{tag.name}</span>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                {tag._count?.notes || 0}
+              </span>
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(tag.id); }}

@@ -36,6 +36,17 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
       tags: { include: { tag: true } },
       attachments: {
         where: { isLatest: true }
+      },
+      sharedWith: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
       }
     }
   });
@@ -48,6 +59,17 @@ export const getNote = async (userId: string, id: string) => {
       tags: { include: { tag: true } },
       attachments: {
         where: { isLatest: true }
+      },
+      sharedWith: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
       }
     }
   });
@@ -61,13 +83,35 @@ export const updateNote = async (userId: string, id: string, data: {
   reminderDate?: string | null;
   isReminderDone?: boolean;
   isPinned?: boolean;
+  tags?: { tag: { id: string } }[];
 }) => {
-  return prisma.note.updateMany({
-    where: { id, userId },
-    data: {
-      ...data,
-      updatedAt: new Date(),
-    },
+  // Verify ownership first
+  const note = await prisma.note.findFirst({ where: { id, userId } });
+  if (!note) throw new Error('Note not found');
+
+  const { tags, ...rest } = data;
+
+  return prisma.$transaction(async (tx) => {
+    if (tags !== undefined) {
+      // Replace tags
+      await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
+      if (tags.length > 0) {
+        await tx.tagsOnNotes.createMany({
+          data: tags.map(t => ({
+            noteId: id,
+            tagId: t.tag.id
+          }))
+        });
+      }
+    }
+
+    return tx.note.update({
+      where: { id },
+      data: {
+        ...rest,
+        updatedAt: new Date(),
+      },
+    });
   });
 };
 

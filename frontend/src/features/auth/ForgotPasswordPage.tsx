@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { forgotPassword } from '../../lib/api';
 
 const schema = z.object({
   email: z.string().email(), // Validation message handled by browser or default
@@ -28,13 +29,7 @@ export default function ForgotPasswordPage() {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) throw new Error('Failed to send reset email');
+      await forgotPassword(data.email);
 
       setIsSent(true);
       toast.success(t('auth.resetLinkSent'));
@@ -86,13 +81,16 @@ export default function ForgotPasswordPage() {
         ) : (
           <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('auth.email')}</label>
               <Input
-                label={t('auth.email')}
                 type="email"
                 {...register('email')}
-                error={errors.email?.message}
+                error={!!errors.email?.message}
                 autoComplete="email"
               />
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-500">{errors.email.message}</p>
+              )}
             </div>
 
             <Button type="submit" className="w-full" isLoading={isLoading}>
