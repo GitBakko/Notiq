@@ -1,0 +1,105 @@
+StarterKit: _Extension {
+  type: 'extension',
+  parent: null,
+  child: null,
+  name: 'starterKit',
+  config: { name: 'starterKit', addExtensions: [Function: addExtensions] }
+}
+Table: undefined
+TableRow: _Node {
+  type: 'node',
+  parent: null,
+  child: null,
+  name: 'tableRow',
+  config: {
+    name: 'tableRow',
+    addOptions: [Function: addOptions],
+    content: '(tableCell | tableHeader)*',
+    tableRole: 'row',
+    parseHTML: [Function: parseHTML],
+    renderHTML: [Function: renderHTML]
+  }
+}
+TableCell: _Node {
+  type: 'node',
+  parent: null,
+  child: null,
+  name: 'tableCell',
+  config: {
+    name: 'tableCell',
+    addOptions: [Function: addOptions],
+    content: 'block+',
+    addAttributes: [Function: addAttributes],
+    tableRole: 'cell',
+    isolating: true,
+    parseHTML: [Function: parseHTML],
+    renderHTML: [Function: renderHTML]
+  }
+}
+TableHeader: _Node {
+  type: 'node',
+  parent: null,
+  child: null,
+  name: 'tableHeader',
+  config: {
+    name: 'tableHeader',
+    addOptions: [Function: addOptions],
+    content: 'block+',
+    addAttributes: [Function: addAttributes],
+    tableRole: 'header_cell',
+    isolating: true,
+    parseHTML: [Function: parseHTML],
+    renderHTML: [Function: renderHTML]
+  }
+}
+TextAlign: _Extension {
+  type: 'extension',
+  parent: null,
+  child: null,
+  name: 'textAlign',
+  config: {
+    name: 'textAlign',
+    addOptions: [Function: addOptions],
+    addGlobalAttributes: [Function: addGlobalAttributes],
+    addCommands: [Function: addCommands],
+    addKeyboardShortcuts: [Function: addKeyboardShortcuts]
+  }
+}
+TextStyle: undefined
+FontFamily: _Extension {
+  type: 'extension',
+  parent: null,
+  child: null,
+  name: 'fontFamily',
+  config: {
+    name: 'fontFamily',
+    addOptions: [Function: addOptions],
+    addGlobalAttributes: [Function: addGlobalAttributes],
+    addCommands: [Function: addCommands]
+  }
+}
+Link: _Mark {
+  type: 'mark',
+  parent: null,
+  child: null,
+  name: 'link',
+  config: {
+    name: 'link',
+    priority: 1000,
+    keepOnSplit: false,
+    exitable: true,
+    onCreate: [Function: onCreate],
+    onDestroy: [Function: onDestroy],
+    inclusive: [Function: inclusive],
+    addOptions: [Function: addOptions],
+    addAttributes: [Function: addAttributes],
+    parseHTML: [Function: parseHTML],
+    renderHTML: [Function: renderHTML],
+    markdownTokenName: 'link',
+    parseMarkdown: [Function: parseMarkdown],
+    renderMarkdown: [Function: renderMarkdown],
+    addCommands: [Function: addCommands],
+    addPasteRules: [Function: addPasteRules],
+    addProseMirrorPlugins: [Function: addProseMirrorPlugins]
+  }
+}

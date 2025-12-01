@@ -13,7 +13,32 @@ interface NoteListProps {
 
 export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteListProps) {
   const { t, i18n } = useTranslation();
-  const dateLocale = i18n.language === 'it' ? it : enUS;
+  const dateLocale = i18n.language.startsWith('it') ? it : enUS;
+
+  const extractTextFromContent = (content: string): string => {
+    if (!content) return '';
+    try {
+      // Try to parse as JSON
+      const json = JSON.parse(content);
+      if (typeof json === 'object' && json !== null) {
+        // Recursive function to extract text
+        const getText = (node: any): string => {
+          if (node.type === 'text' && node.text) {
+            return node.text;
+          }
+          if (node.content && Array.isArray(node.content)) {
+            return node.content.map(getText).join(' ');
+          }
+          return '';
+        };
+        return getText(json);
+      }
+    } catch (e) {
+      // Not JSON, treat as HTML string
+      return content.replace(/<[^>]*>?/gm, '');
+    }
+    return content.replace(/<[^>]*>?/gm, '');
+  };
 
   if (!notes || notes.length === 0) {
     return <div className="p-4 text-gray-500 text-sm text-center mt-10 dark:text-gray-400">{t('notes.noNotesFound')}</div>;
@@ -34,7 +59,7 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
             {note.title || t('notes.untitled')}
           </h3>
           <p className="mb-2 line-clamp-2 text-xs text-gray-500 h-8 dark:text-gray-400">
-            {note.content ? note.content.replace(/<[^>]*>?/gm, '') : t('notes.noContent')}
+            {note.content ? extractTextFromContent(note.content) : t('notes.noContent')}
           </p>
           <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
             <div className="flex items-center gap-2">

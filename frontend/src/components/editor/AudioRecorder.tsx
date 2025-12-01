@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Square, Save, X, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import clsx from 'clsx';
+import toast from 'react-hot-toast';
 
 interface AudioRecorderProps {
   onSave: (blob: Blob) => void;
@@ -56,7 +56,7 @@ export default function AudioRecorder({ onSave, onCancel }: AudioRecorderProps) 
 
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      alert('Could not access microphone');
+      toast.error(t('editor.micAccessError', 'Could not access microphone'));
     }
   };
 

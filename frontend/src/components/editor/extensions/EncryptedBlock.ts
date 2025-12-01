@@ -12,6 +12,9 @@ export default Node.create({
       ciphertext: {
         default: '',
       },
+      createdBy: {
+        default: null,
+      },
     }
   },
 

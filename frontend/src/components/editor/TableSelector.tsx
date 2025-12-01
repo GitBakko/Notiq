@@ -31,7 +31,7 @@ export default function TableSelector({ onSelect }: TableSelectorProps) {
               <div
                 key={`${r}-${c}`}
                 className={clsx(
-                  "w-4 h-4 border rounded-sm transition-colors cursor-pointer",
+                  "w-6 h-6 border rounded-sm transition-colors cursor-pointer",
                   isActive
                     ? "bg-emerald-100 border-emerald-500 dark:bg-emerald-900/50 dark:border-emerald-500"
                     : "bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700"

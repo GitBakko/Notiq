@@ -13,7 +13,7 @@ interface TagSelectorProps {
   onUpdate: () => void;
 }
 
-export default function TagSelector({ noteId, noteTags, onUpdate }: TagSelectorProps) {
+export default function TagSelector({ noteId, noteTags = [], onUpdate }: TagSelectorProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
@@ -114,7 +114,7 @@ export default function TagSelector({ noteId, noteTags, onUpdate }: TagSelectorP
       </div>
 
       {isOpen && createPortal(
-        <div 
+        <div
           ref={dropdownRef}
           className="fixed w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] p-2 dark:bg-gray-900 dark:border-gray-700"
           style={{ top: dropdownPosition.top, left: dropdownPosition.left }}

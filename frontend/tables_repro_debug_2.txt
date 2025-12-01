@@ -1,0 +1,31 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+[1A[2K  1) [chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇ
+
+    Error: [2mexpect([22m[31mpage[39m[2m).[22mtoHaveURL[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Expected pattern: [32m/\/notes/[39m
+    Received string:  [31m"http://localhost:5173/register"[39m
+    Timeout: 10000ms
+
+    Call log:
+    [2m  - Expect "toHaveURL" with timeout 10000ms[22m
+    [2m    14 ├ù unexpected value "http://localhost:5173/register"[22m
+
+
+      13 |     await page.fill('input[type="password"]', password);
+      14 |     await page.click('button[type="submit"]');
+    > 15 |     await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+         |                        ^
+      16 |   });
+      17 |
+      18 |   test('should persist table content after refresh', async ({ page }) => {
+        at D:\Develop\AI\Notiq\frontend\e2e\tables.spec.ts:15:24
+
+    Error Context: test-results\tables-Tables-should-persist-table-content-after-refresh-chromium\error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇÔöÇ

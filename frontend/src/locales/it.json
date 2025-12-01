@@ -276,6 +276,8 @@
     "nowPublic": "La nota è ora pubblica",
     "nowPrivate": "La nota è ora privata",
     "shared": "Condiviso",
+    "sharedBy": "Condiviso da {{name}}",
+    "sharedWithCount": "Condiviso con {{count}} utenti",
     "share": "Condividi",
     "copyLink": "Copia Link",
     "openLink": "Apri Link Pubblico",
@@ -521,7 +523,16 @@
     "fontDefault": "Predefinito",
     "fontSize": "Dimensione Testo",
     "taskList": "Lista Attività",
-    "insertEncryptedBlock": "Inserisci Blocco Criptato"
+    "insertEncryptedBlock": "Inserisci Blocco Criptato",
+    "addColumnBefore": "Aggiungi Colonna Prima",
+    "addColumnAfter": "Aggiungi Colonna Dopo",
+    "deleteColumn": "Elimina Colonna",
+    "addRowBefore": "Aggiungi Riga Prima",
+    "addRowAfter": "Aggiungi Riga Dopo",
+    "deleteRow": "Elimina Riga",
+    "deleteTable": "Elimina Tabella",
+    "mergeCells": "Unisci Celle",
+    "splitCell": "Dividi Cella"
   },
   "encryption": {
     "locked": "Contenuto Criptato",

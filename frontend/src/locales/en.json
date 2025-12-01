@@ -271,18 +271,6 @@
     "pin": "Pin Note",
     "markReminderDone": "Mark reminder as done",
     "makePrivate": "Make Private",
-    "makePublic": "Make Public",
-    "public": "Public",
-    "private": "Private",
-    "nowPublic": "Note is now public",
-    "nowPrivate": "Note is now private",
-    "shared": "Shared",
-    "share": "Share",
-    "copyLink": "Copy Link",
-    "openLink": "Open Public Link",
-    "dropFiles": "Drop files to attach",
-    "selectNotebookFirst": "Please select a notebook first.",
-    "found": "{{count}} notes found",
     "selectToView": "Select a note to view or create a new one.",
     "createNew": "Create New Note",
     "saveFailed": "Failed to save note",
@@ -298,7 +286,10 @@
     "noNotebooksFound": "No notebooks found",
     "addReminder": "Add reminder",
     "noNotebookSelectedTitle": "No notebook selected",
-    "noNotebookSelectedDescription": "Select a notebook from the sidebar to view its notes."
+    "noNotebookSelectedDescription": "Select a notebook from the sidebar to view its notes.",
+    "shared": "Shared",
+    "sharedBy": "Shared by {{name}}",
+    "sharedWithCount": "Shared with {{count}} users"
   },
   "editor": {
     "bold": "Bold",
@@ -327,7 +318,16 @@
     "fontDefault": "Default",
     "fontSize": "Font Size",
     "taskList": "Task List",
-    "insertEncryptedBlock": "Insert Encrypted Block"
+    "insertEncryptedBlock": "Insert Encrypted Block",
+    "addColumnBefore": "Add Column Before",
+    "addColumnAfter": "Add Column After",
+    "deleteColumn": "Delete Column",
+    "addRowBefore": "Add Row Before",
+    "addRowAfter": "Add Row After",
+    "deleteRow": "Delete Row",
+    "deleteTable": "Delete Table",
+    "mergeCells": "Merge Cells",
+    "splitCell": "Split Cell"
   },
   "encryption": {
     "locked": "Encrypted Content",

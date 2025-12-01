@@ -116,7 +116,7 @@ export default function SharedWithMePage() {
                 sharedNotes.map(item => (
                   <Link
                     key={item.id}
-                    to={`/notes/${item.note.id}`}
+                    to={`/notes?noteId=${item.note.id}`}
                     className="block p-4 rounded-xl border border-gray-200 hover:border-emerald-500 hover:shadow-md transition-all bg-white dark:bg-gray-800 dark:border-gray-700 dark:hover:border-emerald-500"
                   >
                     <div className="flex items-start justify-between mb-2">

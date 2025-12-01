@@ -13,10 +13,10 @@ interface NotebookSelectorProps {
   className?: string;
 }
 
-export default function NotebookSelector({ notebooks, selectedNotebookId, onSelect, className }: NotebookSelectorProps) {
+export default function NotebookSelector({ notebooks = [], selectedNotebookId, onSelect, className }: NotebookSelectorProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const selectedNotebook = notebooks.find(n => n.id === selectedNotebookId);
+  const selectedNotebook = notebooks?.find(n => n.id === selectedNotebookId);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>

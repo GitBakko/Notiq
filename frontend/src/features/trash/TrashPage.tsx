@@ -19,6 +19,7 @@ export default function TrashPage() {
   const { toggleSidebar } = useUIStore();
 
   const [deletingNote, setDeletingNote] = useState<Note | null>(null);
+  const [isEmptyTrashConfirmOpen, setIsEmptyTrashConfirmOpen] = useState(false);
 
   // Fetch trashed notes
   const notes = useNotes(undefined, undefined, undefined, true);
@@ -46,13 +47,17 @@ export default function TrashPage() {
     },
   });
 
-  const handleEmptyTrash = async () => {
-    if (!notes) return;
-    if (!window.confirm(t('trash.emptyConfirm'))) return;
+  const handleEmptyTrash = () => {
+    if (!notes || notes.length === 0) return;
+    setIsEmptyTrashConfirmOpen(true);
+  };
 
+  const confirmEmptyTrash = async () => {
+    if (!notes) return;
     for (const note of notes) {
       await deleteMutation.mutateAsync(note.id);
     }
+    setIsEmptyTrashConfirmOpen(false);
   };
 
   return (
@@ -139,6 +144,16 @@ export default function TrashPage() {
         title={t('trash.deleteTitle')}
         message={t('trash.deleteConfirm')}
         confirmText={t('common.deleteForever')}
+        variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={isEmptyTrashConfirmOpen}
+        onClose={() => setIsEmptyTrashConfirmOpen(false)}
+        onConfirm={confirmEmptyTrash}
+        title={t('trash.emptyTrashTitle', 'Empty Trash')}
+        message={t('trash.emptyConfirm', 'Are you sure you want to permanently delete all notes in the trash?')}
+        confirmText={t('trash.emptyTrash')}
         variant="danger"
       />
     </div>

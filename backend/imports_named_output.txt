@@ -1,0 +1,36 @@
+Named Table: _Node {
+  type: 'node',
+  parent: null,
+  child: null,
+  name: 'table',
+  config: {
+    name: 'table',
+    addOptions: [Function: addOptions],
+    content: 'tableRow+',
+    tableRole: 'table',
+    isolating: true,
+    group: 'block',
+    parseHTML: [Function: parseHTML],
+    renderHTML: [Function: renderHTML],
+    parseMarkdown: [Function: parseMarkdown],
+    renderMarkdown: [Function: renderMarkdown],
+    addCommands: [Function: addCommands],
+    addKeyboardShortcuts: [Function: addKeyboardShortcuts],
+    addProseMirrorPlugins: [Function: addProseMirrorPlugins],
+    extendNodeSchema: [Function: extendNodeSchema]
+  }
+}
+Named TextStyle: _Mark {
+  type: 'mark',
+  parent: null,
+  child: null,
+  name: 'textStyle',
+  config: {
+    name: 'textStyle',
+    priority: 101,
+    addOptions: [Function: addOptions],
+    parseHTML: [Function: parseHTML],
+    renderHTML: [Function: renderHTML],
+    addCommands: [Function: addCommands]
+  }
+}

@@ -13,14 +13,16 @@ import EncryptedBlock from './extensions/EncryptedBlock';
 import { useEffect, useRef, useMemo } from 'react';
 import EditorToolbar from './EditorToolbar';
 import Collaboration from '@tiptap/extension-collaboration';
-// import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import { CollaborativeHighlighter } from './extensions/CollaborativeHighlighter';
+import TableBubbleMenu from './TableBubbleMenu';
 
 interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   editable?: boolean;
-  onAttach?: () => void;
   onVoiceMemo?: () => void;
   scrollable?: boolean;
   provider?: HocuspocusProvider | null;
@@ -35,8 +37,20 @@ interface EditorProps {
   };
 }
 
-export default function Editor({ content, onChange, editable = true, onAttach, onVoiceMemo, scrollable = true, collaboration, provider }: EditorProps) {
+export default function Editor({ content, onChange, editable = true, onVoiceMemo, scrollable = true, collaboration, provider }: EditorProps) {
   const isUpdating = useRef(false);
+  const isFirstUpdate = useRef(true);
+  const contentRef = useRef(content);
+
+  // Update content ref
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  // Reset first update flag when provider changes
+  useEffect(() => {
+    isFirstUpdate.current = true;
+  }, [provider]);
 
   const extensions = useMemo(() => {
     const baseExtensions = [
@@ -55,8 +69,52 @@ export default function Editor({ content, onChange, editable = true, onAttach, o
         resizable: true,
       }),
       TableRow,
-      TableHeader,
-      TableCell,
+      TableHeader.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            borderStyle: {
+              default: null,
+              parseHTML: element => element.style.borderStyle,
+              renderHTML: attributes => {
+                if (!attributes.borderStyle) return {};
+                return { style: `border-style: ${attributes.borderStyle}` };
+              },
+            },
+            borderColor: {
+              default: null,
+              parseHTML: element => element.style.borderColor,
+              renderHTML: attributes => {
+                if (!attributes.borderColor) return {};
+                return { style: `border-color: ${attributes.borderColor}` };
+              },
+            },
+          };
+        },
+      }),
+      TableCell.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            borderStyle: {
+              default: null,
+              parseHTML: element => element.style.borderStyle,
+              renderHTML: attributes => {
+                if (!attributes.borderStyle) return {};
+                return { style: `border-style: ${attributes.borderStyle}` };
+              },
+            },
+            borderColor: {
+              default: null,
+              parseHTML: element => element.style.borderColor,
+              renderHTML: attributes => {
+                if (!attributes.borderColor) return {};
+                return { style: `border-color: ${attributes.borderColor}` };
+              },
+            },
+          };
+        },
+      }),
       // Link.configure({
       //   openOnClick: false,
       //   autolink: true,
@@ -65,19 +123,40 @@ export default function Editor({ content, onChange, editable = true, onAttach, o
       FontFamily,
       FontSize,
       EncryptedBlock,
+      BubbleMenu.configure({
+        pluginKey: 'bubbleMenu',
+      }),
     ];
 
     if (collaboration?.enabled && provider && provider.document) {
-      return [
+      const extensionsWithCollab = [
         ...baseExtensions,
         Collaboration.configure({
           document: provider.document,
         }),
-        // CollaborationCursor.configure({
-        //   provider: provider,
-        //   user: collaboration.user,
-        // }),
       ];
+
+      if (provider.awareness) {
+        // Ensure provider has doc property (HocuspocusProvider has .document)
+        // Some extensions (like CollaborationCursor) might expect .doc
+        if (!(provider as any).doc) {
+          Object.defineProperty(provider, 'doc', {
+            get() { return this.document; },
+            configurable: true
+          });
+        }
+
+        extensionsWithCollab.push(
+          CollaborationCursor.configure({
+            provider: provider,
+            user: collaboration.user,
+          }) as any
+        );
+      }
+
+      extensionsWithCollab.push(CollaborativeHighlighter);
+
+      return extensionsWithCollab;
     }
 
     return baseExtensions;
@@ -140,17 +219,47 @@ export default function Editor({ content, onChange, editable = true, onAttach, o
           }
         }
       }
-      // If collaboration is enabled, only sync if editor is empty (fallback for offline/initial load)
-      else if (editor.isEmpty) {
-        // Check if content is effectively empty
-        const isContentEmpty = content === '<p></p>' || content === '{"type":"doc","content":[{"type":"paragraph"}]}' || content === '';
-
-        if (!isContentEmpty) {
-          editor.commands.setContent(parsedContent);
-        }
-      }
     }
   }, [content, editor, collaboration?.enabled]);
+
+  // Handle initial content injection for collaboration
+  useEffect(() => {
+    if (provider && editor && collaboration?.enabled) {
+      const handleSync = () => {
+        if (editor.isEmpty) {
+          const currentContent = contentRef.current;
+          const isPassedContentEmpty = !currentContent ||
+            currentContent === '<p></p>' ||
+            currentContent === '{"type":"doc","content":[{"type":"paragraph"}]}' ||
+            currentContent === '';
+
+          if (!isPassedContentEmpty) {
+            let contentToSet: any = currentContent;
+            try {
+              const json = JSON.parse(currentContent);
+              if (typeof json === 'object' && json !== null) {
+                contentToSet = json;
+              }
+            } catch (e) { }
+
+            try {
+              editor.commands.setContent(contentToSet);
+            } catch (err) {
+              console.error('Editor: Injection failed', err);
+            }
+          }
+        }
+      };
+
+      if (provider.synced) {
+        handleSync();
+      } else {
+        provider.on('synced', handleSync);
+      }
+
+      return () => { provider.off('synced', handleSync); };
+    }
+  }, [provider, editor, collaboration?.enabled]);
 
   if (!editor) {
     return null;
@@ -159,7 +268,8 @@ export default function Editor({ content, onChange, editable = true, onAttach, o
   if (!scrollable) {
     return (
       <div className="w-full">
-        {editable && <EditorToolbar editor={editor} onAttach={onAttach} onVoiceMemo={onVoiceMemo} provider={provider} />}
+        {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
+        {editable && <TableBubbleMenu editor={editor} />}
         <EditorContent editor={editor} />
       </div>
     );
@@ -167,7 +277,8 @@ export default function Editor({ content, onChange, editable = true, onAttach, o
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {editable && <EditorToolbar editor={editor} onAttach={onAttach} onVoiceMemo={onVoiceMemo} provider={provider} />}
+      {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
+      {editable && <TableBubbleMenu editor={editor} />}
       <div className="flex-1 overflow-y-auto">
         <EditorContent editor={editor} />
       </div>

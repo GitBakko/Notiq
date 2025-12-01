@@ -26,6 +26,7 @@ export interface Note {
     permission: 'READ' | 'WRITE';
     user: { id: string; name: string | null; email: string };
   }[];
+  user?: { id: string; name: string | null; email: string };
 }
 
 export const getNotes = async (notebookId?: string, search?: string, tagId?: string) => {

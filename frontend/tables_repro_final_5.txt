@@ -1,0 +1,47 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+[1A[2K[chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+[Browser] [vite] connecting...
+
+[1A[2K[Browser] [vite] connected.
+
+[1A[2K[Browser] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+
+[1A[2K[Browser] No routes matched location "/register" 
+
+[1A[2K[Browser] No routes matched location "/register" 
+
+[1A[2K[Browser] [vite] server connection lost. Polling for restart...
+
+[1A[2K  1) [chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇ
+
+    [31mTest timeout of 30000ms exceeded while running "beforeEach" hook.[39m
+
+      3 |
+      4 | test.describe('Tables', () => {
+    > 5 |   test.beforeEach(async ({ page }) => {
+        |        ^
+      6 |     page.on('console', msg => console.log(`[Browser] ${msg.text()}`));
+      7 |     // Register and login with unique email
+      8 |     const email = `tables-${uuidv4()}@example.com`;
+        at D:\Develop\AI\Notiq\frontend\e2e\tables.spec.ts:5:8
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('input[type="text"]')[22m
+
+
+      10 |
+      11 |     await page.goto('/register');
+    > 12 |     await page.fill('input[type="text"]', 'Tables User');
+         |                ^
+      13 |     await page.fill('input[type="email"]', email);
+      14 |     await page.fill('input[type="password"]', password);
+      15 |     await page.click('button[type="submit"]');
+        at D:\Develop\AI\Notiq\frontend\e2e\tables.spec.ts:12:16
+
+
+[1A[2K  1 failed
+    [chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇÔöÇ

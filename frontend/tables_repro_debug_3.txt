@@ -1,0 +1,40 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+[1A[2K[chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+[Browser] [vite] connecting...
+
+[1A[2K[Browser] [vite] connected.
+
+[1A[2K[Browser] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+
+[1A[2K[Browser] Failed to load resource: net::ERR_CONNECTION_REFUSED
+
+[1A[2K  1) [chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇ
+
+    Error: [2mexpect([22m[31mpage[39m[2m).[22mtoHaveURL[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Expected pattern: [32m/\/notes/[39m
+    Received string:  [31m"http://localhost:5173/register"[39m
+    Timeout: 20000ms
+
+    Call log:
+    [2m  - Expect "toHaveURL" with timeout 20000ms[22m
+    [2m    23 ├ù unexpected value "http://localhost:5173/register"[22m
+
+
+      14 |     await page.fill('input[type="password"]', password);
+      15 |     await page.click('button[type="submit"]');
+    > 16 |     await expect(page).toHaveURL(/\/notes/, { timeout: 20000 });
+         |                        ^
+      17 |   });
+      18 |
+      19 |   test('should persist table content after refresh', async ({ page }) => {
+        at D:\Develop\AI\Notiq\frontend\e2e\tables.spec.ts:16:24
+
+    Error Context: test-results\tables-Tables-should-persist-table-content-after-refresh-chromium\error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] ÔÇ║ e2e\tables.spec.ts:20:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇÔöÇ

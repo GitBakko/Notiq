@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Menu, Book } from 'lucide-react';
 import NoteList from './NoteList';
-import { createNote } from './noteService';
+import { createNote, getNote } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import clsx from 'clsx';
 import { useNotes } from '../../hooks/useNotes';
@@ -43,6 +43,15 @@ export default function NotesPage() {
   const queryClient = useQueryClient();
 
   const selectedNote = notes?.find((n) => n.id === selectedNoteId);
+
+  const { data: fetchedNote, isLoading: isLoadingNote } = useQuery({
+    queryKey: ['note', selectedNoteId],
+    queryFn: () => getNote(selectedNoteId!),
+    enabled: !!selectedNoteId && !selectedNote,
+    retry: false,
+  });
+
+  const noteToDisplay = selectedNote || fetchedNote;
 
   const createMutation = useMutation({
     mutationFn: createNote,
@@ -125,10 +134,14 @@ export default function NotesPage() {
 
   const renderEditor = () => (
     <div className="flex-1 flex flex-col h-full relative bg-white dark:bg-gray-900">
-      {selectedNote ? (
+      {isLoadingNote ? (
+        <div className="flex h-full items-center justify-center text-gray-400">
+          {t('common.loading')}
+        </div>
+      ) : noteToDisplay ? (
         <NoteEditor
-          key={selectedNote.id}
-          note={selectedNote}
+          key={noteToDisplay.id}
+          note={noteToDisplay}
           onBack={() => setSelectedNoteId(null)}
         />
       ) : (

@@ -1,4 +1,8 @@
 import prisma from '../plugins/prisma';
+import { hocuspocus, extensions } from '../hocuspocus';
+import { TiptapTransformer } from '@hocuspocus/transformer';
+import * as Y from 'yjs';
+import { v4 as uuidv4 } from 'uuid';
 
 export const createNote = async (userId: string, notebookId: string, title: string, content: string = '', id?: string) => {
   return prisma.note.create({
@@ -47,6 +51,13 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
             }
           }
         }
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
       }
     }
   });
@@ -54,7 +65,13 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
 
 export const getNote = async (userId: string, id: string) => {
   return prisma.note.findFirst({
-    where: { id, userId },
+    where: {
+      id,
+      OR: [
+        { userId },
+        { sharedWith: { some: { userId } } }
+      ]
+    },
     include: {
       tags: { include: { tag: true } },
       attachments: {
@@ -69,6 +86,13 @@ export const getNote = async (userId: string, id: string) => {
               email: true
             }
           }
+        }
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true
         }
       }
     }
@@ -114,8 +138,6 @@ export const updateNote = async (userId: string, id: string, data: {
     });
   });
 };
-
-import { v4 as uuidv4 } from 'uuid';
 
 export const toggleShare = async (userId: string, id: string) => {
   const note = await prisma.note.findFirst({ where: { id, userId } });

@@ -1,0 +1,39 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+[1A[2K[chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh
+Could not click table selector cell. Trying to find it...
+
+[1A[2KTable not inserted via UI. attempting manual insert via console if possible, or failing.
+
+[1A[2K  1) [chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇ
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator:  locator('.ProseMirror')
+    Expected: [32m"Just text content"[39m
+    Received: [31m""[39m
+    Timeout:  5000ms
+
+    Call log:
+    [2m  - Expect "toHaveText" with timeout 5000ms[22m
+    [2m  - waiting for locator('.ProseMirror')[22m
+    [2m    9 ├ù locator resolved to <div tabindex="0" translate="no" contenteditable="true" class="tiptap ProseMirror prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full">ÔÇª</div>[22m
+    [2m      - unexpected value ""[22m
+
+
+      123 |       await expect(table.locator('td').first()).toHaveText('Cell 1');
+      124 |     } else {
+    > 125 |       await expect(editor).toHaveText('Just text content');
+          |                            ^
+      126 |     }
+      127 |   });
+      128 | });
+        at D:\Develop\AI\Notiq\frontend\e2e\tables.spec.ts:125:28
+
+    Error Context: test-results\tables-Tables-should-persist-table-content-after-refresh-chromium\error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] ÔÇ║ e2e\tables.spec.ts:19:3 ÔÇ║ Tables ÔÇ║ should persist table content after refresh ÔöÇÔöÇÔöÇÔöÇÔöÇ

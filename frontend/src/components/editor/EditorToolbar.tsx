@@ -22,7 +22,6 @@ import {
   Columns,
   Rows,
   Trash2,
-  Paperclip,
   Type,
   ChevronDown,
   ALargeSmall,
@@ -38,10 +37,10 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import TableSelector from './TableSelector';
 import 'regenerator-runtime/runtime';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import { useAuthStore } from '../../store/authStore';
 
 interface EditorToolbarProps {
   editor: Editor | null;
-  onAttach?: () => void;
   onVoiceMemo?: () => void;
   provider?: HocuspocusProvider | null;
 }
@@ -148,8 +147,9 @@ const ToolbarDropdown = ({ options, value, onChange, placeholder, title, icon }:
   );
 };
 
-export default function EditorToolbar({ editor, onAttach, onVoiceMemo, provider }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorToolbarProps) {
   const { t } = useTranslation();
+  const { user } = useAuthStore();
   const [users, setUsers] = useState<any[]>([]);
 
   const {
@@ -186,7 +186,17 @@ export default function EditorToolbar({ editor, onAttach, onVoiceMemo, provider 
     const updateUsers = () => {
       if (currentProvider && currentProvider.awareness) {
         const states = currentProvider.awareness.getStates();
-        setUsers(Array.from(states.values()));
+        const currentClientId = currentProvider.awareness.clientID;
+
+        const activeUsers = Array.from(states.entries())
+          .filter(([clientId, state]: [number, any]) =>
+            clientId !== currentClientId &&
+            state.user &&
+            state.user.name
+          )
+          .map(([_, state]) => state);
+
+        setUsers(activeUsers);
       }
     };
 
@@ -261,7 +271,7 @@ export default function EditorToolbar({ editor, onAttach, onVoiceMemo, provider 
       )}
 
       <ToolbarButton
-        onClick={() => editor.chain().focus().insertContent('<encrypted-block></encrypted-block>').run()}
+        onClick={() => editor.chain().focus().insertContent({ type: 'encryptedBlock', attrs: { createdBy: user?.id } }).run()}
         title={t('editor.insertEncryptedBlock')}
       >
         <Lock size={18} />
@@ -446,7 +456,7 @@ export default function EditorToolbar({ editor, onAttach, onVoiceMemo, provider 
         >
           <TableIcon size={18} />
         </ToolbarButton>
-        <div className="absolute top-full left-0 mt-1 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 w-max p-2">
           <TableSelector
             onSelect={(rows, cols) => {
               editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
@@ -461,45 +471,75 @@ export default function EditorToolbar({ editor, onAttach, onVoiceMemo, provider 
             onClick={() => editor.chain().focus().addColumnBefore().run()}
             title={t('editor.addColumnBefore')}
           >
-            <Columns size={18} className="rotate-90" />
+            <div className="flex items-center">
+              <Columns size={14} />
+              <span className="text-[10px] ml-0.5">+&lt;</span>
+            </div>
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().addColumnAfter().run()}
             title={t('editor.addColumnAfter')}
           >
-            <Columns size={18} />
+            <div className="flex items-center">
+              <Columns size={14} />
+              <span className="text-[10px] ml-0.5">+&gt;</span>
+            </div>
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().deleteColumn().run()}
+            title={t('editor.deleteColumn')}
+          >
+            <div className="flex items-center relative">
+              <Columns size={14} />
+              <Trash2 size={10} className="absolute -bottom-1 -right-1 text-red-500" />
+            </div>
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().addRowBefore().run()}
             title={t('editor.addRowBefore')}
           >
-            <Rows size={18} className="rotate-90" />
+            <div className="flex items-center flex-col">
+              <Rows size={14} />
+              <span className="text-[10px] -mt-1">+^</span>
+            </div>
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().addRowAfter().run()}
             title={t('editor.addRowAfter')}
           >
-            <Rows size={18} />
+            <div className="flex items-center flex-col">
+              <Rows size={14} />
+              <span className="text-[10px] -mt-1">+v</span>
+            </div>
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().deleteRow().run()}
+            title={t('editor.deleteRow')}
+          >
+            <div className="flex items-center relative">
+              <Rows size={14} />
+              <Trash2 size={10} className="absolute -bottom-1 -right-1 text-red-500" />
+            </div>
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().mergeCells().run()}
+            title={t('editor.mergeCells')}
+            disabled={!editor.can().mergeCells()}
+          >
+            <div className="flex items-center">
+              <Columns size={14} className="rotate-45" />
+            </div>
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().deleteTable().run()}
             title={t('editor.deleteTable')}
           >
-            <Trash2 size={18} />
+            <Trash2 size={18} className="text-red-500" />
           </ToolbarButton>
         </>
       )}
 
       <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
-
-      {onAttach && (
-        <ToolbarButton
-          onClick={onAttach}
-          title={t('editor.attach')}
-        >
-          <Paperclip size={18} />
-        </ToolbarButton>
-      )}
 
       <ToolbarButton
         onClick={() => editor.chain().focus().undo().run()}
