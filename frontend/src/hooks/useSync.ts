@@ -1,25 +1,50 @@
 import { useEffect } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../lib/db';
 import { syncPull, syncPush } from '../features/sync/syncService';
 import { useAuthStore } from '../store/authStore';
 
 export function useSync() {
   const { token } = useAuthStore();
 
+  // Reactive Sync: Watch for pending items in the queue
+  const pendingCount = useLiveQuery(() => db.syncQueue.count(), []);
+
+  // Trigger PUSH whenever there are pending items
+  useEffect(() => {
+    if (!token || !pendingCount) return;
+
+    const runPush = async () => {
+      // Small delay to allow batching if multiple updates happen instanly?
+      // syncPush processes the whole queue anyway.
+      try {
+        await syncPush();
+      } catch (error) {
+        console.error('Auto-Push failed:', error);
+      }
+    };
+
+    runPush();
+  }, [pendingCount, token]);
+
+
+  // Periodic PULL (and initial sync)
   useEffect(() => {
     if (!token) return;
 
-    const sync = async () => {
-      console.log('Starting sync...');
-      await syncPush();
-      await syncPull();
-      console.log('Sync completed');
+    const runPull = async () => {
+      try {
+        await syncPull();
+      } catch (error) {
+        console.error('Periodic Pull failed:', error);
+      }
     };
 
-    // Initial sync
-    sync();
+    // Initial pull on mount
+    runPull();
 
-    // Periodic sync (every 30 seconds)
-    const intervalId = setInterval(sync, 30000);
+    // Periodic pull every 30s
+    const intervalId = setInterval(runPull, 30000);
 
     return () => clearInterval(intervalId);
   }, [token]);

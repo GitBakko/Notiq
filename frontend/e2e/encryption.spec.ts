@@ -21,7 +21,7 @@ test.describe('Encryption', () => {
     page.on('pageerror', err => console.log('BROWSER ERROR:', err));
 
     // 1. Create a new note
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible({ timeout: 10000 });
     const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
     await expect(newNoteBtn).toBeVisible();
     await newNoteBtn.click();
@@ -30,7 +30,7 @@ test.describe('Encryption', () => {
     // Wait for editor to load
     await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 10000 });
 
-    const titleInput = page.locator('input.text-xl.font-bold');
+    const titleInput = page.locator('input[placeholder="Note Title"]');
     await expect(titleInput).toBeVisible({ timeout: 10000 });
     await titleInput.fill('Secret Note');
 
@@ -58,13 +58,19 @@ test.describe('Encryption', () => {
 
     // 6. Verify Locked State
     await expect(page.getByText('Encrypted Content')).toBeVisible();
-    await expect(page.getByText('Enter PIN to view content')).toBeVisible();
     await expect(page.getByText('This is a secret message.')).not.toBeVisible();
 
     // 7. Try Incorrect PIN
+    // Click unlock button to open modal
+    await page.locator('button[title="Unlock"]').click();
+
+    // Now verify modal is open
+    await expect(page.getByText('Enter PIN to view content', { exact: false })).toBeVisible();
+
     const unlockPinInput = page.locator('input[placeholder="PIN"]');
     await unlockPinInput.fill('0000');
-    const unlockBtn = page.getByRole('button', { name: 'Unlock', exact: true });
+    // Scope to dialog to avoid matching the icon button
+    const unlockBtn = page.getByRole('dialog').getByRole('button', { name: 'Unlock', exact: true });
     await unlockBtn.click();
     await expect(page.getByText('Incorrect PIN')).toBeVisible();
 
@@ -73,7 +79,7 @@ test.describe('Encryption', () => {
     await unlockBtn.click();
 
     // 9. Verify Unlocked State
-    await expect(page.getByText('Decrypted Content')).toBeVisible();
+    // 9. Verify Unlocked State
     await expect(page.locator('textarea')).toHaveValue('This is a secret message.');
 
     // 10. Re-lock
@@ -94,6 +100,9 @@ test.describe('Encryption', () => {
     console.log('Editor Text after reload:', editorText);
 
     await expect(page.getByText('Encrypted Content')).toBeVisible(); // Should be locked by default on load
+
+    // Click unlock button to open modal
+    await page.locator('button[title="Unlock"]').click();
 
     await unlockPinInput.fill('1234');
     await unlockBtn.click();

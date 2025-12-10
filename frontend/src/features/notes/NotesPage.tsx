@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, Book } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 import NoteList from './NoteList';
 import { createNote, getNote } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -53,6 +53,14 @@ export default function NotesPage() {
 
   const noteToDisplay = selectedNote || fetchedNote;
 
+  // Auto-close if note is moved to vault (or if opened via link but is vault)
+  useEffect(() => {
+    if (noteToDisplay?.isVault) {
+      setSelectedNoteId(null);
+      // Optional: Redirect to vault? For now just close.
+    }
+  }, [noteToDisplay, setSearchParams]);
+
   const createMutation = useMutation({
     mutationFn: createNote,
     onSuccess: (newNote) => {
@@ -74,23 +82,23 @@ export default function NotesPage() {
   };
 
   const renderNoteList = () => {
-    const showEmptyState = !selectedNotebookId && !selectedTagId && !searchQuery;
+    // const showEmptyState = !selectedNotebookId && !selectedTagId && !searchQuery;
 
-    if (showEmptyState) {
-      return (
-        <div className={clsx("flex flex-col bg-white h-full dark:bg-gray-900 items-center justify-center text-center p-8", isMobile ? "w-full" : "w-80 border-r border-gray-200 dark:border-gray-800")}>
-          <div className="mb-4 p-4 bg-emerald-50 rounded-full dark:bg-emerald-900/30">
-            <Book size={32} className="text-emerald-600 dark:text-emerald-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            {t('notes.noNotebookSelectedTitle')}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {t('notes.noNotebookSelectedDescription')}
-          </p>
-        </div>
-      );
-    }
+    // if (showEmptyState) {
+    //   return (
+    //     <div className={clsx("flex flex-col bg-white h-full dark:bg-gray-900 items-center justify-center text-center p-8", isMobile ? "w-full" : "w-80 border-r border-gray-200 dark:border-gray-800")}>
+    //       <div className="mb-4 p-4 bg-emerald-50 rounded-full dark:bg-emerald-900/30">
+    //         <Book size={32} className="text-emerald-600 dark:text-emerald-400" />
+    //       </div>
+    //       <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+    //         {t('notes.noNotebookSelectedTitle')}
+    //       </h3>
+    //       <p className="text-sm text-gray-500 dark:text-gray-400">
+    //         {t('notes.noNotebookSelectedDescription')}
+    //       </p>
+    //     </div>
+    //   );
+    // }
 
     return (
       <div className={clsx("flex flex-col bg-white h-full dark:bg-gray-900", isMobile ? "w-full" : "w-80 border-r border-gray-200 dark:border-gray-800")}>

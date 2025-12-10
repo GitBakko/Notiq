@@ -40,6 +40,15 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
     return content.replace(/<[^>]*>?/gm, '');
   };
 
+  // Debug content if preview is empty but content exists
+  const getPreviewText = (content: string) => {
+    const text = extractTextFromContent(content);
+    if (!text && content && content.length > 20) {
+      // console.log('NoteList: Empty preview for content:', content.substring(0, 100));
+    }
+    return text;
+  };
+
   if (!notes || notes.length === 0) {
     return <div className="p-4 text-gray-500 text-sm text-center mt-10 dark:text-gray-400">{t('notes.noNotesFound')}</div>;
   }
@@ -55,20 +64,27 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
             selectedNoteId === note.id ? 'bg-emerald-50 border-l-4 border-l-emerald-500 dark:bg-emerald-900/20' : 'border-l-4 border-l-transparent pl-5'
           )}
         >
-          <h3 className={clsx('mb-1 text-sm font-semibold truncate', selectedNoteId === note.id ? 'text-emerald-900 dark:text-emerald-400' : 'text-gray-900 dark:text-white')}>
-            {note.title || t('notes.untitled')}
-          </h3>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className={clsx('text-sm font-semibold truncate flex-1', selectedNoteId === note.id ? 'text-emerald-900 dark:text-emerald-400' : 'text-gray-900 dark:text-white')}>
+              {note.title || t('notes.untitled')}
+            </h3>
+            {note.notebook && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 whitespace-nowrap">
+                {note.notebook.name}
+              </span>
+            )}
+          </div>
           <p className="mb-2 line-clamp-2 text-xs text-gray-500 h-8 dark:text-gray-400">
-            {note.content ? extractTextFromContent(note.content) : t('notes.noContent')}
+            {note.content ? getPreviewText(note.content) : t('notes.noContent')}
           </p>
           <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
             <div className="flex items-center gap-2">
-                <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true, locale: dateLocale })}</span>
-                {note.reminderDate && (
-                   <span className={clsx("flex items-center gap-1", note.isReminderDone ? "text-emerald-500" : "text-amber-500")} title={new Date(note.reminderDate).toLocaleString()}>
-                      {note.isReminderDone ? <CheckCircle size={12} /> : <Bell size={12} />}
-                   </span>
-                )}
+              <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true, locale: dateLocale })}</span>
+              {note.reminderDate && (
+                <span className={clsx("flex items-center gap-1", note.isReminderDone ? "text-emerald-500" : "text-amber-500")} title={new Date(note.reminderDate).toLocaleString()}>
+                  {note.isReminderDone ? <CheckCircle size={12} /> : <Bell size={12} />}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {note.isPublic && (

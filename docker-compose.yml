@@ -3,35 +3,49 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
+    restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: notiq
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-notiq}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - notiq-network
 
   backend:
     build: ./backend
+    restart: always
     environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/notiq?schema=public
-      JWT_SECRET: supersecretkey
-    volumes:
-      - uploads_data:/app/uploads
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-notiq}
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey_change_me_in_production}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
     ports:
       - "3001:3001"
     depends_on:
       - postgres
-    command: sh -c "npx prisma migrate deploy && npm start"
+    networks:
+      - notiq-network
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+    restart: always
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
+    networks:
+      - notiq-network
+
+networks:
+  notiq-network:
+    driver: bridge
 
 volumes:
   postgres_data:
-  uploads_data:

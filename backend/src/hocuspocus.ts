@@ -2,7 +2,7 @@ import { Server } from '@hocuspocus/server';
 import { Logger } from '@hocuspocus/extension-logger';
 import { Database } from '@hocuspocus/extension-database';
 import { TiptapTransformer } from '@hocuspocus/transformer';
-import { PrismaClient } from '@prisma/client';
+import prisma from './plugins/prisma';
 import jwt from 'jsonwebtoken';
 import * as Y from 'yjs';
 import StarterKit from '@tiptap/starter-kit';
@@ -12,11 +12,9 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
-import FontFamily from '@tiptap/extension-font-family';
+import { FontFamily } from '@tiptap/extension-font-family';
 import Link from '@tiptap/extension-link';
 import { Node, Extension } from '@tiptap/core';
-
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
 // Define custom extensions to match frontend
@@ -53,7 +51,7 @@ const FontSize = Extension.create({
         attributes: {
           fontSize: {
             default: null,
-            parseHTML: (element) => element.style.fontSize?.replace(/['"]+/g, ''),
+            parseHTML: (element: any) => element.style?.fontSize?.replace(/['"]+/g, ''),
             renderHTML: (attributes) => {
               if (!attributes.fontSize) return {};
               return { style: `font-size: ${attributes.fontSize}` };
@@ -65,25 +63,118 @@ const FontSize = Extension.create({
   },
 });
 
+const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      borderStyle: {
+        default: null,
+        parseHTML: (element: any) => element.style.borderStyle,
+        renderHTML: (attributes) => {
+          if (!attributes.borderStyle) return {};
+          return { style: `border-style: ${attributes.borderStyle}` };
+        },
+      },
+      borderColor: {
+        default: null,
+        parseHTML: (element: any) => element.style.borderColor,
+        renderHTML: (attributes) => {
+          if (!attributes.borderColor) return {};
+          return { style: `border-color: ${attributes.borderColor}` };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      borderStyle: {
+        default: null,
+        parseHTML: (element: any) => element.style.borderStyle,
+        renderHTML: (attributes) => {
+          if (!attributes.borderStyle) return {};
+          return { style: `border-style: ${attributes.borderStyle}` };
+        },
+      },
+      borderColor: {
+        default: null,
+        parseHTML: (element: any) => element.style.borderColor,
+        renderHTML: (attributes) => {
+          if (!attributes.borderColor) return {};
+          return { style: `border-color: ${attributes.borderColor}` };
+        },
+      },
+    };
+  },
+});
+
+
+
+const LineHeight = Extension.create({
+  name: 'lineHeight',
+
+  addOptions() {
+    return {
+      types: ['paragraph', 'heading'],
+      defaultLineHeight: '0.5',
+    };
+  },
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          lineHeight: {
+            default: this.options.defaultLineHeight,
+            parseHTML: (element: any) => element.style.lineHeight || null,
+            renderHTML: (attributes) => {
+              if (!attributes.lineHeight) {
+                return {};
+              }
+              return {
+                style: `line-height: ${attributes.lineHeight}`,
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
 export const extensions = [
   StarterKit,
-  Table,
+  Table.configure({
+    resizable: true,
+  }),
   TableRow,
-  TableHeader,
-  TableCell,
-  TextAlign,
+  CustomTableHeader,
+  CustomTableCell,
+  TextAlign.configure({
+    types: ['heading', 'paragraph'],
+  }),
   TextStyle,
   FontFamily,
   FontSize,
   Link,
   EncryptedBlock,
+  LineHeight,
 ];
 
+console.log('Hocuspocus Extensions Check:', extensions.map((e: any) => e?.name || 'UNDEFINED'));
+
+
+
 export const hocuspocus = new Server({
-  port: 1234,
+  // port: 1234, // Removed to prevent standalone listening
   extensions: [
     new Logger(),
     new Database({
+
       fetch: async ({ documentName }) => {
         const note = await prisma.note.findUnique({
           where: { id: documentName },
@@ -97,7 +188,34 @@ export const hocuspocus = new Server({
             const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
             return Y.encodeStateAsUpdate(doc);
           } catch (e) {
-            console.error('Failed to parse note content', e);
+            console.error('Failed to parse note content as JSON, attempting fallback', e);
+            // Fallback for legacy HTML content
+            try {
+              const doc = new Y.Doc();
+              const text = note.content.replace(/<[^>]*>/g, ' ').trim(); // Simple strip tags
+
+              // Create a basic document structure
+              const json = {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [
+                      {
+                        type: 'text',
+                        text: text || ' ', // Ensure at least some text
+                      },
+                    ],
+                  },
+                ],
+              };
+
+              // @ts-ignore
+              const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
+              return Y.encodeStateAsUpdate(tiptapDoc);
+            } catch (err) {
+              console.error('Failed to convert legacy content', err);
+            }
           }
         }
         return null;
@@ -109,22 +227,6 @@ export const hocuspocus = new Server({
 
         // @ts-ignore
         const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
-
-        // Safeguard: Do not overwrite existing content with empty content if the existing content is recent
-        const currentNote = await prisma.note.findUnique({ where: { id: documentName } });
-
-        const isNewContentEmpty = !json.content || json.content.length === 0 || (json.content.length === 1 && json.content[0].type === 'paragraph' && (!json.content[0].content || json.content[0].content.length === 0));
-
-        if (currentNote && currentNote.content && currentNote.content !== '' && currentNote.content !== '<p></p>' && currentNote.content !== '{"type":"doc","content":[{"type":"paragraph"}]}') {
-          // DB has content.
-          if (isNewContentEmpty) {
-            // Check if DB update was recent (e.g. < 5 seconds)
-            const timeDiff = new Date().getTime() - currentNote.updatedAt.getTime();
-            if (timeDiff < 5000) {
-              return;
-            }
-          }
-        }
 
         await prisma.note.update({
           where: { id: documentName },
@@ -160,7 +262,7 @@ export const hocuspocus = new Server({
       }
 
       const isOwner = note.userId === userId;
-      const isShared = note.sharedWith.some(share => share.userId === userId);
+      const isShared = note.sharedWith.some((share: any) => share.userId === userId);
 
       if (!isOwner && !isShared) {
         throw new Error('Forbidden');

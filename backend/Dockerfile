@@ -1,16 +1,27 @@
+# Build stage
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# Production stage
 FROM node:18-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci --production
 
-COPY prisma ./prisma/
-COPY . .
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
 
-RUN npx prisma generate
-RUN npm run build
-
+# Expose port
 EXPOSE 3001
 
-CMD ["npm", "start"]
+# Start command (includes migration)
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

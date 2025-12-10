@@ -27,6 +27,7 @@ export interface Note {
     user: { id: string; name: string | null; email: string };
   }[];
   user?: { id: string; name: string | null; email: string };
+  notebook?: { id: string; name: string };
 }
 
 export const getNotes = async (notebookId?: string, search?: string, tagId?: string) => {
@@ -104,12 +105,8 @@ export const createNote = async (data: { title: string; notebookId: string; cont
     createdAt: Date.now()
   });
 
-  // Trigger immediate sync to ensure backend has the note before navigation/Hocuspocus connection
-  try {
-    await syncPush();
-  } catch (error) {
-    console.warn('Immediate sync failed, will retry in background', error);
-  }
+  // Sync is handled reactively by useSync hook observing the queue.
+  // We return immediately for optimistic UI.
 
   return newNote;
 };

@@ -6,12 +6,15 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import clsx from 'clsx';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 export default function SettingsPage() {
   const { t } = useTranslation();
   const { theme, setTheme, toggleSidebar } = useUIStore();
   const { user, logout } = useAuthStore();
+
   const isMobile = useIsMobile();
+  const { isSubscribed, subscribe, unsubscribe, isSupported } = usePushNotifications();
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
@@ -77,6 +80,35 @@ export default function SettingsPage() {
             </div>
           </Card>
         </section>
+
+        {/* Notifications */}
+        {isSupported && (
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t('notifications.title')}</h2>
+            <Card className="p-6 dark:bg-gray-800 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900 dark:text-white">{t('notifications.pushNotifications')}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('notifications.pushDescription')}</p>
+                </div>
+                <button
+                  onClick={isSubscribed ? unsubscribe : subscribe}
+                  className={clsx(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2",
+                    isSubscribed ? "bg-emerald-600" : "bg-gray-200 dark:bg-gray-700"
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      isSubscribed ? "translate-x-6" : "translate-x-1"
+                    )}
+                  />
+                </button>
+              </div>
+            </Card>
+          </section>
+        )}
 
         {/* Account */}
         <section>

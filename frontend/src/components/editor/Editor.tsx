@@ -9,6 +9,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
 import { FontSize } from './FontSize';
+import { LineHeight } from './LineHeight';
 import EncryptedBlock from './extensions/EncryptedBlock';
 import { useEffect, useRef, useMemo } from 'react';
 import EditorToolbar from './EditorToolbar';
@@ -122,6 +123,7 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
       TextStyle,
       FontFamily,
       FontSize,
+      LineHeight,
       EncryptedBlock,
       BubbleMenu.configure({
         pluginKey: 'bubbleMenu',
@@ -129,6 +131,7 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
     ];
 
     if (collaboration?.enabled && provider && provider.document) {
+      console.log('Editor: Configuring collaboration', { provider, doc: provider.document, user: collaboration.user });
       const extensionsWithCollab = [
         ...baseExtensions,
         Collaboration.configure({
@@ -139,11 +142,8 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
       if (provider.awareness) {
         // Ensure provider has doc property (HocuspocusProvider has .document)
         // Some extensions (like CollaborationCursor) might expect .doc
-        if (!(provider as any).doc) {
-          Object.defineProperty(provider, 'doc', {
-            get() { return this.document; },
-            configurable: true
-          });
+        if (provider && !('doc' in provider)) {
+          Object.assign(provider, { doc: provider.document });
         }
 
         extensionsWithCollab.push(

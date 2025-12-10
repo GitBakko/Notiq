@@ -3,12 +3,11 @@ import { useState, useEffect } from 'react';
 import CryptoJS from 'crypto-js';
 import { Lock, Unlock, Eye, EyeOff, KeyRound, Save, AlertTriangle, Clock, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
-import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { Dialog } from '../ui/Dialog';
 
 const VALIDATION_PREFIX = "NOTIQ-SECURE:";
 

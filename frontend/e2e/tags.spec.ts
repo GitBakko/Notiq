@@ -16,7 +16,7 @@ test.describe('Tags', () => {
 
   test('should create a tag from sidebar', async ({ page }) => {
     // Wait for sidebar
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Hover over Tags section
     const tagsGroup = page.locator('.group').filter({ hasText: 'Tags' }).first();
@@ -39,7 +39,7 @@ test.describe('Tags', () => {
 
   test('should add a tag to a note', async ({ page }) => {
     // Wait for sidebar
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Create note first using the specific button
     const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
@@ -72,6 +72,6 @@ test.describe('Tags', () => {
     // In NoteEditor/TagSelector, it renders badges.
     // TagSelector renders:
     // {noteTags.map(... => <span ...>{t.tag.name}</span>)}
-    await expect(page.getByText('Note Tag', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('#Note Tag')).toBeVisible({ timeout: 10000 });
   });
 });

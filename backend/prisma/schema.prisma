@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -30,6 +29,8 @@ model User {
   tags      Tag[]
   sharedNotes     SharedNote[]
   sharedNotebooks SharedNotebook[]
+  notifications   Notification[]
+  pushSubscriptions PushSubscription[]
 }
 
 model Notebook {
@@ -63,6 +64,8 @@ model Note {
   isPinned    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  isVault     Boolean  @default(false)
+  isEncrypted Boolean  @default(false)
 }
 
 model Tag {
@@ -126,4 +129,33 @@ model SharedNotebook {
   createdAt  DateTime   @default(now())
 
   @@unique([notebookId, userId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+enum NotificationType {
+  SHARE_NOTE
+  SHARE_NOTEBOOK
+  SYSTEM
+  REMINDER
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String
+  keys      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

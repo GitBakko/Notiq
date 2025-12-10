@@ -38,7 +38,7 @@ test.describe('Sharing Features', () => {
     await expect(page.getByText('Saved')).toBeVisible({ timeout: 10000 });
 
     // Open share modal
-    await page.click('button[title="Share Note"]');
+    await page.click('button[title="Share"]');
 
     // Verify modal opens with correct content
     await expect(page.locator('text=Share Note')).toBeVisible({ timeout: 5000 });

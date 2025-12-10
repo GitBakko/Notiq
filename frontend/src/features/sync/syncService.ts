@@ -50,7 +50,9 @@ export const syncPull = async () => {
     });
 
     // Pull Notes
-    const notesRes = await api.get<Note[]>('/notes');
+    console.log('Sync Pull: Fetching notes with includeTrashed=true');
+    const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
+    console.log(`Sync Pull: Received ${notesRes.data.length} notes from server`);
     await db.transaction('rw', db.notes, async () => {
       // We need to be careful not to overwrite dirty notes
       // For MVP, let's just overwrite everything that is 'synced'
@@ -71,10 +73,50 @@ export const syncPull = async () => {
 
       // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
       const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced').toArray();
-      const serverIds = new Set(serverNotes.map(n => n.id));
-      const toDeleteIds = allLocalSyncedNotes.filter(n => !serverIds.has(n.id)).map(n => n.id);
+      // Self-Healing Strategy:
+      // If we have local notes that are 'synced' but missing from the server, 
+      // instead of deleting them locally, we should assume the server lost them and re-push.
+      // This protects against accidental server wipes and "disappearing notes".
 
-      await db.notes.bulkDelete(toDeleteIds);
+      const serverIds = new Set(serverNotes.map(n => n.id));
+      const missingOnServerIds = allLocalSyncedNotes.filter(n => !serverIds.has(n.id)).map(n => n.id);
+
+      if (missingOnServerIds.length > 0) {
+        console.warn(`Sync Pull: Found ${missingOnServerIds.length} notes synced locally but missing on server. Triggering self-healing.`);
+
+        const notesToResurrect = allLocalSyncedNotes.filter(n => !serverIds.has(n.id));
+
+        await db.transaction('rw', db.notes, db.syncQueue, async () => {
+          for (const note of notesToResurrect) {
+            // Update local status to 'created' (or 'updated') to force a push
+            await db.notes.update(note.id, { syncStatus: 'updated', updatedAt: new Date().toISOString() });
+
+            // Add to sync queue as an UPDATE (or CREATE if we want to be safe, but UPDATE with upsert logic is usually safer)
+            // Actually, if it's missing on server, we might need CREATE. 
+            // Let's rely on the fact that our backend create/update logic is likely robust or we use CREATE.
+            // Note: backend createNote usually accepts ID.
+
+            // Let's use CREATE to be sure we re-insert it.
+            // We need to fetch the FULL note data including tags/attachments if not fully present in allLocalSyncedNotes
+            // But allLocalSyncedNotes is just the array from the query. Let's assume it has data.
+
+            await db.syncQueue.add({
+              type: 'CREATE', // Force re-creation on server
+              entity: 'NOTE',
+              entityId: note.id,
+              data: { ...note }, // Send full note data
+              createdAt: Date.now()
+            });
+          }
+        });
+
+      }
+
+      // We only delete if we receive an explicit "deleted" signal, but our API doesn't send that yet.
+      // So for now, we DISABLE the implicit deletion based on absence.
+      // await db.notes.bulkDelete(toDeleteIds); 
+
+      // Update local DB with server notes (wins over synced)
       await db.notes.bulkPut(notesToPut);
     });
 
@@ -128,14 +170,50 @@ export const syncPush = async () => {
         // If successful, remove from queue
         if (item.id) await db.syncQueue.delete(item.id);
 
-        // Update syncStatus of the entity
+        // Update syncStatus of the entity ONLY if there are no more pending items for this entity
         if (item.type !== 'DELETE') {
-          if (item.entity === 'NOTE') {
-            await db.notes.update(item.entityId, { syncStatus: 'synced' });
-          } else if (item.entity === 'NOTEBOOK') {
-            await db.notebooks.update(item.entityId, { syncStatus: 'synced' });
-          } else if (item.entity === 'TAG') {
-            await db.tags.update(item.entityId, { syncStatus: 'synced' });
+          // Check if there are any other pending items for this entity
+          // We don't have a compound index, so we filter manualy or use simple index if available.
+          // Since syncQueue is typically small, toArray().filter() is acceptable, 
+          // or we can query by 'entity' if indexed and filter by ID.
+          const pendingItemsCount = await db.syncQueue
+            .filter(i => i.entity === item.entity && i.entityId === item.entityId)
+            .count();
+
+          if (pendingItemsCount === 0) {
+            if (item.entity === 'NOTE') {
+              const currentNote = await db.notes.get(item.entityId);
+              // Race Condition Protection:
+              // Only mark as 'synced' if the local note hasn't been modified since this sync item was created.
+              // If currentNote.updatedAt > item.createdAt, the user has typed more, so we keep 'updated' status.
+              const updatedAtMs = currentNote ? new Date(currentNote.updatedAt).getTime() : 0;
+
+              if (currentNote && updatedAtMs <= item.createdAt) {
+                await db.notes.update(item.entityId, { syncStatus: 'synced' });
+              }
+            } else if (item.entity === 'NOTEBOOK') {
+              const currentNotebook = await db.notebooks.get(item.entityId);
+              if (currentNotebook && new Date(currentNotebook.updatedAt).getTime() <= item.createdAt) {
+                await db.notebooks.update(item.entityId, { syncStatus: 'synced' });
+              }
+            } else if (item.entity === 'TAG') {
+              // Tags might not have updatedAt? Interface says LocalTag has synced/created/updated.
+              // Let's check db.ts interface. 
+              // LocalTag: id, name, userId, syncStatus. No updatedAt?
+              // Looking at db.ts step 270: LocalTag interface... 
+              // syncStatus, _count. No updatedAt!
+              // So for tags, we might have to assume safe or check syncStatus != 'updated'?
+              // If tag is 'updated', leave it.
+              // But createTag sets 'created'. 
+              // If we blindly set 'synced', we might overwrite 'updated'.
+              // Better: check if syncStatus is NOT 'updated' or 'created' (wait, if we are processing, it WAS created/updated).
+              // Actually, if we just check if there are pending items, that usually covers it.
+              // Typically tags are simple updates.
+              // For safety on tags, let's stick to the pending count check for now, unless we verify Tag has updatedAt.
+              // Checking Step 270: LocalTag indeed NO updatedAt.
+              // So we just update Tag.
+              await db.tags.update(item.entityId, { syncStatus: 'synced' });
+            }
           }
         }
 

@@ -5,8 +5,7 @@ import {
   Underline,
   Strikethrough,
   Code,
-  Heading1,
-  Heading2,
+
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -19,16 +18,14 @@ import {
   Link as LinkIcon,
   Unlink,
   Table as TableIcon,
-  Columns,
-  Rows,
-  Trash2,
   Type,
   ChevronDown,
   ALargeSmall,
   Mic,
   MicOff,
   AudioLines,
-  Lock
+  Lock,
+  ArrowUpDown
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -65,7 +62,7 @@ const ToolbarButton = ({
     disabled={disabled}
     title={title}
     className={clsx(
-      "p-2 rounded transition-colors flex items-center justify-center",
+      "p-2 sm:p-1.5 rounded transition-colors flex items-center justify-center min-w-[36px] min-h-[36px]",
       isActive
         ? "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white"
         : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200",
@@ -230,7 +227,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
 
   return (
-    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800 items-center">
+    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap sm:flex-nowrap overflow-visible sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800 items-center">
       {/* Online Users */}
       {users.length > 0 && (
         <div className="flex -space-x-2 mr-4 border-r pr-4 border-gray-200 dark:border-gray-700">
@@ -313,6 +310,27 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
 
       <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
 
+      {/* Line Height Dropdown */}
+      <ToolbarDropdown
+        options={[
+          { label: '0.2', value: '0.2' },
+          { label: '0.5', value: '0.5' },
+          { label: '1.0', value: '1.0' },
+          { label: '1.15', value: '1.15' },
+          { label: '1.5', value: '1.5' },
+          { label: '2.0', value: '2.0' },
+          { label: '2.5', value: '2.5' },
+          { label: '3.0', value: '3.0' },
+        ]}
+        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '0.5'}
+        onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
+        placeholder={t('editor.lineHeight')}
+        title={t('editor.lineHeight')}
+        icon={<ArrowUpDown size={14} />}
+      />
+
+      <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
+
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
         isActive={editor.isActive('bold')}
@@ -328,7 +346,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         <Italic size={18} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
         isActive={editor.isActive('underline')}
         title={t('editor.underline')}
       >
@@ -351,22 +369,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
 
       <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
 
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        isActive={editor.isActive('heading', { level: 1 })}
-        title={t('editor.heading1')}
-      >
-        <Heading1 size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        isActive={editor.isActive('heading', { level: 2 })}
-        title={t('editor.heading2')}
-      >
-        <Heading2 size={18} />
-      </ToolbarButton>
 
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
 
       <ToolbarButton
         onClick={() => editor.chain().focus().setTextAlign('left').run()}
@@ -429,10 +432,10 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           const url = window.prompt('URL', previousUrl);
           if (url === null) return;
           if (url === '') {
-            editor.chain().focus().extendMarkRange('link').unsetLink().run();
+            (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
             return;
           }
-          editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+          (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: url }).run();
         }}
         isActive={editor.isActive('link')}
         title={t('editor.link')}
@@ -440,7 +443,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         <LinkIcon size={18} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().unsetLink().run()}
+        onClick={() => (editor.chain().focus() as any).unsetLink().run()}
         disabled={!editor.isActive('link')}
         title={t('editor.unlink')}
       >
@@ -465,79 +468,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         </div>
       </div>
 
-      {editor.isActive('table') && (
-        <>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().addColumnBefore().run()}
-            title={t('editor.addColumnBefore')}
-          >
-            <div className="flex items-center">
-              <Columns size={14} />
-              <span className="text-[10px] ml-0.5">+&lt;</span>
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().addColumnAfter().run()}
-            title={t('editor.addColumnAfter')}
-          >
-            <div className="flex items-center">
-              <Columns size={14} />
-              <span className="text-[10px] ml-0.5">+&gt;</span>
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().deleteColumn().run()}
-            title={t('editor.deleteColumn')}
-          >
-            <div className="flex items-center relative">
-              <Columns size={14} />
-              <Trash2 size={10} className="absolute -bottom-1 -right-1 text-red-500" />
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().addRowBefore().run()}
-            title={t('editor.addRowBefore')}
-          >
-            <div className="flex items-center flex-col">
-              <Rows size={14} />
-              <span className="text-[10px] -mt-1">+^</span>
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().addRowAfter().run()}
-            title={t('editor.addRowAfter')}
-          >
-            <div className="flex items-center flex-col">
-              <Rows size={14} />
-              <span className="text-[10px] -mt-1">+v</span>
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().deleteRow().run()}
-            title={t('editor.deleteRow')}
-          >
-            <div className="flex items-center relative">
-              <Rows size={14} />
-              <Trash2 size={10} className="absolute -bottom-1 -right-1 text-red-500" />
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().mergeCells().run()}
-            title={t('editor.mergeCells')}
-            disabled={!editor.can().mergeCells()}
-          >
-            <div className="flex items-center">
-              <Columns size={14} className="rotate-45" />
-            </div>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().deleteTable().run()}
-            title={t('editor.deleteTable')}
-          >
-            <Trash2 size={18} className="text-red-500" />
-          </ToolbarButton>
-        </>
-      )}
+
 
       <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
 

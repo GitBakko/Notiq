@@ -17,7 +17,7 @@ test.describe('Notebooks', () => {
   test('should create a new notebook', async ({ page }) => {
     console.log('Waiting for sidebar...');
     // Wait for sidebar
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     console.log('Hovering Notebooks group...');
     // Hover over Notebooks section to show create button

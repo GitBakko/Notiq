@@ -15,7 +15,7 @@ test.describe('Authentication', () => {
     // Should redirect to /notes after successful registration (auto-login, then redirect from / to /notes)
     await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
     // Check for sidebar or something that indicates logged in state
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
   });
 
   test('should login with existing user', async ({ page }) => {
@@ -31,7 +31,7 @@ test.describe('Authentication', () => {
     await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
 
     // Wait for sidebar to be visible to ensure we are logged in and UI is ready
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Logout to test login
     await page.click('button[title="Logout"]');
@@ -43,7 +43,7 @@ test.describe('Authentication', () => {
     await page.click('button[type="submit"]');
 
     await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
   });
 
   test('should logout', async ({ page }) => {

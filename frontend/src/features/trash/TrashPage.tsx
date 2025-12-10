@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { restoreNote, permanentlyDeleteNote, type Note } from '../notes/noteService';
 import { Trash2, RefreshCw, Menu, FileText } from 'lucide-react';
-import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
@@ -115,11 +114,22 @@ export default function TrashPage() {
                   {note.title}
                 </h3>
                 <p className="text-xs text-gray-500 line-clamp-2 h-8 mb-4 dark:text-gray-400">
-                  {note.content.replace(/<[^>]*>?/gm, '') || t('notes.noContent')}
+                  {(() => {
+                    try {
+                      // Attempt to parse as JSON first
+                      const jsonContent = JSON.parse(note.content);
+                      // Simple text extraction from Tiptap JSON
+                      const text = jsonContent.content?.map((p: any) => p.content?.map((c: any) => c.text).join('')).join(' ') || '';
+                      return text || t('notes.noContent');
+                    } catch (e) {
+                      // Fallback to plain text / HTML strip (legacy)
+                      return note.content.replace(/<[^>]*>?/gm, '') || t('notes.noContent');
+                    }
+                  })()}
                 </p>
 
                 <div className="flex items-center gap-2 text-xs text-gray-500 pt-4 border-t border-gray-100 dark:border-gray-700 dark:text-gray-400">
-                  <span>{t('trash.deleted')}: {format(new Date(note.updatedAt), 'MMM d, yyyy')}</span>
+                  <span>{t('trash.deleted')}: {new Date(note.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                 </div>
               </div>
             </Card>

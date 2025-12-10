@@ -23,7 +23,7 @@ test.describe('Search', () => {
     await page.getByRole('button', { name: 'Search' }).click();
 
     // Verify search modal opens (command menu)
-    const searchInput = page.getByPlaceholder('Search notes, notebooks, tags...');
+    const searchInput = page.locator('input[cmdk-input]');
     await expect(searchInput).toBeVisible({ timeout: 5000 });
 
     // Type in the search box to verify it's functional

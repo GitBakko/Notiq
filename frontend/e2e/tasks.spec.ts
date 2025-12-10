@@ -16,7 +16,7 @@ test.describe('Tasks', () => {
 
   test('should navigate to tasks page', async ({ page }) => {
     // Wait for sidebar
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Click on Tasks link
     await page.click('a[href="/tasks"]');
@@ -28,7 +28,7 @@ test.describe('Tasks', () => {
   });
 
   test('should create a note with checklist', async ({ page }) => {
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Create a note
     const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
@@ -36,10 +36,10 @@ test.describe('Tasks', () => {
     await expect(page.locator('input[placeholder="Note Title"]')).toBeVisible({ timeout: 10000 });
 
     await page.fill('input[placeholder="Note Title"]', 'Task Note');
-    
+
     // Focus editor
     await page.locator('.ProseMirror').click();
-    
+
     // Type a task item using the [ ] syntax
     await page.locator('.ProseMirror').type('- [ ] First task item');
     await page.keyboard.press('Enter');

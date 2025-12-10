@@ -51,7 +51,7 @@ export const uploadAvatar = async (userId: string, file: MultipartFile) => {
 
   await pipeline(file.file, fs.createWriteStream(filepath));
 
-  const avatarUrl = `http://localhost:3001/uploads/avatars/${filename}`;
+  const avatarUrl = `/uploads/avatars/${filename}`;
 
   return prisma.user.update({
     where: { id: userId },

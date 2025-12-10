@@ -5,6 +5,7 @@
  * Run with: npx ts-node src/scripts/testSmtp.ts <recipient_email>
  */
 
+// @ts-ignore
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';

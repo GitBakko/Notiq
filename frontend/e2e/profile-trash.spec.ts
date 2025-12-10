@@ -16,7 +16,7 @@ test.describe('User Profile', () => {
 
   test('should navigate to profile page', async ({ page }) => {
     // Wait for sidebar
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Click on the user profile link in sidebar
     await page.click('a[href="/profile"]');
@@ -28,7 +28,7 @@ test.describe('User Profile', () => {
   });
 
   test('should show user name in sidebar', async ({ page }) => {
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Verify user name is shown
     await expect(page.getByText('Profile User')).toBeVisible();
@@ -49,7 +49,7 @@ test.describe('Trash', () => {
   });
 
   test('should navigate to trash page', async ({ page }) => {
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     // Click on Trash link
     await page.click('a[href="/trash"]');
@@ -61,7 +61,7 @@ test.describe('Trash', () => {
   });
 
   test('should show empty trash message', async ({ page }) => {
-    await expect(page.getByText('Notes', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
     await page.click('a[href="/trash"]');
 

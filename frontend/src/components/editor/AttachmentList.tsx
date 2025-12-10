@@ -67,6 +67,10 @@ const getFileIconInfo = (filename: string) => {
 export default function AttachmentList({ attachments, onDelete, onAdd, readOnly = false }: AttachmentListProps) {
   if (!attachments && !onAdd) return null;
 
+  const API_URL = import.meta.env.VITE_API_URL || '/api';
+  // Remove /api from the end to get the base URL for static assets
+  const BASE_URL = API_URL.replace(/\/api$/, '');
+
   return (
     <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
       <div className="flex items-center justify-between mb-2">
@@ -89,7 +93,7 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
                   </div>
                   <div className="flex flex-col overflow-hidden">
                     <a
-                      href={`http://localhost:3001${att.url}`}
+                      href={`${BASE_URL}${att.url}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm font-medium text-gray-700 truncate hover:text-emerald-600 hover:underline dark:text-gray-200 dark:hover:text-emerald-400"
@@ -113,7 +117,7 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
               </div>
               {isAudio && (
                 <div className="mt-2 w-full">
-                  <audio controls src={`http://localhost:3001${att.url}`} className="w-full h-8" />
+                  <audio controls src={`${BASE_URL}${att.url}`} className="w-full h-8" />
                 </div>
               )}
             </li>

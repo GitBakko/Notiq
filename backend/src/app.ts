@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
@@ -11,6 +12,7 @@ import { attachmentRoutes } from './routes/attachments';
 import publicRoutes from './routes/public';
 import sharingRoutes from './routes/sharing';
 import userRoutes from './routes/user';
+import notificationRoutes from './routes/notification.routes';
 import './types';
 
 const server = fastify({
@@ -60,7 +62,9 @@ server.register(tagRoutes, { prefix: '/api/tags' });
 server.register(attachmentRoutes, { prefix: '/api/attachments' });
 server.register(publicRoutes, { prefix: '/api/public' });
 server.register(sharingRoutes, { prefix: '/api/share' });
+
 server.register(userRoutes, { prefix: '/api/user' });
+server.register(notificationRoutes, { prefix: '/api/notifications' });
 
 // Health Check
 server.get('/health', async (request, reply) => {
@@ -73,8 +77,22 @@ import { hocuspocus } from './hocuspocus';
 const start = async () => {
   try {
     await server.listen({ port: 3001, host: '0.0.0.0' });
-    await hocuspocus.listen();
-    console.log('Hocuspocus running on port 1234');
+
+    // Attach Hocuspocus to Fastify server
+    server.server.on('upgrade', (request, socket, head) => {
+      console.log('Upgrade request received for:', request.url);
+      if (request.url === '/ws' || request.url?.startsWith('/ws?')) {
+        console.log('Handling upgrade for /ws');
+        hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: any) => {
+          hocuspocus.webSocketServer.emit('connection', ws, request);
+        });
+      } else {
+        console.log('Upgrade request ignored for:', request.url);
+      }
+    });
+
+    console.log('Server running on port 3001');
+    console.log('Hocuspocus attached to /ws');
   } catch (err) {
     server.log.error(err);
     process.exit(1);

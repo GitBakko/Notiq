@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle, Circle, Share2, Copy, ExternalLink, ArrowLeft, Star, Trash2, Globe, MessageSquare, Paperclip, Users } from 'lucide-react';
+import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock } from 'lucide-react';
 import Editor from '../../components/editor/Editor';
-import { updateNote, toggleShare, deleteNote, type Note } from './noteService';
+import { revokeShare, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
-import { useIsMobile } from '../../hooks/useIsMobile';
 import TagSelector from '../../components/editor/TagSelector';
 import { useNotebooks } from '../../hooks/useNotebooks';
 import { useTranslation } from 'react-i18next';
@@ -16,11 +14,11 @@ import { useAuthStore } from '../../store/authStore';
 import SharingModal from '../../components/sharing/SharingModal';
 import AttachmentSidebar from './AttachmentSidebar';
 import ChatSidebar from '../../components/editor/ChatSidebar';
-import DatePicker from '../../components/ui/DatePicker';
 import NotebookSelector from '../../components/editor/NotebookSelector';
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import AudioRecorder from '../../components/editor/AudioRecorder';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useNoteController } from './useNoteController';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface NoteEditorProps {
     note: Note;
@@ -30,475 +28,276 @@ interface NoteEditorProps {
 export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const { t } = useTranslation();
     const { user } = useAuthStore();
-    const isMobile = useIsMobile();
     const queryClient = useQueryClient();
     const { notebooks } = useNotebooks();
 
-    const isOwner = user?.id === note.userId;
-    console.log('NoteEditor: isOwner check', { userId: user?.id, noteUserId: note.userId, isOwner });
+    // -- Controller --
+    const { updateTitle, updateContent, saveNote } = useNoteController(note);
 
-    const [editorContent, setEditorContent] = useState(note.content);
-    const [title, setTitle] = useState(note.title);
-    const [reminderDate, setReminderDate] = useState<string>(note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : '');
-    const [isReminderDone, setIsReminderDone] = useState<boolean>(note.isReminderDone || false);
-    const [isPublic, setIsPublic] = useState(note.isPublic);
-    const [shareId, setShareId] = useState(note.shareId);
-    const [isDragging, setIsDragging] = useState(false);
+    // -- Local State for Inputs --
+    const [titleInput, setTitleInput] = useState(note.title);
+    const [contentInput, setContentInput] = useState(note.content);
+
+    const titleRef = useRef<HTMLInputElement>(null);
+
+    // -- Debounce for saving --
+    // We update Dexie after 300ms of inactivity. 
+    // Dexie update will trigger a SyncQueue item.
+    const debouncedTitle = useDebounce(titleInput, 300);
+    const debouncedContent = useDebounce(contentInput, 1000); // Content can be slower
+
+    // -- UI State --
     const [isSharingModalOpen, setIsSharingModalOpen] = useState(false);
+    const [isVaultConfirmOpen, setIsVaultConfirmOpen] = useState(false);
     const [isAttachmentSidebarOpen, setIsAttachmentSidebarOpen] = useState(false);
-    const [showAudioRecorder, setShowAudioRecorder] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
     const [collaborators, setCollaborators] = useState<any[]>([]);
-
+    const [unreadCount, setUnreadCount] = useState(0);
+    const isChatOpenRef = useRef(isChatOpen);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // -- Sync from Prop to State (Guarded) --
+    useEffect(() => {
+        // If we are editing, DO NOT overwrite local state with props.
+        if (document.activeElement === titleRef.current) return;
+
+        // If the prop changed externally (Sync), update local state
+        if (note.title !== titleInput) {
+            setTitleInput(note.title);
+        }
+    }, [note.title]); // We don't depend on titleInput here to avoid loops
+
+    useEffect(() => {
+        // Content sync is trickier because Editor manages focus.
+        // Usually Editor component handles prop updates internally.
+        // We just update our local input tracker if needed? 
+        // Actually, we pass contentInput to Editor. Editor should update validation.
+        if (note.content !== contentInput) {
+            // We need to be careful not to reset cursor in Tiptap.
+            // Ideally Editor component handles 'content' prop changes gracefully.
+            setContentInput(note.content);
+        }
+    }, [note.content]);
+
+    // -- Save Effects --
+    useEffect(() => {
+        if (debouncedTitle !== note.title) {
+            updateTitle(debouncedTitle);
+        }
+    }, [debouncedTitle, note.id]); // note.id check ensures we don't save to wrong note if switched fast
+
+    useEffect(() => {
+        if (provider) return; // Don't save content via REST if Hocuspocus is active
+        if (debouncedContent !== note.content) {
+            updateContent(debouncedContent);
+        }
+    }, [debouncedContent, note.id, provider]);
+
+
+    // -- Hocuspocus / Chat Logic --
+    useEffect(() => {
+        isChatOpenRef.current = isChatOpen;
+        if (isChatOpen) setUnreadCount(0);
+    }, [isChatOpen]);
 
     useEffect(() => {
         if (note.id) {
             const newProvider = new HocuspocusProvider({
-                url: 'ws://localhost:1234',
+                url: import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws',
                 name: note.id,
                 token: useAuthStore.getState().token || '',
+                onSynced: () => {
+                    // Sync handled by provider
+                },
             });
             setProvider(newProvider);
-
-            return () => {
-                newProvider.destroy();
-            };
+            return () => newProvider.destroy();
         }
     }, [note.id]);
 
     useEffect(() => {
-        if (provider) {
-            const updateCollaborators = () => {
-                const states = provider.awareness?.getStates();
-                if (states) {
-                    const activeUsers = Array.from(states.values())
-                        .map((state: any) => state.user)
-                        .filter((u: any) => u && u.name);
+        if (!provider) return;
+        const updateCollaborators = () => {
+            const states = provider.awareness?.getStates();
+            if (states) {
+                const activeUsers = Array.from(states.values()).map((s: any) => s.user).filter((u: any) => u && u.name);
+                setCollaborators(activeUsers);
+            }
+        };
+        provider.on('awarenessUpdate', updateCollaborators);
+        updateCollaborators();
 
-                    setCollaborators(activeUsers);
-                }
-            };
+        const chatArray = provider.document.getArray('chat');
+        const handleChatUpdate = () => {
+            if (!isChatOpenRef.current) setUnreadCount(prev => prev + 1);
+        };
+        chatArray.observe(handleChatUpdate);
 
-            provider.on('awarenessUpdate', updateCollaborators);
-            // Initial check
-            updateCollaborators();
-
-            return () => {
-                provider.off('awarenessUpdate', updateCollaborators);
-            };
-        }
+        return () => {
+            provider.off('awarenessUpdate', updateCollaborators);
+            chatArray.unobserve(handleChatUpdate);
+        };
     }, [provider]);
 
-    const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string; data: Partial<Note> }) => updateNote(id, data),
-        onSuccess: (data) => {
-            console.log('NoteEditor: updateMutation success', data);
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
-        },
-        onError: (err) => {
-            console.error('NoteEditor: updateMutation error', err);
-            toast.error(t('notes.saveFailed'));
-        }
-    });
-
-    const debouncedContent = useDebounce(editorContent, 1000);
-    const debouncedTitle = useDebounce(title, 1000);
-
-    // Sync local state when note changes
-    useEffect(() => {
-        setEditorContent(note.content);
-        setTitle(note.title);
-        setReminderDate(note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : '');
-        setIsReminderDone(note.isReminderDone || false);
-        setIsPublic(note.isPublic);
-        setShareId(note.shareId);
-    }, [note.id, note.isPublic, note.shareId, note.content]);
-
-    useEffect(() => {
-        // If using collaboration, don't save content via REST to avoid conflicts
-        if (provider) return;
-
-        if (debouncedContent !== note.content) {
-            updateMutation.mutate({ id: note.id, data: { content: debouncedContent } });
-        }
-    }, [debouncedContent, note.id, provider]);
-
-    useEffect(() => {
-        if (debouncedTitle !== note.title) {
-            updateMutation.mutate({ id: note.id, data: { title: debouncedTitle } });
-        }
-    }, [debouncedTitle, note.id]);
-
-    const handleReminderDoneToggle = () => {
-        const newValue = !isReminderDone;
-        setIsReminderDone(newValue);
-        updateMutation.mutate({ id: note.id, data: { isReminderDone: newValue } });
-    };
-
-    const handleReminderChange = (date: Date | undefined) => {
-        if (!date) {
-            setReminderDate('');
-            updateMutation.mutate({ id: note.id, data: { reminderDate: null } });
-            return;
-        }
-
-        const newDate = new Date(date);
-        if (reminderDate) {
-            const oldDate = new Date(reminderDate);
-            newDate.setHours(oldDate.getHours(), oldDate.getMinutes());
-        } else {
-            newDate.setHours(9, 0, 0, 0); // Default 9 AM
-        }
-
-        const iso = newDate.toISOString();
-        setReminderDate(iso);
-        updateMutation.mutate({ id: note.id, data: { reminderDate: iso } });
-    };
-
-    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const time = e.target.value;
-        if (!reminderDate || !time) return;
-
-        const [hours, minutes] = time.split(':').map(Number);
-        const newDate = new Date(reminderDate);
-        newDate.setHours(hours, minutes);
-
-        const iso = newDate.toISOString();
-        setReminderDate(iso);
-        updateMutation.mutate({ id: note.id, data: { reminderDate: iso } });
-    };
+    // -- Handlers --
 
     const handlePinToggle = () => {
-        const newValue = !note.isPinned;
-        updateMutation.mutate({ id: note.id, data: { isPinned: newValue } });
-        toast.success(newValue ? t('notes.pinned') : t('notes.unpinned'));
+        saveNote({ isPinned: !note.isPinned });
+        toast.success(!note.isPinned ? t('notes.pinned') : t('notes.unpinned'));
     };
 
-    const shareMutation = useMutation({
-        mutationFn: toggleShare,
-        onMutate: () => {
-            // Optimistic update
-            setIsPublic(!isPublic);
-        },
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
-            // Ensure state matches server response
-            setIsPublic(data.isPublic);
-            setShareId(data.shareId);
+    const handleVaultToggle = () => {
+        saveNote({ isVault: !note.isVault });
+        toast.success(!note.isVault ? t('notes.addedToVault') : t('notes.removedFromVault'));
+    };
 
-            if (data.isPublic) {
-                toast.success(t('notes.nowPublic'), {
-                    style: {
-                        background: '#10b981',
-                        color: '#fff',
-                    },
-                    icon: '🌍'
-                });
-            } else {
-                toast.success(t('notes.nowPrivate'), {
-                    style: {
-                        background: '#6b7280',
-                        color: '#fff',
-                    },
-                    icon: '🔒'
-                });
+    const handleVaultConfirm = async () => {
+        try {
+            // Logic moved inline, but ideally controller would handle this. 
+            // For now, manual update is fine.
+            const updates: Partial<Note> = { isVault: true };
+            if (note.isPublic) updates.isPublic = false;
+
+            // Revoke shares (side effect)
+            if (note.sharedWith?.length) {
+                for (const share of note.sharedWith) {
+                    await revokeShare(note.id, share.userId);
+                }
             }
-        },
-        onError: () => {
-            // Revert on error
-            setIsPublic(!isPublic);
-            toast.error(t('notes.sharingFailed'));
-        }
-    });
 
-    const copyShareLink = () => {
-        if (shareId) {
-            const url = `${window.location.origin}/public/notes/${shareId}`;
-            navigator.clipboard.writeText(url);
-            toast.success(t('notes.linkCopied'));
+            await saveNote(updates);
+
+            toast.success(t('notes.addedToVault'));
+            setIsVaultConfirmOpen(false);
+        } catch (error) {
+            console.error(error);
+            toast.error(t('notes.saveFailed'));
         }
     };
 
+    // Attachments
     const handleDrop = async (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-
+        e.preventDefault(); setIsDragging(false);
         const files = Array.from(e.dataTransfer.files);
-        if (files.length === 0) return;
-
         for (const file of files) {
             try {
                 await uploadAttachment(note.id, file);
                 toast.success(t('notes.uploaded', { name: file.name }));
             } catch (error) {
-                console.error('Failed to upload', file.name, error);
                 toast.error(t('notes.uploadFailed', { name: file.name }));
             }
         }
     };
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-    };
-
-    const handleDeleteAttachment = async (attachmentId: string) => {
-        try {
-            await deleteAttachment(note.id, attachmentId);
-            toast.success(t('notes.attachmentDeleted'));
-        } catch (error) {
-            console.error('Failed to delete attachment', error);
-            toast.error(t('notes.deleteAttachmentFailed'));
-        }
-    };
-
-    const handleAttachClick = () => {
-        fileInputRef.current?.click();
-    };
-
-    const handleVoiceMemo = () => {
-        setShowAudioRecorder(true);
-    };
-
-    const saveVoiceMemo = async (blob: Blob) => {
-        const file = new File([blob], `voice-memo-${Date.now()}.webm`, { type: 'audio/webm' });
-        try {
-            await uploadAttachment(note.id, file);
-            setShowAudioRecorder(false);
-            toast.success(t('notes.attachmentUploaded'));
-        } catch (error) {
-            console.error('Failed to upload voice memo:', error);
-            toast.error(t('notes.uploadFailed'));
-        }
-    };
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-
-        for (const file of Array.from(files)) {
-            try {
-                await uploadAttachment(note.id, file);
-                toast.success(t('notes.uploaded', { name: file.name }));
-            } catch (error) {
-                console.error('Failed to upload', file.name, error);
-                toast.error(t('notes.uploadFailed', { name: file.name }));
-            }
-        }
-    };
-
-    if (!note) return null;
-
-    const userColor = useMemo(() => {
-        return '#' + Math.floor(Math.random() * 16777215).toString(16);
-    }, []);
-
+    // Misc
+    const userColor = useMemo(() => '#' + Math.floor(Math.random() * 16777215).toString(16), []);
     const collaborationConfig = useMemo(() => ({
         enabled: !!provider,
         documentId: note.id,
         token: useAuthStore.getState().token || '',
-        user: {
-            name: user?.name || 'User',
-            color: userColor,
-        }
-    }), [provider, note.id, user?.name, userColor]);
+        user: { name: user?.name || 'User', color: userColor }
+    }), [provider, note.id, user, userColor]);
+
 
     return (
         <div
             className="flex flex-col h-full bg-white dark:bg-gray-900 relative"
             onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
         >
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 z-10">
                 <div className="flex items-center gap-3 flex-1">
                     {onBack && (
-                        <button
-                            onClick={onBack}
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-                        >
+                        <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
                             <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                         </button>
                     )}
                     <input
+                        ref={titleRef}
                         type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        onBlur={() => {
-                            if (title !== note.title) {
-                                updateMutation.mutate({ id: note.id, data: { title } });
-                            }
-                        }}
+                        value={titleInput}
+                        onChange={(e) => setTitleInput(e.target.value)}
                         placeholder={t('notes.titlePlaceholder')}
                         className="text-xl font-semibold bg-transparent border-none focus:outline-none text-gray-900 dark:text-white flex-1"
                     />
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Collaborators */}
+                    {/* Collaborators UI */}
                     <div className="flex items-center -space-x-2 mr-4">
-                        {collaborators.map((collabUser, index) => (
-                            <div
-                                key={index}
-                                className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center text-xs font-medium text-white shadow-sm"
-                                style={{ backgroundColor: collabUser.color }}
-                                title={collabUser.name}
-                            >
-                                {collabUser.name.charAt(0).toUpperCase()}
+                        {collaborators.map((c, i) => (
+                            <div key={i} className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center text-xs font-medium text-white shadow-sm" style={{ backgroundColor: c.color }} title={c.name}>
+                                {c.name.charAt(0).toUpperCase()}
                             </div>
                         ))}
                         {collaborators.length === 0 && provider && (
-                            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-500">
-                                <Users className="w-4 h-4" />
-                            </div>
+                            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-500"><Users className="w-4 h-4" /></div>
                         )}
                     </div>
 
                     <div className="hidden md:flex items-center gap-2">
                         <NotebookSelector
-                            notebooks={notebooks}
+                            notebooks={notebooks || []}
                             selectedNotebookId={note.notebookId}
-                            onSelect={(notebookId) => updateMutation.mutate({ id: note.id, data: { notebookId } })}
+                            onSelect={(notebookId) => saveNote({ notebookId })}
                         />
                         <TagSelector
-                            selectedTags={note.tags}
-                            onChange={(tags) => updateMutation.mutate({ id: note.id, data: { tags } })}
+                            noteId={note.id}
+                            noteTags={note.tags || []}
+                            onUpdate={() => queryClient.invalidateQueries({ queryKey: ['notes'] })}
                         />
                     </div>
 
                     <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
-                    <button
-                        onClick={() => setIsChatOpen(!isChatOpen)}
-                        className={clsx(
-                            "p-2 rounded-full transition-colors relative",
-                            isChatOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
-                        )}
-                        title={t('notes.chat')}
-                    >
-                        <MessageSquare className="w-5 h-5" />
-                    </button>
+                    {/* Actions */}
+                    {collaborators.length > 1 && (
+                        <button onClick={() => setIsChatOpen(!isChatOpen)} className={clsx("p-2 rounded-full transition-colors relative", isChatOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}>
+                            <MessageSquare className="w-5 h-5" />
+                            {unreadCount > 0 && <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                        </button>
+                    )}
 
-                    <button
-                        onClick={() => setIsSharingModalOpen(true)}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-600 dark:text-gray-400"
-                        title={t('notes.share')}
-                    >
-                        <Share2 className="w-5 h-5" />
-                    </button>
+                    <button onClick={() => setIsSharingModalOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"><Share2 className="w-5 h-5 text-gray-600 dark:text-gray-400" /></button>
+                    <button onClick={() => setIsAttachmentSidebarOpen(!isAttachmentSidebarOpen)} className={clsx("p-2 rounded-full transition-colors", isAttachmentSidebarOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}><Paperclip className="w-5 h-5" /></button>
 
-                    <button
-                        onClick={() => setIsAttachmentSidebarOpen(!isAttachmentSidebarOpen)}
-                        className={clsx(
-                            "p-2 rounded-full transition-colors",
-                            isAttachmentSidebarOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
-                        )}
-                        title={t('notes.attachments')}
-                    >
-                        <Paperclip className="w-5 h-5" />
-                    </button>
+                    <button onClick={handlePinToggle} className={clsx("p-2 rounded-full transition-colors", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-gray-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
 
-                    <button
-                        onClick={handlePinToggle}
-                        className={clsx(
-                            "p-2 rounded-full transition-colors",
-                            note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                        )}
-                        title={note.isPinned ? t('notes.unpin') : t('notes.pin')}
-                    >
-                        <Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} />
-                    </button>
+                    <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} className={clsx("p-2 rounded-full transition-colors", note.isVault ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-gray-400 hover:text-emerald-500 hover:bg-emerald-50")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
 
-                    <button
-                        onClick={() => setIsDeleteConfirmOpen(true)}
-                        className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-colors dark:hover:bg-red-900/20"
-                        title={t('common.delete')}
-                    >
-                        <Trash2 className="w-5 h-5" />
-                    </button>
+                    <button onClick={() => setIsDeleteConfirmOpen(true)} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
                 </div>
             </header>
 
-            {/* Editor Area */}
+            {/* Editor */}
             <div className="flex-1 overflow-y-auto relative">
                 <Editor
-                    content={editorContent}
-                    onChange={setEditorContent}
-                    onVoiceMemo={handleVoiceMemo}
+                    content={contentInput}
+                    onChange={setContentInput}
                     provider={provider}
                     collaboration={collaborationConfig}
                 />
-
-                <ChatSidebar
-                    provider={provider}
-                    isOpen={isChatOpen}
-                    onClose={() => setIsChatOpen(false)}
-                    currentUser={{
-                        id: user?.id || 'anon',
-                        name: user?.name || 'User',
-                        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-                    }}
-                />
+                <ChatSidebar provider={provider} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} currentUser={{ id: user?.id || 'anon', name: user?.name || 'User', color: userColor }} />
             </div>
 
-            {isDragging && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/80 pointer-events-none z-50 dark:bg-gray-900/80">
-                    <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-500">{t('notes.dropFiles')}</div>
-                </div>
-            )}
+            {/* Overlays */}
+            {isDragging && <div className="absolute inset-0 flex items-center justify-center bg-white/80 pointer-events-none z-50 dark:bg-gray-900/80"><div className="text-2xl font-bold text-emerald-600">{t('notes.dropFiles')}</div></div>}
 
-            {/* Hidden File Input */}
-            <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                multiple
-                onChange={handleFileChange}
-            />
+            <input type="file" ref={fileInputRef} className="hidden" multiple onChange={(e) => { const files = e.target.files; if (files) Array.from(files).forEach(f => uploadAttachment(note.id, f).then(() => toast.success(t('notes.uploaded', { name: f.name }))).catch(() => toast.error(t('notes.uploadFailed', { name: f.name })))) }} />
 
-            <SharingModal
-                isOpen={isSharingModalOpen}
-                onClose={() => setIsSharingModalOpen(false)}
-                noteId={note.id}
-                sharedWith={note.sharedWith?.map(s => ({
-                    id: s.userId,
-                    name: s.user.name,
-                    email: s.user.email,
-                    permission: s.permission
-                }))}
-            />
+            <SharingModal isOpen={isSharingModalOpen} onClose={() => setIsSharingModalOpen(false)} noteId={note.id} sharedWith={note.sharedWith?.map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, permission: s.permission }))} />
 
-            <ConfirmDialog
-                isOpen={isDeleteConfirmOpen}
-                onClose={() => setIsDeleteConfirmOpen(false)}
-                onConfirm={async () => {
-                    await deleteNote(note.id);
-                    toast.success(t('notes.deleted'));
-                    onBack ? onBack() : window.history.back();
-                }}
-                title={t('notes.deleteConfirmTitle', 'Delete Note')}
-                message={t('notes.deleteConfirm', 'Are you sure you want to delete this note?')}
-                confirmText={t('common.delete')}
-                variant="danger"
-            />
+            <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
 
-            {isAttachmentSidebarOpen && (
-                <AttachmentSidebar
-                    attachments={note.attachments || []}
-                    onClose={() => setIsAttachmentSidebarOpen(false)}
-                    onDelete={handleDeleteAttachment}
-                    onAdd={handleAttachClick}
-                />
-            )}
+            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); await import('./noteService').then(m => m.deleteNote(note.id)); toast.success(t('notes.deleted')); onBack ? onBack() : window.history.back(); }} title={t('notes.moveToTrash')} message={t('notes.moveToTrashConfirm')} confirmText={t('notes.moveToTrashAction')} variant="danger" />
+
+            {isAttachmentSidebarOpen && <AttachmentSidebar attachments={note.attachments || []} onClose={() => setIsAttachmentSidebarOpen(false)} onDelete={deleteAttachment.bind(null, note.id)} onAdd={() => fileInputRef.current?.click()} />}
         </div>
     );
 }

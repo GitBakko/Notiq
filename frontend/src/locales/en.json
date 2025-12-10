@@ -35,7 +35,8 @@
     "lock": "Lock",
     "encrypt": "Encrypt",
     "discard": "Discard",
-    "typeToConfirm": "Type to confirm"
+    "typeToConfirm": "Type to confirm",
+    "deleteForever": "Delete Forever"
   },
   "sidebar": {
     "home": "Home",
@@ -85,7 +86,8 @@
     "createDescription": "Enter the name for the new notebook.",
     "renameTitle": "Rename Notebook",
     "renameDescription": "Enter the new name for the notebook.",
-    "edit": "Edit Notebook"
+    "edit": "Edit Notebook",
+    "updated": "Notebook updated"
   },
   "tags": {
     "newTagPlaceholder": "New tag...",
@@ -107,7 +109,11 @@
     "createDescription": "Enter the name for the new tag.",
     "count": "{{count}} tags",
     "addFailed": "Failed to add tag",
-    "removeFailed": "Failed to remove tag"
+    "removeFailed": "Failed to remove tag",
+    "emptyTitle": "No tags",
+    "emptyDescription": "Tags help you organize your notes.",
+    "createFirst": "Create your first tag",
+    "namePlaceholder": "Tag name"
   },
   "trash": {
     "restored": "Note restored",
@@ -127,7 +133,10 @@
     "emptyTrash": "Empty Trash",
     "emptyTitle": "Trash is empty",
     "emptyDescription": "Notes you delete are moved here.",
-    "emptyConfirm": "Are you sure you want to empty the trash? This action cannot be undone."
+    "emptyConfirm": "Are you sure you want to empty the trash? This action cannot be undone.",
+    "emptyTrashTitle": "Empty Trash",
+    "deleteTitle": "Delete Forever",
+    "deleteConfirm": "Are you sure? This cannot be undone."
   },
   "tasks": {
     "overdue": "Overdue",
@@ -207,7 +216,8 @@
     "resetVaultConfirm": "Type 'DELETE' to confirm vault reset",
     "resetVaultButton": "Reset Vault",
     "resetVaultSuccess": "Vault has been reset. You can now set up a new PIN.",
-    "resetVaultPlaceholder": "Type DELETE to confirm"
+    "resetVaultPlaceholder": "Type DELETE to confirm",
+    "createSecureNote": "New Secure Note"
   },
   "sharing": {
     "title": "Share Note",
@@ -276,6 +286,9 @@
     "saveFailed": "Failed to save note",
     "deleted": "Note deleted",
     "deleteConfirm": "Are you sure you want to delete this note?",
+    "moveToTrash": "Move to Trash",
+    "moveToTrashConfirm": "Are you sure you want to move this note to the trash?",
+    "moveToTrashAction": "Move to Trash",
     "attachments": "Attachments",
     "noAttachments": "No attachments",
     "addAttachment": "Add attachment",
@@ -289,7 +302,18 @@
     "noNotebookSelectedDescription": "Select a notebook from the sidebar to view its notes.",
     "shared": "Shared",
     "sharedBy": "Shared by {{name}}",
-    "sharedWithCount": "Shared with {{count}} users"
+    "sharedWithCount": "Shared with {{count}} users",
+    "chat": "Chat with AI",
+    "share": "Share",
+    "dropFiles": "Drop files here",
+    "selectNotebookFirst": "Select a notebook first",
+    "found": "found",
+    "addToVault": "Add to Vault",
+    "removeFromVault": "Remove from Vault",
+    "addedToVault": "Added to Vault",
+    "removedFromVault": "Removed from Vault",
+    "vaultWarningMessage": "Adding this note to the Vault will remove all public links and shared access. Are you sure?",
+    "createSecureNote": "New Secure Note"
   },
   "editor": {
     "bold": "Bold",
@@ -327,7 +351,26 @@
     "deleteRow": "Delete Row",
     "deleteTable": "Delete Table",
     "mergeCells": "Merge Cells",
-    "splitCell": "Split Cell"
+    "splitCell": "Split Cell",
+    "micAccessError": "Microphone access denied",
+    "voiceMemo": "Voice Memo",
+    "startRecording": "Start Recording",
+    "stopRecording": "Stop Recording",
+    "startDictation": "Start Dictation",
+    "stopDictation": "Stop Dictation",
+    "lineHeight": "Line Height",
+    "toggleHeaderRow": "Toggle Header Row",
+    "selectTable": "Select Table",
+    "borderStyle": "Border Style",
+    "borderColor": "Border Color"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllAsRead": "Mark all as read",
+    "empty": "No notifications",
+    "markAsRead": "Mark as read",
+    "pushNotifications": "Push Notifications",
+    "pushDescription": "Receive notifications even when the app is closed"
   },
   "encryption": {
     "locked": "Encrypted Content",
@@ -342,12 +385,23 @@
     "contentEmpty": "Content cannot be empty",
     "encrypted": "Content encrypted successfully",
     "encryptError": "Encryption failed",
-    "wrongPin": "Incorrect PIN"
+    "wrongPin": "Incorrect PIN",
+    "lockedContent": "Encrypted Content",
+    "waiting": "Waiting...",
+    "unlockTitle": "Unlock Content",
+    "deleteTitle": "Delete Encrypted Block",
+    "deleteConfirm": "Are you sure you want to delete this encrypted block? This action cannot be undone."
   },
   "gender": {
     "male": "Male",
     "female": "Female",
     "other": "Other",
     "preferNotToSay": "Prefer not to say"
-  }
+  },
+  "chat": {
+    "title": "AI Chat",
+    "placeholder": "Ask something..."
+  },
+  "saved": "Saved",
+  "saving": "Saving..."
 }

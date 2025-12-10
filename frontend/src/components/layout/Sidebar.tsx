@@ -3,6 +3,7 @@ import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut
 import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useNotebooks } from '../../hooks/useNotebooks';
+import { useNotes } from '../../hooks/useNotes';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -14,6 +15,7 @@ import TagList from '../../features/tags/TagList';
 import { usePinnedNotes } from '../../hooks/usePinnedNotes';
 import NotebookSharingModal from '../sharing/NotebookSharingModal';
 import toast from 'react-hot-toast';
+import NotificationDropdown from '../../features/notifications/NotificationDropdown';
 
 export default function Sidebar() {
   const { t } = useTranslation();
@@ -103,6 +105,12 @@ export default function Sidebar() {
     }
   };
 
+
+
+  // We need a specific query for trash count across all notebooks
+  const trashedNotes = useNotes(undefined, undefined, undefined, true);
+  const trashCount = trashedNotes?.length || 0;
+
   const navItems = [
     { icon: Home, label: t('sidebar.home'), path: '/' },
     { icon: FileText, label: t('sidebar.notes'), path: '/notes' },
@@ -110,7 +118,7 @@ export default function Sidebar() {
     // Notebooks is handled separately
     { icon: Users, label: t('sharing.sharedWithMe'), path: '/shared' },
     { icon: Lock, label: t('vault.title'), path: '/vault' },
-    { icon: Trash2, label: t('sidebar.trash'), path: '/trash' },
+    { icon: Trash2, label: t('sidebar.trash'), path: '/trash', count: trashCount },
   ];
 
   return (
@@ -155,7 +163,11 @@ export default function Sidebar() {
           <Link to="/profile" className="flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg transition-colors">
             <div className="h-8 w-8 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">
               {user?.avatarUrl ? (
-                <img src={user.avatarUrl} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                <img
+                  src={user.avatarUrl.startsWith('http://localhost:3001') ? user.avatarUrl.replace('http://localhost:3001', '') : user.avatarUrl}
+                  alt="Profile"
+                  className="w-full h-full rounded-full object-cover"
+                />
               ) : (
                 user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'
               )}
@@ -197,7 +209,12 @@ export default function Sidebar() {
                 )}
               >
                 <item.icon size={18} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {(item as any).count > 0 && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                    {(item as any).count}
+                  </span>
+                )}
               </Link>
             ))}
 
@@ -345,6 +362,7 @@ export default function Sidebar() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <NotificationDropdown />
             <button
               onClick={toggleTheme}
               className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"

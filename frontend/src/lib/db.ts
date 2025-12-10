@@ -88,6 +88,10 @@ class AppDatabase extends Dexie {
     this.version(5).stores({
       notes: 'id, notebookId, updatedAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted',
     });
+
+    this.version(6).stores({
+      notes: 'id, notebookId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted',
+    });
   }
 }
 
