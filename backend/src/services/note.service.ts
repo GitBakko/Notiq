@@ -6,24 +6,52 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const createNote = async (
   userId: string,
-  notebookId: string,
   title: string,
-  content: string = '',
-  id?: string,
+  content: string,
+  notebookId: string,
   isVault: boolean = false,
-  isEncrypted: boolean = false
+  isEncrypted: boolean = false,
+  id?: string
 ) => {
-  return prisma.note.create({
-    data: {
-      ...(id ? { id } : {}),
-      title,
-      content,
-      userId,
-      notebookId,
-      isVault,
-      isEncrypted,
-    },
+  // Check if notebook exists/belongs to user
+  let targetNotebookId = notebookId;
+  const notebook = await prisma.notebook.findFirst({
+    where: { id: notebookId, userId },
   });
+
+  if (!notebook) {
+    // Fallback: find ANY notebook for this user
+    const anyNotebook = await prisma.notebook.findFirst({
+      where: { userId },
+    });
+    if (anyNotebook) {
+      targetNotebookId = anyNotebook.id;
+    } else {
+      // Create a default notebook? For now throw
+      throw new Error('Notebook not found');
+    }
+  }
+
+  try {
+    return await prisma.note.create({
+      data: {
+        ...(id ? { id } : {}),
+        title,
+        content,
+        userId,
+        notebookId: targetNotebookId,
+        isVault,
+        isEncrypted,
+      },
+    });
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      // If ID conflict, try to find existing and return it (idempotency)
+      const existing = await prisma.note.findUnique({ where: { id } });
+      if (existing) return existing;
+    }
+    throw error;
+  }
 };
 
 export const getNotes = async (userId: string, notebookId?: string, search?: string, tagId?: string, reminderFilter?: 'all' | 'pending' | 'done', includeTrashed: boolean = false) => {
@@ -162,6 +190,10 @@ export const toggleShare = async (userId: string, id: string) => {
   const note = await prisma.note.findFirst({ where: { id, userId } });
   if (!note) throw new Error('Note not found');
 
+  if (note.isVault) {
+    throw new Error('Vault notes cannot be shared');
+  }
+
   const isPublic = !note.isPublic;
   const shareId = isPublic ? uuidv4() : null;
 
@@ -182,7 +214,16 @@ export const getPublicNote = async (shareId: string) => {
 };
 
 export const deleteNote = async (userId: string, id: string) => {
-  return prisma.note.deleteMany({
-    where: { id, userId },
+  return prisma.$transaction(async (tx) => {
+    // Delete relations that don't have Cascade in schema yet
+    await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
+    await tx.attachment.deleteMany({ where: { noteId: id } });
+    // SharedNotes and ChatMessages have Cascade in schema, but being explicit doesn't hurt
+    await tx.sharedNote.deleteMany({ where: { noteId: id } });
+    await tx.chatMessage.deleteMany({ where: { noteId: id } });
+
+    return tx.note.deleteMany({
+      where: { id, userId },
+    });
   });
 };

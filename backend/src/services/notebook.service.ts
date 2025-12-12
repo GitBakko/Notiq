@@ -22,7 +22,15 @@ export const getNotebooks = async (userId: string) => {
   return prisma.notebook.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
-    include: { _count: { select: { notes: true } } }
+    include: {
+      _count: {
+        select: {
+          notes: {
+            where: { isVault: false }
+          }
+        }
+      }
+    }
   });
 };
 

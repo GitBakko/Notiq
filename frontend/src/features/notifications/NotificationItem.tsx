@@ -37,10 +37,10 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-            {notification.title}
+            {notification.data?.localizationKey ? t(notification.data.localizationKey + '_TITLE', notification.data.localizationArgs) as string : notification.title}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
-            {notification.message}
+            {notification.data?.localizationKey ? t(notification.data.localizationKey, notification.data.localizationArgs) as string : notification.message}
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
             {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}

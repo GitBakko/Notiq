@@ -13,6 +13,7 @@ import publicRoutes from './routes/public';
 import sharingRoutes from './routes/sharing';
 import userRoutes from './routes/user';
 import notificationRoutes from './routes/notification.routes';
+import chatRoutes from './routes/chat';
 import './types';
 
 const server = fastify({
@@ -65,6 +66,7 @@ server.register(sharingRoutes, { prefix: '/api/share' });
 
 server.register(userRoutes, { prefix: '/api/user' });
 server.register(notificationRoutes, { prefix: '/api/notifications' });
+server.register(chatRoutes, { prefix: '/api/chat' });
 
 // Health Check
 server.get('/health', async (request, reply) => {
@@ -99,4 +101,5 @@ const start = async () => {
   }
 };
 
+console.log('Starting server...');
 start();

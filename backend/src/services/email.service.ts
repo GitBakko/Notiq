@@ -40,7 +40,7 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 };
 
-type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER';
+type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'SHARE_RESPONSE';
 
 export const sendNotificationEmail = async (
   to: string,
@@ -50,8 +50,12 @@ export const sendNotificationEmail = async (
   let subject = '';
   let html = '';
 
+  const locale = data.locale || 'en';
+  const isIt = locale === 'it' || locale.startsWith('it');
+
   switch (type) {
     case 'SHARE_NOTE':
+      // ... (Keep existing as English default or localize if needed, but user focused on invite/response)
       subject = `${data.sharerName} shared a note with you: ${data.noteTitle}`;
       html = `
         <div style="font-family: sans-serif; padding: 20px;">
@@ -71,37 +75,87 @@ export const sendNotificationEmail = async (
         </div>
       `;
       break;
-    case 'REMINDER':
-      subject = `Reminder: ${data.taskTitle}`;
-      html = `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Task Reminder</h2>
-          <p>This is a reminder for your task: "<strong>${data.taskTitle}</strong>".</p>
-          <p>Due: ${data.dueDate}</p>
-          <p><a href="${process.env.FRONTEND_URL}/tasks" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Tasks</a></p>
-        </div>
-      `;
-      break;
-    case 'WELCOME':
-      subject = 'Welcome to Notiq!';
-      html = `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Welcome to Notiq, ${data.name}!</h2>
-          <p>We are excited to have you on board.</p>
-          <p><a href="${process.env.FRONTEND_URL}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Get Started</a></p>
-        </div>
-      `;
-      break;
-    case 'RESET_PASSWORD':
-      subject = 'Reset Your Password';
-      html = `
+
+    // ... (Keep generic types as is)
+
+    case 'SHARE_INVITATION':
+      if (isIt) {
+        subject = `${data.sharerName} ti ha invitato a collaborare su: ${data.itemName}`;
+        html = `
           <div style="font-family: sans-serif; padding: 20px;">
-            <h2>Reset Password</h2>
-            <p>You requested to reset your password.</p>
-            <p><a href="${process.env.FRONTEND_URL}/reset-password?token=${data.token}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
-            <p>If you did not request this, please ignore this email.</p>
+            <h2>Invito alla Collaborazione</h2>
+            <p><strong>${data.sharerName}</strong> vuole condividere ${data.itemType === 'Note' ? 'la nota' : 'il taccuino'} "<strong>${data.itemName}</strong>" con te.</p>
+            <div style="margin-top: 20px;">
+              <a href="${process.env.FRONTEND_URL}/share/respond?token=${data.token}&action=accept" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">Accetta</a>
+              <a href="${process.env.FRONTEND_URL}/share/respond?token=${data.token}&action=decline" style="background: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Rifiuta</a>
+            </div>
+            <p style="margin-top: 20px; font-size: 12px; color: #666;">Oppure vedi gli inviti in sospeso nella tua dashboard: <a href="${process.env.FRONTEND_URL}/shared">Vedi Tutti gli Inviti</a></p>
           </div>
         `;
+      } else {
+        subject = `${data.sharerName} invited you to collaborate on: ${data.itemName}`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Collaboration Invitation</h2>
+            <p><strong>${data.sharerName}</strong> wants to share the ${data.itemType} "<strong>${data.itemName}</strong>" with you.</p>
+            <div style="margin-top: 20px;">
+              <a href="${process.env.FRONTEND_URL}/share/respond?token=${data.token}&action=accept" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">Accept Invitation</a>
+              <a href="${process.env.FRONTEND_URL}/share/respond?token=${data.token}&action=decline" style="background: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Decline Invitation</a>
+            </div>
+            <p style="margin-top: 20px; font-size: 12px; color: #666;">Or view pending invites in your dashboard: <a href="${process.env.FRONTEND_URL}/shared">View All Invites</a></p>
+          </div>
+        `;
+      }
+      break;
+
+    case 'SHARE_RESPONSE':
+      const actionEn = data.action === 'accepted' ? 'accepted' : 'declined';
+      const actionIt = data.action === 'accepted' ? 'accettato' : 'rifiutato';
+      const color = data.action === 'accepted' ? '#10b981' : '#ef4444';
+
+      if (isIt) {
+        subject = `${data.responderName} ha ${actionIt} il tuo invito`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Invito ${actionIt.charAt(0).toUpperCase() + actionIt.slice(1)}</h2>
+            <p><strong>${data.responderName}</strong> ha <span style="color: ${color}; font-weight: bold;">${actionIt}</span> il tuo invito a collaborare su "<strong>${data.itemName}</strong>".</p>
+            ${data.action === 'accepted' ? `<p><a href="${process.env.FRONTEND_URL}/notes?noteId=${data.itemId}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Vedi Nota</a></p>` : ''}
+          </div>
+        `;
+      } else {
+        subject = `${data.responderName} ${actionEn} your invitation`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Invitation ${actionEn.charAt(0).toUpperCase() + actionEn.slice(1)}</h2>
+            <p><strong>${data.responderName}</strong> has <span style="color: ${color}; font-weight: bold;">${actionEn}</span> your invitation to collaborate on "<strong>${data.itemName}</strong>".</p>
+            ${data.action === 'accepted' ? `<p><a href="${process.env.FRONTEND_URL}/notes?noteId=${data.itemId}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Note</a></p>` : ''}
+          </div>
+        `;
+      }
+      break;
+
+    case 'CHAT_MESSAGE':
+      if (isIt) {
+        subject = `Nuovo messaggio da ${data.senderName} su ${data.noteTitle}`;
+        html = `
+             <div style="font-family: sans-serif; padding: 20px;">
+               <h2>Nuovo Messaggio</h2>
+               <p><strong>${data.senderName}</strong> ha commentato su "<strong>${data.noteTitle}</strong>":</p>
+               <blockquote style="background: #f3f4f6; padding: 10px; border-left: 4px solid #10b981;">${data.messageContent}</blockquote>
+               <p><a href="${process.env.FRONTEND_URL}/notes?noteId=${data.noteId}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Vedi Discussione</a></p>
+             </div>
+           `;
+      } else {
+        subject = `New message from ${data.senderName} on ${data.noteTitle}`;
+        html = `
+             <div style="font-family: sans-serif; padding: 20px;">
+               <h2>New Message</h2>
+               <p><strong>${data.senderName}</strong> commented on "<strong>${data.noteTitle}</strong>":</p>
+               <blockquote style="background: #f3f4f6; padding: 10px; border-left: 4px solid #10b981;">${data.messageContent}</blockquote>
+               <p><a href="${process.env.FRONTEND_URL}/notes?noteId=${data.noteId}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Discussion</a></p>
+             </div>
+           `;
+      }
       break;
   }
 

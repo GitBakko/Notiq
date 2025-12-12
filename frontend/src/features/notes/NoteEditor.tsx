@@ -85,22 +85,32 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
     // -- Save Effects --
     useEffect(() => {
+        if (note.isTrashed) return; // Don't save if trashed (prevents resurrection race)
         if (debouncedTitle !== note.title) {
             updateTitle(debouncedTitle);
         }
-    }, [debouncedTitle, note.id]); // note.id check ensures we don't save to wrong note if switched fast
+    }, [debouncedTitle, note.id, note.isTrashed]); // note.id check ensures we don't save to wrong note if switched fast
 
     useEffect(() => {
-        if (provider) return; // Don't save content via REST if Hocuspocus is active
+        if (note.isTrashed) return; // Don't save if trashed
+
         if (debouncedContent !== note.content) {
-            updateContent(debouncedContent);
+            if (provider) {
+                // If Hocuspocus is active, we update Local DB ONLY (for UI preview),
+                // and rely on Hocuspocus for Server Sync.
+                // We SKIP the standard updateContent which triggers REST Sync Push.
+                import('./noteService').then(service => {
+                    service.updateNoteLocalOnly(note.id, { content: debouncedContent });
+                });
+            } else {
+                updateContent(debouncedContent);
+            }
         }
-    }, [debouncedContent, note.id, provider]);
+    }, [debouncedContent, note.id, provider, note.isTrashed, updateContent]);
 
 
     // -- Hocuspocus / Chat Logic --
     useEffect(() => {
-        isChatOpenRef.current = isChatOpen;
         if (isChatOpen) setUnreadCount(0);
     }, [isChatOpen]);
 
@@ -131,15 +141,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         provider.on('awarenessUpdate', updateCollaborators);
         updateCollaborators();
 
-        const chatArray = provider.document.getArray('chat');
-        const handleChatUpdate = () => {
-            if (!isChatOpenRef.current) setUnreadCount(prev => prev + 1);
-        };
-        chatArray.observe(handleChatUpdate);
-
         return () => {
             provider.off('awarenessUpdate', updateCollaborators);
-            chatArray.unobserve(handleChatUpdate);
         };
     }, [provider]);
 
@@ -203,6 +206,19 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     }), [provider, note.id, user, userColor]);
 
 
+    // Focus Handler
+    const editorRef = useRef<any>(null);
+
+    const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            // Focus the editor
+            if (editorRef.current) {
+                editorRef.current.focus();
+            }
+        }
+    };
+
     return (
         <div
             className="flex flex-col h-full bg-white dark:bg-gray-900 relative"
@@ -223,6 +239,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         type="text"
                         value={titleInput}
                         onChange={(e) => setTitleInput(e.target.value)}
+                        onKeyDown={handleTitleKeyDown}
                         placeholder={t('notes.titlePlaceholder')}
                         className="text-xl font-semibold bg-transparent border-none focus:outline-none text-gray-900 dark:text-white flex-1"
                     />
@@ -251,20 +268,50 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             noteId={note.id}
                             noteTags={note.tags || []}
                             onUpdate={() => queryClient.invalidateQueries({ queryKey: ['notes'] })}
+                            isVault={note.isVault}
                         />
                     </div>
 
                     <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
                     {/* Actions */}
-                    {collaborators.length > 1 && (
+                    {/* Only show chat if there are active collaborators OR (there are accepted shared users) */}
+                    {(collaborators.length > 1 || (note.sharedWith?.some(s => s.status === 'ACCEPTED'))) && (
                         <button onClick={() => setIsChatOpen(!isChatOpen)} className={clsx("p-2 rounded-full transition-colors relative", isChatOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}>
                             <MessageSquare className="w-5 h-5" />
                             {unreadCount > 0 && <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
                         </button>
                     )}
 
-                    <button onClick={() => setIsSharingModalOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"><Share2 className="w-5 h-5 text-gray-600 dark:text-gray-400" /></button>
+                    {!note.isVault && (
+                        /* Only show 'Shared' indicator (e.g. could change icon or something) if accepted? 
+                           The current icon is just a Share button that opens the modal. 
+                           The *badge* mentioned in request: "sharing badge in User 1's app". 
+                           Currently we don't have a distinct "Shared Badge" in this header, just the share button.
+                           Ah, maybe the user meant the "Shared with Me" badge in list? 
+                           Or maybe they want a visual indicator here?
+                           The prompt said: "The note sharing (and the sharing badge in User 1's app) must only become active if at least one invited user accepts".
+                           
+                           If "sharing badge" means the Chat button? Or maybe a "Shared" label?
+                           In the notes list (SharedWithMePage), we have indicators.
+                           But in the Editor? 
+                           
+                           Let's assume "active" means the functionality is considered "Shared".
+                           For the Share Button itself, it's always active to allow inviting more people.
+                           
+                           The User said: "sharing badge... must only become active".
+                           If there is no badge, maybe I should add one? 
+                           Or maybe they rely on the Chat button appearing?
+                           Or maybe in the `NotesPage` list view?
+                           
+                           Let's assume the "Chat Button" appearing is the main active state change here.
+                           AND if there is a "Shared" icon/badge in the list view.
+                           I will verify `NotesPage` (list) logic too.
+                           
+                           For now, updating Chat Button visibility condition.
+                        */
+                        <button onClick={() => setIsSharingModalOpen(true)} className={clsx("p-2 rounded-full transition-colors", (note.sharedWith?.some(s => s.status === 'ACCEPTED')) ? "text-emerald-600 bg-emerald-50" : "hover:bg-gray-100 dark:hover:bg-gray-800")}><Share2 className="w-5 h-5" /></button>
+                    )}
                     <button onClick={() => setIsAttachmentSidebarOpen(!isAttachmentSidebarOpen)} className={clsx("p-2 rounded-full transition-colors", isAttachmentSidebarOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}><Paperclip className="w-5 h-5" /></button>
 
                     <button onClick={handlePinToggle} className={clsx("p-2 rounded-full transition-colors", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-gray-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
@@ -278,12 +325,20 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             {/* Editor */}
             <div className="flex-1 overflow-y-auto relative">
                 <Editor
+                    ref={editorRef}
                     content={contentInput}
                     onChange={setContentInput}
                     provider={provider}
                     collaboration={collaborationConfig}
                 />
-                <ChatSidebar provider={provider} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} currentUser={{ id: user?.id || 'anon', name: user?.name || 'User', color: userColor }} />
+                <ChatSidebar
+                    key={note.id}
+                    noteId={note.id}
+                    isOpen={isChatOpen}
+                    onClose={() => setIsChatOpen(false)}
+                    currentUser={{ id: user?.id || 'anon', name: user?.name || 'User', color: userColor }}
+                    onNewMessage={() => setUnreadCount(prev => prev + 1)}
+                />
             </div>
 
             {/* Overlays */}

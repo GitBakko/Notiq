@@ -243,7 +243,14 @@
     "invalidEmail": "Indirizzo email non valido",
     "passwordLength": "La password deve essere di almeno 6 caratteri",
     "passwordMismatch": "Le password non corrispondono",
-    "invalidToken": "Token non valido o scaduto"
+    "invalidToken": "Token non valido o scaduto",
+    "errors": {
+      "emailRequired": "L'email è obbligatoria",
+      "invalidEmail": "Indirizzo email non valido",
+      "passwordRequired": "La password è obbligatoria",
+      "passwordTooShort": "La password deve essere di almeno 6 caratteri",
+      "userExists": "Utente già registrato con questa email"
+    }
   },
   "vault": {
     "title": "Vault Sicuro",
@@ -381,7 +388,13 @@
     "empty": "Nessuna notifica",
     "markAsRead": "Segna come letta",
     "pushNotifications": "Notifiche Push",
-    "pushDescription": "Ricevi notifiche anche quando l'app è chiusa"
+    "pushDescription": "Ricevi notifiche anche quando l'app è chiusa",
+    "shareNote": "{{sharerName}} ti ha invitato a collaborare sulla nota: {{itemName}}",
+    "shareNote_TITLE": "Invito alla Collaborazione",
+    "shareNotebook": "{{sharerName}} ti ha invitato a collaborare sul taccuino: {{itemName}}",
+    "shareNotebook_TITLE": "Invito alla Collaborazione",
+    "shareResponse": "{{responderName}} ha {{action}} il tuo invito a {{itemName}}",
+    "shareResponse_TITLE": "Aggiornamento Invito"
   },
   "encryption": {
     "locked": "Contenuto Criptato",

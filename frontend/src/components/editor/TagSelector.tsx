@@ -11,14 +11,15 @@ interface TagSelectorProps {
   noteId: string;
   noteTags: { tag: { id: string; name: string } }[];
   onUpdate: () => void;
+  isVault?: boolean;
 }
 
-export default function TagSelector({ noteId, noteTags = [], onUpdate }: TagSelectorProps) {
+export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault = false }: TagSelectorProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const { tags } = useTags();
+  const { tags } = useTags(isVault);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -70,7 +71,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate }: TagSele
   const handleCreateTag = async () => {
     if (!search.trim()) return;
     try {
-      const newTag = await createTag(search.trim());
+      const newTag = await createTag(search.trim(), isVault);
       await addTagToNote(noteId, newTag.id);
       queryClient.invalidateQueries({ queryKey: ['tags'] });
       onUpdate();

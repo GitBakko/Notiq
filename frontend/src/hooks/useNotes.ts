@@ -1,12 +1,20 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
+import { useAuthStore } from '../store/authStore';
 
 export function useNotes(notebookId?: string, search?: string, tagId?: string, onlyTrashed: boolean = false) {
+  const user = useAuthStore((state) => state.user);
+
   return useLiveQuery(async () => {
+    if (!user?.id) return [];
+
     try {
       let collection = db.notes.orderBy('createdAt').reverse();
 
       collection = collection.filter(note => {
+        // Must belong to current user
+        if (note.userId !== user.id) return false;
+
         // Exclude vault notes
         if (note.isVault) return false;
 
@@ -51,5 +59,5 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
       console.error('useNotes Error:', error);
       return [];
     }
-  }, [notebookId, search, tagId, onlyTrashed]);
+  }, [notebookId, search, tagId, onlyTrashed, user?.id]);
 }

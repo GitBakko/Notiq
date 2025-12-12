@@ -24,6 +24,7 @@ export interface Note {
     id: string;
     userId: string;
     permission: 'READ' | 'WRITE';
+    status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
     user: { id: string; name: string | null; email: string };
   }[];
   user?: { id: string; name: string | null; email: string };
@@ -101,6 +102,7 @@ export const createNote = async (data: { title: string; notebookId: string; cont
     type: 'CREATE',
     entity: 'NOTE',
     entityId: id,
+    userId,
     data: { ...data, id }, // Send ID to backend if supported
     createdAt: Date.now()
   });
@@ -113,23 +115,36 @@ export const createNote = async (data: { title: string; notebookId: string; cont
 
 export const updateNote = async (id: string, data: Partial<Note>) => {
   await db.notes.update(id, { ...data, updatedAt: new Date().toISOString(), syncStatus: 'updated' });
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({
     type: 'UPDATE',
     entity: 'NOTE',
     entityId: id,
+    userId,
     data,
     createdAt: Date.now()
   });
   return db.notes.get(id);
 };
 
+export const updateNoteLocalOnly = async (id: string, data: Partial<Note>) => {
+  // Updates local DB for UI/offline purposes but DOES NOT trigger sync queue.
+  // We assume Hocuspocus handles the server sync for this update.
+  // We DO NOT set syncStatus='updated' to avoid REST push.
+  // We DO update updatedAt so the UI shows it as recent.
+  await db.notes.update(id, { ...data, updatedAt: new Date().toISOString() });
+  return db.notes.get(id);
+};
+
 export const deleteNote = async (id: string) => {
   await db.notes.update(id, { isTrashed: true, syncStatus: 'updated' });
 
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({
     type: 'UPDATE',
     entity: 'NOTE',
     entityId: id,
+    userId,
     data: { isTrashed: true },
     createdAt: Date.now()
   });
@@ -137,10 +152,12 @@ export const deleteNote = async (id: string) => {
 
 export const restoreNote = async (id: string) => {
   await db.notes.update(id, { isTrashed: false, syncStatus: 'updated' });
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({
     type: 'UPDATE',
     entity: 'NOTE',
     entityId: id,
+    userId,
     data: { isTrashed: false },
     createdAt: Date.now()
   });
@@ -154,10 +171,12 @@ export const permanentlyDeleteNote = async (id: string) => {
   // Or maybe deleteNote should have sent UPDATE isTrashed=true?
 
   // Let's fix deleteNote to be a soft delete (UPDATE) and permanentlyDeleteNote to be hard delete (DELETE).
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({
     type: 'DELETE',
     entity: 'NOTE',
     entityId: id,
+    userId,
     createdAt: Date.now()
   });
 };

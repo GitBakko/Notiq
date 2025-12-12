@@ -7,16 +7,17 @@ import { useTags } from '../../hooks/useTags';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 
-export default function TagList({ onSelectTag, selectedTagId, hideHeader = false, isCreatingExternal, onCancelCreate }: {
+export default function TagList({ onSelectTag, selectedTagId, hideHeader = false, isCreatingExternal, onCancelCreate, isVault = false }: {
   onSelectTag: (tagId: string | undefined) => void,
   selectedTagId?: string,
   hideHeader?: boolean,
   isCreatingExternal?: boolean,
-  onCancelCreate?: () => void
+  onCancelCreate?: () => void,
+  isVault?: boolean
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { tags } = useTags();
+  const { tags } = useTags(isVault);
   const isLoading = !tags;
   const [isCreatingInternal, setIsCreatingInternal] = useState(false);
   const isCreating = isCreatingExternal || isCreatingInternal;
@@ -33,7 +34,7 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
   const [newTagName, setNewTagName] = useState('');
 
   const createMutation = useMutation({
-    mutationFn: createTag,
+    mutationFn: (name: string) => createTag(name, isVault),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
       handleCloseCreate();

@@ -43,6 +43,7 @@ export interface LocalTag {
   id: string;
   name: string;
   userId: string;
+  isVault?: boolean;
   syncStatus: 'synced' | 'created' | 'updated';
   _count?: {
     notes: number;
@@ -54,6 +55,7 @@ export interface SyncQueueItem {
   type: 'CREATE' | 'UPDATE' | 'DELETE';
   entity: 'NOTE' | 'NOTEBOOK' | 'TAG';
   entityId: string;
+  userId: string; // Added for data isolation
   data?: Record<string, unknown>;
   createdAt: number;
 }
@@ -91,6 +93,20 @@ class AppDatabase extends Dexie {
 
     this.version(6).stores({
       notes: 'id, notebookId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted',
+    });
+
+    this.version(7).stores({
+      tags: 'id, name, syncStatus, isVault',
+    });
+
+    this.version(8).stores({
+      notes: 'id, notebookId, userId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted',
+      notebooks: 'id, name, userId, updatedAt, syncStatus',
+      tags: 'id, name, userId, syncStatus, isVault',
+    });
+
+    this.version(9).stores({
+      syncQueue: '++id, type, entity, userId, createdAt'
     });
   }
 }

@@ -53,7 +53,7 @@ export const syncPull = async () => {
     console.log('Sync Pull: Fetching notes with includeTrashed=true');
     const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
     console.log(`Sync Pull: Received ${notesRes.data.length} notes from server`);
-    await db.transaction('rw', db.notes, async () => {
+    await db.transaction('rw', db.notes, db.syncQueue, async () => {
       // We need to be careful not to overwrite dirty notes
       // For MVP, let's just overwrite everything that is 'synced'
       // But wait, if we clear, we lose dirty notes.
@@ -71,6 +71,21 @@ export const syncPull = async () => {
       // Filter out server notes that conflict with local dirty notes (local wins temporarily until push)
       const notesToPut = serverNotes.filter(n => !dirtyIds.has(n.id));
 
+      // CRITICAL FIX: ZOMBIE RESURRECTION
+      // We must check if any of these "server notes" are actually queued for DELETION locally.
+      // If a note is in serverNotes but we have a pending DELETE in syncQueue, we MUST NOT re-insert it.
+      // The `dirtyIds` check handles UPDATEs (where syncStatus='updated'), but hard deletes use DELETE queue type
+      // and checking db.notes might fail if it was already deleted.
+
+      const pendingDeletes = await db.syncQueue
+        .where('entity').equals('NOTE')
+        .and(item => item.type === 'DELETE')
+        .toArray();
+
+      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+
+      const filteredNotesToPut = notesToPut.filter(n => !pendingDeleteIds.has(n.id));
+
       // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
       const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced').toArray();
       // Self-Healing Strategy:
@@ -82,42 +97,39 @@ export const syncPull = async () => {
       const missingOnServerIds = allLocalSyncedNotes.filter(n => !serverIds.has(n.id)).map(n => n.id);
 
       if (missingOnServerIds.length > 0) {
+        // Wait! We also need to respect pendingDeletes here.
+        // If it's missing on server AND we have a pending delete, WE SHOULD DELETE IT LOCALLY (or leave it deleted).
+        // But if it's "synced" locally, it implies the delete queue item shouldn't exist?
+        // Actually, if we soft-deleted (updated), it's "updated", not "synced".
+        // So pendingDeletes shouldn't be in allLocalSyncedNotes.
+        // So this logic is probably fine for soft deletes.
+        // But check hard deletes just in case.
+
         console.warn(`Sync Pull: Found ${missingOnServerIds.length} notes synced locally but missing on server. Triggering self-healing.`);
 
-        const notesToResurrect = allLocalSyncedNotes.filter(n => !serverIds.has(n.id));
+        const notesToResurrect = allLocalSyncedNotes.filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id));
 
-        await db.transaction('rw', db.notes, db.syncQueue, async () => {
-          for (const note of notesToResurrect) {
-            // Update local status to 'created' (or 'updated') to force a push
-            await db.notes.update(note.id, { syncStatus: 'updated', updatedAt: new Date().toISOString() });
+        for (const note of notesToResurrect) {
+          // Update local status to 'created' (or 'updated') to force a push
+          await db.notes.update(note.id, { syncStatus: 'updated', updatedAt: new Date().toISOString() });
 
-            // Add to sync queue as an UPDATE (or CREATE if we want to be safe, but UPDATE with upsert logic is usually safer)
-            // Actually, if it's missing on server, we might need CREATE. 
-            // Let's rely on the fact that our backend create/update logic is likely robust or we use CREATE.
-            // Note: backend createNote usually accepts ID.
-
-            // Let's use CREATE to be sure we re-insert it.
-            // We need to fetch the FULL note data including tags/attachments if not fully present in allLocalSyncedNotes
-            // But allLocalSyncedNotes is just the array from the query. Let's assume it has data.
-
-            await db.syncQueue.add({
-              type: 'CREATE', // Force re-creation on server
-              entity: 'NOTE',
-              entityId: note.id,
-              data: { ...note }, // Send full note data
-              createdAt: Date.now()
-            });
-          }
-        });
+          await db.syncQueue.add({
+            type: 'CREATE', // Force re-creation on server
+            entity: 'NOTE',
+            entityId: note.id,
+            data: { ...note }, // Send full note data
+            createdAt: Date.now()
+          });
+        }
 
       }
 
       // We only delete if we receive an explicit "deleted" signal, but our API doesn't send that yet.
       // So for now, we DISABLE the implicit deletion based on absence.
-      // await db.notes.bulkDelete(toDeleteIds); 
+      // await db.notes.bulkDelete(toDeleteIds);
 
       // Update local DB with server notes (wins over synced)
-      await db.notes.bulkPut(notesToPut);
+      await db.notes.bulkPut(filteredNotesToPut);
     });
 
     console.log('Sync Pull Completed');
@@ -127,13 +139,22 @@ export const syncPull = async () => {
 };
 
 
+import { useAuthStore } from '../../store/authStore';
+
 let isSyncing = false;
 
 export const syncPush = async () => {
   if (isSyncing) return;
   isSyncing = true;
   try {
-    const queue = await db.syncQueue.orderBy('createdAt').toArray();
+    const currentUserId = useAuthStore.getState().user?.id;
+    if (!currentUserId) return; // Cannot sync if not logged in
+
+    // Filter queue by userId. 
+    // We only process items that belong to the current user.
+    // Legacy items without userId will be ignored (and potentially cleaned up later or stuck, which prevents leakage).
+    const allQueue = await db.syncQueue.orderBy('createdAt').toArray();
+    const queue = allQueue.filter(item => item.userId === currentUserId);
 
     for (const item of queue) {
       try {

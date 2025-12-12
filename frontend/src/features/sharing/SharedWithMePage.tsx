@@ -7,12 +7,14 @@ import { getSharedNotebooks } from '../notebooks/notebookService';
 import clsx from 'clsx';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 
 interface SharedNote {
   id: string;
   noteId: string;
   userId: string;
   permission: 'READ' | 'WRITE';
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
   note: {
     id: string;
     title: string;
@@ -29,6 +31,7 @@ interface SharedNotebook {
   notebookId: string;
   userId: string;
   permission: 'READ' | 'WRITE';
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
   notebook: {
     id: string;
     name: string;
@@ -49,25 +52,58 @@ export default function SharedWithMePage() {
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [notes, notebooks] = await Promise.all([
-          getSharedNotes(),
-          getSharedNotebooks()
-        ]);
-        setSharedNotes(notes);
-        setSharedNotebooks(notebooks);
-      } catch (error) {
-        console.error('Failed to fetch shared items', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [notes, notebooks] = await Promise.all([
+        getSharedNotes(),
+        getSharedNotebooks()
+      ]);
+      setSharedNotes(notes);
+      setSharedNotebooks(notebooks);
+    } catch (error) {
+      console.error('Failed to fetch shared items', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchData();
   }, []);
+
+  const handleRespond = async (itemId: string, type: 'NOTE' | 'NOTEBOOK', action: 'accept' | 'decline') => {
+    try {
+      // We need a service function in frontend api to call /share/respond-id
+      // For now using raw fetch or api client if available here
+      // Assumption: api client logic is simpler
+      // Use auth store to get token
+      const token = useAuthStore.getState().token;
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/share/respond-id`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ itemId, type, action })
+      });
+
+      if (response.ok) {
+        fetchData(); // Reload list
+      } else {
+        console.error('Failed to respond');
+      }
+    } catch (e) {
+      console.error('Error responding', e);
+    }
+  };
+
+  const filterItems = (items: any[]) => {
+    const pending = items.filter(i => i.status === 'PENDING');
+    const accepted = items.filter(i => i.status === 'ACCEPTED');
+    return { pending, accepted };
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-900">
@@ -117,60 +153,91 @@ export default function SharedWithMePage() {
             {t('common.loading')}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activeTab === 'notes' ? (
-              sharedNotes.length === 0 ? (
-                <div className="col-span-full text-center text-gray-500 py-12">
-                  {t('sharing.noSharedNotes')}
-                </div>
-              ) : (
-                sharedNotes.map(item => (
-                  <Link
-                    key={item.id}
-                    to={`/notes?noteId=${item.note.id}`}
-                    className="block p-4 rounded-xl border border-gray-200 hover:border-emerald-500 hover:shadow-md transition-all bg-white dark:bg-gray-800 dark:border-gray-700 dark:hover:border-emerald-500"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <FileText className="text-gray-400 dark:text-gray-500" size={20} />
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                        {item.permission}
-                      </span>
+          <div className="space-y-8">
+            {/* PENDING SECTION */}
+            {(() => {
+              const { pending, accepted } = filterItems(activeTab === 'notes' ? sharedNotes : sharedNotebooks);
+              if (pending.length === 0 && accepted.length === 0) {
+                return (
+                  <div className="text-center text-gray-500 py-12">
+                    {activeTab === 'notes' ? t('sharing.noSharedNotes') : t('sharing.noSharedNotebooks')}
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  {pending.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">Pending Invitations</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {pending.map(item => {
+                          const data = activeTab === 'notes' ? (item as SharedNote).note : (item as SharedNotebook).notebook;
+                          return (
+                            <div key={item.id} className="block p-4 rounded-xl border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10 dark:border-yellow-900/30">
+                              <div className="flex items-start justify-between mb-2">
+                                <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500">INVITATION</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700">{item.permission}</span>
+                              </div>
+                              <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{(data as any).title || (data as any).name || t('notes.untitled')}</h3>
+                              <div className="text-xs text-gray-500 mt-2 mb-4">
+                                Invited by <span className="font-medium text-gray-700 dark:text-gray-300">{data.user.name || data.user.email}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleRespond((data as any).id, activeTab === 'notes' ? 'NOTE' : 'NOTEBOOK', 'accept')}
+                                  className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => handleRespond((data as any).id, activeTab === 'notes' ? 'NOTE' : 'NOTEBOOK', 'decline')}
+                                  className="flex-1 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 text-sm font-medium rounded-lg transition-colors dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{item.note.title || t('notes.untitled')}</h3>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
-                      <span>{t('sharing.sharedBy')}</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{item.note.user.name || item.note.user.email}</span>
+                  )}
+
+                  {/* ACCEPTED SECTION */}
+                  {accepted.length > 0 && (
+                    <div>
+                      {pending.length > 0 && <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1 mt-8">Shared with You</h3>}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {accepted.map(item => {
+                          const data = activeTab === 'notes' ? (item as SharedNote).note : (item as SharedNotebook).notebook;
+                          const link = activeTab === 'notes' ? `/notes?noteId=${data.id}` : `/notes?notebookId=${data.id}`;
+                          return (
+                            <Link
+                              key={item.id}
+                              to={link}
+                              className="block p-4 rounded-xl border border-gray-200 hover:border-emerald-500 hover:shadow-md transition-all bg-white dark:bg-gray-800 dark:border-gray-700 dark:hover:border-emerald-500"
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                {activeTab === 'notes' ? <FileText className="text-gray-400 dark:text-gray-500" size={20} /> : <Book className="text-gray-400 dark:text-gray-500" size={20} />}
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                  {item.permission}
+                                </span>
+                              </div>
+                              <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{(data as any).title || (data as any).name || t('notes.untitled')}</h3>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
+                                <span>{t('sharing.sharedBy')}</span>
+                                <span className="font-medium text-gray-700 dark:text-gray-300">{data.user.name || data.user.email}</span>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </Link>
-                ))
-              )
-            ) : (
-              sharedNotebooks.length === 0 ? (
-                <div className="col-span-full text-center text-gray-500 py-12">
-                  {t('sharing.noSharedNotebooks')}
-                </div>
-              ) : (
-                sharedNotebooks.map(item => (
-                  <Link
-                    key={item.id}
-                    to={`/notes?notebookId=${item.notebook.id}`}
-                    className="block p-4 rounded-xl border border-gray-200 hover:border-emerald-500 hover:shadow-md transition-all bg-white dark:bg-gray-800 dark:border-gray-700 dark:hover:border-emerald-500"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <Book className="text-gray-400 dark:text-gray-500" size={20} />
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                        {item.permission}
-                      </span>
-                    </div>
-                    <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{item.notebook.name}</h3>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
-                      <span>{t('sharing.sharedBy')}</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{item.notebook.user.name || item.notebook.user.email}</span>
-                    </div>
-                  </Link>
-                ))
-              )
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

@@ -7,32 +7,34 @@ import '../types';
 import { requestPasswordReset, resetPassword } from '../services/auth.service';
 
 const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
+  email: z.string({ required_error: 'auth.errors.emailRequired' }).email({ message: 'auth.errors.invalidEmail' }),
+  password: z.string({ required_error: 'auth.errors.passwordRequired' }).min(6, { message: 'auth.errors.passwordTooShort' }),
   name: z.string().optional(),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
+  email: z.string({ required_error: 'auth.errors.emailRequired' }).email({ message: 'auth.errors.invalidEmail' }),
+  password: z.string({ required_error: 'auth.errors.passwordRequired' }),
 });
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email(),
+  email: z.string({ required_error: 'auth.errors.emailRequired' }).email({ message: 'auth.errors.invalidEmail' }),
 });
 
 const resetPasswordSchema = z.object({
   token: z.string(),
-  newPassword: z.string().min(6),
+  newPassword: z.string({ required_error: 'auth.errors.passwordRequired' }).min(6, { message: 'auth.errors.passwordTooShort' }),
 });
 
 export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/register', async (request, reply) => {
+    // Custom error handling for Zod parsing to return just the first message or array?
+    // Using default parse for now, frontend handles array.
     const { email, password, name } = registerSchema.parse(request.body);
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return reply.status(400).send({ message: 'User already exists' });
+      return reply.status(400).send({ message: 'auth.errors.userExists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);

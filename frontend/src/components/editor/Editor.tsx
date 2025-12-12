@@ -11,7 +11,7 @@ import { FontFamily } from '@tiptap/extension-font-family';
 import { FontSize } from './FontSize';
 import { LineHeight } from './LineHeight';
 import EncryptedBlock from './extensions/EncryptedBlock';
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import EditorToolbar from './EditorToolbar';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
@@ -38,7 +38,11 @@ interface EditorProps {
   };
 }
 
-export default function Editor({ content, onChange, editable = true, onVoiceMemo, scrollable = true, collaboration, provider }: EditorProps) {
+export interface EditorHandle {
+  focus: () => void;
+}
+
+export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, onVoiceMemo, scrollable = true, collaboration, provider }, ref) {
   const isUpdating = useRef(false);
   const isFirstUpdate = useRef(true);
   const contentRef = useRef(content);
@@ -81,6 +85,14 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
                 if (!attributes.borderStyle) return {};
                 return { style: `border-style: ${attributes.borderStyle}` };
               },
+              borderColor: {
+                default: null,
+                parseHTML: element => element.style.borderColor,
+                renderHTML: attributes => {
+                  if (!attributes.borderColor) return {};
+                  return { style: `border-color: ${attributes.borderColor}` };
+                },
+              },
             },
             borderColor: {
               default: null,
@@ -103,6 +115,14 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
               renderHTML: attributes => {
                 if (!attributes.borderStyle) return {};
                 return { style: `border-style: ${attributes.borderStyle}` };
+              },
+              borderColor: {
+                default: null,
+                parseHTML: element => element.style.borderColor,
+                renderHTML: attributes => {
+                  if (!attributes.borderColor) return {};
+                  return { style: `border-color: ${attributes.borderColor}` };
+                },
               },
             },
             borderColor: {
@@ -181,6 +201,13 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
     },
   }, [provider]); // Re-initialize when provider changes
 
+  // Expose focus method
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      editor?.commands.focus('start');
+    }
+  }));
+
   // Sync editable state
   useEffect(() => {
     if (editor) {
@@ -226,26 +253,42 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
   useEffect(() => {
     if (provider && editor && collaboration?.enabled) {
       const handleSync = () => {
+        // Only inject content if the editor is empty AND the provided content is substantial
+        // AND we haven't already synced (which this callback should ensure)
         if (editor.isEmpty) {
           const currentContent = contentRef.current;
+
+          // Improved check for "empty" content
           const isPassedContentEmpty = !currentContent ||
             currentContent === '<p></p>' ||
             currentContent === '{"type":"doc","content":[{"type":"paragraph"}]}' ||
-            currentContent === '';
+            currentContent === '' ||
+            (typeof currentContent === 'string' && currentContent.trim() === '');
 
           if (!isPassedContentEmpty) {
-            let contentToSet: any = currentContent;
-            try {
-              const json = JSON.parse(currentContent);
-              if (typeof json === 'object' && json !== null) {
-                contentToSet = json;
-              }
-            } catch (e) { }
+            // Check if Yjs actually has content (provider.document is the Y.Doc)
+            // Tiptap syncs Y.XmlFragment 'default'
+            // @ts-ignore
+            const yXmlFragment = provider.document.getXmlFragment('default');
+            const yDocHasContent = yXmlFragment.length > 0;
 
-            try {
-              editor.commands.setContent(contentToSet);
-            } catch (err) {
-              console.error('Editor: Injection failed', err);
+            if (!yDocHasContent) {
+              let contentToSet: any = currentContent;
+              try {
+                const json = JSON.parse(currentContent);
+                if (typeof json === 'object' && json !== null) {
+                  contentToSet = json;
+                }
+              } catch (e) { }
+
+              try {
+                console.log('Editor: Injecting local content into empty collaborative document');
+                editor.commands.setContent(contentToSet);
+              } catch (err) {
+                console.error('Editor: Injection failed', err);
+              }
+            } else {
+              console.log('Editor: Collaborative document has content, skipping local injection');
             }
           }
         }
@@ -284,4 +327,4 @@ export default function Editor({ content, onChange, editable = true, onVoiceMemo
       </div>
     </div>
   );
-}
+});

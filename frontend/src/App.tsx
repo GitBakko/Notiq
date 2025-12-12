@@ -14,6 +14,7 @@ import SettingsPage from './features/settings/SettingsPage';
 import ProfilePage from './features/user/ProfilePage';
 import VaultPage from './features/vault/VaultPage';
 import SharedWithMePage from './features/sharing/SharedWithMePage';
+import RespondToShare from './pages/RespondToShare';
 
 import { Toaster } from 'react-hot-toast';
 
@@ -47,6 +48,7 @@ function App() {
 
         {/* Public Routes */}
         <Route path="public/notes/:noteId" element={<PublicNotePage />} />
+        <Route path="share/respond" element={<RespondToShare />} />
 
         {/* Auth Routes */}
         <Route path="login" element={<LoginPage />} />

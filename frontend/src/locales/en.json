@@ -185,7 +185,14 @@
     "invalidEmail": "Invalid email address",
     "passwordLength": "Password must be at least 6 characters",
     "passwordMismatch": "Passwords do not match",
-    "invalidToken": "Invalid or expired token"
+    "invalidToken": "Invalid or expired token",
+    "errors": {
+      "emailRequired": "Email is required",
+      "invalidEmail": "Invalid email address",
+      "passwordRequired": "Password is required",
+      "passwordTooShort": "Password must be at least 6 characters",
+      "userExists": "User already exists with this email"
+    }
   },
   "vault": {
     "title": "Secure Vault",
@@ -370,7 +377,13 @@
     "empty": "No notifications",
     "markAsRead": "Mark as read",
     "pushNotifications": "Push Notifications",
-    "pushDescription": "Receive notifications even when the app is closed"
+    "pushDescription": "Receive notifications even when the app is closed",
+    "shareNote": "{{sharerName}} invited you to collaborate on note: {{itemName}}",
+    "shareNote_TITLE": "Collaboration Invitation",
+    "shareNotebook": "{{sharerName}} invited you to collaborate on notebook: {{itemName}}",
+    "shareNotebook_TITLE": "Collaboration Invitation",
+    "shareResponse": "{{responderName}} {{action}} your invitation to {{itemName}}",
+    "shareResponse_TITLE": "Invitation Update"
   },
   "encryption": {
     "locked": "Encrypted Content",

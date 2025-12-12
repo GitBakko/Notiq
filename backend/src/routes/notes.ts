@@ -36,7 +36,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.post('/', async (request, reply) => {
     console.log('POST /notes payload:', JSON.stringify(request.body, null, 2));
     const { notebookId, title, content, id, isVault, isEncrypted } = createNoteSchema.parse(request.body);
-    const note = await noteService.createNote(request.user.id, notebookId, title, content, id, isVault, isEncrypted);
+    const note = await noteService.createNote(request.user.id, title, (content || ''), notebookId, isVault, isEncrypted, id);
     console.log('POST /notes created note:', note.id);
     return note;
   });

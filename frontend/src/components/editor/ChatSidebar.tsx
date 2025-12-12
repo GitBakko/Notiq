@@ -1,20 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
-import { HocuspocusProvider } from '@hocuspocus/provider';
 import { Send, X, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../../lib/api';
+import toast from 'react-hot-toast';
 
 interface ChatMessage {
   id: string;
   userId: string;
-  userName: string;
-  userColor: string;
   content: string;
-  timestamp: number;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+  }
 }
 
 interface ChatSidebarProps {
-  provider: HocuspocusProvider | null;
+  noteId: string;
   isOpen: boolean;
   onClose: () => void;
   currentUser: {
@@ -22,30 +27,70 @@ interface ChatSidebarProps {
     name: string;
     color: string;
   };
+  onNewMessage?: () => void;
 }
 
-export default function ChatSidebar({ provider, isOpen, onClose, currentUser }: ChatSidebarProps) {
+// Simple notification sound (Beep)
+const BEEP_SOUND = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA';
+
+export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNewMessage }: ChatSidebarProps) {
   const { t } = useTranslation();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const [prevMessageCount, setPrevMessageCount] = useState(0);
+  const isInitializedRef = useRef(false);
 
+  // Fetch messages
+  const { data: messages = [], isLoading } = useQuery({
+    queryKey: ['chat', noteId],
+    queryFn: async () => {
+      const res = await api.get<ChatMessage[]>(`/chat/${noteId}`);
+      return res.data;
+    },
+    enabled: !!noteId,
+    refetchInterval: 3000,
+  });
+
+  // Sound and Notification Logic
   useEffect(() => {
-    if (!provider) return;
+    // If loading, do nothing
+    if (isLoading) return;
 
-    const chatArray = provider.document.getArray<ChatMessage>('chat');
+    // First load: just sync state, don't notify
+    if (!isInitializedRef.current) {
+      setPrevMessageCount(messages.length);
+      isInitializedRef.current = true;
+      return;
+    }
 
-    const updateMessages = () => {
-      setMessages(chatArray.toArray());
-    };
+    // Subsequent updates
+    if (messages.length > prevMessageCount) {
+      // Play sound
+      const sound = new Audio(BEEP_SOUND);
+      sound.volume = 0.5;
+      sound.play().catch(e => console.warn('Audio play failed', e));
 
-    chatArray.observe(updateMessages);
-    updateMessages();
+      // Notify parent if closed
+      if (!isOpen && onNewMessage) {
+        onNewMessage();
+      }
+    }
+    setPrevMessageCount(messages.length);
+  }, [messages.length, isOpen, onNewMessage, prevMessageCount, isLoading]);
 
-    return () => {
-      chatArray.unobserve(updateMessages);
-    };
-  }, [provider]);
+  // Send message
+  const sendMutation = useMutation({
+    mutationFn: async (content: string) => {
+      await api.post('/chat', { noteId, content });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat', noteId] });
+    },
+    onError: () => {
+      toast.error(t('chat.sendFailed', 'Failed to send message'));
+    }
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -55,23 +100,27 @@ export default function ChatSidebar({ provider, isOpen, onClose, currentUser }: 
 
   const handleSend = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!newMessage.trim() || !provider) return;
+    const content = newMessage.trim();
+    if (!content) return;
 
-    const chatArray = provider.document.getArray<ChatMessage>('chat');
-    const message: ChatMessage = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userColor: currentUser.color,
-      content: newMessage.trim(),
-      timestamp: Date.now(),
-    };
-
-    chatArray.push([message]);
-    setNewMessage('');
+    setNewMessage(''); // Optimistic clear
+    sendMutation.mutate(content);
   };
 
-  if (!isOpen) return null;
+  // Helper for colors
+  const getUserColor = (id: string, name: string) => {
+    let hash = 0;
+    const str = id + name;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - c.length) + c;
+  }
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="w-80 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-full absolute right-0 top-0 z-20 shadow-xl">
@@ -88,20 +137,23 @@ export default function ChatSidebar({ provider, isOpen, onClose, currentUser }: 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => {
           const isMe = msg.userId === currentUser.id;
+          const userName = msg.user.name || msg.user.email;
+          const userColor = getUserColor(msg.userId, userName);
+
           return (
             <div key={msg.id} className={clsx("flex flex-col", isMe ? "items-end" : "items-start")}>
               <div className="flex items-center gap-1 mb-1">
                 {!isMe && (
                   <div
                     className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
-                    style={{ backgroundColor: msg.userColor }}
+                    style={{ backgroundColor: userColor }}
                   >
-                    {msg.userName[0]}
+                    {userName[0].toUpperCase()}
                   </div>
                 )}
-                <span className="text-xs text-gray-500 dark:text-gray-400">{msg.userName}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{userName}</span>
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               <div
@@ -128,10 +180,11 @@ export default function ChatSidebar({ provider, isOpen, onClose, currentUser }: 
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder={t('chat.placeholder', 'Type a message...')}
             className="flex-1 rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-emerald-500 focus:border-emerald-500"
+            disabled={sendMutation.isPending}
           />
           <button
             type="submit"
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || sendMutation.isPending}
             className="p-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send size={18} />

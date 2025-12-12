@@ -17,6 +17,7 @@ import NoteEditor from '../notes/NoteEditor';
 import clsx from 'clsx';
 
 import { useNotebooks } from '../../hooks/useNotebooks';
+import TagList from '../tags/TagList';
 
 export default function VaultPage() {
   const { t } = useTranslation();
@@ -152,6 +153,22 @@ export default function VaultPage() {
             className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border-none rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm dark:text-white"
           />
         </div>
+      </div>
+
+      <div className="border-b border-gray-200 dark:border-gray-800">
+        <TagList
+          onSelectTag={(tagId) => {
+            // Filter vault notes by tag? 
+            // Current vaultNotes query only filters by search query.
+            // Ideally we should add tag filtering to vaultNotes query too.
+            // For now, let's just allow selecting/creating.
+            console.log('Selected tag in vault:', tagId);
+            // Implement tag filter logic if needed, but for now just showing the list fixes the "visibility" issue.
+          }}
+          isVault={true}
+          isCreatingExternal={false}
+          hideHeader={false}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">

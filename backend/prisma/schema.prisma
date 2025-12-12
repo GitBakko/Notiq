@@ -22,6 +22,7 @@ model User {
   avatarUrl String?
   resetToken String?
   resetTokenExpiry DateTime?
+  locale    String   @default("en")
   createdAt DateTime @default(now())
   
   notebooks Notebook[]
@@ -31,6 +32,8 @@ model User {
   sharedNotebooks SharedNotebook[]
   notifications   Notification[]
   pushSubscriptions PushSubscription[]
+  chatMessages    ChatMessage[]
+  auditLogs       AuditLog[]
 }
 
 model Notebook {
@@ -56,6 +59,7 @@ model Note {
   tags        TagsOnNotes[]
   attachments Attachment[]
   sharedWith  SharedNote[]
+  chatMessages ChatMessage[]
   isTrashed   Boolean  @default(false)
   reminderDate DateTime?
   isReminderDone Boolean @default(false)
@@ -75,13 +79,15 @@ model Tag {
   user   User     @relation(fields: [userId], references: [id])
   notes  TagsOnNotes[]
   
-  @@unique([userId, name])
+  isVault Boolean @default(false)
+  
+  @@unique([userId, name, isVault])
 }
 
 model TagsOnNotes {
   noteId String
   tagId  String
-  note   Note @relation(fields: [noteId], references: [id])
+  note   Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
   tag    Tag  @relation(fields: [tagId], references: [id])
 
   @@id([noteId, tagId])
@@ -90,7 +96,7 @@ model TagsOnNotes {
 model Attachment {
   id        String   @id @default(uuid())
   noteId    String
-  note      Note     @relation(fields: [noteId], references: [id])
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
   url       String
   filename  String
   mimeType  String
@@ -114,6 +120,7 @@ model SharedNote {
   userId     String
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   permission Permission @default(READ)
+  status     ShareStatus @default(PENDING)
   createdAt  DateTime   @default(now())
 
   @@unique([noteId, userId])
@@ -126,6 +133,7 @@ model SharedNotebook {
   userId     String
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   permission Permission @default(READ)
+  status     ShareStatus @default(PENDING)
   createdAt  DateTime   @default(now())
 
   @@unique([notebookId, userId])
@@ -148,6 +156,7 @@ enum NotificationType {
   SHARE_NOTEBOOK
   SYSTEM
   REMINDER
+  CHAT_MESSAGE
 }
 
 model PushSubscription {
@@ -158,4 +167,29 @@ model PushSubscription {
   keys      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  noteId    String
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+}
+
+enum ShareStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     String
+  details   Json?
+  createdAt DateTime @default(now())
 }

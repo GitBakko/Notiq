@@ -8,7 +8,10 @@ export const getNotebooks = async () => {
   return db.notebooks.orderBy('name').toArray();
 };
 
+import { useAuthStore } from '../../store/authStore';
+
 export const createNotebook = async (name: string) => {
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   // Check for duplicate name
   const existing = await db.notebooks.where('name').equals(name).first();
   if (existing) {
@@ -19,7 +22,7 @@ export const createNotebook = async (name: string) => {
   const newNotebook: LocalNotebook = {
     id,
     name,
-    userId: 'current-user', // Placeholder
+    userId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     syncStatus: 'created'
@@ -30,6 +33,7 @@ export const createNotebook = async (name: string) => {
     type: 'CREATE',
     entity: 'NOTEBOOK',
     entityId: id,
+    userId,
     data: { id, name },
     createdAt: Date.now()
   });
@@ -45,10 +49,12 @@ export const updateNotebook = async (id: string, name: string) => {
   }
 
   await db.notebooks.update(id, { name, updatedAt: new Date().toISOString(), syncStatus: 'updated' });
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({
     type: 'UPDATE',
     entity: 'NOTEBOOK',
     entityId: id,
+    userId,
     data: { name },
     createdAt: Date.now()
   });
@@ -62,10 +68,12 @@ export const deleteNotebook = async (id: string) => {
   }
 
   await db.notebooks.delete(id);
+  const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({
     type: 'DELETE',
     entity: 'NOTEBOOK',
     entityId: id,
+    userId,
     createdAt: Date.now()
   });
 };

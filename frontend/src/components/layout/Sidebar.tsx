@@ -347,6 +347,7 @@ export default function Sidebar() {
                 hideHeader={true}
                 isCreatingExternal={isNewTagOpen}
                 onCancelCreate={() => setIsNewTagOpen(false)}
+                isVault={location.pathname.startsWith('/vault')}
               />
             )}
           </div>

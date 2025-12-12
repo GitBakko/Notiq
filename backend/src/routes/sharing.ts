@@ -19,7 +19,56 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     return note;
   });
 
+  // Respond to Share Invitation
+  fastify.post('/respond', async (request, reply) => {
+    const { token, action } = request.body as { token: string; action: 'accept' | 'decline' };
+
+    // No auth middleware required for this, as it depends on the token?
+    // Actually, usually users should be logged in to accept, so we know who is accepting?
+    // But the token contains the userId. So technically we can trust the token.
+    // However, for security, maybe require login?
+    // The requirement says "Link in email". If they click it, they might not be logged in.
+    // Ideally, the token validates them.
+    // But our route hook `fastify.addHook('onRequest', fastify.authenticate);` is applied to ALL routes in this file because of line 22!
+    // We need to support unauthenticated access OR move this route above the hook.
+    // Line 15 (public note) is above the hook.
+    // I should move this route above the hook or ensure the user logs in.
+    // For specific user-based sharing, they MUST be logged in as the correct user to avoid confusion?
+    // But the JWT encodes userId. If I use the token to identify them, I don't need the session.
+    // However, `respondToShare` updates `SharedNote` which is linked to a user.
+    // Use the token.
+
+    // BUT wait, line 22 applies to everything below.
+    // I probably want to allow responding without being logged in (e.g. on mobile/different device).
+    // So I should place this route ABOVE line 22.
+
+    try {
+      const result = await sharingService.respondToShare(token, action);
+      return result;
+    } catch (error: any) {
+      if (error.message === 'Invalid or expired token') {
+        return reply.status(400).send({ message: 'Invalid or expired invitation' });
+      }
+      throw error;
+    }
+  });
+
   fastify.addHook('onRequest', fastify.authenticate);
+
+  // Respond to Share by ID (Directly from dashboard)
+  fastify.post('/respond-id', async (request, reply) => {
+    const { itemId, type, action } = request.body as { itemId: string; type: 'NOTE' | 'NOTEBOOK'; action: 'accept' | 'decline' };
+
+    try {
+      const result = await sharingService.respondToShareById(request.user.id, itemId, type, action);
+      return result;
+    } catch (error: any) {
+      if (error.message === 'Invitation not found') {
+        return reply.status(404).send({ message: 'Invitation not found' });
+      }
+      throw error;
+    }
+  });
 
   // Share Note
   fastify.post('/notes/:id', async (request, reply) => {
@@ -36,7 +85,11 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.message === 'Note not found or access denied') {
         return reply.status(403).send({ message: 'Access denied' });
       }
-      throw error;
+      if (error.message === 'Cannot share with yourself') {
+        return reply.status(400).send({ message: 'Cannot share with yourself' });
+      }
+      console.error('Share Note Error:', error);
+      return reply.status(500).send({ message: error.message || 'Internal Server Error' });
     }
   });
 
@@ -51,7 +104,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.code === 'P2025') { // Record to delete does not exist
         return { success: true };
       }
-      throw error;
+      console.error('Revoke Share Error:', error);
+      return reply.status(500).send({ message: error.message || 'Internal Server Error' });
     }
   });
 
@@ -76,7 +130,11 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.message === 'Notebook not found or access denied') {
         return reply.status(403).send({ message: 'Access denied' });
       }
-      throw error;
+      if (error.message === 'Cannot share with yourself') {
+        return reply.status(400).send({ message: 'Cannot share with yourself' });
+      }
+      console.error('Share Notebook Error:', error);
+      return reply.status(500).send({ message: error.message || 'Internal Server Error' });
     }
   });
 

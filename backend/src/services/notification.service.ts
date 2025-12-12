@@ -2,7 +2,7 @@ import prisma from '../plugins/prisma';
 
 export const createNotification = async (
   userId: string,
-  type: 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'SYSTEM' | 'REMINDER',
+  type: 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'SYSTEM' | 'REMINDER' | 'CHAT_MESSAGE',
   title: string,
   message: string,
   data?: any
