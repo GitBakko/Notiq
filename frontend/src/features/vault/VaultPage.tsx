@@ -110,7 +110,8 @@ export default function VaultPage() {
     retry: false,
   });
 
-  const selectedNote = (vaultNotes?.find(n => n.id === selectedNoteId) || fetchedNote) as unknown as import('../notes/noteService').Note;
+  // Prefer fetchedNote (has full content from GET /notes/:id) over list note (no content)
+  const selectedNote = (fetchedNote || vaultNotes?.find(n => n.id === selectedNoteId)) as unknown as import('../notes/noteService').Note;
 
   // Auto-close if note is removed from vault
   useEffect(() => {

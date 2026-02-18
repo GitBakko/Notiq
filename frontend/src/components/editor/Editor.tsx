@@ -7,6 +7,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Link from '@tiptap/extension-link';
+import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
 import { FontSize } from './FontSize';
@@ -193,6 +194,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
       FontFamily,
       FontSize,
       LineHeight,
+      Underline,
       EncryptedBlock,
     ];
 
@@ -227,9 +229,19 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     return baseExtensions;
   }, [provider, collaboration?.enabled, collaboration?.user]);
 
+  // Parse JSON string to object for TipTap (it treats strings as HTML)
+  const parsedInitialContent = useMemo(() => {
+    if (collaboration?.enabled || !content) return undefined;
+    try {
+      const json = JSON.parse(content);
+      if (typeof json === 'object' && json !== null) return json;
+    } catch (e) { /* not JSON, treat as HTML */ }
+    return content;
+  }, []); // Only compute once on mount — sync effect handles updates
+
   const editor = useEditor({
     extensions,
-    content: collaboration?.enabled ? undefined : content, // Ignore initial content if collaboration is enabled
+    content: parsedInitialContent,
     editable,
     onUpdate: ({ editor }) => {
       isUpdating.current = true;

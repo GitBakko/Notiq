@@ -193,7 +193,8 @@ export const hocuspocus = new Server({
             const json = JSON.parse(note.content);
             // @ts-ignore
             const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
-            return Y.encodeStateAsUpdate(doc);
+            const state = Y.encodeStateAsUpdate(doc);
+            return state;
           } catch (e) {
             logger.error(e, 'Failed to parse note content as JSON, attempting fallback');
             // Fallback for legacy HTML content
@@ -235,6 +236,21 @@ export const hocuspocus = new Server({
         // @ts-ignore
         const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
         const contentStr = JSON.stringify(json);
+
+        // Guard: prevent overwriting substantial content with an empty Yjs doc
+        const isNewEmpty = contentStr.length < 150;
+        if (isNewEmpty) {
+          const existing = await prisma.note.findUnique({
+            where: { id: documentName },
+            select: { content: true },
+          });
+          if (existing?.content && existing.content.length > 150) {
+            logger.warn({ documentName, newLen: contentStr.length, oldLen: existing.content.length },
+              'Hocuspocus store: blocked empty content overwrite');
+            return;
+          }
+        }
+
         const searchText = extractTextFromTipTapJson(contentStr);
 
         await prisma.note.update({

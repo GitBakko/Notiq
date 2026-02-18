@@ -54,11 +54,12 @@ export default function NotesPage() {
   const { data: fetchedNote, isLoading: isLoadingNote } = useQuery({
     queryKey: ['note', selectedNoteId],
     queryFn: () => getNote(selectedNoteId!),
-    enabled: !!selectedNoteId && !selectedNote,
+    enabled: !!selectedNoteId,
     retry: false,
   });
 
-  const noteToDisplay = selectedNote || fetchedNote;
+  // Prefer fetchedNote (has full content from GET /notes/:id) over selectedNote (from list, no content)
+  const noteToDisplay = fetchedNote || selectedNote;
 
   // Auto-close if note is moved to vault (or if opened via link but is vault)
   useEffect(() => {

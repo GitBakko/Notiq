@@ -116,6 +116,7 @@ model Note {
   updatedAt   DateTime @updatedAt
   isVault     Boolean  @default(false)
   isEncrypted Boolean  @default(false)
+  searchVector Unsupported("tsvector")?
 
   @@index([userId, isTrashed])
   @@index([notebookId])

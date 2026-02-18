@@ -201,6 +201,19 @@ export const updateNote = async (userId: string, id: string, data: {
       }
     }
 
+    // Guard: prevent overwriting substantial content with an empty TipTap doc
+    // An empty doc is ~93 chars: {"type":"doc","content":[{"type":"paragraph",...}]}
+    if (rest.content !== undefined) {
+      const newLen = rest.content.length;
+      const oldLen = note.content?.length ?? 0;
+      const isNewEmpty = newLen < 150;
+      const isOldSubstantial = oldLen > 150;
+      if (isNewEmpty && isOldSubstantial) {
+        // Drop the content field — don't overwrite real content with empty
+        delete (rest as any).content;
+      }
+    }
+
     // Recalculate searchText if content changed
     const updateData: any = { ...rest, updatedAt: new Date() };
     if (rest.content && !rest.isEncrypted && !note.isEncrypted) {
