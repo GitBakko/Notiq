@@ -24,6 +24,7 @@ model User {
   resetTokenExpiry DateTime?
   locale    String   @default("en")
   createdAt DateTime @default(now())
+  lastActiveAt DateTime @default(now())
   
   notebooks Notebook[]
   notes     Note[]
@@ -33,7 +34,51 @@ model User {
   notifications   Notification[]
   pushSubscriptions PushSubscription[]
   chatMessages    ChatMessage[]
+  aiConversations AiConversation[]
   auditLogs       AuditLog[]
+  
+  // Auth & Invites
+  role            Role     @default(USER)
+  isVerified      Boolean  @default(false)
+  verificationToken String?
+  verificationTokenExpires DateTime?
+  invitationCode  String? // The code they used to register
+  invitesAvailable Int     @default(2)
+  tokenVersion     Int     @default(0)
+
+  createdInvitations Invitation[] @relation("CreatedInvitations")
+  usedInvitation     Invitation?  @relation("UsedInvitation")
+
+  ownedGroups      Group[]       @relation("OwnedGroups")
+  groupMemberships GroupMember[] @relation("GroupMemberships")
+}
+
+enum Role {
+  USER
+  SUPERADMIN
+}
+
+model Invitation {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  creatorId String
+  creator   User     @relation("CreatedInvitations", fields: [creatorId], references: [id])
+  usedById  String?  @unique
+  usedBy    User?    @relation("UsedInvitation", fields: [usedById], references: [id])
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+  status    InvitationStatus @default(PENDING)
+}
+
+enum InvitationStatus {
+  PENDING
+  USED
+}
+
+model SystemSetting {
+  key         String  @id
+  value       String
+  description String?
 }
 
 model Notebook {
@@ -60,6 +105,7 @@ model Note {
   attachments Attachment[]
   sharedWith  SharedNote[]
   chatMessages ChatMessage[]
+  aiConversations AiConversation[]
   isTrashed   Boolean  @default(false)
   reminderDate DateTime?
   isReminderDone Boolean @default(false)
@@ -157,6 +203,8 @@ enum NotificationType {
   SYSTEM
   REMINDER
   CHAT_MESSAGE
+  GROUP_INVITE
+  GROUP_REMOVE
 }
 
 model PushSubscription {
@@ -192,4 +240,65 @@ model AuditLog {
   event     String
   details   Json?
   createdAt DateTime @default(now())
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model InvitationRequest {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  status    RequestStatus @default(PENDING)
+  ipAddress String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AiConversation {
+  id        String   @id @default(uuid())
+  noteId    String
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   // "user" | "assistant"
+  content   String
+  operation String?  // "ask" | "summarize" | "continue" | "improve" | "tags" | "translate"
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model Group {
+  id             String               @id @default(uuid())
+  name           String
+  description    String?
+  ownerId        String
+  owner          User                 @relation("OwnedGroups", fields: [ownerId], references: [id], onDelete: Cascade)
+  members        GroupMember[]
+  pendingInvites PendingGroupInvite[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model GroupMember {
+  groupId  String
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@id([groupId, userId])
+}
+
+model PendingGroupInvite {
+  id        String   @id @default(uuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  email     String
+  invitedBy String
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, email])
 }

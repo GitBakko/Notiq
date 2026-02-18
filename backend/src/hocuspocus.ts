@@ -5,6 +5,7 @@ import { TiptapTransformer } from '@hocuspocus/transformer';
 import prisma from './plugins/prisma';
 import jwt from 'jsonwebtoken';
 import * as Y from 'yjs';
+import { extractTextFromTipTapJson } from './utils/extractText';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -15,7 +16,10 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
 // import Link from '@tiptap/extension-link';
 import { Node, Extension } from '@tiptap/core';
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
 
 // Define custom extensions to match frontend
 const EncryptedBlock = Node.create({
@@ -27,6 +31,9 @@ const EncryptedBlock = Node.create({
       ciphertext: {
         default: '',
       },
+      createdBy: {
+        default: null,
+      }
     }
   },
   parseHTML() {
@@ -119,7 +126,7 @@ const LineHeight = Extension.create({
   addOptions() {
     return {
       types: ['paragraph', 'heading'],
-      defaultLineHeight: '0.5',
+      defaultLineHeight: '1.5',
     };
   },
 
@@ -227,11 +234,14 @@ export const hocuspocus = new Server({
 
         // @ts-ignore
         const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
+        const contentStr = JSON.stringify(json);
+        const searchText = extractTextFromTipTapJson(contentStr);
 
         await prisma.note.update({
           where: { id: documentName },
           data: {
-            content: JSON.stringify(json),
+            content: contentStr,
+            searchText,
             updatedAt: new Date(),
           },
         });
@@ -262,17 +272,21 @@ export const hocuspocus = new Server({
       }
 
       const isOwner = note.userId === userId;
-      const isShared = note.sharedWith.some((share: any) => share.userId === userId);
+      const share = note.sharedWith.find((s: any) => s.userId === userId && s.status === 'ACCEPTED');
+      const isShared = !!share;
 
       if (!isOwner && !isShared) {
         throw new Error('Forbidden');
       }
+
+      const readOnly = !isOwner && share?.permission === 'READ';
 
       return {
         user: {
           id: userId,
           name: decoded.name || 'User',
         },
+        readOnly,
       };
 
     } catch (err) {

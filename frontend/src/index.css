@@ -157,29 +157,41 @@ body {
   color: #fff;
 }
 
+/* Override Tailwind Typography prose max-width (65ch) */
+.ProseMirror {
+  max-width: none !important;
+}
+
 /* Table Styles */
 .ProseMirror table {
   border-collapse: collapse;
   table-layout: fixed;
-  width: 100%;
   margin: 0;
-  overflow: hidden;
+  border: 1px solid #d1d5db;
 }
 
 .ProseMirror td,
 .ProseMirror th {
   min-width: 1em;
-  border: 1px solid #ced4da;
-  padding: 3px 5px;
+  border: 1px solid #d1d5db;
+  padding: 4px 8px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.2;
+  font-size: 14px;
 }
 
 .ProseMirror th {
   font-weight: bold;
   text-align: left;
   background-color: #f1f3f5;
+}
+
+.dark .ProseMirror table {
+  border-color: #4b5563;
 }
 
 .dark .ProseMirror th {
@@ -189,6 +201,19 @@ body {
 
 .dark .ProseMirror td {
   border-color: #4b5563;
+}
+
+/* Prevent Tailwind Typography from scaling table cells */
+:is(.prose, .prose-sm, .prose-lg, .prose-xl, .prose-2xl) :is(td, th) {
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+  padding: 4px 8px !important;
+}
+
+/* Force line-height on ALL elements inside table cells (prose overrides p, a, li, etc.) */
+.ProseMirror td *,
+.ProseMirror th * {
+  line-height: 1.2 !important;
 }
 
 .ProseMirror .selectedCell:after {
@@ -210,11 +235,22 @@ body {
   bottom: -2px;
   width: 4px;
   background-color: #adf;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: col-resize;
+  z-index: 20;
 }
 
 .ProseMirror.resize-cursor {
   cursor: col-resize;
+}
+
+/* Row Resize */
+.ProseMirror .row-resize-active {
+  border-bottom: 2px solid #adf;
+}
+
+.ProseMirror.resize-row-cursor {
+  cursor: row-resize;
 }
 
 /* Table Selection Highlight */

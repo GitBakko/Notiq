@@ -5,7 +5,7 @@ import VaultSetup from './VaultSetup';
 import VaultUnlock from './VaultUnlock';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Menu, Plus, Lock } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -18,6 +18,8 @@ import clsx from 'clsx';
 
 import { useNotebooks } from '../../hooks/useNotebooks';
 import TagList from '../tags/TagList';
+import { useImport } from '../../hooks/useImport';
+import { FileDown } from 'lucide-react';
 
 export default function VaultPage() {
   const { t } = useTranslation();
@@ -52,6 +54,21 @@ export default function VaultPage() {
     },
     onError: () => {
       toast.error(t('notes.createFailed'));
+    }
+  });
+
+  const { importFile, isUploading, hiddenInput } = useImport({
+    onSuccess: () => {
+      // LiveQuery updates automatically? 
+      // If dexie notes are updated, yes. 
+      // NOTE: Import saves to MySQL (backend). Sync pulls it to Dexie. 
+      // So it might take a moment to appear if Sync isn't instant.
+      // We might need to trigger sync pull?
+      queryClient.invalidateQueries({ queryKey: ['notes'] }); // This triggers standard react-query notes, not liveQuery?
+      // Is Vault Notes using `useLiveQuery` from dexie? Yes.
+      // Dexie needs to sync down.
+      // Trigger a sync pull manually?
+      // For MVP, user can refresh or wait for sync interval.
     }
   });
 
@@ -133,6 +150,10 @@ export default function VaultPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('vault.title')}</h1>
         </div>
         <div className="flex items-center gap-2">
+          {hiddenInput}
+          <Button onClick={() => importFile(undefined, true)} variant="ghost" size="icon" className="h-8 w-8 rounded-full" title={t('settings.importTitle')} disabled={isUploading}>
+            <FileDown size={16} />
+          </Button>
           <Button onClick={handleCreateSecureNote} variant="primary" size="icon" className="h-8 w-8 rounded-full">
             <Plus size={16} />
           </Button>

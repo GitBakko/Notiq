@@ -2,23 +2,24 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { Table } from '@tiptap/extension-table';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-// import Link from '@tiptap/extension-link';
+import Link from '@tiptap/extension-link';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
 import { FontSize } from './FontSize';
 import { LineHeight } from './LineHeight';
 import EncryptedBlock from './extensions/EncryptedBlock';
-import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import EditorToolbar from './EditorToolbar';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
-import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { CollaborativeHighlighter } from './extensions/CollaborativeHighlighter';
-import TableBubbleMenu from './TableBubbleMenu';
+import { rowResizing } from './extensions/rowResizing';
+import TableContextMenu from './TableContextMenu';
 
 interface EditorProps {
   content: string;
@@ -40,6 +41,7 @@ interface EditorProps {
 
 export interface EditorHandle {
   focus: () => void;
+  getEditor: () => any;
 }
 
 export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, onVoiceMemo, scrollable = true, collaboration, provider }, ref) {
@@ -60,44 +62,99 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   const extensions = useMemo(() => {
     const baseExtensions = [
       StarterKit.configure({
-        // @ts-ignore
-        undoRedo: !collaboration?.enabled, // Disable history if collaboration is enabled (Yjs handles it)
-        link: {
-          openOnClick: false,
-          autolink: true,
-        },
+        history: collaboration?.enabled ? false : undefined, // Disable history if collaboration is enabled (Yjs handles it)
       }),
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),
-      Table.configure({
+      Table.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            tableWidth: {
+              default: null, // null = AUTO (100%), 'free' = column-based
+              parseHTML: (element: HTMLElement) => {
+                const w = element.getAttribute('data-table-width');
+                if (w === 'free') return 'free';
+                return null; // default AUTO
+              },
+              renderHTML: (attributes: Record<string, any>) => {
+                if (attributes.tableWidth === 'free') {
+                  return { 'data-table-width': 'free' };
+                }
+                return { style: 'width: 100%' }; // AUTO
+              },
+            },
+          };
+        },
+        addProseMirrorPlugins() {
+          return [
+            ...(this.parent?.() || []),
+            new Plugin({
+              key: new PluginKey('tableWidthApply'),
+              view: () => ({
+                update: (view, prevState) => {
+                  if (prevState && view.state.doc === prevState.doc) return;
+                  view.state.doc.descendants((node, pos) => {
+                    if (node.type.name === 'table') {
+                      const dom = view.nodeDOM(pos);
+                      if (dom instanceof HTMLElement) {
+                        const table = dom.tagName === 'TABLE' ? dom : dom.querySelector('table');
+                        if (table instanceof HTMLElement) {
+                          if (node.attrs.tableWidth === 'free') {
+                            // FREE: let prosemirror-tables' TableView manage width
+                          } else {
+                            // AUTO (null/default): fill container
+                            table.style.width = '100%';
+                            table.style.minWidth = '';
+                          }
+                        }
+                      }
+                    }
+                  });
+                },
+              }),
+            }),
+            rowResizing({ handleHeight: 5 }),
+          ];
+        },
+      }).configure({
         resizable: true,
       }),
-      TableRow,
+      TableRow.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            rowHeight: {
+              default: null,
+              parseHTML: (element: HTMLElement) => {
+                const h = element.style.height;
+                return (h && h !== 'auto') ? h : null;
+              },
+              renderHTML: (attributes: Record<string, any>) => {
+                if (!attributes.rowHeight) return {};
+                return { style: `height: ${attributes.rowHeight}` };
+              },
+            },
+          };
+        },
+      }),
       TableHeader.extend({
         addAttributes() {
           return {
             ...this.parent?.(),
             borderStyle: {
               default: null,
-              parseHTML: element => element.style.borderStyle,
-              renderHTML: attributes => {
+              parseHTML: (element: HTMLElement) => element.style.borderStyle,
+              renderHTML: (attributes: Record<string, any>) => {
                 if (!attributes.borderStyle) return {};
                 return { style: `border-style: ${attributes.borderStyle}` };
-              },
-              borderColor: {
-                default: null,
-                parseHTML: element => element.style.borderColor,
-                renderHTML: attributes => {
-                  if (!attributes.borderColor) return {};
-                  return { style: `border-color: ${attributes.borderColor}` };
-                },
               },
             },
             borderColor: {
               default: null,
-              parseHTML: element => element.style.borderColor,
-              renderHTML: attributes => {
+              parseHTML: (element: HTMLElement) => element.style.borderColor,
+              renderHTML: (attributes: Record<string, any>) => {
                 if (!attributes.borderColor) return {};
                 return { style: `border-color: ${attributes.borderColor}` };
               },
@@ -111,24 +168,16 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             ...this.parent?.(),
             borderStyle: {
               default: null,
-              parseHTML: element => element.style.borderStyle,
-              renderHTML: attributes => {
+              parseHTML: (element: HTMLElement) => element.style.borderStyle,
+              renderHTML: (attributes: Record<string, any>) => {
                 if (!attributes.borderStyle) return {};
                 return { style: `border-style: ${attributes.borderStyle}` };
-              },
-              borderColor: {
-                default: null,
-                parseHTML: element => element.style.borderColor,
-                renderHTML: attributes => {
-                  if (!attributes.borderColor) return {};
-                  return { style: `border-color: ${attributes.borderColor}` };
-                },
               },
             },
             borderColor: {
               default: null,
-              parseHTML: element => element.style.borderColor,
-              renderHTML: attributes => {
+              parseHTML: (element: HTMLElement) => element.style.borderColor,
+              renderHTML: (attributes: Record<string, any>) => {
                 if (!attributes.borderColor) return {};
                 return { style: `border-color: ${attributes.borderColor}` };
               },
@@ -136,18 +185,15 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           };
         },
       }),
-      // Link.configure({
-      //   openOnClick: false,
-      //   autolink: true,
-      // }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+      }),
       TextStyle,
       FontFamily,
       FontSize,
       LineHeight,
       EncryptedBlock,
-      BubbleMenu.configure({
-        pluginKey: 'bubbleMenu',
-      }),
     ];
 
     if (collaboration?.enabled && provider && provider.document) {
@@ -184,10 +230,11 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
 
   const editor = useEditor({
     extensions,
-    content: collaboration?.enabled ? undefined : content, // Ignore initial content if collaboration is enabled (syncs from server)
+    content: collaboration?.enabled ? undefined : content, // Ignore initial content if collaboration is enabled
     editable,
     onUpdate: ({ editor }) => {
       isUpdating.current = true;
+
       // Save as JSON string
       onChange(JSON.stringify(editor.getJSON()));
       setTimeout(() => {
@@ -196,7 +243,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full',
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full break-words leading-relaxed',
       },
     },
   }, [provider]); // Re-initialize when provider changes
@@ -205,7 +252,8 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   useImperativeHandle(ref, () => ({
     focus: () => {
       editor?.commands.focus('start');
-    }
+    },
+    getEditor: () => editor,
   }));
 
   // Sync editable state
@@ -304,6 +352,15 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     }
   }, [provider, editor, collaboration?.enabled]);
 
+  // Table context menu state
+  const [tableContextMenu, setTableContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!editor?.isActive('table')) return;
+    e.preventDefault();
+    setTableContextMenu({ x: e.clientX, y: e.clientY });
+  }, [editor]);
+
   if (!editor) {
     return null;
   }
@@ -312,19 +369,33 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     return (
       <div className="w-full">
         {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
-        {editable && <TableBubbleMenu editor={editor} />}
-        <EditorContent editor={editor} />
+        <div onContextMenu={handleEditorContextMenu}>
+          <EditorContent editor={editor} />
+        </div>
+        {editable && tableContextMenu && (
+          <TableContextMenu
+            editor={editor}
+            position={tableContextMenu}
+            onClose={() => setTableContextMenu(null)}
+          />
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
       {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
-      {editable && <TableBubbleMenu editor={editor} />}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-auto min-w-0" onContextMenu={handleEditorContextMenu}>
         <EditorContent editor={editor} />
       </div>
+      {editable && tableContextMenu && (
+        <TableContextMenu
+          editor={editor}
+          position={tableContextMenu}
+          onClose={() => setTableContextMenu(null)}
+        />
+      )}
     </div>
   );
 });

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as chatService from '../services/chat.service';
+import { checkNoteAccess } from '../services/note.service';
 
 const createMessageSchema = z.object({
   noteId: z.string().uuid(),
@@ -12,15 +13,17 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   fastify.post('/', async (request, reply) => {
     const { noteId, content } = createMessageSchema.parse(request.body);
+    const access = await checkNoteAccess(request.user.id, noteId);
+    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (access === 'READ') return reply.code(403).send({ message: 'Read-only access' });
     const message = await chatService.createMessage(request.user.id, noteId, content);
     return message;
   });
 
   fastify.get('/:noteId', async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
-    // TODO: Check access permission (Is owner or shared)?
-    // For now assuming if they know the UUID they might have access, but strictly should check.
-    // chatService could check access.
+    const access = await checkNoteAccess(request.user.id, noteId);
+    if (!access) return reply.code(403).send({ message: 'Forbidden' });
     const messages = await chatService.getMessages(noteId);
     return messages;
   });

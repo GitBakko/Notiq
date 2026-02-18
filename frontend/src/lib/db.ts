@@ -4,6 +4,7 @@ export interface LocalNote {
   id: string;
   title: string;
   content: string;
+  searchText?: string;
   notebookId: string;
   userId: string;
   isTrashed: boolean;
@@ -107,6 +108,11 @@ class AppDatabase extends Dexie {
 
     this.version(9).stores({
       syncQueue: '++id, type, entity, userId, createdAt'
+    });
+
+    // v10: Add searchText field for faster offline search (plain text, no JSON parsing)
+    this.version(10).stores({
+      notes: 'id, notebookId, userId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted',
     });
   }
 }

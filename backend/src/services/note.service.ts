@@ -3,6 +3,21 @@ import { hocuspocus, extensions } from '../hocuspocus';
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
+import { extractTextFromTipTapJson } from '../utils/extractText';
+
+export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
+  const note = await prisma.note.findUnique({
+    where: { id: noteId },
+    select: {
+      userId: true,
+      sharedWith: { where: { userId, status: 'ACCEPTED' }, select: { permission: true } }
+    }
+  });
+  if (!note) return null;
+  if (note.userId === userId) return 'OWNER';
+  if (note.sharedWith.length > 0) return note.sharedWith[0].permission as 'READ' | 'WRITE';
+  return null;
+};
 
 export const createNote = async (
   userId: string,
@@ -33,11 +48,13 @@ export const createNote = async (
   }
 
   try {
+    const searchText = isEncrypted ? null : extractTextFromTipTapJson(content);
     return await prisma.note.create({
       data: {
         ...(id ? { id } : {}),
         title,
         content,
+        searchText,
         userId,
         notebookId: targetNotebookId,
         isVault,
@@ -54,15 +71,15 @@ export const createNote = async (
   }
 };
 
-export const getNotes = async (userId: string, notebookId?: string, search?: string, tagId?: string, reminderFilter?: 'all' | 'pending' | 'done', includeTrashed: boolean = false) => {
+export const getNotes = async (userId: string, notebookId?: string, search?: string, tagId?: string, reminderFilter?: 'all' | 'pending' | 'done', includeTrashed: boolean = false, page: number = 1, limit: number = 50) => {
   const whereClause = {
     userId,
     ...(notebookId ? { notebookId } : {}),
     ...(tagId ? { tags: { some: { tagId } } } : {}),
     ...(search ? {
       OR: [
-        { title: { contains: search } },
-        { content: { contains: search } },
+        { title: { contains: search, mode: 'insensitive' as const } },
+        { searchText: { contains: search, mode: 'insensitive' as const } },
       ]
     } : {}),
     ...(reminderFilter ? {
@@ -73,38 +90,46 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
     ...(includeTrashed ? {} : { isTrashed: false }),
   };
 
-  console.log('getNotes query:', JSON.stringify(whereClause, null, 2));
-
   const notes = await prisma.note.findMany({
     where: whereClause,
     orderBy: { updatedAt: 'desc' },
-    include: {
+    skip: (page - 1) * limit,
+    take: limit,
+    select: {
+      id: true,
+      title: true,
+      notebookId: true,
+      userId: true,
+      isPinned: true,
+      isTrashed: true,
+      isEncrypted: true,
+      isPublic: true,
+      isVault: true,
+      shareId: true,
+      reminderDate: true,
+      isReminderDone: true,
+      createdAt: true,
+      updatedAt: true,
+      searchText: true,
       tags: { include: { tag: true } },
       attachments: {
-        where: { isLatest: true }
+        where: { isLatest: true },
+        select: { id: true, filename: true, mimeType: true, size: true }
       },
       sharedWith: {
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
+            select: { id: true, name: true, email: true }
           }
         }
       },
       user: {
-        select: {
-          id: true,
-          name: true,
-          email: true
-        }
-      }
+        select: { id: true, name: true, email: true }
+      },
+      _count: { select: { attachments: true } }
     }
   });
 
-  console.log(`getNotes found ${notes.length} notes`);
   return notes;
 };
 
@@ -176,12 +201,15 @@ export const updateNote = async (userId: string, id: string, data: {
       }
     }
 
+    // Recalculate searchText if content changed
+    const updateData: any = { ...rest, updatedAt: new Date() };
+    if (rest.content && !rest.isEncrypted && !note.isEncrypted) {
+      updateData.searchText = extractTextFromTipTapJson(rest.content);
+    }
+
     return tx.note.update({
       where: { id },
-      data: {
-        ...rest,
-        updatedAt: new Date(),
-      },
+      data: updateData,
     });
   });
 };
@@ -215,15 +243,15 @@ export const getPublicNote = async (shareId: string) => {
 
 export const deleteNote = async (userId: string, id: string) => {
   return prisma.$transaction(async (tx) => {
-    // Delete relations that don't have Cascade in schema yet
+    // Check ownership FIRST before deleting any relations
+    const note = await tx.note.findFirst({ where: { id, userId } });
+    if (!note) throw new Error('Note not found');
+
     await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
     await tx.attachment.deleteMany({ where: { noteId: id } });
-    // SharedNotes and ChatMessages have Cascade in schema, but being explicit doesn't hurt
     await tx.sharedNote.deleteMany({ where: { noteId: id } });
     await tx.chatMessage.deleteMany({ where: { noteId: id } });
 
-    return tx.note.deleteMany({
-      where: { id, userId },
-    });
+    return tx.note.delete({ where: { id } });
   });
 };

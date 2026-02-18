@@ -1,4 +1,5 @@
-import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File, Music, Video, FileArchive } from 'lucide-react';
+import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File, Music, Video, FileArchive, Download } from 'lucide-react';
+import api from '../../lib/api';
 
 interface Attachment {
   id: string;
@@ -64,19 +65,45 @@ const getFileIconInfo = (filename: string) => {
   }
 };
 
+import { useTranslation } from 'react-i18next';
+
 export default function AttachmentList({ attachments, onDelete, onAdd, readOnly = false }: AttachmentListProps) {
+  const { t } = useTranslation();
   if (!attachments && !onAdd) return null;
 
-  const API_URL = import.meta.env.VITE_API_URL || '/api';
-  // Remove /api from the end to get the base URL for static assets
-  const BASE_URL = API_URL.replace(/\/api$/, '');
+  const getBaseUrl = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || '/api';
+    try {
+      if (apiUrl.startsWith('http')) {
+        return new URL(apiUrl).origin;
+      }
+    } catch (e) {
+      console.warn('Invalid API_URL for attachments', e);
+    }
+    return '';
+  };
+  const BASE_URL = getBaseUrl();
+
+  const handleDownload = async (attachmentId: string, filename: string) => {
+    try {
+      const response = await api.get(`/attachments/download/${attachmentId}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Download failed', e);
+    }
+  };
 
   return (
     <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 dark:text-gray-400">
           <Paperclip size={12} />
-          Attachments ({attachments?.length || 0})
+          {t('notes.attachments')} ({attachments?.length || 0})
         </h4>
       </div>
       <ul className="space-y-2">
@@ -92,14 +119,13 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
                     <Icon size={16} className={color} />
                   </div>
                   <div className="flex flex-col overflow-hidden">
-                    <a
-                      href={`${BASE_URL}${att.url}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-gray-700 truncate hover:text-emerald-600 hover:underline dark:text-gray-200 dark:hover:text-emerald-400"
+                    <button
+                      onClick={() => handleDownload(att.id, att.filename)}
+                      className="text-sm font-medium text-gray-700 truncate hover:text-emerald-600 hover:underline dark:text-gray-200 dark:hover:text-emerald-400 text-left"
                     >
                       {att.filename}
-                    </a>
+                    </button>
+
                     <span className="text-xs text-gray-400 dark:text-gray-500">
                       {(att.size / 1024).toFixed(1)} KB {att.version && `• v${att.version}`}
                     </span>
@@ -109,7 +135,7 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
                   <button
                     onClick={() => onDelete(att.id)}
                     className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity dark:text-gray-500 dark:hover:text-red-400"
-                    title="Delete attachment"
+                    title={t('common.deleteAttachment')}
                   >
                     <X size={16} />
                   </button>

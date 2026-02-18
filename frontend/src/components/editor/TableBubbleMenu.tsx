@@ -78,7 +78,7 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
       editor={editor}
       tippyOptions={tippyOptions}
       shouldShow={shouldShow}
-      className="flex items-center gap-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl border border-gray-200/50 dark:border-gray-700/50 rounded-xl p-1.5 animate-in fade-in zoom-in-95 duration-200"
+      className="flex flex-wrap items-center gap-1 max-w-[420px] bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl border border-gray-200/50 dark:border-gray-700/50 rounded-xl p-1.5 animate-in fade-in zoom-in-95 duration-200"
     >
       {/* Column Operations */}
       <div className="flex items-center gap-0.5 border-r border-gray-200 dark:border-gray-700 pr-1.5 mr-0.5">
@@ -186,10 +186,10 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
 
           {showBorderMenu && (
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700 rounded-lg p-1.5 flex flex-col gap-1 min-w-[120px] animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
-              <button onClick={() => setBorderStyle('solid')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md transition-colors">Solid</button>
-              <button onClick={() => setBorderStyle('dashed')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md border-dashed border-b border-gray-300 dark:border-gray-600 transition-colors">Dashed</button>
-              <button onClick={() => setBorderStyle('dotted')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md border-dotted border-b border-gray-300 dark:border-gray-600 transition-colors">Dotted</button>
-              <button onClick={() => setBorderStyle('none')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md text-gray-400 transition-colors">No Border</button>
+              <button onClick={() => setBorderStyle('solid')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md transition-colors">{t('styles.solid')}</button>
+              <button onClick={() => setBorderStyle('dashed')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md border-dashed border-b border-gray-300 dark:border-gray-600 transition-colors">{t('styles.dashed')}</button>
+              <button onClick={() => setBorderStyle('dotted')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md border-dotted border-b border-gray-300 dark:border-gray-600 transition-colors">{t('styles.dotted')}</button>
+              <button onClick={() => setBorderStyle('none')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md text-gray-400 transition-colors">{t('styles.noBorder')}</button>
             </div>
           )}
         </div>

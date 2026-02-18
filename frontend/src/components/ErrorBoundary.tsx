@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Translation } from 'react-i18next';
 
 interface Props {
   children?: ReactNode;
@@ -27,11 +28,15 @@ export default class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return this.props.fallback || (
-        <div className="p-4 text-red-500">
-          <h1>Something went wrong.</h1>
-          <pre>{this.state.error?.message}</pre>
-          <pre>{this.state.error?.stack}</pre>
-        </div>
+        <Translation>
+          {(t) => (
+            <div className="p-4 text-red-500">
+              <h1>{t('common.somethingWentWrong')}</h1>
+              <pre>{this.state.error?.message}</pre>
+              <pre>{this.state.error?.stack}</pre>
+            </div>
+          )}
+        </Translation>
       );
     }
 

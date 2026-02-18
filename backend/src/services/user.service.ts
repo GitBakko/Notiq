@@ -5,7 +5,7 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import { MultipartFile } from '@fastify/multipart';
 
-const UPLOADS_DIR = path.join(__dirname, '../../uploads/avatars');
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads/avatars');
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -45,7 +45,11 @@ export const updateUser = async (userId: string, data: {
   });
 };
 
+const AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
 export const uploadAvatar = async (userId: string, file: MultipartFile) => {
+  if (!AVATAR_MIME_TYPES.has(file.mimetype)) throw new Error('Only image files allowed for avatar');
+
   const filename = `${userId}-${Date.now()}${path.extname(file.filename)}`;
   const filepath = path.join(UPLOADS_DIR, filename);
 
@@ -87,6 +91,7 @@ export const changePassword = async (userId: string, oldPassword: string, newPas
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   return prisma.user.update({
     where: { id: userId },
-    data: { password: hashedPassword },
+    data: { password: hashedPassword, tokenVersion: { increment: 1 } },
+    select: { id: true, email: true, name: true },
   });
 };

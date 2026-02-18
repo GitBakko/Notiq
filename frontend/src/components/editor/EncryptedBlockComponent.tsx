@@ -186,7 +186,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
                     type={showPin ? "text" : "password"}
                     value={pin}
                     onChange={(e) => { setPin(e.target.value); setError(''); }}
-                    placeholder="PIN"
+                    placeholder={t('editor.pinPlaceholder', 'PIN')}
                     className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                   />
                   <button
@@ -225,7 +225,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
               type={showPin ? "text" : "password"}
               value={pin}
               onChange={(e) => { setPin(e.target.value); setError(''); }}
-              placeholder="PIN"
+              placeholder={t('editor.pinPlaceholder', 'PIN')}
               className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-center text-lg tracking-widest"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleDecrypt()}

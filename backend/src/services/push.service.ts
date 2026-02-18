@@ -1,17 +1,24 @@
 import webpush from 'web-push';
 import prisma from '../plugins/prisma';
 
-// VAPID Keys should be in environment variables in production
-const publicVapidKey = 'BIW6zpzJ20tsygTbA-FOGCNxT82Y5LGzNG2XV_qO2Q0D9FFC1yolwkF06o5NhbA3TJu2Na45777NHxZW_gHRXeU';
-const privateVapidKey = 'FvY_Vwpp1eOh8dQiWeuTiHYTJ4hMUNaqhi-77KXp9hs';
+const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
+const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
 
-webpush.setVapidDetails(
-  'mailto:support@notiq.app',
-  publicVapidKey,
-  privateVapidKey
-);
+if (publicVapidKey && privateVapidKey) {
+  webpush.setVapidDetails(
+    'mailto:support@notiq.app',
+    publicVapidKey,
+    privateVapidKey
+  );
+} else {
+  console.warn('VAPID keys not configured. Push notifications disabled.');
+}
 
 export const subscribeUser = async (userId: string, subscription: any) => {
+  if (!publicVapidKey || !privateVapidKey) {
+    throw new Error('Push notifications are not configured');
+  }
+
   return prisma.pushSubscription.create({
     data: {
       userId,
@@ -22,6 +29,8 @@ export const subscribeUser = async (userId: string, subscription: any) => {
 };
 
 export const sendPushNotification = async (userId: string, payload: any) => {
+  if (!publicVapidKey || !privateVapidKey) return;
+
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId },
   });

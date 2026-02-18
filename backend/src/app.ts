@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import fastify, { FastifyRequest, FastifyReply } from 'fastify';
+import prisma from './plugins/prisma';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import fastifyMultipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 
 import authRoutes from './routes/auth';
 import notebookRoutes from './routes/notebooks';
@@ -14,6 +16,15 @@ import sharingRoutes from './routes/sharing';
 import userRoutes from './routes/user';
 import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat';
+import adminRoutes from './routes/admin';
+import inviteRoutes, { adminInviteRoutes, publicInviteRoutes } from './routes/invite';
+import importRoutes from './routes/import';
+import searchRoutes from './routes/search';
+import aiRoutes from './routes/ai';
+import groupRoutes from './routes/groups';
+
+
+// ... ensure start
 import './types';
 
 const server = fastify({
@@ -22,19 +33,27 @@ const server = fastify({
 
 // Plugins
 server.register(cors, {
-  origin: true, // Allow all for dev
+  origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 });
 
-server.register(jwt, {
-  secret: process.env.JWT_SECRET || 'supersecret'
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required');
+  process.exit(1);
+}
+server.register(jwt, { secret: JWT_SECRET });
+
+server.register(rateLimit, {
+  global: true,
+  max: 100,
+  timeWindow: '1 minute',
 });
 
-import fastifyStatic from '@fastify/static';
 import path from 'path';
-
-// ... imports
+import fs from 'fs';
 
 server.register(fastifyMultipart, {
   limits: {
@@ -42,16 +61,38 @@ server.register(fastifyMultipart, {
   }
 });
 
-server.register(fastifyStatic, {
-  root: path.join(__dirname, '../uploads'),
-  prefix: '/uploads/', // optional: default '/'
-});
-
 server.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
   try {
     await request.jwtVerify();
+    // Verify tokenVersion is still valid
+    if (request.user.tokenVersion !== undefined) {
+      const user = await prisma.user.findUnique({
+        where: { id: request.user.id },
+        select: { tokenVersion: true }
+      });
+      if (!user || user.tokenVersion !== request.user.tokenVersion) {
+        return reply.code(401).send({ message: 'Token invalidated' });
+      }
+    }
   } catch (err) {
-    reply.send(err);
+    return reply.code(401).send({ message: 'Unauthorized' });
+  }
+});
+
+
+const lastActiveCache = new Map<string, number>();
+
+server.addHook('onRequest', async (request: FastifyRequest) => {
+  if (request.user) {
+    const now = Date.now();
+    const lastUpdate = lastActiveCache.get(request.user.id) || 0;
+    if (now - lastUpdate > 5 * 60 * 1000) { // 5 minutes throttle
+      lastActiveCache.set(request.user.id, now);
+      prisma.user.update({
+        where: { id: request.user.id },
+        data: { lastActiveAt: new Date() }
+      }).catch(() => {}); // fire-and-forget
+    }
   }
 });
 
@@ -67,6 +108,26 @@ server.register(sharingRoutes, { prefix: '/api/share' });
 server.register(userRoutes, { prefix: '/api/user' });
 server.register(notificationRoutes, { prefix: '/api/notifications' });
 server.register(chatRoutes, { prefix: '/api/chat' });
+server.register(adminRoutes, { prefix: '/api/admin' });
+server.register(inviteRoutes, { prefix: '/api/invites' });
+server.register(adminInviteRoutes, { prefix: '/api/admin' });
+server.register(publicInviteRoutes, { prefix: '/api/auth' });
+server.register(importRoutes, { prefix: '/api/import' });
+server.register(searchRoutes, { prefix: '/api/search' });
+server.register(aiRoutes, { prefix: '/api/ai' });
+server.register(groupRoutes, { prefix: '/api/groups' });
+
+// Public avatar serving (no auth required)
+server.get('/uploads/avatars/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename); // prevent path traversal
+  const filepath = path.join(process.cwd(), 'uploads', 'avatars', safeName);
+  if (!fs.existsSync(filepath)) {
+    return reply.code(404).send({ message: 'Not found' });
+  }
+  const stream = fs.createReadStream(filepath);
+  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+});
 
 // Health Check
 server.get('/health', async (request, reply) => {

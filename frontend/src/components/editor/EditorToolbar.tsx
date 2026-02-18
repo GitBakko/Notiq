@@ -5,6 +5,8 @@ import {
   Underline,
   Strikethrough,
   Code,
+  Smile,
+
 
   AlignLeft,
   AlignCenter,
@@ -35,6 +37,7 @@ import TableSelector from './TableSelector';
 import 'regenerator-runtime/runtime';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useAuthStore } from '../../store/authStore';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -148,6 +151,10 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [users, setUsers] = useState<any[]>([]);
+
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+
 
   const {
     transcript,
@@ -274,6 +281,34 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         <Lock size={18} />
       </ToolbarButton>
 
+      {/* Emoji Picker */}
+      <div className="relative">
+        <ToolbarButton
+          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+          title={t('editor.insertEmoji')}
+          isActive={showEmojiPicker}
+        >
+          <Smile size={18} />
+        </ToolbarButton>
+        {showEmojiPicker && (
+          <div className="absolute top-full left-0 mt-2 z-50">
+            <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)}></div>
+            <div className="relative z-50">
+              <EmojiPicker
+                onEmojiClick={(data) => {
+                  editor.chain().focus().insertContent(data.emoji).run();
+                  // Keep open for multiple? Or close. Let's close.
+                  // setShowEmojiPicker(false);
+                }}
+                theme={isDark ? Theme.DARK : Theme.LIGHT}
+                width={300}
+                height={400}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
 
       {/* Font Family Dropdown */}
@@ -313,8 +348,6 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
       {/* Line Height Dropdown */}
       <ToolbarDropdown
         options={[
-          { label: '0.2', value: '0.2' },
-          { label: '0.5', value: '0.5' },
           { label: '1.0', value: '1.0' },
           { label: '1.15', value: '1.15' },
           { label: '1.5', value: '1.5' },
@@ -322,7 +355,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           { label: '2.5', value: '2.5' },
           { label: '3.0', value: '3.0' },
         ]}
-        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '0.5'}
+        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '1.5'}
         onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
         placeholder={t('editor.lineHeight')}
         title={t('editor.lineHeight')}

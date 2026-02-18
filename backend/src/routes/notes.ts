@@ -42,15 +42,21 @@ export default async function (fastify: FastifyInstance) {
   });
 
   fastify.get('/', async (request, reply) => {
-    const { notebookId, search, tagId, reminderFilter, includeTrashed } = request.query as {
+    const { notebookId, search, tagId, reminderFilter, includeTrashed, page, limit } = request.query as {
       notebookId?: string;
       search?: string;
       tagId?: string;
       reminderFilter?: 'all' | 'pending' | 'done';
       includeTrashed?: string;
+      page?: string;
+      limit?: string;
     };
-    console.log('GET /notes params:', { notebookId, search, tagId, reminderFilter, includeTrashed });
-    const notes = await noteService.getNotes(request.user.id, notebookId, search, tagId, reminderFilter, includeTrashed === 'true');
+    const notes = await noteService.getNotes(
+      request.user.id, notebookId, search, tagId, reminderFilter,
+      includeTrashed === 'true',
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 50
+    );
     return notes;
   });
 
@@ -64,13 +70,27 @@ export default async function (fastify: FastifyInstance) {
   fastify.put('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateNoteSchema.parse(request.body);
-    await noteService.updateNote(request.user.id, id, data);
+    try {
+      await noteService.updateNote(request.user.id, id, data);
+    } catch (err: any) {
+      if (err.message === 'Note not found') {
+        return reply.status(404).send({ message: 'Note not found' });
+      }
+      throw err;
+    }
     return { message: 'Note updated' };
   });
 
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    await noteService.deleteNote(request.user.id, id);
+    try {
+      await noteService.deleteNote(request.user.id, id);
+    } catch (err: any) {
+      if (err.message === 'Note not found') {
+        return reply.status(404).send({ message: 'Note not found' });
+      }
+      throw err;
+    }
     return { message: 'Note deleted' };
   });
 

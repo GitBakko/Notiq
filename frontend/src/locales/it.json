@@ -11,6 +11,7 @@
     "back": "Indietro",
     "error": "Errore",
     "success": "Successo",
+    "actions": "Azioni",
     "create": "Crea",
     "user": "Utente",
     "synced": "Sincronizzato",
@@ -22,7 +23,12 @@
     "noResults": "Nessun risultato per \"{{query}}\"",
     "searchPoweredBy": "Ricerca basata su DB locale",
     "escToClose": "ESC per chiudere",
-    "actions": "Azioni",
+    "somethingWentWrong": "Qualcosa è andato storto.",
+    "profileAlt": "Profilo",
+    "logoAlt": "Logo Notiq",
+    "notiq": "Notiq",
+    "poweredBy": "Powered by",
+    "deleteAttachment": "Elimina allegato",
     "language": "Lingua",
     "theme": "Cambia Tema",
     "select": "Seleziona",
@@ -36,7 +42,28 @@
     "encrypt": "Cripta",
     "discard": "Scarta",
     "deleteForever": "Elimina per sempre",
-    "typeToConfirm": "Digita per confermare"
+    "typeToConfirm": "Digita per confermare",
+    "accept": "Accetta",
+    "decline": "Rifiuta",
+    "notFound": "Non trovato",
+    "goHome": "Vai alla Home",
+    "send": "Invia",
+    "sending": "Invio...",
+    "backToApp": "Torna all'App",
+    "optional": "Opzionale",
+    "versionShort": "v0.1.0"
+  },
+  "actions": {
+    "title": "Azioni",
+    "downloadAll": "Scarica Tutto",
+    "quotaExceeded": "Quota Superata",
+    "quotaWarning": "Spazio quasi pieno"
+  },
+  "styles": {
+    "solid": "Solido",
+    "dashed": "Tratteggiato",
+    "dotted": "Punteggiato",
+    "noBorder": "Nessun Bordo"
   },
   "sidebar": {
     "home": "Home",
@@ -50,7 +77,10 @@
     "toggleTheme": "Cambia Tema",
     "newNote": "Nuova Nota",
     "shortcuts": "Scorciatoie",
-    "search": "Cerca"
+    "search": "Cerca",
+    "externalSources": "Fonti Esterne",
+    "importEvernote": "Evernote (.enex)",
+    "groups": "Gruppi"
   },
   "settings": {
     "appearance": "Aspetto",
@@ -60,7 +90,14 @@
     "account": "Account",
     "about": "Informazioni",
     "version": "Notiq v1.0.0",
-    "techStack": "Costruito con React, Vite, TailwindCSS e Fastify."
+    "techStack": "Costruito con React, Vite, TailwindCSS e Fastify.",
+    "import": "Importa Dati",
+    "importTitle": "Importa da Evernote",
+    "importDesc": "Carica un file .enex per importare le tue note.",
+    "selectFile": "Seleziona file .enex",
+    "importing": "Importazione...",
+    "importSuccess": "Importate con successo {{count}} note!",
+    "importError": "Importazione fallita"
   },
   "notebooks": {
     "firstNotebook": "Primo Taccuino",
@@ -139,6 +176,8 @@
     "deleteConfirm": "Sei sicuro? Questa azione non può essere annullata."
   },
   "notes": {
+    "created": "Nota creata",
+    "createFailed": "Creazione nota fallita",
     "newNote": "Nuova Nota",
     "untitled": "Nota senza titolo",
     "noContent": "Nessun contenuto",
@@ -249,8 +288,25 @@
       "invalidEmail": "Indirizzo email non valido",
       "passwordRequired": "La password è obbligatoria",
       "passwordTooShort": "La password deve essere di almeno 6 caratteri",
-      "userExists": "Utente già registrato con questa email"
-    }
+      "userExists": "Utente già registrato con questa email",
+      "unverified": "Account non verificato. Controlla la tua email."
+    },
+    "invitationCode": "Codice Invito",
+    "registrationSuccess": "Registrazione Completata!",
+    "checkEmailVerify": "Controlla la tua email per verificare l'account. Il link scade tra 24 ore.",
+    "goToLogin": "Vai al Login",
+    "verifying": "Verifica in corso...",
+    "emailVerified": "Email Verificata!",
+    "verificationSuccessBody": "Il tuo account è stato verificato con successo. Ora puoi accedere.",
+    "verificationFailed": "Verifica Fallita",
+    "invalidLink": "Il link non è valido o è scaduto.",
+    "noToken": "Nessun token fornito",
+    "requestInvite": "Richiedi Invito",
+    "requestInviteSub": "Unisciti a Notiq per organizzare la tua vita.",
+    "submitRequest": "Invia Richiesta",
+    "requestReceived": "Richiesta Ricevuta",
+    "requestReceivedDesc": "Abbiamo ricevuto la tua richiesta. Ti informeremo all'email fornita non appena il tuo invito sarà approvato.",
+    "rateLimitExceeded": "Troppe richieste. Riprova più tardi."
   },
   "vault": {
     "title": "Vault Sicuro",
@@ -290,20 +346,35 @@
     "emailPlaceholder": "Inserisci indirizzo email",
     "read": "Lettura",
     "write": "Scrittura",
-    "success": "Invito inviato con successo",
+    "inviteSuccess": "Invito inviato con successo",
     "failed": "Invio invito fallito",
     "userNotFound": "Utente non trovato",
     "sharedWith": "Condiviso con",
     "noOne": "Non condiviso con nessuno",
     "revoke": "Rimuovi accesso",
     "revoked": "Accesso rimosso",
-    "revokeFailed": "Impossibile rimuovere accesso",
+    "revokeFailed": "Impossibile rimuovere l'accesso",
+    "shareWithGroup": "Condividi con Gruppo",
+    "selectGroup": "Seleziona un gruppo...",
+    "shareGroupSuccess": "Condiviso con il gruppo ({{count}} membri notificati)",
+    "shareGroupFailed": "Impossibile condividere con il gruppo",
+    "noGroups": "Nessun gruppo ancora — creane uno nella sezione Gruppi",
     "sharedWithMe": "Condivisi con me",
+    "pendingInvitations": "Inviti in Sospeso",
+    "invitation": "INVITO",
+    "sharedWithYou": "Condiviso con Te",
+    "processing": "Elaborazione Invito...",
+    "success": "Successo",
+    "joinSuccess": "Ti sei unito alla nota!",
     "sharedWithMeSubtitle": "Note e taccuini condivisi da altri",
     "noSharedNotes": "Nessuna nota condivisa con te",
     "noSharedNotebooks": "Nessun taccuino condiviso con te",
     "sharedBy": "Condiviso da",
-    "share": "Condividi"
+    "share": "Condividi",
+    "acceptedRedirect": "Invito accettato! Reindirizzamento in corso...",
+    "declined": "Invito rifiutato.",
+    "processFailed": "Impossibile elaborare l'invito.",
+    "invalidParams": "Parametri del link non validi."
   },
   "profile": {
     "title": "Profilo Utente",
@@ -327,7 +398,23 @@
     "currentPassword": "Password Attuale",
     "newPassword": "Nuova Password",
     "confirmPassword": "Conferma Password",
-    "updatePassword": "Aggiorna Password"
+    "updatePassword": "Aggiorna Password",
+    "invitations": "Inviti",
+    "availableInvites": "Inviti Disponibili",
+    "shareInfo": "Condividi questi codici con gli amici per farli unire a Notiq.",
+    "generateInvite": "Genera Invito",
+    "inviteGenerated": "Invito generato",
+    "generateFailed": "Generazione invito fallita",
+    "noInvites": "Nessun invito generato.",
+    "created": "Creato",
+    "usedBy": "Usato da",
+    "resendVerification": "Reinvia Verifica",
+    "verificationResent": "Email di verifica reinviata",
+    "resendFailed": "Invio email fallito",
+    "sendInvite": "Invia Invito",
+    "sendInviteDesc": "Inserisci l'indirizzo email della persona che vuoi invitare.",
+    "inviteSent": "Invito inviato con successo!",
+    "inviteSendFailed": "Invio invito fallito"
   },
   "editor": {
     "bold": "Grassetto",
@@ -375,8 +462,13 @@
     "lineHeight": "Interlinea",
     "toggleHeaderRow": "Intestazione",
     "selectTable": "Seleziona Tabella",
+    "tableWidth": "Larghezza Tabella",
+    "tableWidthAuto": "Auto",
     "borderStyle": "Stile Bordo",
     "borderColor": "Colore Bordo"
+  },
+  "public": {
+    "attachments": "Allegati"
   },
   "chat": {
     "title": "Chat AI",
@@ -394,7 +486,50 @@
     "shareNotebook": "{{sharerName}} ti ha invitato a collaborare sul taccuino: {{itemName}}",
     "shareNotebook_TITLE": "Invito alla Collaborazione",
     "shareResponse": "{{responderName}} ha {{action}} il tuo invito a {{itemName}}",
-    "shareResponse_TITLE": "Aggiornamento Invito"
+    "shareResponse_TITLE": "Aggiornamento Invito",
+    "groupInvite": "{{ownerName}} ti ha aggiunto al gruppo \"{{groupName}}\"",
+    "groupInvite_TITLE": "Aggiunto al Gruppo",
+    "groupRemove": "{{ownerName}} ti ha rimosso dal gruppo \"{{groupName}}\"",
+    "groupRemove_TITLE": "Rimosso dal Gruppo",
+    "groupMemberJoined": "{{memberEmail}} si è registrato e si è unito al tuo gruppo \"{{groupName}}\"",
+    "groupMemberJoined_TITLE": "Nuovo Membro nel Gruppo"
+  },
+  "groups": {
+    "title": "Gruppi",
+    "subtitle": "Gestisci i tuoi gruppi di utenti per condivisioni rapide",
+    "create": "Crea Gruppo",
+    "namePlaceholder": "Nome del gruppo",
+    "descriptionPlaceholder": "Descrizione (opzionale)",
+    "created": "Gruppo creato",
+    "createFailed": "Impossibile creare il gruppo",
+    "updated": "Gruppo aggiornato",
+    "updateFailed": "Impossibile aggiornare il gruppo",
+    "deleted": "Gruppo eliminato",
+    "deleteFailed": "Impossibile eliminare il gruppo",
+    "deleteTitle": "Elimina Gruppo",
+    "deleteConfirm": "Sei sicuro di voler eliminare questo gruppo? L'operazione non può essere annullata.",
+    "members": "Membri",
+    "pendingInvites": "Inviti in Attesa",
+    "addMember": "Aggiungi Membro",
+    "addMemberPlaceholder": "Inserisci indirizzo email",
+    "memberAdded": "Membro aggiunto",
+    "memberAddedPending": "Invito inviato — in attesa di registrazione",
+    "memberAddFailed": "Impossibile aggiungere il membro",
+    "memberRemoved": "Membro rimosso",
+    "memberRemoveFailed": "Impossibile rimuovere il membro",
+    "inviteCancelled": "Invito annullato",
+    "inviteCancelFailed": "Impossibile annullare l'invito",
+    "noMembers": "Nessun membro ancora",
+    "noPending": "Nessun invito in attesa",
+    "ownedGroups": "I Miei Gruppi",
+    "memberOfGroups": "Gruppi a Cui Appartengo",
+    "empty": "Nessun gruppo ancora. Creane uno per condividere le note rapidamente.",
+    "emptyMemberOf": "Non sei stato ancora aggiunto a nessun gruppo.",
+    "memberCount": "{{count}} membro/i",
+    "owner": "Proprietario",
+    "manage": "Gestisci",
+    "alreadyMember": "Questo utente è già un membro",
+    "cannotAddSelf": "Non puoi aggiungere te stesso a un gruppo"
   },
   "encryption": {
     "locked": "Contenuto Criptato",
@@ -423,5 +558,76 @@
     "preferNotToSay": "Preferisco non dirlo"
   },
   "saved": "Salvato",
-  "saving": "Salvataggio..."
+  "saving": "Salvataggio...",
+  "admin": {
+    "dashboard": "Pannello Amministratore",
+    "manageSettings": "Gestisci impostazioni di sistema",
+    "registrationSettings": "Impostazioni Registrazione",
+    "invitationSystem": "Sistema a Inviti",
+    "invitationSystemDesc": "Abilita o disabilita la registrazione solo su invito.",
+    "enabled": "Abilitato",
+    "disabled": "Disabilitato",
+    "settingsUpdated": "Impostazioni aggiornate",
+    "updateFailed": "Aggiornamento impostazioni fallito",
+    "fetchFailed": "Recupero impostazioni fallito",
+    "stats": {
+      "totalUsers": "Utenti Totali",
+      "activeUsers": "Utenti Attivi (30gg)",
+      "totalNotes": "Note Totali",
+      "totalNotebooks": "Taccuini Totali",
+      "storageUsed": "Spazio Usato",
+      "totalAttachments": "Allegati Totali"
+    },
+    "charts": {
+      "registrations": "Crescita Utenti",
+      "notesGrowth": "Note Create"
+    },
+    "recentUsers": {
+      "title": "Registrazioni Recenti",
+      "email": "Email",
+      "name": "Nome",
+      "role": "Ruolo",
+      "joined": "Iscritto"
+    },
+    "requests": "Richieste",
+    "ai": {
+      "title": "Configurazione AI",
+      "enabled": "Assistente AI",
+      "enabledDesc": "Abilita l'assistente AI per tutti gli utenti. Richiede una chiave API valida.",
+      "provider": "Provider",
+      "apiKey": "Chiave API",
+      "apiKeyPlaceholder": "Inserisci chiave API...",
+      "apiKeySet": "Chiave API configurata",
+      "apiKeyNotSet": "Nessuna chiave API configurata",
+      "model": "Modello",
+      "maxTokens": "Token Massimi",
+      "temperature": "Temperatura",
+      "saved": "Configurazione AI salvata"
+    }
+  },
+  "search": {
+    "noResults": "Nessun risultato trovato",
+    "hint": "Cerca note per contenuto",
+    "resultsFor": "Risultati per \"{{query}}\"",
+    "loading": "Ricerca in corso..."
+  },
+  "ai": {
+    "title": "Assistente AI",
+    "clearHistory": "Cancella conversazione",
+    "summarize": "Riassumi",
+    "suggestTags": "Suggerisci Tag",
+    "continue": "Continua a Scrivere",
+    "emptyState": "Fai una domanda o usa un'azione rapida per iniziare.",
+    "op_ask": "Chiedi",
+    "op_improve": "Migliora",
+    "op_translate": "Traduci",
+    "targetLanguage": "Lingua di destinazione (es. Inglese, Italiano...)",
+    "inputPlaceholder": "Chiedi qualcosa su questa nota...",
+    "insertIntoNote": "Inserisci nella nota",
+    "replaceSelection": "Sostituisci selezione",
+    "summarizePrompt": "Per favore riassumi questa nota.",
+    "continuePrompt": "Per favore continua a scrivere questo testo.",
+    "tagsPrompt": "Suggerisci tag pertinenti per questa nota.",
+    "encryptedNotSupported": "L'AI non e' disponibile per le note criptate."
+  }
 }

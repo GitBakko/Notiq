@@ -35,7 +35,8 @@ export const syncPull = async () => {
 
       const serverTags = tagsRes.data.map(t => ({
         ...t,
-        userId: 'current-user',
+        // userId should come from server. If not, use 'current-user' as fallback?
+        // Actually, backend returns userId.
         syncStatus: 'synced' as const
       }));
 
@@ -94,39 +95,15 @@ export const syncPull = async () => {
       // This protects against accidental server wipes and "disappearing notes".
 
       const serverIds = new Set(serverNotes.map(n => n.id));
-      const missingOnServerIds = allLocalSyncedNotes.filter(n => !serverIds.has(n.id)).map(n => n.id);
+      // Notes missing from server are considered deleted — remove from local DB
+      const toDeleteIds = allLocalSyncedNotes
+        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+        .map(n => n.id);
 
-      if (missingOnServerIds.length > 0) {
-        // Wait! We also need to respect pendingDeletes here.
-        // If it's missing on server AND we have a pending delete, WE SHOULD DELETE IT LOCALLY (or leave it deleted).
-        // But if it's "synced" locally, it implies the delete queue item shouldn't exist?
-        // Actually, if we soft-deleted (updated), it's "updated", not "synced".
-        // So pendingDeletes shouldn't be in allLocalSyncedNotes.
-        // So this logic is probably fine for soft deletes.
-        // But check hard deletes just in case.
-
-        console.warn(`Sync Pull: Found ${missingOnServerIds.length} notes synced locally but missing on server. Triggering self-healing.`);
-
-        const notesToResurrect = allLocalSyncedNotes.filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id));
-
-        for (const note of notesToResurrect) {
-          // Update local status to 'created' (or 'updated') to force a push
-          await db.notes.update(note.id, { syncStatus: 'updated', updatedAt: new Date().toISOString() });
-
-          await db.syncQueue.add({
-            type: 'CREATE', // Force re-creation on server
-            entity: 'NOTE',
-            entityId: note.id,
-            data: { ...note }, // Send full note data
-            createdAt: Date.now()
-          });
-        }
-
+      if (toDeleteIds.length > 0) {
+        console.log(`Sync Pull: Removing ${toDeleteIds.length} locally synced notes missing from server.`);
+        await db.notes.bulkDelete(toDeleteIds);
       }
-
-      // We only delete if we receive an explicit "deleted" signal, but our API doesn't send that yet.
-      // So for now, we DISABLE the implicit deletion based on absence.
-      // await db.notes.bulkDelete(toDeleteIds);
 
       // Update local DB with server notes (wins over synced)
       await db.notes.bulkPut(filteredNotesToPut);
@@ -238,11 +215,15 @@ export const syncPush = async () => {
           }
         }
 
-      } catch (error) {
-        console.error('Sync Push Failed for item:', item, error);
-        // Keep in queue to retry later? Or move to dead letter queue?
-        // For now, just log and maybe break to avoid blocking if it's a persistent error?
-        // Or continue to try others?
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 404 || status === 410) {
+          // Resource no longer exists on server — remove from queue to stop infinite retries
+          console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
+          if (item.id) await db.syncQueue.delete(item.id);
+        } else {
+          console.error('Sync Push Failed for item:', item, error);
+        }
       }
     }
   } finally {

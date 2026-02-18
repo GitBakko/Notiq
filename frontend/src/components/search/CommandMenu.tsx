@@ -1,13 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Book, Tag, Search, Plus, Trash2 } from 'lucide-react';
+import { FileText, Book, Tag, Search, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { getNotes } from '../../features/notes/noteService';
 import { getNotebooks } from '../../features/notebooks/notebookService';
 import { getTags } from '../../features/tags/tagService';
+import { searchNotes, type SearchResult } from '../../features/search/searchService';
 import { useUIStore } from '../../store/uiStore';
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+/** Escape HTML, then replace [[HL]]/[[/HL]] markers with <mark> tags */
+function renderHighlight(text: string): string {
+  if (!text) return '';
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped
+    .replace(/\[\[HL\]\]/g, '<mark class="bg-emerald-200 dark:bg-emerald-800 text-inherit rounded-sm px-0.5">')
+    .replace(/\[\[\/HL\]\]/g, '</mark>');
+}
 
 export default function CommandMenu() {
   const { t } = useTranslation();
@@ -27,25 +48,35 @@ export default function CommandMenu() {
     return () => document.removeEventListener('keydown', down);
   }, [toggleSearch]);
 
-  // Fetch data
-  const { data: notes } = useQuery({ queryKey: ['notes'], queryFn: () => getNotes() });
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Reset search when menu closes
+  useEffect(() => {
+    if (!isSearchOpen) setSearch('');
+  }, [isSearchOpen]);
+
+  // Server-side full-text search (only when query >= 2 chars)
+  const { data: searchResults, isLoading: isSearching } = useQuery({
+    queryKey: ['search', debouncedSearch],
+    queryFn: () => searchNotes(debouncedSearch, 1, 10),
+    enabled: isSearchOpen && debouncedSearch.length >= 2,
+    staleTime: 30_000,
+  });
+
+  // Client-side data for notebooks/tags (small datasets, no need for server search)
   const { data: notebooks } = useQuery({ queryKey: ['notebooks'], queryFn: getNotebooks });
   const { data: tags } = useQuery({ queryKey: ['tags'], queryFn: getTags });
 
-  const [search, setSearch] = useState('');
+  const filteredNotebooks = useMemo(() =>
+    notebooks?.filter(nb => !search || nb.name.toLowerCase().includes(search.toLowerCase())).slice(0, 5),
+    [notebooks, search]
+  );
 
-  // Filter and slice data
-  const filteredNotes = notes
-    ?.filter(note => !search || note.title.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, 5);
-
-  const filteredNotebooks = notebooks
-    ?.filter(notebook => !search || notebook.name.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, 5);
-
-  const filteredTags = tags
-    ?.filter(tag => !search || tag.name.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, 5);
+  const filteredTags = useMemo(() =>
+    tags?.filter(tag => !search || tag.name.toLowerCase().includes(search.toLowerCase())).slice(0, 5),
+    [tags, search]
+  );
 
   const runCommand = (command: () => void) => {
     command();
@@ -53,6 +84,9 @@ export default function CommandMenu() {
   };
 
   if (!isSearchOpen) return null;
+
+  const hasServerResults = debouncedSearch.length >= 2;
+  const noteResults = searchResults?.results || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/20 dark:bg-black/50 backdrop-blur-sm p-4" onClick={closeSearch}>
@@ -70,29 +104,57 @@ export default function CommandMenu() {
             onValueChange={setSearch}
             className="flex h-12 w-full rounded-md bg-transparent py-3 text-sm outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-50 caret-emerald-500"
           />
+          {isSearching && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
         </div>
 
         <Command.List className="max-h-[300px] overflow-y-auto overflow-x-hidden p-2">
           <Command.Empty className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            {t('common.noResults')}
+            {hasServerResults && !isSearching
+              ? t('search.noResults')
+              : t('common.typeToSearch')}
           </Command.Empty>
 
-          {filteredNotes && filteredNotes.length > 0 && (
-            <Command.Group heading={t('sidebar.notes')} className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500 [&_[cmdk-group-heading]]:dark:text-gray-400 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
-              {filteredNotes.map((note) => (
+          {/* Server-side search results */}
+          {hasServerResults && noteResults.length > 0 && (
+            <Command.Group
+              heading={
+                searchResults
+                  ? `${t('sidebar.notes')} (${searchResults.total})`
+                  : t('sidebar.notes')
+              }
+              className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500 [&_[cmdk-group-heading]]:dark:text-gray-400 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+            >
+              {noteResults.map((result: SearchResult) => (
                 <Command.Item
-                  key={note.id}
-                  value={`note-${note.id}`}
-                  onSelect={() => runCommand(() => navigate(`/notes?noteId=${note.id}`))}
-                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100"
+                  key={result.id}
+                  value={`note-${result.id}`}
+                  onSelect={() => runCommand(() => navigate(`/notes?noteId=${result.id}`))}
+                  className="relative flex cursor-pointer select-none flex-col rounded-sm px-2 py-1.5 text-sm outline-none text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 aria-selected:bg-emerald-100 dark:aria-selected:bg-emerald-900/50 aria-selected:text-emerald-900 dark:aria-selected:text-emerald-100"
                 >
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span>{note.title || t('notes.untitled')}</span>
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 shrink-0" />
+                    <span
+                      className="truncate"
+                      dangerouslySetInnerHTML={{ __html: renderHighlight(result.titleHighlight) }}
+                    />
+                    {result.notebookName && (
+                      <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                        {result.notebookName}
+                      </span>
+                    )}
+                  </div>
+                  {result.contentHighlight && (
+                    <span
+                      className="ml-6 text-xs text-gray-400 dark:text-gray-500 truncate"
+                      dangerouslySetInnerHTML={{ __html: renderHighlight(result.contentHighlight) }}
+                    />
+                  )}
                 </Command.Item>
               ))}
             </Command.Group>
           )}
 
+          {/* Client-side notebook/tag filtering (always available) */}
           {filteredNotebooks && filteredNotebooks.length > 0 && (
             <Command.Group heading={t('sidebar.notebooks')} className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500 [&_[cmdk-group-heading]]:dark:text-gray-400 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
               {filteredNotebooks.map((notebook) => (
@@ -154,6 +216,12 @@ export default function CommandMenu() {
             </Command.Item>
           </Command.Group>
         </Command.List>
+
+        {/* Footer hint */}
+        <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+          <span>{t('search.hint')}</span>
+          <span>{t('common.escToClose')}</span>
+        </div>
       </Command>
     </div>
   );

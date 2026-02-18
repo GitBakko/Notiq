@@ -48,7 +48,27 @@ export const updateNotebook = async (userId: string, id: string, name: string) =
 };
 
 export const deleteNotebook = async (userId: string, id: string) => {
-  return prisma.notebook.deleteMany({
-    where: { id, userId },
+  return prisma.$transaction(async (tx) => {
+    const notebook = await tx.notebook.findFirst({ where: { id, userId } });
+    if (!notebook) throw new Error('Notebook not found');
+
+    // Find or create a fallback notebook for orphaned notes
+    let fallbackNotebook = await tx.notebook.findFirst({
+      where: { userId, id: { not: id } },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!fallbackNotebook) {
+      fallbackNotebook = await tx.notebook.create({
+        data: { name: 'Uncategorized', userId },
+      });
+    }
+
+    // Move notes to fallback notebook instead of orphaning
+    await tx.note.updateMany({
+      where: { notebookId: id, userId },
+      data: { notebookId: fallbackNotebook.id },
+    });
+
+    return tx.notebook.delete({ where: { id } });
   });
 };

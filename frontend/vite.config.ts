@@ -39,6 +39,8 @@ export default defineConfig({
         ]
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/ws/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [{
           urlPattern: ({ url }) => url.pathname.startsWith('/api'),

@@ -9,6 +9,7 @@ const shareSchema = z.object({
 });
 
 import * as noteService from '../services/note.service';
+import * as groupService from '../services/group.service';
 
 export default async function sharingRoutes(fastify: FastifyInstance) {
   // Public Note Access
@@ -157,5 +158,63 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   fastify.get('/notebooks', async (request, reply) => {
     const notebooks = await sharingService.getSharedNotebooks(request.user.id);
     return notebooks;
+  });
+
+  // Share Note with Group
+  fastify.post('/notes/:id/group', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { groupId, permission } = z.object({
+      groupId: z.string(),
+      permission: z.nativeEnum(Permission).optional().default('READ'),
+    }).parse(request.body);
+
+    try {
+      const group = await groupService.getGroup(groupId, request.user.id);
+      const results = [];
+      const errors = [];
+      for (const member of group.members) {
+        if (member.userId === request.user.id) continue;
+        try {
+          const r = await sharingService.shareNote(request.user.id, id, member.user.email, permission);
+          results.push(r);
+        } catch (e: any) {
+          errors.push({ userId: member.userId, error: e.message });
+        }
+      }
+      return { shared: results.length, errors };
+    } catch (error: any) {
+      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+      return reply.status(500).send({ message: error.message });
+    }
+  });
+
+  // Share Notebook with Group
+  fastify.post('/notebooks/:id/group', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { groupId, permission } = z.object({
+      groupId: z.string(),
+      permission: z.nativeEnum(Permission).optional().default('READ'),
+    }).parse(request.body);
+
+    try {
+      const group = await groupService.getGroup(groupId, request.user.id);
+      const results = [];
+      const errors = [];
+      for (const member of group.members) {
+        if (member.userId === request.user.id) continue;
+        try {
+          const r = await sharingService.shareNotebook(request.user.id, id, member.user.email, permission);
+          results.push(r);
+        } catch (e: any) {
+          errors.push({ userId: member.userId, error: e.message });
+        }
+      }
+      return { shared: results.length, errors };
+    } catch (error: any) {
+      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+      return reply.status(500).send({ message: error.message });
+    }
   });
 }

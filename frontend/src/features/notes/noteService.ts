@@ -6,6 +6,7 @@ export interface Note {
   id: string;
   title: string;
   content: string;
+  searchText?: string;
   notebookId: string;
   userId: string;
   isTrashed: boolean;

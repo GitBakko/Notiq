@@ -34,7 +34,7 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
         const lowerSearch = search.toLowerCase();
         collection = collection.filter(note =>
           note.title.toLowerCase().includes(lowerSearch) ||
-          note.content.toLowerCase().includes(lowerSearch)
+          (note.searchText || '').toLowerCase().includes(lowerSearch)
         );
       }
 

@@ -169,32 +169,32 @@ export default function SharedWithMePage() {
                 <>
                   {pending.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">Pending Invitations</h3>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">{t('sharing.pendingInvitations')}</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {pending.map(item => {
                           const data = activeTab === 'notes' ? (item as SharedNote).note : (item as SharedNotebook).notebook;
                           return (
                             <div key={item.id} className="block p-4 rounded-xl border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10 dark:border-yellow-900/30">
                               <div className="flex items-start justify-between mb-2">
-                                <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500">INVITATION</span>
+                                <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500">{t('sharing.invitation')}</span>
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700">{item.permission}</span>
                               </div>
                               <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{(data as any).title || (data as any).name || t('notes.untitled')}</h3>
                               <div className="text-xs text-gray-500 mt-2 mb-4">
-                                Invited by <span className="font-medium text-gray-700 dark:text-gray-300">{data.user.name || data.user.email}</span>
+                                {t('sharing.sharedBy')} <span className="font-medium text-gray-700 dark:text-gray-300">{data.user.name || data.user.email}</span>
                               </div>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => handleRespond((data as any).id, activeTab === 'notes' ? 'NOTE' : 'NOTEBOOK', 'accept')}
                                   className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
                                 >
-                                  Accept
+                                  {t('common.accept')}
                                 </button>
                                 <button
                                   onClick={() => handleRespond((data as any).id, activeTab === 'notes' ? 'NOTE' : 'NOTEBOOK', 'decline')}
                                   className="flex-1 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 text-sm font-medium rounded-lg transition-colors dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
                                 >
-                                  Decline
+                                  {t('common.decline')}
                                 </button>
                               </div>
                             </div>
@@ -207,7 +207,7 @@ export default function SharedWithMePage() {
                   {/* ACCEPTED SECTION */}
                   {accepted.length > 0 && (
                     <div>
-                      {pending.length > 0 && <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1 mt-8">Shared with You</h3>}
+                      {pending.length > 0 && <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1 mt-8">{t('sharing.sharedWithYou')}</h3>}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {accepted.map(item => {
                           const data = activeTab === 'notes' ? (item as SharedNote).note : (item as SharedNotebook).notebook;

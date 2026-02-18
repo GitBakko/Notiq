@@ -28,7 +28,7 @@ export default function TagsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createTag,
+    mutationFn: (name: string) => createTag(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
       toast.success(t('tags.created'));

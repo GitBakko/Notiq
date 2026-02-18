@@ -1,0 +1,12 @@
+{
+  "name": "notiq-scripts",
+  "version": "1.0.0",
+  "description": "Deployment scripts for Notiq",
+  "main": "package-release.js",
+  "scripts": {
+    "package": "node package-release.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.0"
+  }
+}

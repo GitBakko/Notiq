@@ -3,9 +3,11 @@ import { useParams } from 'react-router-dom';
 import { getPublicNote, type Note } from '../notes/noteService';
 import Editor from '../../components/editor/Editor';
 import AttachmentList from '../../components/editor/AttachmentList';
+import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function PublicNotePage() {
+  const { t } = useTranslation();
   const { noteId } = useParams<{ noteId: string }>();
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,8 +22,8 @@ export default function PublicNotePage() {
     }
   }, [noteId]);
 
-  if (loading) return <div className="flex h-screen items-center justify-center dark:bg-gray-900 dark:text-white">Loading...</div>;
-  if (error || !note) return <div className="flex h-screen items-center justify-center text-red-500 dark:bg-gray-900 dark:text-red-400">{error || 'Note not found'}</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center dark:bg-gray-900 dark:text-white">{t('common.loading')}</div>;
+  if (error || !note) return <div className="flex h-screen items-center justify-center text-red-500 dark:bg-gray-900 dark:text-red-400">{error || t('common.notFound')}</div>;
 
   return (
     <div className="h-screen overflow-y-auto bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 dark:bg-gray-900">
@@ -29,7 +31,7 @@ export default function PublicNotePage() {
         <div className="p-8 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-3xl font-bold text-gray-900 mb-2 dark:text-white">{note.title}</h1>
           <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <span>Last updated {formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+            <span>{t('common.lastEdited')} {formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
             {note.tags && note.tags.length > 0 && (
               <div className="flex gap-1">
                 {note.tags.map(t => (
@@ -46,16 +48,16 @@ export default function PublicNotePage() {
 
         {note.attachments && note.attachments.length > 0 && (
           <div className="px-8 pb-8 border-t border-gray-100 pt-8 dark:border-gray-700">
-            <h3 className="text-sm font-semibold text-gray-500 mb-4 uppercase tracking-wider dark:text-gray-400">Attachments</h3>
+            <h3 className="text-sm font-semibold text-gray-500 mb-4 uppercase tracking-wider dark:text-gray-400">{t('public.attachments')}</h3>
             <AttachmentList attachments={note.attachments} onDelete={async () => { }} readOnly />
           </div>
         )}
       </div>
       <div className="text-center mt-8 text-gray-400 text-sm dark:text-gray-500 flex items-center justify-center gap-2">
-        <span className="text-xs">Powered by</span>
+        <span className="text-xs">{t('common.poweredBy')}</span>
         <div className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
-          <img src="/favicon.png" alt="Notiq" className="h-5 w-5 object-contain" />
-          <span className="text-sm font-bold text-gray-500 dark:text-gray-400">Notiq</span>
+          <img src="/favicon.png" alt={t('common.logoAlt')} className="h-5 w-5 object-contain" />
+          <span className="text-sm font-bold text-gray-500 dark:text-gray-400">{t('common.notiq')}</span>
         </div>
       </div>
     </div>

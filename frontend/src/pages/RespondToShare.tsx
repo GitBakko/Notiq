@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 export default function RespondToShare() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
@@ -15,7 +17,7 @@ export default function RespondToShare() {
   useEffect(() => {
     if (!token || !action || (action !== 'accept' && action !== 'decline')) {
       setStatus('error');
-      setMessage('Invalid link parameters.');
+      setMessage(t('sharing.invalidParams'));
       return;
     }
 
@@ -23,7 +25,7 @@ export default function RespondToShare() {
       try {
         await api.post('/share/respond', { token, action });
         setStatus('success');
-        setMessage(action === 'accept' ? 'Invitation accepted! Redirecting...' : 'Invitation declined.');
+        setMessage(action === 'accept' ? t('sharing.acceptedRedirect') : t('sharing.declined'));
 
         if (action === 'accept') {
           setTimeout(() => {
@@ -32,12 +34,12 @@ export default function RespondToShare() {
         }
       } catch (err: any) {
         setStatus('error');
-        setMessage(err.response?.data?.message || 'Failed to process invitation.');
+        setMessage(err.response?.data?.message || t('sharing.processFailed'));
       }
     };
 
     processResponse();
-  }, [token, action, navigate]);
+  }, [token, action, navigate, t]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
@@ -45,14 +47,14 @@ export default function RespondToShare() {
         {status === 'loading' && (
           <div className="flex flex-col items-center">
             <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Processing Invitation...</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('sharing.processing')}</h2>
           </div>
         )}
 
         {status === 'success' && (
           <div className="flex flex-col items-center">
             <CheckCircle className="w-12 h-12 text-emerald-500 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Success</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{t('common.success')}</h2>
             <p className="text-gray-600 dark:text-gray-300">{message}</p>
           </div>
         )}
@@ -60,13 +62,13 @@ export default function RespondToShare() {
         {status === 'error' && (
           <div className="flex flex-col items-center">
             <XCircle className="w-12 h-12 text-red-500 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Error</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{t('common.error')}</h2>
             <p className="text-gray-600 dark:text-gray-300">{message}</p>
             <button
               onClick={() => navigate('/')}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
             >
-              Go Home
+              {t('common.goHome')}
             </button>
           </div>
         )}

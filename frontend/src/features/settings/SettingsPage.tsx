@@ -7,6 +7,72 @@ import { Card } from '../../components/ui/Card';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import clsx from 'clsx';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { useState, useRef } from 'react';
+import { Upload } from 'lucide-react';
+import toast from 'react-hot-toast';
+import axios from 'axios';
+
+const ImportSection = () => {
+  const { t } = useTranslation();
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.enex')) {
+      toast.error(t('settings.importError'));
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setIsUploading(true);
+    const toastId = toast.loading(t('settings.importing'));
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/import/evernote`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      toast.success(t('settings.importSuccess', { count: response.data.importedCount }));
+    } catch (error) {
+      console.error(error);
+      toast.error(t('settings.importError'));
+    } finally {
+      setIsUploading(false);
+      toast.dismiss(toastId);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <input
+        type="file"
+        accept=".enex"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <Button
+        variant="secondary"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+        className="flex items-center gap-2"
+      >
+        <Upload size={18} />
+        {isUploading ? t('settings.importing') : t('settings.selectFile')}
+      </Button>
+    </div>
+  );
+};
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -141,6 +207,17 @@ export default function SettingsPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {t('settings.techStack')}
             </p>
+          </Card>
+        </section>
+
+        {/* Import */}
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t('settings.import')}</h2>
+          <Card className="p-6 dark:bg-gray-800 dark:border-gray-700">
+            <h3 className="font-medium text-gray-900 dark:text-white mb-2">{t('settings.importTitle')}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.importDesc')}</p>
+
+            <ImportSection />
           </Card>
         </section>
       </div>

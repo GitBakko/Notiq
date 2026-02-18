@@ -11,6 +11,8 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import { Button } from '../../components/ui/Button';
 import NoteEditor from './NoteEditor';
+import { FileDown } from 'lucide-react';
+import { useImport } from '../../hooks/useImport';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -41,6 +43,11 @@ export default function NotesPage() {
   const isLoading = !notes;
 
   const queryClient = useQueryClient();
+  const { importFile, isUploading, hiddenInput } = useImport({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notes'] });
+    }
+  });
 
   const selectedNote = notes?.find((n) => n.id === selectedNoteId);
 
@@ -110,7 +117,18 @@ export default function NotesPage() {
               </button>
             )}
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white">{t('sidebar.notes')}</h2>
+            {selectedNotebookId && (
+              <button
+                onClick={() => importFile(selectedNotebookId, false)}
+                disabled={isUploading}
+                className="ml-auto text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+                title={t('settings.importTitle')}
+              >
+                <FileDown size={18} />
+              </button>
+            )}
           </div>
+          {hiddenInput}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={16} />
             <input

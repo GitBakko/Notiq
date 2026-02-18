@@ -67,7 +67,7 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
   // Generate Invite Token
   const token = jwt.sign(
     { noteId, userId: targetUser.id, type: 'NOTE' },
-    process.env.JWT_SECRET || 'supersecret',
+    process.env.JWT_SECRET!,
     { expiresIn: '7d' }
   );
 
@@ -202,7 +202,7 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
   // Generate Invite Token
   const token = jwt.sign(
     { notebookId, userId: targetUser.id, type: 'NOTEBOOK' },
-    process.env.JWT_SECRET || 'supersecret',
+    process.env.JWT_SECRET!,
     { expiresIn: '7d' }
   );
 

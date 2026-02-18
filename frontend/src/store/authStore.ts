@@ -12,12 +12,15 @@ interface User {
   placeOfBirth?: string;
   mobile?: string;
   avatarUrl?: string;
+  role?: 'USER' | 'SUPERADMIN';
+  invitesAvailable?: number;
 }
 
 interface AuthState {
   user: User | null;
   token: string | null;
   setAuth: (user: User, token: string) => void;
+  setToken: (token: string) => void;
   updateUser: (updates: Partial<User>) => Promise<void>;
   uploadAvatar: (file: File) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
@@ -30,6 +33,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       setAuth: (user, token) => set({ user, token }),
+      setToken: (token) => set({ token }),
       updateUser: async (updates) => {
         const { token, user } = get();
         if (!token || !user) return;
