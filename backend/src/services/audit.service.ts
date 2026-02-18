@@ -1,4 +1,5 @@
 import prisma from '../plugins/prisma';
+import logger from '../utils/logger';
 
 export const logEvent = async (userId: string, event: string, details?: any) => {
   try {
@@ -10,7 +11,7 @@ export const logEvent = async (userId: string, event: string, details?: any) => 
       },
     });
   } catch (error) {
-    console.error('Failed to create audit log', error);
+    logger.error(error, 'Failed to create audit log');
     // Don't throw, audit logging failure shouldn't block main flow
   }
 };

@@ -60,9 +60,10 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 | Cosa | Path |
 |------|------|
 | Server entry | `backend/src/app.ts` (port 3001, registra tutte le route + Hocuspocus su `/ws`) |
-| DB schema | `backend/prisma/schema.prisma` (14 modelli, 5 migration) |
+| DB schema | `backend/prisma/schema.prisma` (14 modelli, 8 migration) |
 | Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
+| Logger | `backend/src/utils/logger.ts` (Pino shared, usare nei servizi; nelle route usare `request.log`) |
 | SMTP config | `backend/config.json` (Nodemailer lo legge all'avvio) |
 | Prisma config | `backend/prisma.config.js` (carica dotenv, definisce datasource) |
 | Frontend entry | `frontend/src/main.tsx` (React 19, QueryClient, BrowserRouter, SW registration) |
@@ -92,12 +93,14 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 DATABASE_URL="postgresql://user:pass@localhost:5432/notiq"
 JWT_SECRET="secret"
 FRONTEND_URL="http://localhost:5173"
+LOG_LEVEL="info"    # Pino log level (debug/info/warn/error)
 
 # backend/config.json → SMTP { host, port, user, pass, secure }
 
 # frontend/.env.production
 VITE_API_URL=/api
 VITE_WS_URL=wss://notiq.epartner.it/ws
+VITE_VAPID_PUBLIC_KEY=<your-vapid-public-key>
 ```
 
 Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` → `ws://:3001`.
@@ -139,10 +142,7 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 
 | File | Bug |
 |------|-----|
-| `frontend/src/features/notes/NoteEditor.tsx:353-361` | DEBUG panel visibile in prod (mostra raw content). |
-| `backend/Dockerfile:27` | CMD `node dist/index.js` errato → deve essere `node dist/app.js`. |
-| `backend/src/services/email.service.ts:87+118` | Duplicate `case 'SHARE_INVITATION'` + dead code dopo break (L192-215). |
-| `backend/config.json` | Contiene credenziali SMTP reali committate in git. |
+| `backend/config.json` | Contiene credenziali SMTP reali committate in git. Considerare `.gitignore` + env vars. |
 
 ---
 
@@ -160,17 +160,17 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 
 ## Debito tecnico
 
-| Prio | Issue | File |
-|------|-------|------|
-| P0 | DEBUG panel visibile in prod | `frontend/src/features/notes/NoteEditor.tsx:353-361` |
-| P0 | SMTP credentials in git | `backend/config.json` |
-| P0 | Dockerfile CMD errato (`index.js` vs `app.js`) | `backend/Dockerfile:27` |
-| P1 | TipTap version mismatch (frontend v2 / backend v3) | `package.json` di entrambi |
-| P1 | JWT senza scadenza | `backend/src/routes/auth.ts:70` (manca `expiresIn`) |
-| P1 | CORS `origin: true` in produzione | `backend/src/app.ts:33` |
-| P1 | Duplicate case + dead code in email service | `backend/src/services/email.service.ts:87-215` |
-| P2 | lastActiveAt update ogni richiesta (no throttle) | `backend/src/app.ts:72-89` |
-| P2 | Vault AES senza KDF (PIN diretto come chiave) | `frontend/src/utils/crypto.ts` |
-| P2 | 106 lint errors (no-explicit-any, no-unused-vars) | `frontend/` vari file |
-| P3 | Zero unit test backend | `backend/package.json` (test script = echo error) |
-| P3 | console.log debug sparsi | Vari file frontend/backend |
+### Risolto (audit feb 2026, Fasi 1-13)
+
+- **14 CRITICAL** — JWT scadenza/invalidazione, IDOR, CORS whitelist, Dockerfile CMD, DEBUG panel prod, email duplicate case, XSS sanitizzazione, rate limiting
+- **20 HIGH** — Zod validation su tutte le route, error handling standardizzato, Prisma select optimization, pagination, lastActiveAt throttle
+- **~30 MEDIUM/LOW** — 8 DB indexes, structured logging (Pino), import hardening (XXE + size limit), URL.createObjectURL leak fix, VAPID da env var, rimozione console.log debug
+
+### Residuo
+
+| Prio | Issue                                          | File                            |
+|------|-------------------------------------------------|---------------------------------|
+| P0   | SMTP credentials in git                         | `backend/config.json`           |
+| P2   | Vault AES senza KDF (PIN diretto come chiave)   | `frontend/src/utils/crypto.ts`  |
+| P2   | ~106 lint errors (no-explicit-any, no-unused-vars) | `frontend/` vari file        |
+| P3   | Zero unit test backend                          | `backend/package.json`          |

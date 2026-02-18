@@ -4,6 +4,7 @@ import * as emailService from './email.service';
 import * as notificationService from './notification.service';
 import jwt from 'jsonwebtoken';
 import { Permission, ShareStatus } from '@prisma/client';
+import logger from '../utils/logger';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
   // Verify ownership
@@ -97,7 +98,7 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
       );
 
     } catch (e) {
-      console.error('Failed to send share invitation', e);
+      logger.error(e, 'Failed to send share invitation');
     }
   }
 
@@ -239,7 +240,7 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
         }
       );
     } catch (e) {
-      console.error('Failed to send share notebook notification', e);
+      logger.error(e, 'Failed to send share notebook notification');
     }
   }
 

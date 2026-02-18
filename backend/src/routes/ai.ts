@@ -32,19 +32,19 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     };
 
     if (!noteId || !message || !operation) {
-      return reply.status(400).send({ error: 'noteId, message, and operation are required' });
+      return reply.status(400).send({ message: 'noteId, message, and operation are required' });
     }
 
     const access = await checkNoteAccess(request.user.id, noteId);
     if (!access) return reply.code(403).send({ message: 'Note not found or access denied' });
 
     if (!VALID_OPERATIONS.includes(operation as AiOperation)) {
-      return reply.status(400).send({ error: `Invalid operation. Must be one of: ${VALID_OPERATIONS.join(', ')}` });
+      return reply.status(400).send({ message: `Invalid operation. Must be one of: ${VALID_OPERATIONS.join(', ')}` });
     }
 
     const enabled = await isAiEnabled();
     if (!enabled) {
-      return reply.status(503).send({ error: 'AI is not enabled' });
+      return reply.status(503).send({ message: 'AI is not enabled' });
     }
 
     // Set SSE headers

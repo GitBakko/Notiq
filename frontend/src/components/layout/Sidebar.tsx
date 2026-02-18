@@ -41,34 +41,27 @@ export default function Sidebar() {
   const { isUploading, importFile, hiddenInput } = useImport();
 
   const handleCreateNote = async () => {
-    console.log('Sidebar: handleCreateNote called');
     let defaultNotebookId: string;
 
     if (!notebooks || notebooks.length === 0) {
-      console.log('Sidebar: No notebooks found, creating default...');
       try {
         const nb = await createNotebook(t('notebooks.firstNotebook'));
         defaultNotebookId = nb.id;
-        console.log('Sidebar: Default notebook created', defaultNotebookId);
       } catch (e) {
-        console.error('Sidebar: Failed to create default notebook', e);
+        console.error('Failed to create default notebook', e);
         return;
       }
     } else {
       defaultNotebookId = notebooks[0].id;
-      console.log('Sidebar: Using existing notebook', defaultNotebookId);
     }
 
     try {
-      console.log('Sidebar: Creating note...');
       const newNote = await createNote({
         title: '',
         notebookId: defaultNotebookId,
         content: ''
       });
-      console.log('Sidebar: Note created', newNote.id);
       navigate(`/notes?noteId=${newNote.id}`);
-      console.log('Sidebar: Navigated to note');
     } catch (error) {
       console.error('Failed to create note', error);
     }
@@ -171,7 +164,7 @@ export default function Sidebar() {
             <div className="h-8 w-8 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">
               {user?.avatarUrl ? (
                 <img
-                  src={user.avatarUrl.startsWith('http://localhost:3001') ? user.avatarUrl.replace('http://localhost:3001', '') : user.avatarUrl}
+                  src={user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')}
                   alt={t('common.profileAlt')}
                   className="w-full h-full rounded-full object-cover"
                 />

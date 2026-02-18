@@ -8,6 +8,17 @@ const shareSchema = z.object({
   permission: z.nativeEnum(Permission).optional().default('READ'),
 });
 
+const respondSchema = z.object({
+  token: z.string().min(1),
+  action: z.enum(['accept', 'decline']),
+});
+
+const respondByIdSchema = z.object({
+  itemId: z.string().uuid(),
+  type: z.enum(['NOTE', 'NOTEBOOK']),
+  action: z.enum(['accept', 'decline']),
+});
+
 import * as noteService from '../services/note.service';
 import * as groupService from '../services/group.service';
 
@@ -22,26 +33,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
 
   // Respond to Share Invitation
   fastify.post('/respond', async (request, reply) => {
-    const { token, action } = request.body as { token: string; action: 'accept' | 'decline' };
-
-    // No auth middleware required for this, as it depends on the token?
-    // Actually, usually users should be logged in to accept, so we know who is accepting?
-    // But the token contains the userId. So technically we can trust the token.
-    // However, for security, maybe require login?
-    // The requirement says "Link in email". If they click it, they might not be logged in.
-    // Ideally, the token validates them.
-    // But our route hook `fastify.addHook('onRequest', fastify.authenticate);` is applied to ALL routes in this file because of line 22!
-    // We need to support unauthenticated access OR move this route above the hook.
-    // Line 15 (public note) is above the hook.
-    // I should move this route above the hook or ensure the user logs in.
-    // For specific user-based sharing, they MUST be logged in as the correct user to avoid confusion?
-    // But the JWT encodes userId. If I use the token to identify them, I don't need the session.
-    // However, `respondToShare` updates `SharedNote` which is linked to a user.
-    // Use the token.
-
-    // BUT wait, line 22 applies to everything below.
-    // I probably want to allow responding without being logged in (e.g. on mobile/different device).
-    // So I should place this route ABOVE line 22.
+    const { token, action } = respondSchema.parse(request.body);
 
     try {
       const result = await sharingService.respondToShare(token, action);
@@ -58,7 +50,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
 
   // Respond to Share by ID (Directly from dashboard)
   fastify.post('/respond-id', async (request, reply) => {
-    const { itemId, type, action } = request.body as { itemId: string; type: 'NOTE' | 'NOTEBOOK'; action: 'accept' | 'decline' };
+    const { itemId, type, action } = respondByIdSchema.parse(request.body);
 
     try {
       const result = await sharingService.respondToShareById(request.user.id, itemId, type, action);
@@ -89,8 +81,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.message === 'Cannot share with yourself') {
         return reply.status(400).send({ message: 'Cannot share with yourself' });
       }
-      console.error('Share Note Error:', error);
-      return reply.status(500).send({ message: error.message || 'Internal Server Error' });
+      request.log.error(error, 'Share Note Error');
+      return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
 
@@ -105,8 +97,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.code === 'P2025') { // Record to delete does not exist
         return { success: true };
       }
-      console.error('Revoke Share Error:', error);
-      return reply.status(500).send({ message: error.message || 'Internal Server Error' });
+      request.log.error(error, 'Revoke Share Error');
+      return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
 
@@ -134,8 +126,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.message === 'Cannot share with yourself') {
         return reply.status(400).send({ message: 'Cannot share with yourself' });
       }
-      console.error('Share Notebook Error:', error);
-      return reply.status(500).send({ message: error.message || 'Internal Server Error' });
+      request.log.error(error, 'Share Notebook Error');
+      return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
 
@@ -185,7 +177,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
       if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      return reply.status(500).send({ message: error.message });
+      return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
 
@@ -214,7 +206,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
       if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      return reply.status(500).send({ message: error.message });
+      return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Mic, Square, Save, X, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
@@ -74,6 +74,12 @@ export default function AudioRecorder({ onSave, onCancel }: AudioRecorderProps) 
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const audioUrl = useMemo(() => audioBlob ? URL.createObjectURL(audioBlob) : null, [audioBlob]);
+
+  useEffect(() => {
+    return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
+  }, [audioUrl]);
+
   const handleSave = () => {
     if (audioBlob) {
       onSave(audioBlob);
@@ -116,7 +122,7 @@ export default function AudioRecorder({ onSave, onCancel }: AudioRecorderProps) 
           </div>
         ) : (
           <div className="flex gap-2 w-full">
-            <audio src={URL.createObjectURL(audioBlob)} controls className="w-full" />
+            <audio src={audioUrl || undefined} controls className="w-full" />
           </div>
         )}
 

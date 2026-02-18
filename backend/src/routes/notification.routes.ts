@@ -1,13 +1,28 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead, deleteNotification } from '../services/notification.service';
 import { subscribeUser } from '../services/push.service';
+
+const paginationSchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+});
+
+const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+  }),
+});
 
 export default async function notificationRoutes(fastify: FastifyInstance) {
   fastify.get('/', {
     preValidation: [fastify.authenticate]
   }, async (request, reply) => {
     const userId = request.user.id;
-    const notifications = await getUserNotifications(userId);
+    const { page, limit } = paginationSchema.parse(request.query);
+    const notifications = await getUserNotifications(userId, page, limit);
     return notifications;
   });
 
@@ -41,7 +56,7 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
     preValidation: [fastify.authenticate]
   }, async (request, reply) => {
     const userId = request.user.id;
-    const subscription = request.body;
+    const subscription = pushSubscriptionSchema.parse(request.body);
     await subscribeUser(userId, subscription);
     return { success: true };
   });

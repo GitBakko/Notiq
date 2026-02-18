@@ -10,6 +10,21 @@ const updateSettingSchema = z.object({
   value: z.string(),
 });
 
+const paginatedQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(10),
+  search: z.string().optional(),
+});
+
+const auditLogQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+});
+
+const userIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
 export default async function adminRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
@@ -37,17 +52,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/users', async (request, reply) => {
-    // @ts-ignore
-    const { page, limit, search } = request.query;
+    const { page, limit, search } = paginatedQuerySchema.parse(request.query);
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
     if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'Forbidden' });
 
-    return adminService.getUsers(Number(page) || 1, Number(limit) || 10, search as string);
+    return adminService.getUsers(page, limit, search);
   });
 
   fastify.put('/users/:id', async (request, reply) => {
-    // @ts-ignore
-    const { id } = request.params;
+    const { id } = userIdParamSchema.parse(request.params);
     const updateSchema = z.object({
       role: z.enum(['USER', 'SUPERADMIN']).optional(),
       isVerified: z.boolean().optional()
@@ -62,12 +75,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/audit-logs', async (request, reply) => {
-    // @ts-ignore
-    const { page, limit } = request.query;
+    const { page, limit } = auditLogQuerySchema.parse(request.query);
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
     if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'Forbidden' });
 
-    return adminService.getAuditLogs(Number(page) || 1, Number(limit) || 20);
+    return adminService.getAuditLogs(page, limit);
   });
 
   // AI Configuration

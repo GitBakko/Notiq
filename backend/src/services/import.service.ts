@@ -8,6 +8,7 @@ import { generateJSON } from '@tiptap/core';
 import { extensions } from '../hocuspocus';
 import { JSDOM } from 'jsdom';
 import { extractTextFromTipTapJson } from '../utils/extractText';
+import logger from '../utils/logger';
 
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
@@ -52,11 +53,18 @@ interface EnexNote {
 }
 
 // --- Main export ---
+const MAX_IMPORT_SIZE = 10 * 1024 * 1024; // 10MB
+
 export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetNotebookId?: string, isVault: boolean = false) => {
+  if (fileBuffer.length > MAX_IMPORT_SIZE) {
+    throw new Error('Import file exceeds maximum size limit');
+  }
+
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '',
-    textNodeName: '#text'
+    textNodeName: '#text',
+    processEntities: false,
   });
 
   const xmlData = parser.parse(fileBuffer);
@@ -76,7 +84,7 @@ export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetN
       await processEnexNote(enexNote, userId, targetNotebookId, isVault);
       importedCount++;
     } catch (e) {
-      console.error('Failed to import note:', enexNote.title, e);
+      logger.error(e, 'Failed to import note: %s', enexNote.title);
     }
   }
 
@@ -259,7 +267,7 @@ const processEnexNote = async (enexNote: EnexNote, userId: string, targetNoteboo
       const tiptapJson = withDomEnvironment(() => generateJSON(content, extensions));
       contentJson = JSON.stringify(tiptapJson);
     } catch (err) {
-      console.error('Failed to convert HTML to TipTap JSON, using plain text fallback:', err);
+      logger.error(err, 'Failed to convert HTML to TipTap JSON, using plain text fallback');
       const plainText = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       contentJson = JSON.stringify({
         type: 'doc',

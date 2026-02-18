@@ -3,6 +3,7 @@
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger';
 
 const configPath = path.join(__dirname, '../../config.json');
 let config: any = {};
@@ -47,10 +48,10 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
       subject,
       html,
     });
-    console.log('Message sent: %s', info.messageId);
+    logger.info('Message sent: %s', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending email', error);
+    logger.error(error, 'Error sending email');
     throw error;
   }
 };

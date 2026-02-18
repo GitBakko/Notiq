@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma';
 import * as notificationService from './notification.service';
 import * as emailService from './email.service';
 import { hocuspocus } from '../hocuspocus';
+import logger from '../utils/logger';
 
 export const createMessage = async (userId: string, noteId: string, content: string) => {
   // Save message
@@ -64,7 +65,7 @@ export const createMessage = async (userId: string, noteId: string, content: str
       });
     }
   } catch (error) {
-    console.error('Error checking active users in Hocuspocus:', error);
+    logger.error(error, 'Error checking active users in Hocuspocus');
     // Proceed without filtering if this fails
   }
 

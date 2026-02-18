@@ -197,7 +197,6 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     ];
 
     if (collaboration?.enabled && provider && provider.document) {
-      console.log('Editor: Configuring collaboration', { provider, doc: provider.document, user: collaboration.user });
       const extensionsWithCollab = [
         ...baseExtensions,
         Collaboration.configure({
@@ -330,13 +329,10 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
               } catch (e) { }
 
               try {
-                console.log('Editor: Injecting local content into empty collaborative document');
                 editor.commands.setContent(contentToSet);
               } catch (err) {
                 console.error('Editor: Injection failed', err);
               }
-            } else {
-              console.log('Editor: Collaborative document has content, skipping local injection');
             }
           }
         }

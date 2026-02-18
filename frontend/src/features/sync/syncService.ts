@@ -51,9 +51,7 @@ export const syncPull = async () => {
     });
 
     // Pull Notes
-    console.log('Sync Pull: Fetching notes with includeTrashed=true');
     const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
-    console.log(`Sync Pull: Received ${notesRes.data.length} notes from server`);
     await db.transaction('rw', db.notes, db.syncQueue, async () => {
       // We need to be careful not to overwrite dirty notes
       // For MVP, let's just overwrite everything that is 'synced'
@@ -101,7 +99,6 @@ export const syncPull = async () => {
         .map(n => n.id);
 
       if (toDeleteIds.length > 0) {
-        console.log(`Sync Pull: Removing ${toDeleteIds.length} locally synced notes missing from server.`);
         await db.notes.bulkDelete(toDeleteIds);
       }
 
@@ -109,7 +106,6 @@ export const syncPull = async () => {
       await db.notes.bulkPut(filteredNotesToPut);
     });
 
-    console.log('Sync Pull Completed');
   } catch (error) {
     console.error('Sync Pull Failed:', error);
   }

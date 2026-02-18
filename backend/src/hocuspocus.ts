@@ -6,6 +6,7 @@ import prisma from './plugins/prisma';
 import jwt from 'jsonwebtoken';
 import * as Y from 'yjs';
 import { extractTextFromTipTapJson } from './utils/extractText';
+import logger from './utils/logger';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -172,7 +173,6 @@ export const extensions = [
   LineHeight,
 ];
 
-console.log('Hocuspocus Extensions Check:', extensions.map((e: any) => e?.name || 'UNDEFINED'));
 
 
 
@@ -195,7 +195,7 @@ export const hocuspocus = new Server({
             const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
             return Y.encodeStateAsUpdate(doc);
           } catch (e) {
-            console.error('Failed to parse note content as JSON, attempting fallback', e);
+            logger.error(e, 'Failed to parse note content as JSON, attempting fallback');
             // Fallback for legacy HTML content
             try {
               const doc = new Y.Doc();
@@ -221,7 +221,7 @@ export const hocuspocus = new Server({
               const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
               return Y.encodeStateAsUpdate(tiptapDoc);
             } catch (err) {
-              console.error('Failed to convert legacy content', err);
+              logger.error(err, 'Failed to convert legacy content');
             }
           }
         }

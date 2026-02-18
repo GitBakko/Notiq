@@ -1,18 +1,30 @@
 
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import prisma from '../plugins/prisma';
 import * as inviteService from '../services/invite.service';
 
+const sendInviteEmailSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  locale: z.string().optional().default('en'),
+});
+
+const requestInviteSchema = z.object({
+  email: z.string().email(),
+  honeypot: z.string().optional(),
+});
+
+const codeParamSchema = z.object({
+  code: z.string().min(1),
+});
+
+const idParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
 export default async function inviteRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
-
-
-  // Rate Limiter
-  await fastify.register(import('@fastify/rate-limit'), {
-    global: false,
-    max: 3, // 3 requests
-    timeWindow: '1 hour' // Per hour
-  });
 
   // Get my invites
   fastify.get('/', async (request, reply) => {
@@ -32,11 +44,11 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
 
   // Send Invite via Email
   fastify.post('/:code/email', async (request, reply) => {
-    const { code } = request.params as { code: string };
-    const { email, name, locale } = request.body as { email: string, name: string, locale: string };
+    const { code } = codeParamSchema.parse(request.params);
+    const { email, name, locale } = sendInviteEmailSchema.parse(request.body);
 
     try {
-      await inviteService.sendInviteEmail(code, request.user.id, email, name, locale || 'en');
+      await inviteService.sendInviteEmail(code, request.user.id, email, name, locale);
       return { success: true };
     } catch (error: any) {
       return reply.status(400).send({ message: error.message || 'Failed to send email' });
@@ -45,7 +57,7 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
 
   // Resend Verification Email for an invite (Existing)
   fastify.post('/:code/resend', async (request, reply) => {
-    const { code } = request.params as { code: string };
+    const { code } = codeParamSchema.parse(request.params);
     try {
       const result = await (await import('../services/auth.service')).resendVerificationForInvite(code, request.user.id);
       return result;
@@ -66,7 +78,7 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
       }
     }
   }, async (request, reply) => {
-    const { email, honeypot } = request.body as { email: string, honeypot?: string };
+    const { email, honeypot } = requestInviteSchema.parse(request.body);
 
     if (honeypot) {
       // Silently fail for bots
@@ -94,7 +106,7 @@ export async function adminInviteRoutes(fastify: FastifyInstance) {
 
   fastify.post('/requests/:id/approve', async (request, reply) => {
     if (request.user.role !== 'SUPERADMIN') return reply.status(403).send();
-    const { id } = request.params as { id: string };
+    const { id } = idParamSchema.parse(request.params);
     try {
       await inviteService.approveInvitationRequest(id, request.user.id);
       return { success: true };
@@ -105,7 +117,7 @@ export async function adminInviteRoutes(fastify: FastifyInstance) {
 
   fastify.post('/requests/:id/reject', async (request, reply) => {
     if (request.user.role !== 'SUPERADMIN') return reply.status(403).send();
-    const { id } = request.params as { id: string };
+    const { id } = idParamSchema.parse(request.params);
     try {
       await inviteService.rejectInvitationRequest(id);
       return { success: true };

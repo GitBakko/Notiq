@@ -29,15 +29,11 @@ export const CollaborativeHighlighter = Extension.create({
 
             if (isRemote) {
               const decorations: Decoration[] = [];
-              console.log('CollaborativeHighlighter: Remote transaction detected', { steps: tr.steps.length });
 
-              tr.steps.forEach((step, index) => {
+              tr.steps.forEach((step) => {
                 step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
-                  console.log(`CollaborativeHighlighter: Step ${index} map`, { oldStart, oldEnd, newStart, newEnd });
-
                   // Insertion
                   if (newEnd > newStart) {
-                    console.log('CollaborativeHighlighter: Detected insertion', { start: newStart, end: newEnd });
                     decorations.push(
                       Decoration.inline(newStart, newEnd, {
                         class: 'remote-change-add',
@@ -49,17 +45,7 @@ export const CollaborativeHighlighter = Extension.create({
                   if (oldEnd > oldStart) {
                     const deletedContent = tr.before.textBetween(oldStart, oldEnd);
                     const docSize = tr.before.content.size;
-                    // Heuristic: if deleted content is > 90% of doc size, assume it's a full replacement/sync artifact
-                    // unless the new doc is empty (clear all)
                     const isFullReplacement = (oldEnd - oldStart) > (docSize * 0.9);
-
-                    console.log('CollaborativeHighlighter: Detected deletion', {
-                      start: oldStart,
-                      end: oldEnd,
-                      contentLength: deletedContent?.length,
-                      docSize,
-                      isFullReplacement
-                    });
 
                     if (deletedContent && !isFullReplacement) {
                       // Create a widget that shows the deleted text

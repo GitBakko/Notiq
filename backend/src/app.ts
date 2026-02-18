@@ -143,24 +143,22 @@ const start = async () => {
 
     // Attach Hocuspocus to Fastify server
     server.server.on('upgrade', (request, socket, head) => {
-      console.log('Upgrade request received for:', request.url);
+      server.log.debug('Upgrade request received for: %s', request.url);
       if (request.url === '/ws' || request.url?.startsWith('/ws?')) {
-        console.log('Handling upgrade for /ws');
+        server.log.debug('Handling upgrade for /ws');
         hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: any) => {
           hocuspocus.webSocketServer.emit('connection', ws, request);
         });
-      } else {
-        console.log('Upgrade request ignored for:', request.url);
       }
     });
 
-    console.log('Server running on port 3001');
-    console.log('Hocuspocus attached to /ws');
+    server.log.info('Server running on port 3001');
+    server.log.info('Hocuspocus attached to /ws');
   } catch (err) {
     server.log.error(err);
     process.exit(1);
   }
 };
 
-console.log('Starting server...');
+server.log.info('Starting server...');
 start();

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 
-const PUBLIC_VAPID_KEY = 'BIW6zpzJ20tsygTbA-FOGCNxT82Y5LGzNG2XV_qO2Q0D9FFC1yolwkF06o5NhbA3TJu2Na45777NHxZW_gHRXeU';
+const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BIW6zpzJ20tsygTbA-FOGCNxT82Y5LGzNG2XV_qO2Q0D9FFC1yolwkF06o5NhbA3TJu2Na45777NHxZW_gHRXeU';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -49,7 +49,6 @@ export const usePushNotifications = () => {
       await api.post('/notifications/subscribe', sub);
       setSubscription(sub);
       setIsSubscribed(true);
-      console.log('User subscribed to push notifications');
     } catch (error) {
       console.error('Failed to subscribe the user: ', error);
     }
@@ -63,7 +62,6 @@ export const usePushNotifications = () => {
       // Optionally notify backend to remove subscription
       setSubscription(null);
       setIsSubscribed(false);
-      console.log('User unsubscribed from push notifications');
     } catch (error) {
       console.error('Failed to unsubscribe the user: ', error);
     }

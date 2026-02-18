@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import prisma from '../plugins/prisma';
+import logger from '../utils/logger';
 
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
@@ -49,7 +50,7 @@ export const sendPushNotification = async (userId: string, payload: any) => {
             where: { id: sub.id },
           });
         }
-        console.error('Error sending push notification', error);
+        logger.error(error, 'Error sending push notification');
       });
   });
 
