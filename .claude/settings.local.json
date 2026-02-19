@@ -28,7 +28,17 @@
       "Bash(docker run:*)",
       "Bash(docker ps:*)",
       "Bash(docker exec:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "mcp__plugin_serena_serena__read_file",
+      "Bash(\"d:/Develop/AI/Notiq/README.md\":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node test-toydoc.js:*)",
+      "Bash(test:*)",
+      "Bash(git -C \"d:/Develop/AI/Notiq\" status --short)",
+      "Bash(git -C \"/d/Develop/AI/Notiq\" status)",
+      "Bash(git -C \"/d/Develop/AI/Notiq\" diff frontend/src/components/layout/Sidebar.tsx)"
     ]
   }
 }
