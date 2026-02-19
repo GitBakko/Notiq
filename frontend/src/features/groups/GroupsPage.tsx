@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ChevronDown, ChevronRight, UserMinus, Trash2, Clock, Menu, Edit3, X, Orbit } from 'lucide-react';
-import { getMyGroups, createGroup, updateGroup, deleteGroup, addGroupMember, removeGroupMember, removePendingInvite } from './groupService';
+import { Plus, ChevronDown, ChevronRight, UserMinus, Trash2, Clock, Menu, Edit3, X, Orbit, Camera } from 'lucide-react';
+import { getMyGroups, createGroup, updateGroup, deleteGroup, addGroupMember, removeGroupMember, removePendingInvite, uploadGroupAvatar } from './groupService';
 import type { Group } from './groupService';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
@@ -21,6 +21,11 @@ export default function GroupsPage() {
   const [addEmailMap, setAddEmailMap] = useState<Record<string, string>>({});
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploadGroupId, setAvatarUploadGroupId] = useState<string | null>(null);
+  const createAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [newGroupAvatarFile, setNewGroupAvatarFile] = useState<File | null>(null);
+  const [newGroupAvatarPreview, setNewGroupAvatarPreview] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['groups'],
@@ -28,13 +33,21 @@ export default function GroupsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (d: { name: string; description?: string }) => createGroup(d),
+    mutationFn: async (d: { name: string; description?: string }) => {
+      const group = await createGroup(d);
+      if (newGroupAvatarFile) {
+        await uploadGroupAvatar(group.id, newGroupAvatarFile);
+      }
+      return group;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
       toast.success(t('groups.created'));
       setIsCreating(false);
       setNewGroupName('');
       setNewGroupDescription('');
+      setNewGroupAvatarFile(null);
+      if (newGroupAvatarPreview) { URL.revokeObjectURL(newGroupAvatarPreview); setNewGroupAvatarPreview(null); }
     },
     onError: () => toast.error(t('groups.createFailed')),
   });
@@ -100,6 +113,28 @@ export default function GroupsPage() {
     onError: () => toast.error(t('groups.inviteCancelFailed')),
   });
 
+  const avatarMutation = useMutation({
+    mutationFn: ({ groupId, file }: { groupId: string; file: File }) => uploadGroupAvatar(groupId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      toast.success(t('groups.avatarUpdated'));
+    },
+    onError: () => toast.error(t('groups.avatarUpdateFailed')),
+  });
+
+  const handleAvatarClick = (groupId: string) => {
+    setAvatarUploadGroupId(groupId);
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && avatarUploadGroupId) {
+      avatarMutation.mutate({ groupId: avatarUploadGroupId, file });
+    }
+    e.target.value = '';
+  };
+
   const handleCreate = () => {
     if (!newGroupName.trim()) return;
     createMutation.mutate({ name: newGroupName.trim(), description: newGroupDescription.trim() || undefined });
@@ -120,11 +155,28 @@ export default function GroupsPage() {
       <div key={group.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         {/* Header */}
         <div
-          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 rounded-t-lg"
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t-lg"
           onClick={() => setExpandedGroupId(isExpanded ? null : group.id)}
         >
           <div className="flex items-center gap-3 min-w-0">
             {isExpanded ? <ChevronDown size={18} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />}
+            <div
+              className="relative group/avatar flex-shrink-0 cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); handleAvatarClick(group.id); }}
+            >
+              <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center overflow-hidden">
+                {group.avatarUrl ? (
+                  <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
+                    {group.name[0]?.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover/avatar:opacity-100 flex items-center justify-center transition-opacity">
+                <Camera size={14} className="text-white" />
+              </div>
+            </div>
             <div className="min-w-0">
               {isEditing ? (
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -214,7 +266,7 @@ export default function GroupsPage() {
               ) : (
                 <div className="space-y-1">
                   {group.members.map((member) => (
-                    <div key={member.userId} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-750 rounded-lg">
+                    <div key={member.userId} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xs font-medium flex-shrink-0">
                           {(member.user.name || member.user.email).charAt(0).toUpperCase()}
@@ -268,13 +320,24 @@ export default function GroupsPage() {
   const renderMemberOfGroup = (group: Group) => (
     <div key={group.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{group.name}</h3>
-          {group.owner && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t('groups.owner')}: {group.owner.name || group.owner.email}
-            </p>
-          )}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {group.avatarUrl ? (
+              <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
+                {group.name[0]?.toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{group.name}</h3>
+            {group.owner && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('groups.owner')}: {group.owner.name || group.owner.email}
+              </p>
+            )}
+          </div>
         </div>
         <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full flex-shrink-0">
           {t('groups.memberCount', { count: group.members.length })}
@@ -314,22 +377,58 @@ export default function GroupsPage() {
         {/* Create form */}
         {isCreating && (
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
-            <input
-              type="text"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder={t('groups.namePlaceholder')}
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
-              autoFocus
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setIsCreating(false); }}
-            />
-            <input
-              type="text"
-              value={newGroupDescription}
-              onChange={(e) => setNewGroupDescription(e.target.value)}
-              placeholder={t('groups.descriptionPlaceholder')}
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
-            />
+            <div className="flex items-start gap-4">
+              {/* Avatar picker */}
+              <div
+                className="relative group/create-avatar flex-shrink-0 cursor-pointer"
+                onClick={() => createAvatarInputRef.current?.click()}
+              >
+                <div className="h-14 w-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center overflow-hidden border-2 border-dashed border-emerald-300 dark:border-emerald-700">
+                  {newGroupAvatarPreview ? (
+                    <img src={newGroupAvatarPreview} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera size={20} className="text-emerald-400 dark:text-emerald-600" />
+                  )}
+                </div>
+                <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover/create-avatar:opacity-100 flex items-center justify-center transition-opacity">
+                  <Camera size={16} className="text-white" />
+                </div>
+                <input
+                  type="file"
+                  ref={createAvatarInputRef}
+                  className="hidden"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setNewGroupAvatarFile(file);
+                      if (newGroupAvatarPreview) URL.revokeObjectURL(newGroupAvatarPreview);
+                      setNewGroupAvatarPreview(URL.createObjectURL(file));
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+              {/* Name + Description */}
+              <div className="flex-1 space-y-2">
+                <input
+                  type="text"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder={t('groups.namePlaceholder')}
+                  className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setIsCreating(false); }}
+                />
+                <input
+                  type="text"
+                  value={newGroupDescription}
+                  onChange={(e) => setNewGroupDescription(e.target.value)}
+                  placeholder={t('groups.descriptionPlaceholder')}
+                  className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+                />
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 {t('common.cancel')}
@@ -381,6 +480,13 @@ export default function GroupsPage() {
           </>
         )}
       </div>
+      <input
+        type="file"
+        ref={avatarInputRef}
+        className="hidden"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        onChange={handleAvatarChange}
+      />
     </div>
   );
 }

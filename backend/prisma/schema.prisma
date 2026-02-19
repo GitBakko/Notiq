@@ -20,6 +20,7 @@ model User {
   placeOfBirth String?
   mobile    String?
   avatarUrl String?
+  color     String?
   resetToken String?
   resetTokenExpiry DateTime?
   locale    String   @default("en")
@@ -288,6 +289,7 @@ model Group {
   id             String               @id @default(uuid())
   name           String
   description    String?
+  avatarUrl      String?
   ownerId        String
   owner          User                 @relation("OwnedGroups", fields: [ownerId], references: [id], onDelete: Cascade)
   members        GroupMember[]

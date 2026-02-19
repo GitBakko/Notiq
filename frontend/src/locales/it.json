@@ -473,8 +473,16 @@
     "attachments": "Allegati"
   },
   "chat": {
-    "title": "Chat AI",
-    "placeholder": "Chiedi qualcosa..."
+    "title": "Chat",
+    "chatWith": "Chat con {{name}}",
+    "chatWithMany": "Chat — {{count}} partecipanti",
+    "placeholder": "Scrivi un messaggio...",
+    "sendFailed": "Invio messaggio fallito",
+    "addEmoji": "Aggiungi emoji",
+    "send": "Invia"
+  },
+  "collaboration": {
+    "you": "Tu"
   },
   "notifications": {
     "title": "Notifiche",
@@ -531,7 +539,9 @@
     "owner": "Proprietario",
     "manage": "Gestisci",
     "alreadyMember": "Questo utente è già un membro",
-    "cannotAddSelf": "Non puoi aggiungere te stesso a un gruppo"
+    "cannotAddSelf": "Non puoi aggiungere te stesso a un gruppo",
+    "avatarUpdated": "Avatar del gruppo aggiornato",
+    "avatarUpdateFailed": "Impossibile aggiornare l'avatar del gruppo"
   },
   "encryption": {
     "locked": "Contenuto Criptato",

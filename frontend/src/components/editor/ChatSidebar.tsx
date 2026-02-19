@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Send, X, MessageSquare, Smile } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -16,6 +16,8 @@ interface ChatMessage {
     id: string;
     name: string | null;
     email: string;
+    color: string | null;
+    avatarUrl: string | null;
   }
 }
 
@@ -27,20 +29,39 @@ interface ChatSidebarProps {
     id: string;
     name: string;
     color: string;
+    avatarUrl?: string | null;
   };
   onNewMessage?: () => void;
+  participants?: { id: string; name: string | null; email: string }[];
+  noteOwner?: { id: string };
 }
 
 // Simple notification sound (Beep)
 const BEEP_SOUND = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA';
 
-export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNewMessage }: ChatSidebarProps) {
+export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNewMessage, participants = [], noteOwner }: ChatSidebarProps) {
   const { t } = useTranslation();
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSending, setIsSending] = useState(false);
+
+  const chatTitle = useMemo(() => {
+    // Build list of "other" participants (exclude current user)
+    const others = participants.filter(p => p.id !== currentUser.id);
+    // If current user is not the owner, the owner is also a participant
+    if (noteOwner && noteOwner.id !== currentUser.id && !others.some(p => p.id === noteOwner.id)) {
+      // Owner info comes from sharedWith users or messages — we may not have name here
+      // We'll count them but can't show name; this edge case is rare since owner always has a share entry
+      others.push({ id: noteOwner.id, name: null, email: '' });
+    }
+    if (others.length === 0) return t('chat.title');
+    if (others.length === 1) {
+      return t('chat.chatWith', { name: others[0].name || others[0].email || t('chat.title') });
+    }
+    return t('chat.chatWithMany', { count: others.length });
+  }, [participants, currentUser.id, noteOwner, t]);
 
   // Helper to detect theme (simple version)
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
@@ -55,7 +76,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
       return res.data;
     },
     enabled: !!noteId,
-    refetchInterval: isOpen ? 3000 : false,
+    refetchInterval: 3000,
   });
 
   // Sound and Notification Logic
@@ -121,16 +142,6 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
     setNewMessage(prev => prev + emojiData.emoji);
   };
 
-  const getUserColor = (id: string, name: string) => {
-    let hash = 0;
-    const str = id + name;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return '#' + '00000'.substring(0, 6 - c.length) + c;
-  }
-
   if (!isOpen) {
     return null;
   }
@@ -140,7 +151,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
       <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-800">
         <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <MessageSquare size={18} />
-          {t('chat.title', 'Chat')}
+          {chatTitle}
         </h3>
         <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title={t('common.close')}>
           <X size={18} />
@@ -151,20 +162,27 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
         {messages.map((msg) => {
           const isMe = msg.userId === currentUser.id;
           const userName = msg.user.name || msg.user.email;
-          const userColor = getUserColor(msg.userId, userName);
+          const msgColor = isMe ? currentUser.color : (msg.user.color || '#319795');
+          const msgAvatarUrl = isMe ? currentUser.avatarUrl : msg.user.avatarUrl;
+          const initial = isMe ? 'ME' : (userName[0]?.toUpperCase() || '?');
 
           return (
             <div key={msg.id} className={clsx("flex flex-col", isMe ? "items-end" : "items-start")}>
               <div className="flex items-center gap-1 mb-1">
-                {!isMe && (
-                  <div
-                    className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
-                    style={{ backgroundColor: userColor }}
-                  >
-                    {userName[0].toUpperCase()}
-                  </div>
-                )}
-                <span className="text-xs text-gray-500 dark:text-gray-400">{userName}</span>
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white overflow-hidden relative flex-shrink-0"
+                  style={{ backgroundColor: msgColor }}
+                >
+                  {msgAvatarUrl ? (
+                    <>
+                      <img src={msgAvatarUrl} alt="" className="w-full h-full object-cover absolute inset-0" />
+                      <span className="relative z-10 text-[7px] font-bold text-white" style={{ textShadow: '0 0 2px rgba(0,0,0,0.9)' }}>{initial}</span>
+                    </>
+                  ) : (
+                    <span>{initial}</span>
+                  )}
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{isMe ? t('collaboration.you') : userName}</span>
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
                   {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>

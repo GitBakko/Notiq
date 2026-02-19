@@ -297,10 +297,18 @@ export const hocuspocus = new Server({
 
       const readOnly = !isOwner && share?.permission === 'READ';
 
+      // Fetch user details for awareness (color + avatar)
+      const userDetails = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, color: true, avatarUrl: true }
+      });
+
       return {
         user: {
           id: userId,
-          name: decoded.name || 'User',
+          name: userDetails?.name || 'User',
+          color: userDetails?.color || '#319795',
+          avatarUrl: userDetails?.avatarUrl || null,
         },
         readOnly,
       };

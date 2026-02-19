@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
-import { Share2, Info, Calendar, Trash2, Check, Orbit } from 'lucide-react';
+import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare } from 'lucide-react';
 import type { Notification } from './notificationService';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +20,8 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
         return <Share2 size={16} className="text-blue-500" />;
       case 'REMINDER':
         return <Calendar size={16} className="text-orange-500" />;
+      case 'CHAT_MESSAGE':
+        return <MessageSquare size={16} className="text-blue-500" />;
       case 'GROUP_INVITE':
       case 'GROUP_REMOVE':
         return <Orbit size={16} className="text-emerald-500" />;

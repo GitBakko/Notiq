@@ -8,12 +8,12 @@ Full-stack TypeScript monorepo. Deployed su IIS a `notiq.epartner.it`.
 | Layer | Tech |
 |-------|------|
 | Frontend | React 19, Vite 7, TipTap v2, Zustand, TanStack Query v5, Dexie.js v4 (IndexedDB), TailwindCSS 3, i18next (EN/IT), Playwright |
-| Backend | Node.js 22+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3 (Yjs WebSocket), Zod v4, bcrypt, Nodemailer, web-push |
+| Backend | Node.js 20+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3 (Yjs WebSocket), Zod v4, bcrypt, Nodemailer, web-push |
 | Infra | Docker Compose (Node 22-alpine), Nginx (Docker), IIS + ARR (prod), PWA via vite-plugin-pwa |
 
 **Module types:** Backend = CommonJS (`type: "commonjs"`), Frontend = ESM (`type: "module"`).
 
-## Comandi (verificati 2026-02-18)
+## Comandi (verificati 2026-02-19)
 
 ```bash
 # Backend (cd backend)
@@ -60,7 +60,7 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 | Cosa | Path |
 |------|------|
 | Server entry | `backend/src/app.ts` (port 3001, registra tutte le route + Hocuspocus su `/ws`) |
-| DB schema | `backend/prisma/schema.prisma` (19 modelli, 11 migrations) |
+| DB schema | `backend/prisma/schema.prisma` (19 modelli, 13 migrations) |
 | Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
 | Logger | `backend/src/utils/logger.ts` (Pino shared, usare nei servizi; nelle route usare `request.log`) |
@@ -69,7 +69,7 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 | Frontend entry | `frontend/src/main.tsx` (React 19, QueryClient, BrowserRouter, SW registration) |
 | Route/pagine | `frontend/src/App.tsx` (protette dentro `<AppLayout />`, pubbliche fuori) |
 | Sync engine | `frontend/src/features/sync/syncService.ts` (syncPull + syncPush) |
-| Offline DB | `frontend/src/lib/db.ts` (Dexie, 10 versioni schema) |
+| Offline DB | `frontend/src/lib/db.ts` (Dexie, 9 versioni schema) |
 | API client | `frontend/src/lib/api.ts` (Axios + JWT interceptor + 401 auto-logout) |
 | Vault crypto | `frontend/src/utils/crypto.ts` (CryptoJS AES, PIN come chiave diretta) |
 | Auth store | `frontend/src/store/authStore.ts` (Zustand persisted, chiave localStorage: `auth-storage`) |
@@ -112,10 +112,14 @@ Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` �
 - **Attenzione:** `docker compose up` avvia un backend sulla porta 3001 che intercetta il proxy Vite dev. Fermare i container Docker (`docker compose down`) quando si usa il dev locale.
 - Entry point backend Docker: `dist/app.js` (non `dist/index.js`)
 
-### Prisma models (19) ed enums
+### Prisma models (19) ed enums (12 migrations)
 
 **Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite
 **Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED)
+
+### Campi notevoli su User
+
+`color String?` — colore persistente assegnato alla registrazione, usato per awareness collaboration e chat. Palette di 15 colori predefiniti in `auth.service.ts`.
 
 ---
 
@@ -128,7 +132,7 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 | File | Motivo |
 |------|--------|
 | `frontend/src/features/sync/syncService.ts` | Motore sync offline. Self-healing, zombie prevention, race condition guards. Errori = note perse o duplicate. |
-| `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB), 10 versioni. Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
+| `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB), 9 versioni. Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
 | `backend/src/hocuspocus.ts` | Server collab Yjs. Extensions devono matchare Editor.tsx. Errori = corruzione contenuto note. |
 | `frontend/src/utils/crypto.ts` | Encryption vault. Cambiare algo/parametri rende illeggibili tutte le note vault esistenti. |
 | `frontend/src/store/vaultStore.ts` | Stato vault (`pinHash` persisted). Cambiare `partialize` o storage key invalida tutti i vault. |

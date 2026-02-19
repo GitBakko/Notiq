@@ -12,6 +12,7 @@ interface User {
   placeOfBirth?: string;
   mobile?: string;
   avatarUrl?: string;
+  color?: string;
   role?: 'USER' | 'SUPERADMIN';
   invitesAvailable?: number;
 }

@@ -82,6 +82,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
           role: user.role,
           invitesAvailable: user.invitesAvailable,
           avatarUrl: user.avatarUrl,
+          color: user.color,
           createdAt: user.createdAt
         }
       };

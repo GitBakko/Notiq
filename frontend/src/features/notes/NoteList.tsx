@@ -75,7 +75,7 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
             )}
           </div>
           <p className="mb-2 line-clamp-2 text-xs text-gray-500 h-8 dark:text-gray-400">
-            {note.content ? getPreviewText(note.content) : t('notes.noContent')}
+            {note.content ? getPreviewText(note.content) : (note.searchText || t('notes.noContent'))}
           </p>
           <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
             <div className="flex items-center gap-2">

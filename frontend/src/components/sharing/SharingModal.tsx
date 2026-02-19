@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, UserPlus, Trash2, Orbit } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { shareNote, revokeShare } from '../../features/notes/noteService';
@@ -23,6 +23,7 @@ interface SharingModalProps {
 
 export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] }: SharingModalProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [permission, setPermission] = useState<'READ' | 'WRITE'>('READ');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +31,11 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [groupPermission, setGroupPermission] = useState<'READ' | 'WRITE'>('READ');
   const [isGroupSharing, setIsGroupSharing] = useState(false);
+
+  // Keep localSharedWith in sync when the prop updates (e.g. after query refetch)
+  useEffect(() => {
+    setLocalSharedWith(sharedWith);
+  }, [sharedWith]);
 
   const { data: groups } = useQuery({
     queryKey: ['groups-for-sharing'],
@@ -49,9 +55,7 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
       await shareNote(noteId, email, permission);
       toast.success(t('sharing.inviteSuccess'));
       setEmail('');
-      // In a real app, we'd refresh the list or add the user optimistically
-      // For now, let's just simulate adding it to the local list if we had the user details
-      // But we don't have the user ID/Name from the response yet (unless we update the API return)
+      queryClient.invalidateQueries({ queryKey: ['note', noteId] });
     } catch (error: any) {
       console.error('Share failed', error);
       if (error.response?.status === 404) {
@@ -69,6 +73,7 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
       await revokeShare(noteId, userId);
       setLocalSharedWith(prev => prev.filter(u => u.id !== userId));
       toast.success(t('sharing.revoked'));
+      queryClient.invalidateQueries({ queryKey: ['note', noteId] });
     } catch (error) {
       console.error('Revoke failed', error);
       toast.error(t('sharing.revokeFailed'));
@@ -123,6 +128,7 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
                     const result = await shareNoteWithGroup(noteId, selectedGroupId, groupPermission);
                     toast.success(t('sharing.shareGroupSuccess', { count: result.shared }));
                     setSelectedGroupId('');
+                    queryClient.invalidateQueries({ queryKey: ['note', noteId] });
                   } catch {
                     toast.error(t('sharing.shareGroupFailed'));
                   } finally {

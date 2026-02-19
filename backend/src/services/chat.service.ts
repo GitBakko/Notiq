@@ -4,6 +4,10 @@ import * as emailService from './email.service';
 import { hocuspocus } from '../hocuspocus';
 import logger from '../utils/logger';
 
+// In-memory debounce: max 1 email per user per note every 30 minutes
+const EMAIL_DEBOUNCE_MS = 30 * 60 * 1000;
+const lastEmailSent = new Map<string, number>();
+
 export const createMessage = async (userId: string, noteId: string, content: string) => {
   // Save message
   const message = await prisma.chatMessage.create({
@@ -14,7 +18,7 @@ export const createMessage = async (userId: string, noteId: string, content: str
     },
     include: {
       user: {
-        select: { id: true, name: true, email: true }, // Add color if stored in User model? User model doesn't have color.
+        select: { id: true, name: true, email: true, color: true, avatarUrl: true }
       }
     }
   });
@@ -157,12 +161,17 @@ export const createMessage = async (userId: string, noteId: string, content: str
     } else {
       // Case 3: Offline
       // NON riceve una notifica in app
-      // riceve una notifica email
-      await emailService.sendNotificationEmail(
-        freshRecipient!.email,
-        'CHAT_MESSAGE',
-        { noteId, noteTitle: note.title, senderName, messageContent: content, locale: freshRecipient?.locale }
-      );
+      // riceve una notifica email (with debounce: max 1 per 30 min per user/note)
+      const debounceKey = `${recipientId}:${noteId}`;
+      const lastSent = lastEmailSent.get(debounceKey) || 0;
+      if (Date.now() - lastSent >= EMAIL_DEBOUNCE_MS) {
+        await emailService.sendNotificationEmail(
+          freshRecipient!.email,
+          'CHAT_MESSAGE',
+          { noteId, noteTitle: note.title, senderName, messageContent: content, locale: freshRecipient?.locale }
+        );
+        lastEmailSent.set(debounceKey, Date.now());
+      }
     }
   }
 
@@ -177,7 +186,7 @@ export const getMessages = async (noteId: string, page: number = 1, limit: numbe
     take: limit,
     include: {
       user: {
-        select: { id: true, name: true, email: true }
+        select: { id: true, name: true, email: true, color: true, avatarUrl: true }
       }
     }
   });

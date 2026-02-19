@@ -28,6 +28,13 @@ export interface LocalNote {
   isPinned?: boolean;
   isVault?: boolean;
   isEncrypted?: boolean;
+  sharedWith?: {
+    id: string;
+    userId: string;
+    permission: 'READ' | 'WRITE';
+    status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+    user: { id: string; name: string | null; email: string };
+  }[];
   syncStatus: 'synced' | 'created' | 'updated';
 }
 

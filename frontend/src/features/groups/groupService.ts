@@ -16,6 +16,7 @@ export interface Group {
   id: string;
   name: string;
   description?: string | null;
+  avatarUrl?: string | null;
   ownerId: string;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +71,13 @@ export const removeGroupMember = async (groupId: string, userId: string) => {
 
 export const removePendingInvite = async (groupId: string, email: string) => {
   await api.delete(`/groups/${groupId}/pending`, { data: { email } });
+};
+
+export const uploadGroupAvatar = async (groupId: string, file: File): Promise<Group> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await api.post<Group>(`/groups/${groupId}/avatar`, formData);
+  return res.data;
 };
 
 export const shareNoteWithGroup = async (noteId: string, groupId: string, permission: 'READ' | 'WRITE' = 'READ') => {

@@ -9,6 +9,16 @@ import * as groupService from './group.service';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+const USER_COLORS = [
+  '#E53E3E', '#DD6B20', '#D69E2E', '#38A169', '#319795',
+  '#3182CE', '#5A67D8', '#805AD5', '#D53F8C', '#B83280',
+  '#F56565', '#ED8936', '#ECC94B', '#48BB78', '#4FD1C5',
+];
+
+function assignUserColor(): string {
+  return USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+}
+
 export const registerUser = async (data: { email: string; password: string; name?: string; invitationCode?: string }) => {
   const { email, password, name, invitationCode } = data;
 
@@ -50,6 +60,7 @@ export const registerUser = async (data: { email: string; password: string; name
       isVerified: false,
       verificationToken: crypto.createHash('sha256').update(verificationToken).digest('hex'),
       verificationTokenExpires,
+      color: assignUserColor(),
       invitationCode: invitationEnabled ? invitationCode : null,
       notebooks: {
         create: {
@@ -59,7 +70,7 @@ export const registerUser = async (data: { email: string; password: string; name
     },
     select: {
       id: true, email: true, name: true, role: true, locale: true,
-      createdAt: true, invitesAvailable: true,
+      createdAt: true, invitesAvailable: true, color: true,
     },
   });
 
@@ -169,7 +180,7 @@ export const verifyEmail = async (token: string) => {
     },
     select: {
       id: true, email: true, name: true, role: true, locale: true,
-      isVerified: true, createdAt: true, invitesAvailable: true,
+      isVerified: true, createdAt: true, invitesAvailable: true, color: true,
     },
   });
 

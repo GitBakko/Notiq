@@ -119,6 +119,21 @@ export default async function groupRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Upload group avatar (owner only)
+  fastify.post('/:id/avatar', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const data = await request.file();
+      if (!data) return reply.status(400).send({ message: 'No file uploaded' });
+      const group = await groupService.uploadGroupAvatar(id, request.user.id, data);
+      return group;
+    } catch (error: any) {
+      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
+      if (error.message === 'Only image files allowed') return reply.status(400).send({ message: error.message });
+      return reply.status(500).send({ message: error.message });
+    }
+  });
+
   // Remove pending invite
   fastify.delete('/:id/pending', async (request, reply) => {
     const { id } = request.params as { id: string };

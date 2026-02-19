@@ -1,8 +1,13 @@
 import prisma from '../plugins/prisma';
 import * as notificationService from './notification.service';
 import * as emailService from './email.service';
+import fs from 'fs';
+import path from 'path';
+import { pipeline } from 'stream/promises';
+import { MultipartFile } from '@fastify/multipart';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const GROUP_AVATAR_DIR = path.join(process.cwd(), 'uploads', 'groups');
 
 // ---- GROUP CRUD ----
 
@@ -81,7 +86,49 @@ export const updateGroup = async (
 export const deleteGroup = async (groupId: string, ownerId: string) => {
   const group = await prisma.group.findUnique({ where: { id: groupId } });
   if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+  // Clean up avatar file if exists
+  if (group.avatarUrl) {
+    const oldFile = path.join(process.cwd(), group.avatarUrl.replace(/^\//, ''));
+    if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+  }
   await prisma.group.delete({ where: { id: groupId } });
+};
+
+// ---- GROUP AVATAR ----
+
+const AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+export const uploadGroupAvatar = async (
+  groupId: string,
+  ownerId: string,
+  file: MultipartFile
+) => {
+  const group = await prisma.group.findUnique({ where: { id: groupId } });
+  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+
+  if (!AVATAR_MIME_TYPES.has(file.mimetype)) throw new Error('Only image files allowed');
+
+  if (!fs.existsSync(GROUP_AVATAR_DIR)) fs.mkdirSync(GROUP_AVATAR_DIR, { recursive: true });
+
+  const filename = `${groupId}-${Date.now()}${path.extname(file.filename)}`;
+  const filepath = path.join(GROUP_AVATAR_DIR, filename);
+  await pipeline(file.file, fs.createWriteStream(filepath));
+
+  // Remove old avatar file
+  if (group.avatarUrl) {
+    const oldFile = path.join(process.cwd(), group.avatarUrl.replace(/^\//, ''));
+    if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+  }
+
+  const avatarUrl = `/uploads/groups/${filename}`;
+  return prisma.group.update({
+    where: { id: groupId },
+    data: { avatarUrl },
+    include: {
+      members: { include: { user: { select: { id: true, email: true, name: true } } } },
+      pendingInvites: { select: { id: true, email: true, createdAt: true } },
+    },
+  });
 };
 
 // ---- MEMBER MANAGEMENT ----

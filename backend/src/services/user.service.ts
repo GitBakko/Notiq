@@ -76,6 +76,7 @@ export const getUser = async (userId: string) => {
       placeOfBirth: true,
       mobile: true,
       avatarUrl: true,
+      color: true,
       createdAt: true,
     },
   });

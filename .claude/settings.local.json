@@ -38,7 +38,27 @@
       "Bash(test:*)",
       "Bash(git -C \"d:/Develop/AI/Notiq\" status --short)",
       "Bash(git -C \"/d/Develop/AI/Notiq\" status)",
-      "Bash(git -C \"/d/Develop/AI/Notiq\" diff frontend/src/components/layout/Sidebar.tsx)"
+      "Bash(git -C \"/d/Develop/AI/Notiq\" diff frontend/src/components/layout/Sidebar.tsx)",
+      "WebFetch(domain:github.com)",
+      "Bash(printenv:*)",
+      "Bash(gemini --version:*)",
+      "Bash(gemini extensions list:*)",
+      "Skill(nano-banana)",
+      "Skill(nano-banana:*)",
+      "Bash(NANOBANANA_MODEL=gemini-2.5-flash-preview-05-20 gemini --yolo \"/generate ''elegant minimal background for a note-taking app login page, light theme, soft white and light emerald green gradient, subtle geometric patterns of notebooks and pencils faintly visible, clean modern aesthetic, 1920x1080, no text, no logos''\")",
+      "Bash(gemini --yolo:*)",
+      "Bash(netstat:*)",
+      "Bash(sc query:*)",
+      "Bash(powershell \"Get-Service *postgres*\")",
+      "Bash(tasklist:*)",
+      "Bash(powershell \"Get-Process -Id 11864 | Select-Object Name, Path\")",
+      "Bash(powershell \"Get-Process -Id 42940 | Select-Object Name, Path\")",
+      "Bash(docker start:*)",
+      "Bash(docker volume ls:*)",
+      "Bash(git status:*)",
+      "mcp__plugin_serena_serena__find_symbol",
+      "Bash(wc:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

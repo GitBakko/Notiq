@@ -129,6 +129,18 @@ server.get('/uploads/avatars/:filename', async (request, reply) => {
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
 });
 
+// Public group avatar serving (no auth required)
+server.get('/uploads/groups/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename);
+  const filepath = path.join(process.cwd(), 'uploads', 'groups', safeName);
+  if (!fs.existsSync(filepath)) {
+    return reply.code(404).send({ message: 'Not found' });
+  }
+  const stream = fs.createReadStream(filepath);
+  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+});
+
 // Health Check
 server.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString() };

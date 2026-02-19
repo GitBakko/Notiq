@@ -36,6 +36,7 @@ interface EditorProps {
     user: {
       name: string;
       color: string;
+      avatarUrl?: string | null;
     };
   };
 }

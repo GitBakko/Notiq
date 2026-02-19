@@ -528,7 +528,9 @@
     "owner": "Owner",
     "manage": "Manage",
     "alreadyMember": "This user is already a member",
-    "cannotAddSelf": "You cannot add yourself to a group"
+    "cannotAddSelf": "You cannot add yourself to a group",
+    "avatarUpdated": "Group avatar updated",
+    "avatarUpdateFailed": "Failed to update group avatar"
   },
   "encryption": {
     "locked": "Encrypted Content",
@@ -557,8 +559,16 @@
     "preferNotToSay": "Prefer not to say"
   },
   "chat": {
-    "title": "AI Chat",
-    "placeholder": "Ask something..."
+    "title": "Chat",
+    "chatWith": "Chat with {{name}}",
+    "chatWithMany": "Chat — {{count}} participants",
+    "placeholder": "Type a message...",
+    "sendFailed": "Failed to send message",
+    "addEmoji": "Add emoji",
+    "send": "Send"
+  },
+  "collaboration": {
+    "you": "You"
   },
   "saved": "Saved",
   "saving": "Saving...",

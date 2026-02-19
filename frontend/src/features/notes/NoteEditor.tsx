@@ -143,7 +143,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         const updateCollaborators = () => {
             const states = provider.awareness?.getStates();
             if (states) {
-                const activeUsers = Array.from(states.values()).map((s: any) => s.user).filter((u: any) => u && u.name);
+                const activeUsers = Array.from(states.entries()).map(([clientId, s]: [number, any]) => ({ ...s.user, clientId })).filter((u: any) => u && u.name);
                 setCollaborators(activeUsers);
             }
         };
@@ -220,12 +220,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     };
 
     // Misc
-    const userColor = useMemo(() => '#' + Math.floor(Math.random() * 16777215).toString(16), []);
+    const userColor = user?.color || '#319795';
     const collaborationConfig = useMemo(() => ({
         enabled: !!provider,
         documentId: note.id,
         token: useAuthStore.getState().token || '',
-        user: { name: user?.name || 'User', color: userColor }
+        user: { name: user?.name || 'User', color: userColor, avatarUrl: user?.avatarUrl || null }
     }), [provider, note.id, user, userColor]);
 
 
@@ -271,11 +271,22 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 <div className="flex items-center gap-2">
                     {/* Collaborators UI */}
                     <div className="flex items-center -space-x-2 mr-4">
-                        {collaborators.map((c, i) => (
-                            <div key={i} className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center text-xs font-medium text-white shadow-sm" style={{ backgroundColor: c.color }} title={c.name}>
-                                {c.name.charAt(0).toUpperCase()}
-                            </div>
-                        ))}
+                        {collaborators.map((c, i) => {
+                            const isMe = c.clientId === provider?.awareness?.clientID;
+                            const initial = isMe ? 'ME' : (c.name?.charAt(0)?.toUpperCase() || '?');
+                            return (
+                                <div key={i} className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center text-xs font-bold text-white shadow-sm overflow-hidden relative" style={{ backgroundColor: c.color }} title={isMe ? t('collaboration.you') : c.name}>
+                                    {c.avatarUrl ? (
+                                        <>
+                                            <img src={c.avatarUrl} alt="" className="w-full h-full object-cover absolute inset-0" />
+                                            <span className="relative z-10 text-[10px] font-bold text-white" style={{ textShadow: '0 0 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.5)' }}>{initial}</span>
+                                        </>
+                                    ) : (
+                                        <span>{initial}</span>
+                                    )}
+                                </div>
+                            );
+                        })}
                         {collaborators.length === 0 && provider && (
                             <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-500"><Users className="w-4 h-4" /></div>
                         )}
@@ -380,14 +391,16 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         collaboration={collaborationConfig}
                     />
                 </div>
-                {isChatOpen && (
+                {(collaborators.length > 1 || note.sharedWith?.some(s => s.status === 'ACCEPTED')) && (
                     <ChatSidebar
                         key={note.id}
                         noteId={note.id}
                         isOpen={isChatOpen}
                         onClose={() => setIsChatOpen(false)}
-                        currentUser={{ id: user?.id || 'anon', name: user?.name || 'User', color: userColor }}
+                        currentUser={{ id: user?.id || 'anon', name: user?.name || 'User', color: userColor, avatarUrl: user?.avatarUrl || null }}
                         onNewMessage={() => setUnreadCount(prev => prev + 1)}
+                        participants={note.sharedWith?.filter(s => s.status === 'ACCEPTED').map(s => s.user) || []}
+                        noteOwner={note.userId !== user?.id ? { id: note.userId } : undefined}
                     />
                 )}
                 {isAiOpen && (

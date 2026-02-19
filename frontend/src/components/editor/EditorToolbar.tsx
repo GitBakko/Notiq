@@ -238,16 +238,25 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
       {/* Online Users */}
       {users.length > 0 && (
         <div className="flex -space-x-2 mr-4 border-r pr-4 border-gray-200 dark:border-gray-700">
-          {users.map((u, i) => (
-            <div
-              key={i}
-              className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 bg-gray-200 flex items-center justify-center text-xs font-bold text-white shadow-sm"
-              style={{ backgroundColor: u.user?.color || '#ccc' }}
-              title={u.user?.name || 'User'}
-            >
-              {u.user?.name?.[0]?.toUpperCase() || '?'}
-            </div>
-          ))}
+          {users.map((u, i) => {
+            const initial = u.user?.name?.[0]?.toUpperCase() || '?';
+            const avatarUrl = u.user?.avatarUrl;
+            return (
+              <div
+                key={i}
+                className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center text-xs font-bold text-white shadow-sm overflow-hidden relative"
+                style={{ backgroundColor: u.user?.color || '#ccc' }}
+                title={u.user?.name || 'User'}
+              >
+                {avatarUrl ? (
+                  <>
+                    <img src={avatarUrl} alt="" className="w-full h-full object-cover absolute inset-0" />
+                    <span className="relative z-10 text-[10px] font-bold text-white" style={{ textShadow: '0 0 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.5)' }}>{initial}</span>
+                  </>
+                ) : initial}
+              </div>
+            );
+          })}
         </div>
       )}
 

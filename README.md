@@ -5,11 +5,12 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 ## Features
 
 - **Rich Text Editor** — TipTap v2 with tables, code blocks, task lists, images, audio recording
-- **Real-time Collaboration** — Yjs + Hocuspocus WebSocket server for simultaneous editing
+- **Real-time Collaboration** — Yjs + Hocuspocus WebSocket server with persistent user colors and avatar presence
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
 - **Encrypted Vault** — AES-encrypted notes behind PIN protection
 - **Sharing** — Note and notebook sharing with granular permissions (read/write)
-- **AI Chat** — Per-note AI assistant powered by AWS Bedrock
+- **Groups** — User groups with avatar, invitation management, and shared notebooks
+- **AI Chat** — Per-note AI assistant powered by AWS Bedrock with dynamic titles and notification badges
 - **Import** — Evernote ENEX file import with attachment and tag support
 - **Multi-language** — English and Italian (i18next)
 - **PWA** — Installable, push notifications via Web Push API
@@ -20,14 +21,14 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 | Layer | Technologies |
 |-------|-------------|
 | Frontend | React 19, Vite 7, TipTap v2, Zustand, TanStack Query v5, Dexie.js v4, TailwindCSS 3, i18next |
-| Backend | Node.js 18+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3, Zod v4, Pino, Nodemailer, web-push |
+| Backend | Node.js 20+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3, Zod v4, Pino, Nodemailer, web-push |
 | Infra | Docker Compose, Nginx, IIS + ARR (production), PWA via vite-plugin-pwa |
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - PostgreSQL 15+
 - npm
 
@@ -111,14 +112,19 @@ notiq/
       plugins/       # Prisma client singleton
       scripts/       # CLI tools (admin, backup, migration)
     prisma/
-      schema.prisma  # 14 models, 8 migrations
+      schema.prisma  # 19 models, 13 migrations
   frontend/
     src/
       components/    # Reusable UI (editor/, layout/, sharing/, ui/)
-      features/      # Domain modules (auth/, notes/, admin/, vault/, etc.)
+      features/      # Domain modules (auth/, notes/, admin/, vault/, groups/, etc.)
       store/         # Zustand stores (auth, vault)
       lib/           # API client, Dexie DB, i18n
       locales/       # en.json, it.json
+    e2e/             # Playwright E2E tests (18 specs)
+  docs/
+    deployment/      # IIS/Docker deployment guides
+    testing/         # E2E test documentation
+    archive/         # Historical design specs and roadmap
 ```
 
 ## Security
