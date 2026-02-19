@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, CheckSquare } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, CheckSquare, XCircle } from 'lucide-react';
 import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useNotebooks } from '../../hooks/useNotebooks';
@@ -10,7 +10,8 @@ import { useUIStore } from '../../store/uiStore';
 import { InputDialog } from '../ui/InputDialog';
 import { DeleteConfirmationDialog } from '../ui/DeleteConfirmationDialog';
 import { createNotebook, deleteNotebook } from '../../features/notebooks/notebookService';
-import { createNote } from '../../features/notes/noteService';
+import { createNote, permanentlyDeleteNote } from '../../features/notes/noteService';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import TagList from '../../features/tags/TagList';
 import { usePinnedNotes } from '../../hooks/usePinnedNotes';
 import { useImport } from '../../hooks/useImport';
@@ -35,6 +36,7 @@ export default function Sidebar() {
 
   const [deleteNotebookId, setDeleteNotebookId] = useState<string | null>(null);
   const [deleteNotebookName, setDeleteNotebookName] = useState('');
+  const [isEmptyTrashConfirmOpen, setIsEmptyTrashConfirmOpen] = useState(false);
 
   const { notebooks } = useNotebooks();
   const pinnedNotes = usePinnedNotes();
@@ -102,6 +104,19 @@ export default function Sidebar() {
 
 
 
+  const confirmEmptyTrash = async () => {
+    if (!trashedNotes || trashedNotes.length === 0) return;
+    try {
+      for (const note of trashedNotes) {
+        await permanentlyDeleteNote(note.id);
+      }
+      toast.success(t('trash.emptied', 'Trash emptied'));
+    } catch (error) {
+      toast.error(t('trash.emptyFailed', 'Failed to empty trash'));
+    }
+    setIsEmptyTrashConfirmOpen(false);
+  };
+
   // We need a specific query for trash count across all notebooks
   const trashedNotes = useNotes(undefined, undefined, undefined, true);
   const trashCount = trashedNotes?.length || 0;
@@ -148,6 +163,16 @@ export default function Sidebar() {
         itemName={deleteNotebookName}
         title={t('notebooks.deleteTitle')}
         description={t('notebooks.deleteDescription')}
+      />
+
+      <ConfirmDialog
+        isOpen={isEmptyTrashConfirmOpen}
+        onClose={() => setIsEmptyTrashConfirmOpen(false)}
+        onConfirm={confirmEmptyTrash}
+        title={t('trash.emptyTrashTitle', 'Empty Trash')}
+        message={t('trash.emptyConfirm')}
+        confirmText={t('trash.emptyTrash')}
+        variant="danger"
       />
 
       <NotebookSharingModal
@@ -197,25 +222,35 @@ export default function Sidebar() {
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6">
           <div className="space-y-1">
             {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                data-testid={`sidebar-item-${item.path === '/' ? 'home' : item.path.substring(1)}`}
-                className={clsx(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                  location.pathname === item.path
-                    ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
+              <div key={item.path} className="group/nav flex items-center">
+                <Link
+                  to={item.path}
+                  data-testid={`sidebar-item-${item.path === '/' ? 'home' : item.path.substring(1)}`}
+                  className={clsx(
+                    'flex-1 flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                    location.pathname === item.path
+                      ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
+                  )}
+                >
+                  <item.icon size={18} />
+                  <span className="flex-1">{item.label}</span>
+                  {(item as any).count > 0 && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                      {(item as any).count}
+                    </span>
+                  )}
+                </Link>
+                {item.path === '/trash' && trashCount > 0 && (
+                  <button
+                    onClick={() => setIsEmptyTrashConfirmOpen(true)}
+                    className="opacity-0 group-hover/nav:opacity-100 p-1 mr-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-all"
+                    title={t('trash.emptyTrash')}
+                  >
+                    <XCircle size={16} />
+                  </button>
                 )}
-              >
-                <item.icon size={18} />
-                <span className="flex-1">{item.label}</span>
-                {(item as any).count > 0 && (
-                  <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                    {(item as any).count}
-                  </span>
-                )}
-              </Link>
+              </div>
             ))}
 
             <button

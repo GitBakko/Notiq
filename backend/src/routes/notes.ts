@@ -30,6 +30,16 @@ const updateNoteSchema = z.object({
   })).optional(),
 });
 
+const getNotesQuerySchema = z.object({
+  notebookId: z.string().uuid().optional(),
+  search: z.string().optional(),
+  tagId: z.string().uuid().optional(),
+  reminderFilter: z.enum(['all', 'pending', 'done']).optional(),
+  includeTrashed: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+});
+
 export default async function (fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
@@ -40,20 +50,12 @@ export default async function (fastify: FastifyInstance) {
   });
 
   fastify.get('/', async (request, reply) => {
-    const { notebookId, search, tagId, reminderFilter, includeTrashed, page, limit } = request.query as {
-      notebookId?: string;
-      search?: string;
-      tagId?: string;
-      reminderFilter?: 'all' | 'pending' | 'done';
-      includeTrashed?: string;
-      page?: string;
-      limit?: string;
-    };
+    const { notebookId, search, tagId, reminderFilter, includeTrashed, page, limit } = getNotesQuerySchema.parse(request.query);
     const notes = await noteService.getNotes(
       request.user.id, notebookId, search, tagId, reminderFilter,
       includeTrashed === 'true',
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 50
+      page,
+      limit
     );
     return notes;
   });

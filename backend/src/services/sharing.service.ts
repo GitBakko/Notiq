@@ -290,7 +290,7 @@ export const getSharedNotebooks = async (userId: string) => {
 
 export const respondToShare = async (token: string, action: 'accept' | 'decline') => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecret') as any;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     const { userId, type } = decoded;
     const noteId = decoded.noteId;
     const notebookId = decoded.notebookId;

@@ -181,11 +181,7 @@ export default function VaultPage() {
         <TagList
           onSelectTag={(tagId) => {
             // Filter vault notes by tag? 
-            // Current vaultNotes query only filters by search query.
-            // Ideally we should add tag filtering to vaultNotes query too.
-            // For now, let's just allow selecting/creating.
-            console.log('Selected tag in vault:', tagId);
-            // Implement tag filter logic if needed, but for now just showing the list fixes the "visibility" issue.
+            // TODO: add tag filtering to vaultNotes query
           }}
           isVault={true}
           isCreatingExternal={false}

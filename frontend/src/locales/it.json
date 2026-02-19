@@ -173,7 +173,9 @@
     "emptyConfirm": "Sei sicuro di voler svuotare il cestino? Questa azione non può essere annullata.",
     "emptyTrashTitle": "Cestino Vuoto",
     "deleteTitle": "Elimina Definitivamente",
-    "deleteConfirm": "Sei sicuro? Questa azione non può essere annullata."
+    "deleteConfirm": "Sei sicuro? Questa azione non può essere annullata.",
+    "emptied": "Cestino svuotato",
+    "emptyFailed": "Impossibile svuotare il cestino"
   },
   "notes": {
     "created": "Nota creata",

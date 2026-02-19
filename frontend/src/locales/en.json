@@ -173,7 +173,9 @@
     "emptyConfirm": "Are you sure you want to empty the trash? This action cannot be undone.",
     "emptyTrashTitle": "Empty Trash",
     "deleteTitle": "Delete Forever",
-    "deleteConfirm": "Are you sure? This cannot be undone."
+    "deleteConfirm": "Are you sure? This cannot be undone.",
+    "emptied": "Trash emptied",
+    "emptyFailed": "Failed to empty trash"
   },
   "tasks": {
     "overdue": "Overdue",
@@ -375,6 +377,13 @@
     "pin": "Pin Note",
     "markReminderDone": "Mark reminder as done",
     "makePrivate": "Make Private",
+    "makePublic": "Make Public",
+    "public": "Public",
+    "private": "Private",
+    "nowPublic": "Note is now public",
+    "nowPrivate": "Note is now private",
+    "copyLink": "Copy Link",
+    "openLink": "Open Public Link",
     "selectToView": "Select a note to view or create a new one.",
     "createNew": "Create New Note",
     "saveFailed": "Failed to save note",

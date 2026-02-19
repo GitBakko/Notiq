@@ -12,7 +12,7 @@ if (publicVapidKey && privateVapidKey) {
     privateVapidKey
   );
 } else {
-  console.warn('VAPID keys not configured. Push notifications disabled.');
+  logger.warn('VAPID keys not configured. Push notifications disabled.');
 }
 
 export const subscribeUser = async (userId: string, subscription: any) => {

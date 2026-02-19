@@ -13,7 +13,7 @@ try {
   config = JSON.parse(configFile);
 } catch (error) {
 
-  console.error('Failed to load config.json', error);
+  logger.error(error, 'Failed to load config.json');
 }
 
 const escapeHtml = (str: string): string => {
