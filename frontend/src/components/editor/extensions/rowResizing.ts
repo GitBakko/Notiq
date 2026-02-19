@@ -80,7 +80,7 @@ export function rowResizing({ handleHeight = 5 } = {}) {
         if (pluginState && (pluginState.activeHandle > -1 || pluginState.dragging)) {
           return { class: 'resize-row-cursor' };
         }
-        return {};
+        return { class: '' };
       },
 
       handleDOMEvents: {
@@ -154,7 +154,7 @@ export function rowResizing({ handleHeight = 5 } = {}) {
             const offset = e.clientY - startY;
             const newHeight = Math.max(24, startHeight + offset);
             // Live preview via direct DOM manipulation
-            rowDom.style.height = `${newHeight}px`;
+            rowDom!.style.height = `${newHeight}px`;
           }
 
           function finish(e: MouseEvent) {

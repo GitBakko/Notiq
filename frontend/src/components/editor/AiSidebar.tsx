@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  X, Send, Sparkles, FileText, Tags, Languages, Wand2,
+  X, Send, Sparkles, FileText, Tags, Wand2,
   ArrowRight, Trash2, Square, Loader2, AlertCircle, Plus,
 } from 'lucide-react';
 import { useAiChat, type AiMessage } from '../../hooks/useAiChat';

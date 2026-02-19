@@ -3,7 +3,7 @@ import api from '../../lib/api';
 export interface Notification {
   id: string;
   userId: string;
-  type: 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'SYSTEM' | 'REMINDER';
+  type: 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'SYSTEM' | 'REMINDER' | 'GROUP_INVITE' | 'GROUP_REMOVE';
   title: string;
   message: string;
   data?: any;

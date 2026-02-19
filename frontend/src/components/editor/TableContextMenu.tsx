@@ -43,7 +43,7 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
   // Hover tracking for smooth trigger-to-submenu transitions
   const triggerHoverRef = useRef(false);
   const submenuHoverRef = useRef(false);
-  const closeTimerRef = useRef<number>();
+  const closeTimerRef = useRef<number>(0);
 
   // Measure real menu height and adjust position after render
   useLayoutEffect(() => {

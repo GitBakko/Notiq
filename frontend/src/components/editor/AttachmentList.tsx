@@ -1,4 +1,4 @@
-import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File, Music, Video, FileArchive, Download } from 'lucide-react';
+import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File, Music, Video, FileArchive } from 'lucide-react';
 import api from '../../lib/api';
 
 interface Attachment {
