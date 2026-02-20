@@ -97,7 +97,11 @@
     "importSuccess": "Successfully imported {{count}} notes!",
     "importError": "Import failed",
     "version": "Notiq v1.0.0",
-    "techStack": "Built with React, Vite, TailwindCSS and Fastify."
+    "techStack": "Built with React, Vite, TailwindCSS and Fastify.",
+    "notificationSound": "Notification Sound",
+    "notificationSoundToggle": "Enable notification sound",
+    "notificationSoundDescription": "Play a sound when new notifications arrive",
+    "whatsNew": "What's New"
   },
   "import": {
     "selectNotebook": "Import into..."
@@ -545,7 +549,11 @@
     "tableWidthAuto": "Auto",
     "borderStyle": "Border Style",
     "borderColor": "Border Color",
-    "pinPlaceholder": "PIN"
+    "pinPlaceholder": "PIN",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "pasteAsPlainText": "Paste as Plain Text"
   },
   "public": {
     "attachments": "Attachments"
@@ -645,7 +653,31 @@
     "send": "Send"
   },
   "collaboration": {
-    "you": "You"
+    "you": "You",
+    "jumpToEdit": "Jump to edit"
+  },
+  "whatsNew": {
+    "title": "What's New",
+    "feature": "Feature",
+    "fix": "Fix",
+    "improvement": "Improvement",
+    "viewFullHistory": "View full history",
+    "gotIt": "Got it",
+    "entries": {
+      "notificationSound": "Configurable notification sounds",
+      "pushNotifications": "OS push notifications when inactive",
+      "listAutoFormat": "Auto-format lists (°, 1), 1-)",
+      "inlineImages": "Inline images in editor (drop & paste)",
+      "pasteControl": "Paste with/without formatting + context menu",
+      "scrollToEdit": "Scroll to collaborator's latest edit",
+      "whatsNew": "What's New page and modal",
+      "sorting": "Note sorting and filtering",
+      "vaultTags": "Vault tag filtering",
+      "credentials": "Credential storage in vault",
+      "notebookPicker": "Notebook picker for imports",
+      "projectCleanup": "Project cleanup and optimization",
+      "initialRelease": "Initial release with full feature set"
+    }
   },
   "saved": "Saved",
   "saving": "Saving...",

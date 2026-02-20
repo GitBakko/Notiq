@@ -91,6 +91,10 @@
     "about": "Informazioni",
     "version": "Notiq v1.0.0",
     "techStack": "Costruito con React, Vite, TailwindCSS e Fastify.",
+    "notificationSound": "Suono Notifiche",
+    "notificationSoundToggle": "Abilita suono notifiche",
+    "notificationSoundDescription": "Riproduci un suono quando arrivano nuove notifiche",
+    "whatsNew": "Novita'",
     "import": "Importa Dati",
     "importTitle": "Importa da Evernote",
     "importDesc": "Carica un file .enex per importare le tue note.",
@@ -544,7 +548,12 @@
     "tableWidth": "Larghezza Tabella",
     "tableWidthAuto": "Auto",
     "borderStyle": "Stile Bordo",
-    "borderColor": "Colore Bordo"
+    "borderColor": "Colore Bordo",
+    "pinPlaceholder": "PIN",
+    "cut": "Taglia",
+    "copy": "Copia",
+    "paste": "Incolla",
+    "pasteAsPlainText": "Incolla come testo"
   },
   "public": {
     "attachments": "Allegati"
@@ -559,7 +568,31 @@
     "send": "Invia"
   },
   "collaboration": {
-    "you": "Tu"
+    "you": "Tu",
+    "jumpToEdit": "Vai alla modifica"
+  },
+  "whatsNew": {
+    "title": "Novita'",
+    "feature": "Funzionalita'",
+    "fix": "Correzione",
+    "improvement": "Miglioramento",
+    "viewFullHistory": "Vedi lo storico completo",
+    "gotIt": "Ho capito",
+    "entries": {
+      "notificationSound": "Suoni notifica configurabili",
+      "pushNotifications": "Notifiche push OS quando inattivo",
+      "listAutoFormat": "Auto-formattazione liste (°, 1), 1-)",
+      "inlineImages": "Immagini inline nell'editor (drop & incolla)",
+      "pasteControl": "Incolla con/senza formattazione + menu contestuale",
+      "scrollToEdit": "Scorri alla modifica del collaboratore",
+      "whatsNew": "Pagina e modale Novita'",
+      "sorting": "Ordinamento e filtri note",
+      "vaultTags": "Filtro tag nel Vault",
+      "credentials": "Gestione credenziali nel Vault",
+      "notebookPicker": "Selettore taccuino per importazioni",
+      "projectCleanup": "Pulizia e ottimizzazione del progetto",
+      "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
+    }
   },
   "notifications": {
     "title": "Notifiche",

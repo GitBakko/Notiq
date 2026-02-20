@@ -22,6 +22,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useNoteController } from './useNoteController';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAiStatus } from '../../hooks/useAiStatus';
+import ScrollToEditButton from '../../components/editor/ScrollToEditButton';
 
 interface NoteEditorProps {
     note: Note;
@@ -389,15 +390,22 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
             {/* Editor + Sidebars */}
             <div className="flex-1 flex overflow-hidden relative">
-                <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
                     <Editor
                         ref={editorRef}
                         content={contentInput}
                         onChange={setContentInput}
                         editable={!isReadOnly}
+                        noteId={note.id}
                         provider={provider}
                         collaboration={collaborationConfig}
                     />
+                    {provider && collaborators.length > 1 && editorRef.current?.getEditor() && (
+                        <ScrollToEditButton
+                            editor={editorRef.current.getEditor()}
+                            collaborators={collaborators}
+                        />
+                    )}
                 </div>
                 {(collaborators.length > 1 || isSharedNote || note.sharedWith?.some(s => s.status === 'ACCEPTED')) && (
                     <ChatSidebar

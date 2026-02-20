@@ -1,4 +1,8 @@
 import prisma from '../plugins/prisma';
+import { sendPushNotification } from './push.service';
+import logger from '../utils/logger';
+
+const INACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 export const createNotification = async (
   userId: string,
@@ -7,7 +11,7 @@ export const createNotification = async (
   message: string,
   data?: any
 ) => {
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       userId,
       type,
@@ -16,6 +20,29 @@ export const createNotification = async (
       data,
     },
   });
+
+  // Send push notification if user is inactive (lastActiveAt > 5 minutes ago)
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { lastActiveAt: true },
+    });
+
+    if (user) {
+      const inactiveSince = Date.now() - new Date(user.lastActiveAt).getTime();
+      if (inactiveSince > INACTIVE_THRESHOLD_MS) {
+        await sendPushNotification(userId, {
+          title,
+          body: message,
+          data: { ...data, type },
+        });
+      }
+    }
+  } catch (err) {
+    logger.error(err, 'Failed to send push notification for user %s', userId);
+  }
+
+  return notification;
 };
 
 export const getUserNotifications = async (userId: string, page: number = 1, limit: number = 50) => {

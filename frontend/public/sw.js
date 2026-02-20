@@ -25,31 +25,26 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
 
-  if (event.action === 'open') {
-    // Open the app
-    event.waitUntil(
-      clients.matchAll({ type: 'window' }).then(function (clientList) {
-        for (var i = 0; i < clientList.length; i++) {
-          var client = clientList[i];
-          if (client.url === '/' && 'focus' in client)
-            return client.focus();
+  var data = event.notification.data || {};
+  var targetUrl = data.noteId ? '/notes?id=' + data.noteId : '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+      // Try to focus an existing window and navigate it
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if ('focus' in client) {
+          client.focus();
+          if (client.navigate) {
+            return client.navigate(targetUrl);
+          }
+          return;
         }
-        if (clients.openWindow)
-          return clients.openWindow('/');
-      })
-    );
-  } else {
-    // Default click action
-    event.waitUntil(
-      clients.matchAll({ type: 'window' }).then(function (clientList) {
-        for (var i = 0; i < clientList.length; i++) {
-          var client = clientList[i];
-          if (client.url === '/' && 'focus' in client)
-            return client.focus();
-        }
-        if (clients.openWindow)
-          return clients.openWindow('/');
-      })
-    );
-  }
+      }
+      // No existing window, open a new one
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
 });

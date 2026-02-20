@@ -14,6 +14,7 @@ import TrashPage from './features/trash/TrashPage';
 import TasksPage from './features/tasks/TasksPage';
 import PublicNotePage from './features/public/PublicNotePage';
 import SettingsPage from './features/settings/SettingsPage';
+import WhatsNewPage from './features/settings/WhatsNewPage';
 import ProfilePage from './features/user/ProfilePage';
 import VaultPage from './features/vault/VaultPage';
 import SharedWithMePage from './features/sharing/SharedWithMePage';
@@ -46,6 +47,7 @@ function App() {
           <Route path="tags" element={<TagsPage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="whats-new" element={<WhatsNewPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="vault" element={<VaultPage />} />
           <Route path="shared" element={<SharedWithMePage />} />

@@ -1,7 +1,7 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { useAuthStore } from '../../store/authStore';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ErrorBoundary from '../ErrorBoundary';
 import { useUIStore } from '../../store/uiStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -9,6 +9,8 @@ import { X } from 'lucide-react';
 import clsx from 'clsx';
 
 import CommandMenu from '../search/CommandMenu';
+import WhatsNewModal from '../WhatsNewModal';
+import { CURRENT_VERSION } from '../../data/changelog';
 
 import { useSync } from '../../hooks/useSync';
 
@@ -19,6 +21,11 @@ export default function AppLayout() {
   const { isSidebarOpen, closeSidebar } = useUIStore();
   const isMobile = useIsMobile();
   const location = useLocation();
+
+  const [showWhatsNew, setShowWhatsNew] = useState(() => {
+    const lastSeen = localStorage.getItem('lastSeenVersion');
+    return lastSeen !== null && lastSeen !== CURRENT_VERSION;
+  });
 
   // Close sidebar on route change on mobile
   useEffect(() => {
@@ -67,6 +74,8 @@ export default function AppLayout() {
           <Outlet />
         </ErrorBoundary>
       </div>
+
+      {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
     </div>
   );
 }

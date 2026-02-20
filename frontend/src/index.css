@@ -257,3 +257,26 @@ body {
 .ProseMirror-selectednode {
   outline: 2px solid var(--color-accent);
 }
+
+/* Inline Images */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  cursor: default;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #10b981;
+  border-radius: 0.5rem;
+}
+
+/* Scroll to Edit Button Animation */
+@keyframes bounceSubtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.animate-bounce-subtle {
+  animation: bounceSubtle 2s ease-in-out infinite;
+}

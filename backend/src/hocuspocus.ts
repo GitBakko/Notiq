@@ -16,6 +16,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
 // import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
 import { Node, Extension } from '@tiptap/core';
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -171,6 +172,7 @@ export const extensions = [
   // Link, // Removed as it is included in StarterKit v3 or causes duplicate warning
   EncryptedBlock,
   LineHeight,
+  Image.configure({ inline: true }),
 ];
 
 

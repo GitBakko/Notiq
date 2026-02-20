@@ -17,6 +17,8 @@ interface UIState {
   notesSortField: SortField;
   notesSortOrder: SortOrder;
   setNotesSort: (field: SortField, order: SortOrder) => void;
+  notificationSoundEnabled: boolean;
+  setNotificationSoundEnabled: (enabled: boolean) => void;
 }
 
 const loadSort = (): { field: SortField; order: SortOrder } => {
@@ -60,6 +62,11 @@ export const useUIStore = create<UIState>((set) => ({
   setNotesSort: (field, order) => {
     set({ notesSortField: field, notesSortOrder: order });
     localStorage.setItem('notesSort', JSON.stringify({ field, order }));
+  },
+  notificationSoundEnabled: localStorage.getItem('notificationSound') !== 'false',
+  setNotificationSoundEnabled: (enabled) => {
+    set({ notificationSoundEnabled: enabled });
+    localStorage.setItem('notificationSound', String(enabled));
   },
 }));
 

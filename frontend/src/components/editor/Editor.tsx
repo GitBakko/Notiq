@@ -13,19 +13,25 @@ import { FontFamily } from '@tiptap/extension-font-family';
 import { FontSize } from './FontSize';
 import { LineHeight } from './LineHeight';
 import EncryptedBlock from './extensions/EncryptedBlock';
+import { ListAutoFormat } from './extensions/ListAutoFormat';
+import { ImageDrop } from './extensions/ImageDrop';
 import { useEffect, useRef, useMemo, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import EditorToolbar from './EditorToolbar';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { CollaborativeHighlighter } from './extensions/CollaborativeHighlighter';
+import { RemoteEditTracker } from './extensions/RemoteEditTracker';
 import { rowResizing } from './extensions/rowResizing';
 import TableContextMenu from './TableContextMenu';
+import EditorContextMenu from './EditorContextMenu';
+import { uploadAttachment } from '../../features/attachments/attachmentService';
 
 interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   editable?: boolean;
+  noteId?: string;
   onVoiceMemo?: () => void;
   scrollable?: boolean;
   provider?: HocuspocusProvider | null;
@@ -46,7 +52,7 @@ export interface EditorHandle {
   getEditor: () => any;
 }
 
-export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, onVoiceMemo, scrollable = true, collaboration, provider }, ref) {
+export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, noteId, onVoiceMemo, scrollable = true, collaboration, provider }, ref) {
   const isUpdating = useRef(false);
   const isFirstUpdate = useRef(true);
   const contentRef = useRef(content);
@@ -197,6 +203,17 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
       LineHeight,
       Underline,
       EncryptedBlock,
+      ListAutoFormat,
+      ImageDrop.configure({
+        inline: true,
+        allowBase64: false,
+        uploadFn: noteId
+          ? async (file: File) => {
+              const attachment = await uploadAttachment(noteId, file);
+              return attachment.url.startsWith('/') ? attachment.url : '/uploads/' + attachment.filename;
+            }
+          : undefined,
+      } as any),
     ];
 
     if (collaboration?.enabled && provider && provider.document) {
@@ -223,12 +240,13 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
       }
 
       extensionsWithCollab.push(CollaborativeHighlighter);
+      extensionsWithCollab.push(RemoteEditTracker);
 
       return extensionsWithCollab;
     }
 
     return baseExtensions;
-  }, [provider, collaboration?.enabled, collaboration?.user]);
+  }, [provider, collaboration?.enabled, collaboration?.user, noteId]);
 
   // Parse JSON string to object for TipTap (it treats strings as HTML)
   const parsedInitialContent = useMemo(() => {
@@ -256,6 +274,16 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     editorProps: {
       attributes: {
         class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full break-words leading-relaxed',
+      },
+      handleKeyDown: (view, event) => {
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'V' || event.key === 'v')) {
+          event.preventDefault();
+          navigator.clipboard.readText().then((text) => {
+            if (text) view.dispatch(view.state.tr.insertText(text));
+          }).catch(() => {});
+          return true;
+        }
+        return false;
       },
     },
   }, [provider]); // Re-initialize when provider changes
@@ -361,14 +389,19 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     }
   }, [provider, editor, collaboration?.enabled]);
 
-  // Table context menu state
+  // Context menu state
   const [tableContextMenu, setTableContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!editor?.isActive('table')) return;
-    e.preventDefault();
-    setTableContextMenu({ x: e.clientX, y: e.clientY });
-  }, [editor]);
+    if (editor?.isActive('table')) {
+      e.preventDefault();
+      setTableContextMenu({ x: e.clientX, y: e.clientY });
+    } else if (editor && editable) {
+      e.preventDefault();
+      setEditorContextMenu({ x: e.clientX, y: e.clientY });
+    }
+  }, [editor, editable]);
 
   if (!editor) {
     return null;
@@ -388,6 +421,13 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             onClose={() => setTableContextMenu(null)}
           />
         )}
+        {editable && editorContextMenu && (
+          <EditorContextMenu
+            editor={editor}
+            position={editorContextMenu}
+            onClose={() => setEditorContextMenu(null)}
+          />
+        )}
       </div>
     );
   }
@@ -403,6 +443,13 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           editor={editor}
           position={tableContextMenu}
           onClose={() => setTableContextMenu(null)}
+        />
+      )}
+      {editable && editorContextMenu && (
+        <EditorContextMenu
+          editor={editor}
+          position={editorContextMenu}
+          onClose={() => setEditorContextMenu(null)}
         />
       )}
     </div>

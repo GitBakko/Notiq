@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { playNotificationSound } from '../../utils/notificationSound';
 
 interface ChatMessage {
   id: string;
@@ -35,9 +36,6 @@ interface ChatSidebarProps {
   participants?: { id: string; name: string | null; email: string }[];
   noteOwner?: { id: string };
 }
-
-// Simple notification sound (Beep)
-const BEEP_SOUND = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA';
 
 export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNewMessage, participants = [], noteOwner }: ChatSidebarProps) {
   const { t } = useTranslation();
@@ -90,9 +88,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
     }
 
     if (messages.length > prevMessageCount) {
-      const sound = new Audio(BEEP_SOUND);
-      sound.volume = 0.5;
-      sound.play().catch(e => console.warn('Audio play failed', e));
+      playNotificationSound();
 
       if (!isOpen && onNewMessage) {
         onNewMessage();
