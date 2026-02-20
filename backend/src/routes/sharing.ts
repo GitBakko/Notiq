@@ -102,10 +102,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Get Shared Notes
+  // Get Shared Notes (all statuses — for SharedWithMePage)
   fastify.get('/notes', async (request, reply) => {
     const notes = await sharingService.getSharedNotes(request.user.id);
     return notes;
+  });
+
+  // Get Accepted Shared Notes (for sync into main notes list)
+  fastify.get('/notes/accepted', async (request) => {
+    return sharingService.getAcceptedSharedNotes(request.user.id);
   });
 
   // Share Notebook

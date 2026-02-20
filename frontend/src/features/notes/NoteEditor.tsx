@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles } from 'lucide-react';
+import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive } from 'lucide-react';
 import Editor from '../../components/editor/Editor';
 import { revokeShare, updateNoteLocalOnly, deleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -16,6 +16,7 @@ import AttachmentSidebar from './AttachmentSidebar';
 import ChatSidebar from '../../components/editor/ChatSidebar';
 import AiSidebar from '../../components/editor/AiSidebar';
 import NotebookSelector from '../../components/editor/NotebookSelector';
+import NoteSizeModal from './NoteSizeModal';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useNoteController } from './useNoteController';
@@ -35,6 +36,10 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
     // -- Controller --
     const { updateTitle, updateContent, saveNote } = useNoteController(note);
+
+    // -- Shared note detection --
+    const isSharedNote = note.ownership === 'shared';
+    const isReadOnly = isSharedNote && note.sharedPermission === 'READ';
 
     // -- Local State for Inputs --
     const [titleInput, setTitleInput] = useState(note.title);
@@ -58,6 +63,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const [isAiOpen, setIsAiOpen] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
+    const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
     const [collaborators, setCollaborators] = useState<any[]>([]);
@@ -90,11 +96,15 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
     // -- Save Effects --
     useEffect(() => {
-        if (note.isTrashed) return; // Don't save if trashed (prevents resurrection race)
+        if (note.isTrashed || isReadOnly) return;
         if (debouncedTitle !== note.title) {
-            updateTitle(debouncedTitle);
+            if (isSharedNote) {
+                updateNoteLocalOnly(note.id, { title: debouncedTitle });
+            } else {
+                updateTitle(debouncedTitle);
+            }
         }
-    }, [debouncedTitle, note.id, note.isTrashed]); // note.id check ensures we don't save to wrong note if switched fast
+    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, isReadOnly]);
 
     useEffect(() => {
         if (note.isTrashed) return; // Don't save if trashed
@@ -117,12 +127,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         if (isChatOpen) setUnreadCount(0);
     }, [isChatOpen]);
 
-    const isShared = useMemo(() => {
-        return note.sharedWith && note.sharedWith.length > 0;
-    }, [note.sharedWith]);
+    const shouldConnectCollab = useMemo(() => {
+        return (note.sharedWith && note.sharedWith.length > 0) || isSharedNote;
+    }, [note.sharedWith, isSharedNote]);
 
     useEffect(() => {
-        if (note.id && isShared) {
+        if (note.id && shouldConnectCollab) {
             const newProvider = new HocuspocusProvider({
                 url: import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws',
                 name: note.id,
@@ -136,7 +146,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         } else {
             setProvider(null);
         }
-    }, [note.id, isShared]);
+    }, [note.id, shouldConnectCollab]);
 
     useEffect(() => {
         if (!provider) return;
@@ -261,10 +271,11 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         ref={titleRef}
                         type="text"
                         value={titleInput}
-                        onChange={(e) => setTitleInput(e.target.value)}
+                        onChange={(e) => !isReadOnly && setTitleInput(e.target.value)}
                         onKeyDown={handleTitleKeyDown}
+                        readOnly={isReadOnly}
                         placeholder={t('notes.titlePlaceholder')}
-                        className="text-xl font-semibold bg-transparent border-none focus:outline-none text-gray-900 dark:text-white flex-1"
+                        className={clsx("text-xl font-semibold bg-transparent border-none focus:outline-none text-gray-900 dark:text-white flex-1", isReadOnly && "cursor-default")}
                     />
                 </div>
 
@@ -292,25 +303,35 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         )}
                     </div>
 
-                    <div className="hidden md:flex items-center gap-2">
-                        <NotebookSelector
-                            notebooks={notebooks || []}
-                            selectedNotebookId={note.notebookId}
-                            onSelect={(notebookId) => saveNote({ notebookId })}
-                        />
-                        <TagSelector
-                            noteId={note.id}
-                            noteTags={note.tags || []}
-                            onUpdate={() => queryClient.invalidateQueries({ queryKey: ['notes'] })}
-                            isVault={note.isVault}
-                        />
-                    </div>
+                    {!isSharedNote && (
+                        <div className="hidden md:flex items-center gap-2">
+                            <NotebookSelector
+                                notebooks={notebooks || []}
+                                selectedNotebookId={note.notebookId}
+                                onSelect={(notebookId) => saveNote({ notebookId })}
+                            />
+                            <TagSelector
+                                noteId={note.id}
+                                noteTags={note.tags || []}
+                                onUpdate={() => queryClient.invalidateQueries({ queryKey: ['notes'] })}
+                                isVault={note.isVault}
+                            />
+                        </div>
+                    )}
+
+                    <button
+                        onClick={() => setIsSizeModalOpen(true)}
+                        title={t('notes.size.title')}
+                        className="p-2 rounded-full transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"
+                    >
+                        <HardDrive className="w-5 h-5" />
+                    </button>
 
                     <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
                     {/* Actions */}
-                    {/* Only show chat if there are active collaborators OR (there are accepted shared users) */}
-                    {(collaborators.length > 1 || (note.sharedWith?.some(s => s.status === 'ACCEPTED'))) && (
+                    {/* Only show chat if there are active collaborators OR accepted shared users OR this is a shared-with-me note */}
+                    {(collaborators.length > 1 || isSharedNote || (note.sharedWith?.some(s => s.status === 'ACCEPTED'))) && (
                         <button onClick={() => { setIsChatOpen(!isChatOpen); if (!isChatOpen) setIsAiOpen(false); }} title={t('notes.chat')} className={clsx("p-2 rounded-full transition-colors relative", isChatOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}>
                             <MessageSquare className="w-5 h-5" />
                             {unreadCount > 0 && <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
@@ -327,33 +348,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         </button>
                     )}
 
-                    {!note.isVault && (
-                        /* Only show 'Shared' indicator (e.g. could change icon or something) if accepted? 
-                           The current icon is just a Share button that opens the modal. 
-                           The *badge* mentioned in request: "sharing badge in User 1's app". 
-                           Currently we don't have a distinct "Shared Badge" in this header, just the share button.
-                           Ah, maybe the user meant the "Shared with Me" badge in list? 
-                           Or maybe they want a visual indicator here?
-                           The prompt said: "The note sharing (and the sharing badge in User 1's app) must only become active if at least one invited user accepts".
-                           
-                           If "sharing badge" means the Chat button? Or maybe a "Shared" label?
-                           In the notes list (SharedWithMePage), we have indicators.
-                           But in the Editor? 
-                           
-                           Let's assume "active" means the functionality is considered "Shared".
-                           For the Share Button itself, it's always active to allow inviting more people.
-                           
-                           The User said: "sharing badge... must only become active".
-                           If there is no badge, maybe I should add one? 
-                           Or maybe they rely on the Chat button appearing?
-                           Or maybe in the `NotesPage` list view?
-                           
-                           Let's assume the "Chat Button" appearing is the main active state change here.
-                           AND if there is a "Shared" icon/badge in the list view.
-                           I will verify `NotesPage` (list) logic too.
-                           
-                           For now, updating Chat Button visibility condition.
-                        */
+                    {!note.isVault && !isSharedNote && (
                         <button onClick={() => setIsSharingModalOpen(true)} title={t('notes.share')} className={clsx("p-2 rounded-full transition-colors", (note.sharedWith?.some(s => s.status === 'ACCEPTED')) ? "text-emerald-600 bg-emerald-50" : "hover:bg-gray-100 dark:hover:bg-gray-800")}><Share2 className="w-5 h-5" /></button>
                     )}
                     <button onClick={() => setIsAttachmentSidebarOpen(!isAttachmentSidebarOpen)} title={t('notes.attachments')} className={clsx("p-2 rounded-full transition-colors relative", isAttachmentSidebarOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}>
@@ -372,26 +367,39 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         )}
                     </button>
 
-                    <button onClick={handlePinToggle} title={note.isPinned ? t('notes.unpin') : t('notes.pin')} className={clsx("p-2 rounded-full transition-colors", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-gray-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
+                    {!isSharedNote && (
+                        <>
+                            <button onClick={handlePinToggle} title={note.isPinned ? t('notes.unpin') : t('notes.pin')} className={clsx("p-2 rounded-full transition-colors", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-gray-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
 
-                    <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} title={note.isVault ? t('notes.removeFromVault') : t('notes.addToVault')} className={clsx("p-2 rounded-full transition-colors", note.isVault ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-gray-400 hover:text-emerald-500 hover:bg-emerald-50")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
+                            <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} title={note.isVault ? t('notes.removeFromVault') : t('notes.addToVault')} className={clsx("p-2 rounded-full transition-colors", note.isVault ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-gray-400 hover:text-emerald-500 hover:bg-emerald-50")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
 
-                    <button onClick={() => setIsDeleteConfirmOpen(true)} title={t('common.delete')} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
+                            <button onClick={() => setIsDeleteConfirmOpen(true)} title={t('common.delete')} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
+                        </>
+                    )}
                 </div>
             </header>
 
+            {/* Read-only banner for shared READ notes */}
+            {isReadOnly && (
+                <div className="px-4 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                    <Lock size={12} />
+                    {t('notes.readOnlyShared')}
+                </div>
+            )}
+
             {/* Editor + Sidebars */}
             <div className="flex-1 flex overflow-hidden relative">
-                <div className="flex-1 overflow-y-auto min-w-0">
+                <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                     <Editor
                         ref={editorRef}
                         content={contentInput}
                         onChange={setContentInput}
+                        editable={!isReadOnly}
                         provider={provider}
                         collaboration={collaborationConfig}
                     />
                 </div>
-                {(collaborators.length > 1 || note.sharedWith?.some(s => s.status === 'ACCEPTED')) && (
+                {(collaborators.length > 1 || isSharedNote || note.sharedWith?.some(s => s.status === 'ACCEPTED')) && (
                     <ChatSidebar
                         key={note.id}
                         noteId={note.id}
@@ -441,6 +449,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); await deleteNote(note.id); toast.success(t('notes.deleted')); onBack ? onBack() : window.history.back(); }} title={t('notes.moveToTrash')} message={t('notes.moveToTrashConfirm')} confirmText={t('notes.moveToTrashAction')} variant="danger" />
 
             {isAttachmentSidebarOpen && <AttachmentSidebar noteId={note.id} attachments={note.attachments || []} onClose={() => setIsAttachmentSidebarOpen(false)} onDelete={deleteAttachment.bind(null, note.id)} onAdd={() => fileInputRef.current?.click()} />}
+
+            {isSizeModalOpen && <NoteSizeModal noteId={note.id} onClose={() => setIsSizeModalOpen(false)} />}
         </div>
     );
 }

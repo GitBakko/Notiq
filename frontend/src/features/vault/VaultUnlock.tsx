@@ -96,11 +96,13 @@ export default function VaultUnlock() {
         <p className="text-gray-500 dark:text-gray-400 mb-6">{t('vault.lockedDescription')}</p>
 
         <form onSubmit={handleUnlock} className="space-y-4">
+          <input type="text" autoComplete="username" className="hidden" tabIndex={-1} aria-hidden="true" />
           <input
             type="password"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             placeholder={t('vault.enterPin')}
+            autoComplete="current-password"
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             autoFocus
           />

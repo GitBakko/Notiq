@@ -6,12 +6,12 @@ import VaultUnlock from './VaultUnlock';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, Plus, Lock } from 'lucide-react';
+import { Search, Menu, Plus, Lock, KeyRound, ChevronDown } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { createNote, getNote } from '../notes/noteService';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createNote } from '../notes/noteService';
 import toast from 'react-hot-toast';
 import NoteEditor from '../notes/NoteEditor';
 import clsx from 'clsx';
@@ -20,14 +20,20 @@ import { useNotebooks } from '../../hooks/useNotebooks';
 import TagList from '../tags/TagList';
 import { useImport } from '../../hooks/useImport';
 import { FileDown } from 'lucide-react';
+import CredentialCard from './CredentialCard';
+import CredentialForm from './CredentialForm';
+import { encryptCredential, EMPTY_CREDENTIAL, decryptCredential } from './credentialTypes';
+
+type TypeFilter = 'all' | 'note' | 'credential';
 
 export default function VaultPage() {
   const { t } = useTranslation();
-  const { isSetup, isUnlocked, lockVault } = useVaultStore();
+  const { isSetup, isUnlocked, lockVault, pin } = useVaultStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
-  // const navigate = useNavigate(); // Not needed
   const queryClient = useQueryClient();
   const { notebooks } = useNotebooks();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -48,7 +54,6 @@ export default function VaultPage() {
     mutationFn: createNote,
     onSuccess: (newNote) => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
-      // Stay in Vault, just select the new note
       setSelectedNoteId(newNote.id);
       toast.success(t('notes.created'));
     },
@@ -59,59 +64,72 @@ export default function VaultPage() {
 
   const { importFile, isUploading, hiddenInput } = useImport({
     onSuccess: () => {
-      // LiveQuery updates automatically? 
-      // If dexie notes are updated, yes. 
-      // NOTE: Import saves to MySQL (backend). Sync pulls it to Dexie. 
-      // So it might take a moment to appear if Sync isn't instant.
-      // We might need to trigger sync pull?
-      queryClient.invalidateQueries({ queryKey: ['notes'] }); // This triggers standard react-query notes, not liveQuery?
-      // Is Vault Notes using `useLiveQuery` from dexie? Yes.
-      // Dexie needs to sync down.
-      // Trigger a sync pull manually?
-      // For MVP, user can refresh or wait for sync interval.
+      queryClient.invalidateQueries({ queryKey: ['notes'] });
     }
   });
 
+  const getDefaultNotebookId = () => {
+    return notebooks && notebooks.length > 0 ? notebooks[0].id : null;
+  };
+
   const handleCreateSecureNote = () => {
-    const defaultNotebookId = notebooks && notebooks.length > 0 ? notebooks[0].id : null;
-
-    if (!defaultNotebookId) {
-      toast.error(t('notes.noNotebooksFound'));
-      return;
-    }
-
+    const notebookId = getDefaultNotebookId();
+    if (!notebookId) { toast.error(t('notes.noNotebooksFound')); return; }
+    setShowCreateMenu(false);
     createMutation.mutate({
       title: t('notes.untitled'),
-      notebookId: defaultNotebookId,
+      notebookId,
       isVault: true,
-      isEncrypted: true
-    } as any);
+      isEncrypted: true,
+      noteType: 'NOTE',
+    });
+  };
+
+  const handleCreateCredential = () => {
+    const notebookId = getDefaultNotebookId();
+    if (!notebookId) { toast.error(t('notes.noNotebooksFound')); return; }
+    if (!pin) return;
+    setShowCreateMenu(false);
+    const encrypted = encryptCredential(EMPTY_CREDENTIAL, pin);
+    createMutation.mutate({
+      title: t('vault.credential.untitled'),
+      notebookId,
+      isVault: true,
+      isEncrypted: true,
+      noteType: 'CREDENTIAL',
+      content: encrypted,
+    });
   };
 
   const vaultNotes = useLiveQuery(async () => {
-    // Robust filter strategy
     const allNotes = await db.notes.toArray();
 
-    // Sort manually in JS
     return allNotes
-      .filter(note => !!note.isVault)
+      .filter(note => !!note.isVault && !note.isTrashed)
+      .filter(note => {
+        if (typeFilter === 'note') return note.noteType !== 'CREDENTIAL';
+        if (typeFilter === 'credential') return note.noteType === 'CREDENTIAL';
+        return true;
+      })
       .filter(note => {
         if (!searchQuery) return true;
-        return note.title.toLowerCase().includes(searchQuery.toLowerCase());
+        const q = searchQuery.toLowerCase();
+        if (note.title.toLowerCase().includes(q)) return true;
+        // For credentials, also search siteUrl and username
+        if (note.noteType === 'CREDENTIAL' && pin && note.content) {
+          const data = decryptCredential(note.content, pin);
+          if (data) {
+            return data.siteUrl?.toLowerCase().includes(q)
+              || data.username?.toLowerCase().includes(q);
+          }
+        }
+        return false;
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [searchQuery]);
+  }, [searchQuery, typeFilter, pin]);
 
-  // Fetch selected note independently if needed (e.g. valid ID but not in current filtered list? slightly edge case in vault but good practice)
-  const { data: fetchedNote, isLoading: isLoadingNote } = useQuery({
-    queryKey: ['note', selectedNoteId],
-    queryFn: () => getNote(selectedNoteId!),
-    enabled: !!selectedNoteId, // Always try to fetch if ID is present
-    retry: false,
-  });
-
-  // Prefer fetchedNote (has full content from GET /notes/:id) over list note (no content)
-  const selectedNote = (fetchedNote || vaultNotes?.find(n => n.id === selectedNoteId)) as unknown as import('../notes/noteService').Note;
+  // Vault notes use Dexie as source of truth (encrypted content saved locally first, sync is async)
+  const selectedNote = vaultNotes?.find(n => n.id === selectedNoteId) as unknown as import('../notes/noteService').Note | undefined;
 
   // Auto-close if note is removed from vault
   useEffect(() => {
@@ -131,6 +149,17 @@ export default function VaultPage() {
     };
   }, [lockVault]);
 
+  // Close create menu on outside click
+  useEffect(() => {
+    if (!showCreateMenu) return;
+    const handle = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-create-menu]')) setShowCreateMenu(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showCreateMenu]);
+
   if (!isSetup) {
     return <VaultSetup />;
   }
@@ -138,6 +167,12 @@ export default function VaultPage() {
   if (!isUnlocked) {
     return <VaultUnlock />;
   }
+
+  const filterChips: { key: TypeFilter; label: string }[] = [
+    { key: 'all', label: t('vault.filterAll') },
+    { key: 'note', label: t('vault.filterNote') },
+    { key: 'credential', label: t('vault.filterCredential') },
+  ];
 
   const renderNoteList = () => (
     <div className={clsx("flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800", isMobile ? "w-full" : "w-80")}>
@@ -155,9 +190,30 @@ export default function VaultPage() {
           <Button onClick={() => importFile(undefined, true)} variant="ghost" size="icon" className="h-8 w-8 rounded-full" title={t('settings.importTitle')} disabled={isUploading}>
             <FileDown size={16} />
           </Button>
-          <Button onClick={handleCreateSecureNote} variant="primary" size="icon" className="h-8 w-8 rounded-full">
-            <Plus size={16} />
-          </Button>
+          {/* Create dropdown */}
+          <div className="relative" data-create-menu>
+            <Button onClick={() => setShowCreateMenu(!showCreateMenu)} variant="primary" size="icon" className="h-8 w-8 rounded-full">
+              <Plus size={16} />
+            </Button>
+            {showCreateMenu && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
+                <button
+                  onClick={handleCreateSecureNote}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <Lock size={14} />
+                  {t('vault.createSecureNote')}
+                </button>
+                <button
+                  onClick={handleCreateCredential}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <KeyRound size={14} />
+                  {t('vault.createCredential')}
+                </button>
+              </div>
+            )}
+          </div>
           <Button onClick={() => lockVault()} variant="ghost" size="icon" className="h-8 w-8 rounded-full" title={t('vault.lock')}>
             <Lock size={16} />
           </Button>
@@ -175,6 +231,23 @@ export default function VaultPage() {
             className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border-none rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm dark:text-white"
           />
         </div>
+        {/* Type filter chips */}
+        <div className="flex gap-1 mt-2">
+          {filterChips.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setTypeFilter(key)}
+              className={clsx(
+                'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+                typeFilter === key
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="border-b border-gray-200 dark:border-gray-800">
@@ -190,23 +263,32 @@ export default function VaultPage() {
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {vaultNotes?.map((note) => (
-          <button
-            key={note.id}
-            onClick={() => setSelectedNoteId(note.id)}
-            className={clsx(
-              "w-full text-left p-3 rounded-lg transition-colors border",
-              selectedNoteId === note.id
-                ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
-                : "bg-white dark:bg-gray-800 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50"
-            )}
-          >
-            <h3 className={clsx("font-medium mb-1 truncate", selectedNoteId === note.id ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-white")}>
-              {note.title || t('notes.untitled')}
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
-              {new Date(note.updatedAt).toLocaleDateString()}
-            </p>
-          </button>
+          note.noteType === 'CREDENTIAL' ? (
+            <CredentialCard
+              key={note.id}
+              note={note}
+              isSelected={selectedNoteId === note.id}
+              onClick={() => setSelectedNoteId(note.id)}
+            />
+          ) : (
+            <button
+              key={note.id}
+              onClick={() => setSelectedNoteId(note.id)}
+              className={clsx(
+                "w-full text-left p-3 rounded-lg transition-colors border",
+                selectedNoteId === note.id
+                  ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
+                  : "bg-white dark:bg-gray-800 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50"
+              )}
+            >
+              <h3 className={clsx("font-medium mb-1 truncate", selectedNoteId === note.id ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-white")}>
+                {note.title || t('notes.untitled')}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                {new Date(note.updatedAt).toLocaleDateString()}
+              </p>
+            </button>
+          )
         ))}
         {vaultNotes?.length === 0 && (
           <div className="text-center text-gray-500 py-8 text-sm">
@@ -219,23 +301,34 @@ export default function VaultPage() {
 
   const renderEditor = () => (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-900 relative">
-      {isLoadingNote ? (
-        <div className="flex h-full items-center justify-center text-gray-400">
-          {t('common.loading')}
-        </div>
-      ) : selectedNote ? (
-        <NoteEditor
-          key={selectedNote.id}
-          note={selectedNote}
-          onBack={() => setSelectedNoteId(null)}
-        />
+      {selectedNote ? (
+        selectedNote.noteType === 'CREDENTIAL' ? (
+          <CredentialForm
+            key={selectedNote.id}
+            note={selectedNote}
+            onBack={() => setSelectedNoteId(null)}
+            onDelete={() => setSelectedNoteId(null)}
+          />
+        ) : (
+          <NoteEditor
+            key={selectedNote.id}
+            note={selectedNote}
+            onBack={() => setSelectedNoteId(null)}
+          />
+        )
       ) : (
         <div className="flex h-full items-center justify-center text-gray-400 flex-col p-4 text-center dark:text-gray-500">
           <Lock size={48} className="mb-4 opacity-20" />
           <p className="mb-4">{t('notes.selectToView')}</p>
-          <Button onClick={handleCreateSecureNote} variant="primary">
-            {t('vault.createSecureNote')}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleCreateSecureNote} variant="primary">
+              {t('vault.createSecureNote')}
+            </Button>
+            <Button onClick={handleCreateCredential} variant="secondary">
+              <KeyRound size={16} className="mr-1" />
+              {t('vault.createCredential')}
+            </Button>
+          </div>
         </div>
       )}
     </div>

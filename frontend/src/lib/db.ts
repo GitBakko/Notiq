@@ -28,6 +28,7 @@ export interface LocalNote {
   isPinned?: boolean;
   isVault?: boolean;
   isEncrypted?: boolean;
+  noteType?: 'NOTE' | 'CREDENTIAL';
   sharedWith?: {
     id: string;
     userId: string;
@@ -35,6 +36,9 @@ export interface LocalNote {
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
     user: { id: string; name: string | null; email: string };
   }[];
+  ownership?: 'owned' | 'shared';
+  sharedPermission?: 'READ' | 'WRITE' | null;
+  sharedByUser?: { id: string; name: string | null; email: string } | null;
   syncStatus: 'synced' | 'created' | 'updated';
 }
 
@@ -120,6 +124,26 @@ class AppDatabase extends Dexie {
     // v10: Add searchText field for faster offline search (plain text, no JSON parsing)
     this.version(10).stores({
       notes: 'id, notebookId, userId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted',
+    });
+
+    // v11: Add ownership field to distinguish shared notes from personal notes
+    this.version(11).stores({
+      notes: 'id, notebookId, userId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted, ownership',
+    }).upgrade(tx => {
+      return tx.table('notes').toCollection().modify(note => {
+        note.ownership = 'owned';
+        note.sharedPermission = null;
+        note.sharedByUser = null;
+      });
+    });
+
+    // v12: Add noteType field for credential notes in vault
+    this.version(12).stores({
+      notes: 'id, notebookId, userId, updatedAt, createdAt, syncStatus, isTrashed, reminderDate, isReminderDone, isPublic, shareId, isPinned, isVault, isEncrypted, ownership, noteType',
+    }).upgrade(tx => {
+      return tx.table('notes').toCollection().modify(note => {
+        note.noteType = 'NOTE';
+      });
     });
   }
 }

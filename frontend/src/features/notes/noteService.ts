@@ -21,6 +21,7 @@ export interface Note {
   isPinned?: boolean;
   isVault?: boolean;
   isEncrypted?: boolean;
+  noteType?: 'NOTE' | 'CREDENTIAL';
   sharedWith?: {
     id: string;
     userId: string;
@@ -80,7 +81,7 @@ import { db } from '../../lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuthStore } from '../../store/authStore';
 
-export const createNote = async (data: { title: string; notebookId: string; content?: string; isVault?: boolean; isEncrypted?: boolean }) => {
+export const createNote = async (data: { title: string; notebookId: string; content?: string; isVault?: boolean; isEncrypted?: boolean; noteType?: 'NOTE' | 'CREDENTIAL' }) => {
   const id = uuidv4();
   const userId = useAuthStore.getState().user?.id || 'current-user';
   const newNote = {
@@ -91,10 +92,14 @@ export const createNote = async (data: { title: string; notebookId: string; cont
     isTrashed: false,
     isVault: data.isVault || false,
     isEncrypted: data.isEncrypted || false,
+    noteType: data.noteType || 'NOTE',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     tags: [],
     attachments: [],
+    ownership: 'owned' as const,
+    sharedPermission: null,
+    sharedByUser: null,
     syncStatus: 'created' as const
   };
 
@@ -104,7 +109,7 @@ export const createNote = async (data: { title: string; notebookId: string; cont
     entity: 'NOTE',
     entityId: id,
     userId,
-    data: { ...data, id }, // Send ID to backend if supported
+    data: { ...data, id, noteType: data.noteType || 'NOTE' }, // Send ID + noteType to backend
     createdAt: Date.now()
   });
 
@@ -115,6 +120,12 @@ export const createNote = async (data: { title: string; notebookId: string; cont
 };
 
 export const updateNote = async (id: string, data: Partial<Note>) => {
+  // Shared notes: only update locally, Hocuspocus handles server sync
+  const existing = await db.notes.get(id);
+  if (existing?.ownership === 'shared') {
+    return updateNoteLocalOnly(id, data);
+  }
+
   await db.notes.update(id, { ...data, updatedAt: new Date().toISOString(), syncStatus: 'updated' });
   const userId = useAuthStore.getState().user?.id || 'current-user';
   await db.syncQueue.add({

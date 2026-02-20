@@ -38,8 +38,9 @@ export default function NotesPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 500);
+  const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'owned' | 'shared'>('all');
 
-  const notes = useNotes(selectedNotebookId, debouncedSearch, selectedTagId);
+  const notes = useNotes(selectedNotebookId, debouncedSearch, selectedTagId, false, ownershipFilter);
   const isLoading = !notes;
 
   const queryClient = useQueryClient();
@@ -140,8 +141,23 @@ export default function NotesPage() {
               className="w-full rounded-md border border-gray-300 bg-gray-50 py-2 pl-9 pr-4 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
             />
           </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {t('notes.found', { count: notes?.length || 0 })}
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {t('notes.found', { count: notes?.length || 0 })}
+            </span>
+            <div className="flex gap-1">
+              {(['all', 'owned', 'shared'] as const).map(f => (
+                <button key={f} onClick={() => setOwnershipFilter(f)}
+                  className={clsx(
+                    "px-2 py-0.5 text-[10px] rounded-full border transition-colors",
+                    ownershipFilter === f
+                      ? "bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-400"
+                      : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400"
+                  )}>
+                  {t(`notes.filter.${f}`)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">

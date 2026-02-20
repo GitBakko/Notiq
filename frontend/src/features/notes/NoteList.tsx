@@ -73,6 +73,12 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
                 {note.notebook.name}
               </span>
             )}
+            {note.ownership === 'shared' && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap flex items-center gap-0.5">
+                <Users size={10} />
+                {note.sharedPermission === 'WRITE' ? t('sharing.readWrite') : t('sharing.readOnly')}
+              </span>
+            )}
           </div>
           <p className="mb-2 line-clamp-2 text-xs text-gray-500 h-8 dark:text-gray-400">
             {note.content ? getPreviewText(note.content) : (note.searchText || t('notes.noContent'))}
@@ -80,6 +86,11 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
           <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
             <div className="flex items-center gap-2">
               <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true, locale: dateLocale })}</span>
+              {note.ownership === 'shared' && note.sharedByUser && (
+                <span className="text-[10px] text-blue-500 dark:text-blue-400 truncate max-w-[120px]">
+                  {t('notes.sharedBy', { name: note.sharedByUser.name || note.sharedByUser.email })}
+                </span>
+              )}
               {note.reminderDate && (
                 <span className={clsx("flex items-center gap-1", note.isReminderDone ? "text-emerald-500" : "text-amber-500")} title={new Date(note.reminderDate).toLocaleString()}>
                   {note.isReminderDone ? <CheckCircle size={12} /> : <Bell size={12} />}

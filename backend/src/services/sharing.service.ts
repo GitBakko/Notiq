@@ -125,6 +125,35 @@ export const revokeNoteShare = async (ownerId: string, noteId: string, targetUse
   });
 };
 
+export const getAcceptedSharedNotes = async (userId: string) => {
+  const shared = await prisma.sharedNote.findMany({
+    where: { userId, status: 'ACCEPTED' },
+    select: {
+      permission: true,
+      note: {
+        select: {
+          id: true, title: true, content: true, searchText: true,
+          notebookId: true, userId: true,
+          isPinned: true, isTrashed: true, isEncrypted: true,
+          isPublic: true, isVault: true, shareId: true,
+          reminderDate: true, isReminderDone: true,
+          createdAt: true, updatedAt: true,
+          tags: { include: { tag: true } },
+          attachments: {
+            where: { isLatest: true },
+            select: { id: true, filename: true, mimeType: true, size: true }
+          },
+          sharedWith: {
+            include: { user: { select: { id: true, name: true, email: true } } }
+          },
+          user: { select: { id: true, name: true, email: true } },
+        }
+      }
+    }
+  });
+  return shared.map(sn => ({ ...sn.note, _sharedPermission: sn.permission }));
+};
+
 export const getSharedNotes = async (userId: string) => {
   return prisma.sharedNote.findMany({
     where: {

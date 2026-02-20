@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { useAuthStore } from '../store/authStore';
 
-export function useNotes(notebookId?: string, search?: string, tagId?: string, onlyTrashed: boolean = false) {
+export function useNotes(notebookId?: string, search?: string, tagId?: string, onlyTrashed: boolean = false, ownershipFilter: 'all' | 'owned' | 'shared' = 'all') {
   const user = useAuthStore((state) => state.user);
 
   return useLiveQuery(async () => {
@@ -12,21 +12,28 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
       let collection = db.notes.orderBy('createdAt').reverse();
 
       collection = collection.filter(note => {
-        // Must belong to current user
-        if (note.userId !== user.id) return false;
+        // Ownership filtering
+        if (note.ownership === 'shared') {
+          // Shared note: include only if filter allows
+          if (ownershipFilter === 'owned') return false;
+        } else {
+          // Personal note: must belong to current user
+          if (note.userId !== user.id) return false;
+          if (ownershipFilter === 'shared') return false;
+        }
 
         // Exclude vault notes
         if (note.isVault) return false;
 
+        // Notebook filter (only for owned notes)
         if (notebookId) {
+          if (note.ownership === 'shared') return false;
           return note.notebookId === notebookId;
         }
-        return true; // If no notebookId is specified and not a vault note, include it.
+        return true;
       });
 
       if (tagId) {
-        // This is tricky with Dexie for array of objects.
-        // We might need a better schema or just filter in JS for now (small dataset).
         collection = collection.filter(note => note.tags.some(t => t.tag.id === tagId));
       }
 
@@ -49,8 +56,8 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
           tags: (n.tags || []).map(t => ({
             tag: {
               ...t.tag,
-              userId: n.userId, // Mock or retrieve
-              syncStatus: 'synced' as const // Mock
+              userId: n.userId,
+              syncStatus: 'synced' as const
             }
           }))
         }));
@@ -59,5 +66,5 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
       console.error('useNotes Error:', error);
       return [];
     }
-  }, [notebookId, search, tagId, onlyTrashed, user?.id]);
+  }, [notebookId, search, tagId, onlyTrashed, ownershipFilter, user?.id]);
 }

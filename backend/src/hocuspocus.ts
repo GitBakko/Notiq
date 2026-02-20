@@ -185,10 +185,18 @@ export const hocuspocus = new Server({
       fetch: async ({ documentName }) => {
         const note = await prisma.note.findUnique({
           where: { id: documentName },
-          select: { content: true },
+          select: { content: true, ydocState: true },
         });
 
-        if (note && note.content) {
+        if (!note) return null;
+
+        // If we have stored Yjs binary state, use it directly (preserves CRDT history)
+        if (note.ydocState) {
+          return new Uint8Array(note.ydocState);
+        }
+
+        // Fallback: convert JSON content to Yjs (for notes without ydocState yet)
+        if (note.content) {
           try {
             const json = JSON.parse(note.content);
             // @ts-ignore
@@ -197,27 +205,12 @@ export const hocuspocus = new Server({
             return state;
           } catch (e) {
             logger.error(e, 'Failed to parse note content as JSON, attempting fallback');
-            // Fallback for legacy HTML content
             try {
-              const doc = new Y.Doc();
-              const text = note.content.replace(/<[^>]*>/g, ' ').trim(); // Simple strip tags
-
-              // Create a basic document structure
+              const text = note.content.replace(/<[^>]*>/g, ' ').trim();
               const json = {
                 type: 'doc',
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [
-                      {
-                        type: 'text',
-                        text: text || ' ', // Ensure at least some text
-                      },
-                    ],
-                  },
-                ],
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: text || ' ' }] }],
               };
-
               // @ts-ignore
               const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
               return Y.encodeStateAsUpdate(tiptapDoc);
@@ -257,6 +250,7 @@ export const hocuspocus = new Server({
           where: { id: documentName },
           data: {
             content: contentStr,
+            ydocState: Buffer.from(state),
             searchText,
             updatedAt: new Date(),
           },

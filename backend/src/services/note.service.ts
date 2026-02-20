@@ -3,7 +3,7 @@ import { hocuspocus, extensions } from '../hocuspocus';
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
-import { extractTextFromTipTapJson } from '../utils/extractText';
+import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractText';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
   const note = await prisma.note.findUnique({
@@ -26,7 +26,8 @@ export const createNote = async (
   notebookId: string,
   isVault: boolean = false,
   isEncrypted: boolean = false,
-  id?: string
+  id?: string,
+  noteType: 'NOTE' | 'CREDENTIAL' = 'NOTE'
 ) => {
   // Check if notebook exists/belongs to user
   let targetNotebookId = notebookId;
@@ -48,7 +49,7 @@ export const createNote = async (
   }
 
   try {
-    const searchText = isEncrypted ? null : extractTextFromTipTapJson(content);
+    const searchText = (isEncrypted || noteType === 'CREDENTIAL') ? null : extractTextFromTipTapJson(content);
     return await prisma.note.create({
       data: {
         ...(id ? { id } : {}),
@@ -59,6 +60,7 @@ export const createNote = async (
         notebookId: targetNotebookId,
         isVault,
         isEncrypted,
+        noteType,
       },
     });
   } catch (error: any) {
@@ -105,6 +107,7 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
       isEncrypted: true,
       isPublic: true,
       isVault: true,
+      noteType: true,
       shareId: true,
       reminderDate: true,
       isReminderDone: true,
@@ -252,6 +255,58 @@ export const getPublicNote = async (shareId: string) => {
       attachments: { where: { isLatest: true } }
     }
   });
+};
+
+export const getNoteSizeBreakdown = async (userId: string, noteId: string) => {
+  const access = await checkNoteAccess(userId, noteId);
+  if (!access) throw new Error('Note not found');
+
+  const [note, attachments, chatMessages, aiConversations] = await Promise.all([
+    prisma.note.findUnique({
+      where: { id: noteId },
+      select: { title: true, content: true, searchText: true, ydocState: true },
+    }),
+    prisma.attachment.findMany({
+      where: { noteId },
+      select: { size: true },
+    }),
+    prisma.chatMessage.findMany({
+      where: { noteId },
+      select: { content: true },
+    }),
+    prisma.aiConversation.findMany({
+      where: { noteId },
+      select: { content: true, metadata: true },
+    }),
+  ]);
+
+  if (!note) throw new Error('Note not found');
+
+  const noteSize =
+    Buffer.byteLength(note.title || '', 'utf8') +
+    Buffer.byteLength(note.content || '', 'utf8') +
+    Buffer.byteLength(note.searchText || '', 'utf8') +
+    (note.ydocState ? note.ydocState.length : 0);
+
+  const { characters, lines } = countDocumentStats(note.content || '');
+
+  const attachmentsSize = attachments.reduce((sum, a) => sum + a.size, 0);
+  const chatSize = chatMessages.reduce((sum, m) => sum + Buffer.byteLength(m.content, 'utf8'), 0);
+  const aiSize = aiConversations.reduce((sum, c) => {
+    let s = Buffer.byteLength(c.content, 'utf8');
+    if (c.metadata) s += Buffer.byteLength(JSON.stringify(c.metadata), 'utf8');
+    return sum + s;
+  }, 0);
+
+  return {
+    note: noteSize,
+    attachments: attachmentsSize,
+    chat: chatSize,
+    ai: aiSize,
+    total: noteSize + attachmentsSize + chatSize + aiSize,
+    characters,
+    lines,
+  };
 };
 
 export const deleteNote = async (userId: string, id: string) => {

@@ -22,6 +22,7 @@ import importRoutes from './routes/import';
 import searchRoutes from './routes/search';
 import aiRoutes from './routes/ai';
 import groupRoutes from './routes/groups';
+import urlMetadataRoutes from './routes/url-metadata';
 
 
 // ... ensure start
@@ -116,6 +117,7 @@ server.register(importRoutes, { prefix: '/api/import' });
 server.register(searchRoutes, { prefix: '/api/search' });
 server.register(aiRoutes, { prefix: '/api/ai' });
 server.register(groupRoutes, { prefix: '/api/groups' });
+server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
 
 // Public avatar serving (no auth required)
 server.get('/uploads/avatars/:filename', async (request, reply) => {

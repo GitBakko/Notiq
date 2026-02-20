@@ -64,6 +64,9 @@ export const syncPull = async () => {
         ...n,
         tags: n.tags || [], // Ensure array
         attachments: n.attachments || [], // Ensure array
+        ownership: 'owned' as const,
+        sharedPermission: null,
+        sharedByUser: null,
         syncStatus: 'synced' as const
       }));
 
@@ -86,7 +89,9 @@ export const syncPull = async () => {
       const filteredNotesToPut = notesToPut.filter(n => !pendingDeleteIds.has(n.id));
 
       // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
-      const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced').toArray();
+      // Exclude shared notes — they are managed by the shared notes pull block below.
+      const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced')
+        .filter(n => n.ownership !== 'shared').toArray();
       // Self-Healing Strategy:
       // If we have local notes that are 'synced' but missing from the server, 
       // instead of deleting them locally, we should assume the server lost them and re-push.
@@ -102,9 +107,54 @@ export const syncPull = async () => {
         await db.notes.bulkDelete(toDeleteIds);
       }
 
+      // Preserve local 'content' field: GET /notes doesn't return it to keep responses lightweight.
+      // Without this, bulkPut would wipe content (critical for encrypted vault/credential notes).
+      const existingNoteIds = filteredNotesToPut.map(n => n.id);
+      const existingNotes = await db.notes.bulkGet(existingNoteIds);
+      const localContentMap = new Map<string, string>();
+      for (const existing of existingNotes) {
+        if (existing?.content) {
+          localContentMap.set(existing.id, existing.content);
+        }
+      }
+
+      const notesWithPreservedContent = filteredNotesToPut.map(n => ({
+        ...n,
+        content: n.content ?? localContentMap.get(n.id) ?? '',
+      }));
+
       // Update local DB with server notes (wins over synced)
-      await db.notes.bulkPut(filteredNotesToPut);
+      await db.notes.bulkPut(notesWithPreservedContent);
     });
+
+    // Pull Shared Notes (ACCEPTED only)
+    try {
+      const sharedRes = await api.get<(Note & { _sharedPermission: 'READ' | 'WRITE' })[]>('/share/notes/accepted');
+
+      await db.transaction('rw', db.notes, async () => {
+        const localShared = await db.notes.where('ownership').equals('shared').toArray();
+
+        const serverShared = sharedRes.data.map(n => ({
+          ...n,
+          tags: n.tags || [],
+          attachments: n.attachments || [],
+          ownership: 'shared' as const,
+          sharedPermission: n._sharedPermission,
+          sharedByUser: n.user || null,
+          syncStatus: 'synced' as const,
+        }));
+        const serverSharedIds = new Set(serverShared.map(n => n.id));
+
+        // Remove notes no longer shared with us (revoked/declined)
+        const toRemove = localShared.filter(n => !serverSharedIds.has(n.id)).map(n => n.id);
+        if (toRemove.length > 0) await db.notes.bulkDelete(toRemove);
+
+        // Upsert — server always wins for shared notes
+        if (serverShared.length > 0) await db.notes.bulkPut(serverShared);
+      });
+    } catch (error) {
+      console.error('Sync Pull Shared Notes Failed:', error);
+    }
 
   } catch (error) {
     console.error('Sync Pull Failed:', error);
@@ -132,6 +182,12 @@ export const syncPush = async () => {
     for (const item of queue) {
       try {
         if (item.entity === 'NOTE') {
+          // Safety: never push shared notes to REST API
+          const localNote = await db.notes.get(item.entityId);
+          if (localNote?.ownership === 'shared') {
+            if (item.id) await db.syncQueue.delete(item.id);
+            continue;
+          }
           if (item.type === 'CREATE') {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { id, ...data } = item.data as any;

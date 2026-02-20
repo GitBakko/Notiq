@@ -117,6 +117,8 @@ model Note {
   updatedAt   DateTime @updatedAt
   isVault     Boolean  @default(false)
   isEncrypted Boolean  @default(false)
+  noteType    NoteType @default(NOTE)
+  ydocState   Bytes?   // Yjs binary state for CRDT-safe collaboration
   searchVector Unsupported("tsvector")?
 
   @@index([userId, isTrashed])
@@ -159,6 +161,11 @@ model Attachment {
   isLatest  Boolean  @default(true)
 
   @@index([noteId, isLatest])
+}
+
+enum NoteType {
+  NOTE
+  CREDENTIAL
 }
 
 enum Permission {

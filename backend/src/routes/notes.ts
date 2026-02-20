@@ -10,6 +10,7 @@ const createNoteSchema = z.object({
   content: z.string().optional(),
   isVault: z.boolean().optional(),
   isEncrypted: z.boolean().optional(),
+  noteType: z.enum(['NOTE', 'CREDENTIAL']).optional().default('NOTE'),
 });
 
 const updateNoteSchema = z.object({
@@ -44,8 +45,8 @@ export default async function (fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   fastify.post('/', async (request, reply) => {
-    const { notebookId, title, content, id, isVault, isEncrypted } = createNoteSchema.parse(request.body);
-    const note = await noteService.createNote(request.user.id, title, (content || ''), notebookId, isVault, isEncrypted, id);
+    const { notebookId, title, content, id, isVault, isEncrypted, noteType } = createNoteSchema.parse(request.body);
+    const note = await noteService.createNote(request.user.id, title, (content || ''), notebookId, isVault, isEncrypted, id, noteType);
     return note;
   });
 
@@ -98,5 +99,17 @@ export default async function (fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const note = await noteService.toggleShare(request.user.id, id);
     return note;
+  });
+
+  fastify.get('/:id/size', async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    try {
+      return await noteService.getNoteSizeBreakdown(request.user.id, id);
+    } catch (err: any) {
+      if (err.message === 'Note not found') {
+        return reply.status(404).send({ message: 'Note not found' });
+      }
+      throw err;
+    }
   });
 }
