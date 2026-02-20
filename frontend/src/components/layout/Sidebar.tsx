@@ -40,7 +40,7 @@ export default function Sidebar() {
 
   const { notebooks } = useNotebooks();
   const pinnedNotes = usePinnedNotes();
-  const { isUploading, importFile, hiddenInput } = useImport();
+  const { isUploading, importFile, hiddenInput, notebookPickerModal } = useImport();
 
   const handleCreateNote = async () => {
     let defaultNotebookId: string;
@@ -403,6 +403,7 @@ export default function Sidebar() {
               <span>{t('sidebar.importEvernote')}</span>
             </button>
             {hiddenInput}
+            {notebookPickerModal}
           </div>
         </div>
 

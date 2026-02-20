@@ -99,6 +99,9 @@
     "version": "Notiq v1.0.0",
     "techStack": "Built with React, Vite, TailwindCSS and Fastify."
   },
+  "import": {
+    "selectNotebook": "Import into..."
+  },
   "notebooks": {
     "firstNotebook": "First Notebook",
     "create": "Create Notebook",

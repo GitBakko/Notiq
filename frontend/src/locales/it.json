@@ -99,6 +99,9 @@
     "importSuccess": "Importate con successo {{count}} note!",
     "importError": "Importazione fallita"
   },
+  "import": {
+    "selectNotebook": "Importa in..."
+  },
   "notebooks": {
     "firstNotebook": "Primo Taccuino",
     "create": "Crea Taccuino",

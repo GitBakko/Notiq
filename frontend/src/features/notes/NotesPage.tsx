@@ -45,7 +45,7 @@ export default function NotesPage() {
   const isLoading = !notes;
 
   const queryClient = useQueryClient();
-  const { importFile, isUploading, hiddenInput } = useImport({
+  const { importFile, isUploading, hiddenInput, notebookPickerModal } = useImport({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
     }
@@ -132,6 +132,7 @@ export default function NotesPage() {
             )}
           </div>
           {hiddenInput}
+          {notebookPickerModal}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={16} />
             <input

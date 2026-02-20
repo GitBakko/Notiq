@@ -64,7 +64,7 @@ export default function VaultPage() {
     }
   });
 
-  const { importFile, isUploading, hiddenInput } = useImport({
+  const { importFile, isUploading, hiddenInput, notebookPickerModal } = useImport({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
     }
@@ -201,6 +201,7 @@ export default function VaultPage() {
         </div>
         <div className="flex items-center gap-2">
           {hiddenInput}
+          {notebookPickerModal}
           <Button onClick={() => importFile(undefined, true)} variant="ghost" size="icon" className="h-8 w-8 rounded-full" title={t('settings.importTitle')} disabled={isUploading}>
             <FileDown size={16} />
           </Button>
