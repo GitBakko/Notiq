@@ -58,7 +58,16 @@
       "Bash(git status:*)",
       "mcp__plugin_serena_serena__find_symbol",
       "Bash(wc:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(wmic process:*)",
+      "Bash(taskkill:*)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx tsx:*)",
+      "mcp__plugin_serena_serena__get_symbols_overview",
+      "Bash(npx vitest:*)",
+      "mcp__plugin_serena_serena__search_for_pattern",
+      "mcp__plugin_claude-mem_mcp-search__search",
+      "mcp__plugin_claude-mem_mcp-search__save_memory",
+      "Bash(npm run build:*)"
     ]
   }
 }
