@@ -1,6 +1,0 @@
-[2025-11-28T09:05:01.179Z] Hit POST /notes
-[2025-11-28T09:05:01.183Z] Parsed body: {"id":"878ce563-59ee-4a8c-8af9-c47621829d0c","title":"","notebookId":"bed48b7c-7652-4a2a-892f-60c9b0828ea5","content":""}
-[2025-11-28T09:07:32.602Z] Hit POST /notes
-[2025-11-28T09:07:32.605Z] Parsed body: {"id":"2577d954-62bb-4b9d-bc40-d5a07dc04275","title":"","notebookId":"4371617e-0539-45ad-9c38-dc29f92451a6","content":""}
-[2025-11-28T09:09:39.434Z] Hit POST /notes
-[2025-11-28T09:09:39.439Z] Parsed body: {"id":"6f42c55a-d2e3-4963-a715-721388e6d4d5","title":"","notebookId":"b60b40d3-af0b-43a1-9359-35c0f2e1b0c7","content":""}

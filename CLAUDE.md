@@ -1,7 +1,7 @@
 # Notiq
 
 Offline-first note-taking PWA con real-time collaboration, encrypted vault e invitation-based auth.
-Full-stack TypeScript monorepo. Deployed su IIS a `notiq.epartner.it`.
+Full-stack TypeScript monorepo. **Live su `notiq.epartner.it`** (IIS + pm2).
 
 ## Stack
 
@@ -9,11 +9,11 @@ Full-stack TypeScript monorepo. Deployed su IIS a `notiq.epartner.it`.
 |-------|------|
 | Frontend | React 19, Vite 7, TipTap v2, Zustand, TanStack Query v5, Dexie.js v4 (IndexedDB), TailwindCSS 3, i18next (EN/IT), Playwright |
 | Backend | Node.js 20+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3 (Yjs WebSocket), Zod v4, bcrypt, Nodemailer, web-push |
-| Infra | Docker Compose (Node 22-alpine), Nginx (Docker), IIS + ARR (prod), PWA via vite-plugin-pwa |
+| Infra | Docker Compose (dev), IIS + ARR + pm2 (prod), PWA via vite-plugin-pwa |
 
 **Module types:** Backend = CommonJS (`type: "commonjs"`), Frontend = ESM (`type: "module"`).
 
-## Comandi (verificati 2026-02-19)
+## Comandi (verificati 2026-02-20)
 
 ```bash
 # Backend (cd backend)
@@ -31,7 +31,7 @@ npx tsx src/scripts/testSmtp.ts <email> # Test SMTP
 # Frontend (cd frontend)
 npm run dev          # Vite → localhost:5173 (proxies /api, /uploads, /ws verso :3001)
 npm run build        # tsc -b && vite build
-npm run lint         # ESLint (106 errori attuali: no-explicit-any, no-unused-vars)
+npm run lint         # ESLint
 npx playwright test  # E2E (12 spec files)
 
 # Docker (root)
@@ -55,24 +55,64 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 **Collab flow:** TipTap → Yjs → HocuspocusProvider → WebSocket → Hocuspocus Server → TipTap JSON → Prisma.
 **Auth flow:** Register → email verifica → verify-email → login → JWT → `authStore` (Zustand persisted) → Axios interceptor auto-attacca token.
 
+### Struttura progetto
+
+```
+Notiq/
+├── backend/
+│   ├── src/
+│   │   ├── routes/          # Fastify route plugins (Zod validated)
+│   │   ├── services/        # Business logic (named exports)
+│   │   ├── plugins/         # Fastify plugins (prisma, jwt)
+│   │   ├── utils/           # Logger (Pino), extractText, etc.
+│   │   ├── scripts/         # One-off scripts (testSmtp, create-superadmin)
+│   │   ├── __tests__/       # Unit tests (vitest)
+│   │   ├── app.ts           # Server entry point
+│   │   └── hocuspocus.ts    # Yjs collab server
+│   ├── prisma/
+│   │   ├── schema.prisma    # 19 models, 6 enums
+│   │   └── migrations/      # 14 migrations
+│   ├── prisma.config.js     # Prisma config (dotenv loader)
+│   ├── Dockerfile
+│   └── .env                 # DB, JWT, SMTP credentials (gitignored)
+├── frontend/
+│   ├── src/
+│   │   ├── features/        # Domain modules (notes, vault, sync, tags, etc.)
+│   │   ├── components/      # Shared UI (editor, layout, sharing, ui/)
+│   │   ├── hooks/           # Custom hooks (useNotes, useImport, etc.)
+│   │   ├── store/           # Zustand stores (auth, vault, ui)
+│   │   ├── lib/             # api.ts (Axios), db.ts (Dexie)
+│   │   ├── utils/           # crypto.ts, format.ts
+│   │   ├── locales/         # en.json, it.json
+│   │   └── __tests__/       # Unit tests (vitest)
+│   ├── e2e/                 # Playwright E2E tests (12 specs)
+│   ├── public/              # Static assets + web.config (IIS)
+│   └── scripts/             # Utility scripts (scan-i18n)
+├── deploy/                  # Deploy scripts (pre/post-install.cmd) — gitignored
+├── docker-compose.yml       # Dev environment (PostgreSQL + backend + frontend)
+├── CLAUDE.md                # This file
+└── README.md                # Project overview
+```
+
 ### File chiave
 
 | Cosa | Path |
 |------|------|
-| Server entry | `backend/src/app.ts` (port 3001, registra tutte le route + Hocuspocus su `/ws`) |
-| DB schema | `backend/prisma/schema.prisma` (19 modelli, 13 migrations) |
+| Server entry | `backend/src/app.ts` (port 3001, route + Hocuspocus su `/ws`) |
+| DB schema | `backend/prisma/schema.prisma` (19 modelli, 14 migrations) |
 | Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
-| Logger | `backend/src/utils/logger.ts` (Pino shared, usare nei servizi; nelle route usare `request.log`) |
-| SMTP config | `backend/config.json` (Nodemailer lo legge all'avvio) |
+| Logger | `backend/src/utils/logger.ts` (Pino shared; nelle route usare `request.log`) |
+| SMTP config | `backend/.env` (variabili `SMTP_*`, lette da `email.service.ts`) |
 | Prisma config | `backend/prisma.config.js` (carica dotenv, definisce datasource) |
-| Frontend entry | `frontend/src/main.tsx` (React 19, QueryClient, BrowserRouter, SW registration) |
+| Frontend entry | `frontend/src/main.tsx` (React 19, QueryClient, BrowserRouter, SW) |
 | Route/pagine | `frontend/src/App.tsx` (protette dentro `<AppLayout />`, pubbliche fuori) |
 | Sync engine | `frontend/src/features/sync/syncService.ts` (syncPull + syncPush) |
-| Offline DB | `frontend/src/lib/db.ts` (Dexie, 9 versioni schema) |
+| Offline DB | `frontend/src/lib/db.ts` (Dexie v12, 12 versioni schema) |
 | API client | `frontend/src/lib/api.ts` (Axios + JWT interceptor + 401 auto-logout) |
 | Vault crypto | `frontend/src/utils/crypto.ts` (CryptoJS AES, PIN come chiave diretta) |
-| Auth store | `frontend/src/store/authStore.ts` (Zustand persisted, chiave localStorage: `auth-storage`) |
+| Auth store | `frontend/src/store/authStore.ts` (Zustand persisted, key: `auth-storage`) |
+| UI store | `frontend/src/store/uiStore.ts` (theme, sidebar, sort — persisted localStorage) |
 | IIS routing | `frontend/public/web.config` (URL Rewrite per /api, /uploads, /ws) |
 
 ### Convenzioni
@@ -93,9 +133,15 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 DATABASE_URL="postgresql://user:pass@localhost:5433/evernote_clone?schema=public"
 JWT_SECRET="secret"
 FRONTEND_URL="http://localhost:5173"
-LOG_LEVEL="info"    # Pino log level (debug/info/warn/error)
+LOG_LEVEL="info"
 
-# backend/config.json → SMTP { host, port, user, pass, secure }
+# SMTP (lette da email.service.ts)
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_USER=user@example.com
+SMTP_PASS=password
+SMTP_SECURE=false
+SMTP_FROM_NAME=Notiq App
 
 # frontend/.env.production
 VITE_API_URL=/api
@@ -112,10 +158,17 @@ Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` �
 - **Attenzione:** `docker compose up` avvia un backend sulla porta 3001 che intercetta il proxy Vite dev. Fermare i container Docker (`docker compose down`) quando si usa il dev locale.
 - Entry point backend Docker: `dist/app.js` (non `dist/index.js`)
 
-### Prisma models (19) ed enums (12 migrations)
+### Deploy produzione
+
+- **Server:** IIS su Windows Server, backend gestito da pm2 (`notiq-backend`)
+- **Path server:** Backend `E:\www\Notiq\backend`, Frontend `E:\www\Notiq\frontend`
+- **Script deploy:** `deploy/pre-install.cmd` (stop + backup) e `deploy/post-install.cmd` (npm ci + prisma + start)
+- **Flusso:** build locale → zip → copia su server → pre-install → estrai → post-install → verifica
+
+### Prisma models (19) ed enums
 
 **Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite
-**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED)
+**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL)
 
 ### Campi notevoli su User
 
@@ -132,7 +185,7 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 | File | Motivo |
 |------|--------|
 | `frontend/src/features/sync/syncService.ts` | Motore sync offline. Self-healing, zombie prevention, race condition guards. Errori = note perse o duplicate. |
-| `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB), 9 versioni. Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
+| `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB), 12 versioni. Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
 | `backend/src/hocuspocus.ts` | Server collab Yjs. Extensions devono matchare Editor.tsx. Errori = corruzione contenuto note. |
 | `frontend/src/utils/crypto.ts` | Encryption vault. Cambiare algo/parametri rende illeggibili tutte le note vault esistenti. |
 | `frontend/src/store/vaultStore.ts` | Stato vault (`pinHash` persisted). Cambiare `partialize` o storage key invalida tutti i vault. |
@@ -147,13 +200,7 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 | `backend/src/app.ts` | Entry point server. Route registration, CORS, JWT, middleware. Ordine conta. |
 | `backend/src/services/auth.service.ts` | Flusso register/login/verify. Coinvolge inviti, email, audit log. |
 | `frontend/src/components/editor/Editor.tsx` | Editor TipTap. Extensions, collaboration, dedup guard. Molto complesso. |
-| `backend/src/services/email.service.ts` | Template email localizzati. Bug noto (duplicate case). Usato da auth, sharing, chat, invites. |
-
-### Bug noti da non dimenticare
-
-| File | Bug |
-|------|-----|
-| `backend/config.json` | Contiene credenziali SMTP reali committate in git. Considerare `.gitignore` + env vars. |
+| `backend/src/services/email.service.ts` | Template email localizzati. Usato da auth, sharing, chat, invites. |
 
 ---
 
@@ -171,17 +218,17 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 
 ## Debito tecnico
 
-### Risolto (audit feb 2026, Fasi 1-13 + cleanup finale)
+### Risolto (audit feb 2026)
 
-- **14 CRITICAL** — JWT scadenza/invalidazione, IDOR, CORS whitelist, Dockerfile CMD/Node version, DEBUG panel prod, email duplicate case, XSS sanitizzazione, rate limiting, rimossi file debug
-- **20 HIGH** — Zod validation su tutte le route (incluso GET /notes query), error handling standardizzato, Prisma select optimization, pagination, lastActiveAt throttle, rimosso JWT fallback 'supersecret'
-- **~30 MEDIUM/LOW** — 8 DB indexes, structured logging (Pino, console.log→logger), import hardening (XXE + size limit), URL.createObjectURL leak fix, VAPID da env var, i18n keys aggiunte, TS errors frontend risolti
+- **14 CRITICAL** — JWT scadenza/invalidazione, IDOR, CORS whitelist, Dockerfile, DEBUG panel prod, email duplicate case, XSS, rate limiting
+- **20 HIGH** — Zod validation su tutte le route, error handling, Prisma select optimization, pagination, lastActiveAt throttle
+- **~30 MEDIUM/LOW** — 8 DB indexes, structured logging (Pino), import hardening (XXE + size limit), URL.createObjectURL leak fix, VAPID da env var
+- **P0 SMTP credentials** — migrato da `config.json` a variabili `.env` (feb 2026). `config.json` eliminato dal repo.
 
 ### Residuo
 
 | Prio | Issue                                          | File                            |
 |------|-------------------------------------------------|---------------------------------|
-| P0   | SMTP credentials in git                         | `backend/config.json`           |
 | P2   | Vault AES senza KDF (PIN diretto come chiave)   | `frontend/src/utils/crypto.ts`  |
-| P2   | ~106 lint errors (no-explicit-any, no-unused-vars) | `frontend/` vari file        |
-| P3   | Zero unit test backend                          | `backend/package.json`          |
+| P2   | Lint errors (no-explicit-any, no-unused-vars)    | `frontend/` vari file           |
+| P3   | Unit test backend da espandere                   | `backend/src/__tests__/`        |
