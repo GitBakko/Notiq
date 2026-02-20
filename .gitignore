@@ -59,5 +59,10 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Deploy
+deploy/
+Backend.zip
+Frontend.zip
+
 # User uploads (attachments and avatars)
 backend/uploads/
