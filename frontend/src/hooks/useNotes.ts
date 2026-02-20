@@ -1,15 +1,17 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { useAuthStore } from '../store/authStore';
+import type { SortField, SortOrder } from '../store/uiStore';
 
-export function useNotes(notebookId?: string, search?: string, tagId?: string, onlyTrashed: boolean = false, ownershipFilter: 'all' | 'owned' | 'shared' = 'all') {
+export function useNotes(notebookId?: string, search?: string, tagId?: string, onlyTrashed: boolean = false, ownershipFilter: 'all' | 'owned' | 'shared' = 'all', sortField: SortField = 'updatedAt', sortOrder: SortOrder = 'desc') {
   const user = useAuthStore((state) => state.user);
 
   return useLiveQuery(async () => {
     if (!user?.id) return [];
 
     try {
-      let collection = db.notes.orderBy('createdAt').reverse();
+      let collection = db.notes.orderBy(sortField);
+      if (sortOrder === 'desc') collection = collection.reverse();
 
       collection = collection.filter(note => {
         // Ownership filtering
@@ -66,5 +68,5 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
       console.error('useNotes Error:', error);
       return [];
     }
-  }, [notebookId, search, tagId, onlyTrashed, ownershipFilter, user?.id]);
+  }, [notebookId, search, tagId, onlyTrashed, ownershipFilter, sortField, sortOrder, user?.id]);
 }

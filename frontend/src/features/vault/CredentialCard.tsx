@@ -91,6 +91,15 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
           {domain && (
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{domain}</p>
           )}
+          {note.tags && note.tags.length > 0 && (
+            <div className="flex gap-1 mt-1 flex-wrap">
+              {note.tags.map((t: any) => (
+                <span key={t.tag?.id || t.tagId} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                  {t.tag?.name || ''}
+                </span>
+              ))}
+            </div>
+          )}
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
             {new Date(note.updatedAt).toLocaleDateString()}
           </p>

@@ -10,6 +10,7 @@ import { useNotes } from '../../hooks/useNotes';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import { Button } from '../../components/ui/Button';
+import SortDropdown from '../../components/ui/SortDropdown';
 import NoteEditor from './NoteEditor';
 import { FileDown } from 'lucide-react';
 import { useImport } from '../../hooks/useImport';
@@ -24,7 +25,7 @@ export default function NotesPage() {
   const selectedTagId = searchParams.get('tagId') || undefined;
 
   const isMobile = useIsMobile();
-  const { toggleSidebar } = useUIStore();
+  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort } = useUIStore();
 
   const setSelectedNoteId = (id: string | null) => {
     const newParams = new URLSearchParams(searchParams);
@@ -40,7 +41,7 @@ export default function NotesPage() {
   const debouncedSearch = useDebounce(searchQuery, 500);
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'owned' | 'shared'>('all');
 
-  const notes = useNotes(selectedNotebookId, debouncedSearch, selectedTagId, false, ownershipFilter);
+  const notes = useNotes(selectedNotebookId, debouncedSearch, selectedTagId, false, ownershipFilter, notesSortField, notesSortOrder);
   const isLoading = !notes;
 
   const queryClient = useQueryClient();
@@ -145,7 +146,8 @@ export default function NotesPage() {
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {t('notes.found', { count: notes?.length || 0 })}
             </span>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1">
+              <SortDropdown sortField={notesSortField} sortOrder={notesSortOrder} onChange={setNotesSort} />
               {(['all', 'owned', 'shared'] as const).map(f => (
                 <button key={f} onClick={() => setOwnershipFilter(f)}
                   className={clsx(

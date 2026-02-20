@@ -473,6 +473,12 @@
       "owned": "My Notes",
       "shared": "Shared with Me"
     },
+    "sort": {
+      "label": "Sort by",
+      "updatedAt": "Last modified",
+      "createdAt": "Date created",
+      "title": "Title"
+    },
     "size": {
       "title": "Note Size",
       "total": "Total Size",

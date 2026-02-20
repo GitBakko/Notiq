@@ -14,7 +14,7 @@ const CLIPBOARD_CLEAR_MS = 30_000;
 export default function CopyButton({ value, label, className = '' }: CopyButtonProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const clearTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleCopy = useCallback(async () => {
     try {

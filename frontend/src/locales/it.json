@@ -242,6 +242,12 @@
       "owned": "Le mie",
       "shared": "Condivise"
     },
+    "sort": {
+      "label": "Ordina per",
+      "updatedAt": "Ultima modifica",
+      "createdAt": "Data creazione",
+      "title": "Titolo"
+    },
     "size": {
       "title": "Dimensione Nota",
       "total": "Dimensione Totale",

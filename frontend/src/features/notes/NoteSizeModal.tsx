@@ -117,7 +117,7 @@ export default function NoteSizeModal({ noteId, onClose }: NoteSizeModalProps) {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: number) => formatBytes(value)}
+                        formatter={(value?: number) => formatBytes(value ?? 0)}
                         contentStyle={{
                           backgroundColor: 'var(--tooltip-bg, #fff)',
                           border: '1px solid var(--tooltip-border, #e5e7eb)',

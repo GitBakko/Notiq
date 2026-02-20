@@ -22,6 +22,9 @@ export interface Note {
   isVault?: boolean;
   isEncrypted?: boolean;
   noteType?: 'NOTE' | 'CREDENTIAL';
+  ownership?: 'owned' | 'shared';
+  sharedPermission?: 'READ' | 'WRITE' | null;
+  sharedByUser?: { id: string; name: string | null; email: string } | null;
   sharedWith?: {
     id: string;
     userId: string;

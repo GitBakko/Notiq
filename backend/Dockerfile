@@ -20,7 +20,6 @@ RUN npm ci --production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.js ./prisma.config.js
-COPY --from=builder /app/config.json ./config.json
 
 RUN npx prisma generate
 

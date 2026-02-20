@@ -39,7 +39,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
   const [faviconError, setFaviconError] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const generatorRef = useRef<HTMLDivElement>(null);
   const lastDecryptedId = useRef<string | null>(null);
   const lastFetchedUrl = useRef<string>('');

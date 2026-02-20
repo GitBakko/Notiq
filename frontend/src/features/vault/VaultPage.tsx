@@ -6,7 +6,7 @@ import VaultUnlock from './VaultUnlock';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, Plus, Lock, KeyRound, ChevronDown } from 'lucide-react';
+import { Search, Menu, Plus, Lock, KeyRound } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
@@ -17,6 +17,7 @@ import NoteEditor from '../notes/NoteEditor';
 import clsx from 'clsx';
 
 import { useNotebooks } from '../../hooks/useNotebooks';
+import SortDropdown from '../../components/ui/SortDropdown';
 import TagList from '../tags/TagList';
 import { useImport } from '../../hooks/useImport';
 import { FileDown } from 'lucide-react';
@@ -32,8 +33,9 @@ export default function VaultPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const isMobile = useIsMobile();
-  const { toggleSidebar } = useUIStore();
+  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort } = useUIStore();
   const queryClient = useQueryClient();
   const { notebooks } = useNotebooks();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -112,6 +114,10 @@ export default function VaultPage() {
         return true;
       })
       .filter(note => {
+        if (!selectedTagId) return true;
+        return note.tags?.some((t: any) => t.tag?.id === selectedTagId);
+      })
+      .filter(note => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         if (note.title.toLowerCase().includes(q)) return true;
@@ -125,8 +131,16 @@ export default function VaultPage() {
         }
         return false;
       })
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [searchQuery, typeFilter, pin]);
+      .sort((a, b) => {
+        if (notesSortField === 'title') {
+          const cmp = (a.title || '').localeCompare(b.title || '');
+          return notesSortOrder === 'asc' ? cmp : -cmp;
+        }
+        const dateA = new Date(a[notesSortField]).getTime();
+        const dateB = new Date(b[notesSortField]).getTime();
+        return notesSortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      });
+  }, [searchQuery, typeFilter, pin, selectedTagId, notesSortField, notesSortOrder]);
 
   // Vault notes use Dexie as source of truth (encrypted content saved locally first, sync is async)
   const selectedNote = vaultNotes?.find(n => n.id === selectedNoteId) as unknown as import('../notes/noteService').Note | undefined;
@@ -231,8 +245,8 @@ export default function VaultPage() {
             className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border-none rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm dark:text-white"
           />
         </div>
-        {/* Type filter chips */}
-        <div className="flex gap-1 mt-2">
+        {/* Type filter chips + sort */}
+        <div className="flex items-center gap-1 mt-2">
           {filterChips.map(({ key, label }) => (
             <button
               key={key}
@@ -247,14 +261,14 @@ export default function VaultPage() {
               {label}
             </button>
           ))}
+          <SortDropdown sortField={notesSortField} sortOrder={notesSortOrder} onChange={setNotesSort} />
         </div>
       </div>
 
       <div className="border-b border-gray-200 dark:border-gray-800">
         <TagList
-          onSelectTag={(_tagId) => {
-            // TODO: add tag filtering to vaultNotes query
-          }}
+          onSelectTag={(tagId) => setSelectedTagId(tagId === selectedTagId ? null : tagId ?? null)}
+          selectedTagId={selectedTagId ?? undefined}
           isVault={true}
           isCreatingExternal={false}
           hideHeader={false}

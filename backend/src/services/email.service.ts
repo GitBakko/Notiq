@@ -1,20 +1,7 @@
 
 // @ts-ignore
 import nodemailer from 'nodemailer';
-import fs from 'fs';
-import path from 'path';
 import logger from '../utils/logger';
-
-const configPath = path.join(__dirname, '../../config.json');
-let config: any = {};
-
-try {
-  const configFile = fs.readFileSync(configPath, 'utf-8');
-  config = JSON.parse(configFile);
-} catch (error) {
-
-  logger.error(error, 'Failed to load config.json');
-}
 
 const escapeHtml = (str: string): string => {
   return str
@@ -30,20 +17,31 @@ if (!FRONTEND_URL) {
   console.warn('FRONTEND_URL is not defined in .env! Email links will be broken.');
 }
 
+const smtpHost = process.env.SMTP_HOST;
+const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+const smtpSecure = process.env.SMTP_SECURE === 'true';
+const smtpFromName = process.env.SMTP_FROM_NAME || 'Notiq App';
+
+if (!smtpHost || !smtpUser || !smtpPass) {
+  logger.warn('SMTP environment variables (SMTP_HOST, SMTP_USER, SMTP_PASS) are not fully configured. Emails will fail.');
+}
+
 const transporter = nodemailer.createTransport({
-  host: config.smtp?.host,
-  port: config.smtp?.port,
-  secure: config.smtp?.secure || false,
+  host: smtpHost,
+  port: smtpPort,
+  secure: smtpSecure,
   auth: {
-    user: config.smtp?.user,
-    pass: config.smtp?.pass,
+    user: smtpUser,
+    pass: smtpPass,
   },
 });
 
 export const sendEmail = async (to: string, subject: string, html: string) => {
   try {
     const info = await transporter.sendMail({
-      from: `"${config.smtp?.fromName || 'Notiq App'}" <${config.smtp?.user}>`,
+      from: `"${smtpFromName}" <${smtpUser}>`,
       to,
       subject,
       html,

@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 
+export type SortField = 'updatedAt' | 'createdAt' | 'title';
+export type SortOrder = 'asc' | 'desc';
+
 interface UIState {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
@@ -11,7 +14,23 @@ interface UIState {
   closeSearch: () => void;
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  notesSortField: SortField;
+  notesSortOrder: SortOrder;
+  setNotesSort: (field: SortField, order: SortOrder) => void;
 }
+
+const loadSort = (): { field: SortField; order: SortOrder } => {
+  try {
+    const raw = localStorage.getItem('notesSort');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (['updatedAt', 'createdAt', 'title'].includes(parsed.field) && ['asc', 'desc'].includes(parsed.order)) {
+        return parsed;
+      }
+    }
+  } catch { /* ignore */ }
+  return { field: 'updatedAt', order: 'desc' };
+};
 
 export const useUIStore = create<UIState>((set) => ({
   isSidebarOpen: false,
@@ -35,6 +54,12 @@ export const useUIStore = create<UIState>((set) => ({
     } else {
       root.classList.add(theme);
     }
+  },
+  notesSortField: loadSort().field,
+  notesSortOrder: loadSort().order,
+  setNotesSort: (field, order) => {
+    set({ notesSortField: field, notesSortOrder: order });
+    localStorage.setItem('notesSort', JSON.stringify({ field, order }));
   },
 }));
 

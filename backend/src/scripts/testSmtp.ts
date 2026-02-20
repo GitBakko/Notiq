@@ -1,54 +1,43 @@
 /**
  * SMTP Configuration Test Script
- * 
+ *
  * This script tests the SMTP configuration by sending a test email.
- * Run with: npx ts-node src/scripts/testSmtp.ts <recipient_email>
+ * Run with: npx tsx src/scripts/testSmtp.ts <recipient_email>
  */
 
 // @ts-ignore
 import nodemailer from 'nodemailer';
-import fs from 'fs';
-import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const configPath = path.join(__dirname, '../../config.json');
-let config: any = {};
+const smtpConfig = {
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  user: process.env.SMTP_USER,
+  pass: process.env.SMTP_PASS,
+  secure: process.env.SMTP_SECURE === 'true',
+};
 
-try {
-  const configFile = fs.readFileSync(configPath, 'utf-8');
-  config = JSON.parse(configFile);
-  console.log('✓ Config file loaded successfully');
-} catch (error) {
-  console.error('✗ Failed to load config.json:', error);
-  process.exit(1);
-}
-
-// Validate SMTP configuration
-const smtpConfig = config.smtp;
-if (!smtpConfig) {
-  console.error('✗ SMTP configuration is missing from config.json');
-  process.exit(1);
-}
-
-const requiredFields = ['host', 'port', 'user', 'pass'];
+const requiredFields: (keyof typeof smtpConfig)[] = ['host', 'user', 'pass'];
 const missingFields = requiredFields.filter(field => !smtpConfig[field]);
 
 if (missingFields.length > 0) {
-  console.error(`✗ Missing required SMTP fields: ${missingFields.join(', ')}`);
+  console.error(`✗ Missing required SMTP env vars: ${missingFields.map(f => `SMTP_${f.toUpperCase()}`).join(', ')}`);
   process.exit(1);
 }
 
-console.log('SMTP Configuration:');
+console.log('SMTP Configuration (from .env):');
 console.log(`  Host: ${smtpConfig.host}`);
 console.log(`  Port: ${smtpConfig.port}`);
 console.log(`  User: ${smtpConfig.user}`);
-console.log(`  Secure: ${smtpConfig.secure || false}`);
+console.log(`  Secure: ${smtpConfig.secure}`);
 console.log('');
 
 async function testSmtp(recipientEmail?: string) {
   const transporter = nodemailer.createTransport({
     host: smtpConfig.host,
     port: smtpConfig.port,
-    secure: smtpConfig.secure || false,
+    secure: smtpConfig.secure,
     auth: {
       user: smtpConfig.user,
       pass: smtpConfig.pass,
