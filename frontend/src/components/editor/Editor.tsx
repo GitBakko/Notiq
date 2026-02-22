@@ -26,14 +26,19 @@ import { rowResizing } from './extensions/rowResizing';
 import TableContextMenu from './TableContextMenu';
 import EditorContextMenu from './EditorContextMenu';
 import { uploadAttachment } from '../../features/attachments/attachmentService';
+import EditorStatusBar from './EditorStatusBar';
 
 interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   editable?: boolean;
   noteId?: string;
+  onImageUploaded?: () => void;
+  onImageRemoved?: (src: string) => void;
   onVoiceMemo?: () => void;
   scrollable?: boolean;
+  notebookName?: string;
+  isVault?: boolean;
   provider?: HocuspocusProvider | null;
   collaboration?: {
     enabled: boolean;
@@ -52,10 +57,16 @@ export interface EditorHandle {
   getEditor: () => any;
 }
 
-export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, noteId, onVoiceMemo, scrollable = true, collaboration, provider }, ref) {
+export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, noteId, onImageUploaded, onImageRemoved, onVoiceMemo, scrollable = true, notebookName, isVault, collaboration, provider }, ref) {
   const isUpdating = useRef(false);
   const isFirstUpdate = useRef(true);
   const contentRef = useRef(content);
+
+  // Stable refs for callbacks so ProseMirror plugins always access latest versions
+  const onImageUploadedRef = useRef(onImageUploaded);
+  const onImageRemovedRef = useRef(onImageRemoved);
+  useEffect(() => { onImageUploadedRef.current = onImageUploaded; }, [onImageUploaded]);
+  useEffect(() => { onImageRemovedRef.current = onImageRemoved; }, [onImageRemoved]);
 
   // Update content ref
   useEffect(() => {
@@ -213,6 +224,8 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
               return attachment.url.startsWith('/') ? attachment.url : '/uploads/' + attachment.filename;
             }
           : undefined,
+        onUploaded: () => onImageUploadedRef.current?.(),
+        onRemoved: (src: string) => onImageRemovedRef.current?.(src),
       } as any),
     ];
 
@@ -273,7 +286,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full break-words leading-relaxed',
+        class: 'prose prose-sm focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full break-words',
       },
       handleKeyDown: (view, event) => {
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'V' || event.key === 'v')) {
@@ -389,6 +402,57 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     }
   }, [provider, editor, collaboration?.enabled]);
 
+  // -- Editor stats for status bar --
+  const [editorStats, setEditorStats] = useState({ characters: 0, lines: 0, cursorLine: 1, cursorColumn: 1 });
+
+  useEffect(() => {
+    if (!editor) return;
+    const computeStats = () => {
+      const { doc, selection } = editor.state;
+      const { $anchor } = selection;
+
+      let lineCount = 0;
+      let cursorLine = 1;
+      let found = false;
+
+      doc.descendants((node, pos) => {
+        if (node.isTextblock) {
+          if (node.type.name === 'codeBlock') {
+            const codeLines = node.textContent.split('\n').length;
+            lineCount += codeLines;
+            if (!found && $anchor.pos >= pos && $anchor.pos <= pos + node.nodeSize) {
+              const textBefore = node.textContent.substring(0, $anchor.parentOffset);
+              cursorLine = lineCount - codeLines + 1 + textBefore.split('\n').length - 1;
+              found = true;
+            }
+          } else {
+            lineCount += 1;
+            if (!found && $anchor.pos >= pos && $anchor.pos <= pos + node.nodeSize) {
+              cursorLine = lineCount;
+              found = true;
+            }
+          }
+        }
+        return true;
+      });
+
+      setEditorStats({
+        characters: doc.textContent.length,
+        lines: lineCount || 1,
+        cursorLine: found ? cursorLine : 1,
+        cursorColumn: $anchor.parentOffset + 1,
+      });
+    };
+
+    editor.on('update', computeStats);
+    editor.on('selectionUpdate', computeStats);
+    computeStats();
+    return () => {
+      editor.off('update', computeStats);
+      editor.off('selectionUpdate', computeStats);
+    };
+  }, [editor]);
+
   // Context menu state
   const [tableContextMenu, setTableContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -414,6 +478,13 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
         <div onContextMenu={handleEditorContextMenu}>
           <EditorContent editor={editor} />
         </div>
+        {editable && (
+          <EditorStatusBar
+            {...editorStats}
+            notebookName={notebookName}
+            isVault={isVault}
+          />
+        )}
         {editable && tableContextMenu && (
           <TableContextMenu
             editor={editor}
@@ -438,6 +509,13 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
       <div className="flex-1 overflow-auto min-w-0" onContextMenu={handleEditorContextMenu}>
         <EditorContent editor={editor} />
       </div>
+      {editable && (
+        <EditorStatusBar
+          {...editorStats}
+          notebookName={notebookName}
+          isVault={isVault}
+        />
+      )}
       {editable && tableContextMenu && (
         <TableContextMenu
           editor={editor}

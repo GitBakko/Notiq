@@ -1,5 +1,7 @@
 import Image from '@tiptap/extension-image';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { ResizableImage } from './ResizableImage';
 
 export const ImageDrop = Image.extend({
   name: 'image',
@@ -8,11 +10,33 @@ export const ImageDrop = Image.extend({
     return {
       ...this.parent?.(),
       uploadFn: null as ((file: File) => Promise<string>) | null,
+      onUploaded: null as (() => void) | null,
+      onRemoved: null as ((src: string) => void) | null,
     };
+  },
+
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.style.width || element.getAttribute('width') || null,
+        renderHTML: (attributes: Record<string, any>) => {
+          if (!attributes.width) return {};
+          return { style: `width: ${attributes.width}` };
+        },
+      },
+    };
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImage);
   },
 
   addProseMirrorPlugins() {
     const uploadFn = (this.options as any).uploadFn as ((file: File) => Promise<string>) | null;
+    const onUploaded = (this.options as any).onUploaded as (() => void) | null;
+    const onRemoved = (this.options as any).onRemoved as ((src: string) => void) | null;
 
     return [
       ...(this.parent?.() || []),
@@ -40,6 +64,7 @@ export const ImageDrop = Image.extend({
                   const tr = view.state.tr.insert(pos, node);
                   view.dispatch(tr);
                 }
+                onUploaded?.();
               } catch (e) {
                 console.error('Image upload failed', e);
               }
@@ -69,6 +94,7 @@ export const ImageDrop = Image.extend({
                 const node = schema.nodes.image.create({ src: url, alt: file.name });
                 const tr = view.state.tr.replaceSelectionWith(node);
                 view.dispatch(tr);
+                onUploaded?.();
               } catch (e) {
                 console.error('Image paste upload failed', e);
               }
@@ -76,6 +102,44 @@ export const ImageDrop = Image.extend({
 
             return true;
           },
+        },
+      }),
+      // Track image removals from editor body
+      new Plugin({
+        key: new PluginKey('imageRemovalTracker'),
+        appendTransaction: (transactions, oldState, newState) => {
+          if (!onRemoved) return null;
+
+          // Only process local doc changes (skip y-sync and programmatic attachment deletions)
+          const hasLocalDocChange = transactions.some(
+            (tr) => tr.docChanged && !tr.getMeta('y-sync$') && !tr.getMeta('attachment-delete')
+          );
+          if (!hasLocalDocChange) return null;
+
+          // Collect image srcs from old and new states
+          const oldImages = new Set<string>();
+          oldState.doc.descendants((node) => {
+            if (node.type.name === 'image' && node.attrs.src?.startsWith('/uploads/')) {
+              oldImages.add(node.attrs.src);
+            }
+          });
+
+          const newImages = new Set<string>();
+          newState.doc.descendants((node) => {
+            if (node.type.name === 'image' && node.attrs.src?.startsWith('/uploads/')) {
+              newImages.add(node.attrs.src);
+            }
+          });
+
+          // Detect removed images and notify
+          for (const src of oldImages) {
+            if (!newImages.has(src)) {
+              // Defer to avoid issues during transaction processing
+              setTimeout(() => onRemoved(src), 0);
+            }
+          }
+
+          return null;
         },
       }),
     ];

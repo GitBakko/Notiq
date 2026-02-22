@@ -6,7 +6,7 @@ import CopyButton from './CopyButton';
 import PasswordGenerator from './PasswordGenerator';
 import { decryptCredential, encryptCredential, EMPTY_CREDENTIAL, extractDomain, isValidAbsoluteUrl, type CredentialData } from './credentialTypes';
 import { useVaultStore } from '../../store/vaultStore';
-import { updateNote, deleteNote } from '../notes/noteService';
+import { updateNote, permanentlyDeleteNote } from '../notes/noteService';
 import toast from 'react-hot-toast';
 import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
@@ -266,7 +266,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   };
 
   const handleDelete = async () => {
-    await deleteNote(note.id);
+    await permanentlyDeleteNote(note.id);
     toast.success(t('vault.credential.deleted'));
     onDelete ? onDelete() : onBack();
   };
@@ -339,7 +339,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
       {showDeleteConfirm && (
         <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between gap-3">
           <p className="text-sm text-red-700 dark:text-red-400">
-            {t('vault.credential.deleteConfirm')}
+            {t('vault.credential.deleteConfirmPermanent')}
           </p>
           <div className="flex gap-2 flex-shrink-0">
             <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>

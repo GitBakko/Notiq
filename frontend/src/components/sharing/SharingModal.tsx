@@ -33,9 +33,12 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
   const [isGroupSharing, setIsGroupSharing] = useState(false);
 
   // Keep localSharedWith in sync when the prop updates (e.g. after query refetch)
+  // Use JSON.stringify for comparison since sharedWith is a new array reference every render
+  const sharedWithJson = JSON.stringify(sharedWith);
   useEffect(() => {
     setLocalSharedWith(sharedWith);
-  }, [sharedWith]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedWithJson]);
 
   const { data: groups } = useQuery({
     queryKey: ['groups-for-sharing'],

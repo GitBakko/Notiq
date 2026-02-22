@@ -128,7 +128,7 @@ const LineHeight = Extension.create({
   addOptions() {
     return {
       types: ['paragraph', 'heading'],
-      defaultLineHeight: '1.5',
+      defaultLineHeight: '0.5',
     };
   },
 
@@ -172,7 +172,21 @@ export const extensions = [
   // Link, // Removed as it is included in StarterKit v3 or causes duplicate warning
   EncryptedBlock,
   LineHeight,
-  Image.configure({ inline: true }),
+  Image.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        width: {
+          default: null,
+          parseHTML: (element: any) => element.style?.width || element.getAttribute('width') || null,
+          renderHTML: (attributes: any) => {
+            if (!attributes.width) return {};
+            return { style: `width: ${attributes.width}` };
+          },
+        },
+      };
+    },
+  }).configure({ inline: true }),
 ];
 
 

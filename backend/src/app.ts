@@ -119,11 +119,14 @@ server.register(aiRoutes, { prefix: '/api/ai' });
 server.register(groupRoutes, { prefix: '/api/groups' });
 server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
 
+// Uploads base directory — consistent with attachment.service.ts
+const UPLOADS_DIR = path.join(__dirname, '../uploads');
+
 // Public avatar serving (no auth required)
 server.get('/uploads/avatars/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename); // prevent path traversal
-  const filepath = path.join(process.cwd(), 'uploads', 'avatars', safeName);
+  const filepath = path.join(UPLOADS_DIR, 'avatars', safeName);
   if (!fs.existsSync(filepath)) {
     return reply.code(404).send({ message: 'Not found' });
   }
@@ -135,12 +138,31 @@ server.get('/uploads/avatars/:filename', async (request, reply) => {
 server.get('/uploads/groups/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename);
-  const filepath = path.join(process.cwd(), 'uploads', 'groups', safeName);
+  const filepath = path.join(UPLOADS_DIR, 'groups', safeName);
   if (!fs.existsSync(filepath)) {
     return reply.code(404).send({ message: 'Not found' });
   }
   const stream = fs.createReadStream(filepath);
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+});
+
+// Attachment file serving (note attachments stored in uploads root)
+server.get('/uploads/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename); // prevent path traversal
+  const filepath = path.join(UPLOADS_DIR, safeName);
+  if (!fs.existsSync(filepath)) {
+    return reply.code(404).send({ message: 'Not found' });
+  }
+  const ext = path.extname(safeName).slice(1).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+    webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf',
+    txt: 'text/plain', csv: 'text/csv',
+  };
+  const contentType = mimeMap[ext] || 'application/octet-stream';
+  const stream = fs.createReadStream(filepath);
+  return reply.type(contentType).send(stream);
 });
 
 // Health Check

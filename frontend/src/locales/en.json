@@ -287,6 +287,9 @@
     "resetVaultButton": "Reset Vault",
     "resetVaultSuccess": "Vault has been reset. You can now set up a new PIN.",
     "resetVaultPlaceholder": "Type DELETE to confirm",
+    "deletePermanently": "Delete Permanently",
+    "deletePermanentlyConfirm": "Are you sure you want to permanently delete this item? This action cannot be undone.",
+    "deletedPermanently": "Permanently deleted",
     "createSecureNote": "New Secure Note",
     "filterAll": "All",
     "filterNote": "Notes",
@@ -334,6 +337,7 @@
       "loadingScreenshot": "Capturing website...",
       "retakeScreenshot": "Retake",
       "deleteConfirm": "Are you sure you want to delete this credential?",
+      "deleteConfirmPermanent": "Are you sure you want to permanently delete this credential? This action cannot be undone.",
       "deleted": "Credential deleted"
     }
   },
@@ -452,6 +456,8 @@
     "attachments": "Attachments",
     "noAttachments": "No attachments",
     "addAttachment": "Add attachment",
+    "deleteAttachment": "Delete Attachment",
+    "deleteAttachmentConfirm": "Are you sure you want to delete this attachment? If the file is an image embedded in the note, it will also be removed from the text.",
     "attachmentDeleted": "Attachment deleted",
     "deleteAttachmentFailed": "Failed to delete attachment",
     "selectNotebook": "Select Notebook",
@@ -553,7 +559,12 @@
     "cut": "Cut",
     "copy": "Copy",
     "paste": "Paste",
-    "pasteAsPlainText": "Paste as Plain Text"
+    "pasteAsPlainText": "Paste as Plain Text",
+    "characters": "characters",
+    "lines": "lines",
+    "line": "Ln",
+    "column": "Col",
+    "vault": "Vault"
   },
   "public": {
     "attachments": "Attachments"
@@ -676,6 +687,11 @@
       "credentials": "Credential storage in vault",
       "notebookPicker": "Notebook picker for imports",
       "projectCleanup": "Project cleanup and optimization",
+      "editorStatusBar": "Live editor status bar (characters, lines, cursor position)",
+      "notebookPickerNewNote": "Notebook picker when creating a new note from home",
+      "vaultPermanentDelete": "Vault items are now permanently deleted (no longer stuck in limbo)",
+      "attachmentRaceCondition": "Fixed image reappearing after deleting attachment",
+      "lineHeightRefinement": "Refined default line height for better readability",
       "initialRelease": "Initial release with full feature set"
     }
   },

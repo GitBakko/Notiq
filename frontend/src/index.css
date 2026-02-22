@@ -264,12 +264,17 @@ body {
   height: auto;
   border-radius: 0.5rem;
   cursor: default;
-  margin: 0.5rem 0;
 }
 
-.ProseMirror img.ProseMirror-selectednode {
-  outline: 2px solid #10b981;
-  border-radius: 0.5rem;
+/* Resizable image node view */
+.ProseMirror .image-resizable {
+  display: inline-block;
+  margin: 0.5rem 0;
+  line-height: 0;
+}
+
+.ProseMirror .image-resizable img {
+  margin: 0;
 }
 
 /* Scroll to Edit Button Animation */

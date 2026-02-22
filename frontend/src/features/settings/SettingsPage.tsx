@@ -150,38 +150,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Notifications */}
-        {isSupported && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t('notifications.title')}</h2>
-            <Card className="p-6 dark:bg-gray-800 dark:border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">{t('notifications.pushNotifications')}</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('notifications.pushDescription')}</p>
-                </div>
-                <button
-                  onClick={isSubscribed ? unsubscribe : subscribe}
-                  className={clsx(
-                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2",
-                    isSubscribed ? "bg-emerald-600" : "bg-gray-200 dark:bg-gray-700"
-                  )}
-                >
-                  <span
-                    className={clsx(
-                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                      isSubscribed ? "translate-x-6" : "translate-x-1"
-                    )}
-                  />
-                </button>
-              </div>
-            </Card>
-          </section>
-        )}
-
-        {/* Notification Sound */}
         <section>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t('settings.notificationSound')}</h2>
-          <Card className="p-6 dark:bg-gray-800 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t('notifications.title')}</h2>
+          <Card className="p-6 dark:bg-gray-800 dark:border-gray-700 space-y-5">
+            {/* Notification Sound Toggle */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-medium text-gray-900 dark:text-white">{t('settings.notificationSoundToggle')}</h3>
@@ -202,6 +174,33 @@ export default function SettingsPage() {
                 />
               </button>
             </div>
+
+            {/* Push Notifications Toggle */}
+            {isSupported && (
+              <>
+                <div className="border-t border-gray-200 dark:border-gray-700" />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">{t('notifications.pushNotifications')}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('notifications.pushDescription')}</p>
+                  </div>
+                  <button
+                    onClick={isSubscribed ? unsubscribe : subscribe}
+                    className={clsx(
+                      "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2",
+                      isSubscribed ? "bg-emerald-600" : "bg-gray-200 dark:bg-gray-700"
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                        isSubscribed ? "translate-x-6" : "translate-x-1"
+                      )}
+                    />
+                  </button>
+                </div>
+              </>
+            )}
           </Card>
         </section>
 
@@ -209,20 +208,27 @@ export default function SettingsPage() {
         <section>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t('settings.account')}</h2>
           <Card className="p-6 dark:bg-gray-800 dark:border-gray-700">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="h-16 w-16 rounded-full bg-emerald-600 flex items-center justify-center text-white text-2xl font-bold">
-                {user?.name?.[0] || user?.email?.[0] || 'U'}
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-full bg-emerald-600 flex-shrink-0 flex items-center justify-center text-white text-2xl font-bold overflow-hidden">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')}
+                    alt={user?.name || ''}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  user?.name?.[0] || user?.email?.[0] || 'U'
+                )}
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h3 className="text-xl font-medium text-gray-900 dark:text-white">{user?.name || t('common.user')}</h3>
                 <p className="text-gray-500 dark:text-gray-400">{user?.email}</p>
               </div>
+              <Button variant="danger" onClick={logout} className="flex items-center gap-2 flex-shrink-0">
+                <LogOut size={18} />
+                {t('auth.logout')}
+              </Button>
             </div>
-
-            <Button variant="danger" onClick={logout} className="flex items-center gap-2">
-              <LogOut size={18} />
-              {t('auth.logout')}
-            </Button>
           </Card>
         </section>
 

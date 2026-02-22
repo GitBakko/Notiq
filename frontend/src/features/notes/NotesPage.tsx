@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu } from 'lucide-react';
+import { Search, Menu, FileDown, X, Book } from 'lucide-react';
 import NoteList from './NoteList';
 import { createNote, getNote } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -12,10 +12,12 @@ import { useUIStore } from '../../store/uiStore';
 import { Button } from '../../components/ui/Button';
 import SortDropdown from '../../components/ui/SortDropdown';
 import NoteEditor from './NoteEditor';
-import { FileDown } from 'lucide-react';
 import { useImport } from '../../hooks/useImport';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../lib/db';
+import { useAuthStore } from '../../store/authStore';
 
 export default function NotesPage() {
   const { t } = useTranslation();
@@ -26,6 +28,13 @@ export default function NotesPage() {
 
   const isMobile = useIsMobile();
   const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort } = useUIStore();
+  const user = useAuthStore((state) => state.user);
+  const [showNotebookPicker, setShowNotebookPicker] = useState(false);
+
+  const allNotebooks = useLiveQuery(async () => {
+    if (!user?.id) return [];
+    return db.notebooks.where('userId').equals(user.id).sortBy('name');
+  }, [user?.id]);
 
   const setSelectedNoteId = (id: string | null) => {
     const newParams = new URLSearchParams(searchParams);
@@ -87,8 +96,30 @@ export default function NotesPage() {
         notebookId: selectedNotebookId
       });
     } else {
-      toast.error(t('notes.selectNotebookFirst'));
+      const nbs = allNotebooks || [];
+      if (nbs.length === 0) {
+        toast.error(t('notes.noNotebooks'));
+        return;
+      }
+      if (nbs.length === 1) {
+        createMutation.mutate({
+          title: t('notes.untitled'),
+          content: '',
+          notebookId: nbs[0].id
+        });
+        return;
+      }
+      setShowNotebookPicker(true);
     }
+  };
+
+  const handlePickNotebookForCreate = (notebookId: string) => {
+    setShowNotebookPicker(false);
+    createMutation.mutate({
+      title: t('notes.untitled'),
+      content: '',
+      notebookId
+    });
   };
 
   const renderNoteList = () => {
@@ -204,10 +235,43 @@ export default function NotesPage() {
     </div>
   );
 
+  const notebookPickerForCreate = showNotebookPicker ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNotebookPicker(false)}>
+      <div
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <Book size={18} className="text-emerald-600 dark:text-emerald-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {t('notes.selectNotebook')}
+            </h3>
+          </div>
+          <button onClick={() => setShowNotebookPicker(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="px-3 py-3 max-h-64 overflow-y-auto">
+          {(allNotebooks || []).map(nb => (
+            <button
+              key={nb.id}
+              onClick={() => handlePickNotebookForCreate(nb.id)}
+              className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors"
+            >
+              {nb.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (isMobile) {
     return (
       <div className="flex h-full bg-white w-full dark:bg-gray-900">
         {selectedNoteId ? renderEditor() : renderNoteList()}
+        {notebookPickerForCreate}
       </div>
     );
   }
@@ -216,6 +280,7 @@ export default function NotesPage() {
     <div className="flex h-full bg-white dark:bg-gray-900">
       {renderNoteList()}
       {renderEditor()}
+      {notebookPickerForCreate}
     </div>
   );
 }

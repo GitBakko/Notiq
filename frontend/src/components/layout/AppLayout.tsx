@@ -24,7 +24,7 @@ export default function AppLayout() {
 
   const [showWhatsNew, setShowWhatsNew] = useState(() => {
     const lastSeen = localStorage.getItem('lastSeenVersion');
-    return lastSeen !== null && lastSeen !== CURRENT_VERSION;
+    return lastSeen !== CURRENT_VERSION;
   });
 
   // Close sidebar on route change on mobile

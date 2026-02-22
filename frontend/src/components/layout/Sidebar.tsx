@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, CheckSquare, XCircle } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, CheckSquare, XCircle, UserPen } from 'lucide-react';
 import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useNotebooks } from '../../hooks/useNotebooks';
@@ -13,6 +13,7 @@ import { createNotebook, deleteNotebook } from '../../features/notebooks/noteboo
 import { createNote, permanentlyDeleteNote } from '../../features/notes/noteService';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import TagList from '../../features/tags/TagList';
+import { CURRENT_VERSION } from '../../data/changelog';
 import { usePinnedNotes } from '../../hooks/usePinnedNotes';
 import { useImport } from '../../hooks/useImport';
 import NotebookSharingModal from '../sharing/NotebookSharingModal';
@@ -203,7 +204,7 @@ export default function Sidebar() {
               </p>
               <p className="text-xs text-gray-500 truncate dark:text-gray-400">{user?.email}</p>
             </div>
-            <Settings size={16} className="text-gray-400" />
+            <UserPen size={16} className="text-gray-400" />
           </Link>
         </div>
 
@@ -413,7 +414,7 @@ export default function Sidebar() {
             <img src="/favicon.png" alt={t('common.logoAlt')} className="h-6 w-6 object-contain" />
             <div className="flex flex-col">
               <span className="text-xs font-bold text-gray-900 dark:text-white leading-none">{t('common.notiq')}</span>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400 leading-none mt-0.5">{t('common.versionShort')}</span>
+              <span className="text-[10px] text-gray-500 dark:text-gray-400 leading-none mt-0.5">v{CURRENT_VERSION}</span>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -425,6 +426,13 @@ export default function Sidebar() {
             >
               {getThemeIcon()}
             </button>
+            <Link
+              to="/settings"
+              className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+              title={t('sidebar.settings')}
+            >
+              <Settings size={18} />
+            </Link>
             <button
               onClick={logout}
               className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"

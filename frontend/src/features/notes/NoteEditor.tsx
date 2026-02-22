@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive } from 'lucide-react';
 import Editor from '../../components/editor/Editor';
-import { revokeShare, updateNoteLocalOnly, deleteNote, type Note } from './noteService';
+import { revokeShare, updateNoteLocalOnly, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
 import clsx from 'clsx';
@@ -65,6 +65,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+    const [attachmentToDelete, setAttachmentToDelete] = useState<{ id: string; url: string } | null>(null);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
     const [collaborators, setCollaborators] = useState<any[]>([]);
@@ -229,6 +230,74 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             }
         }
     };
+
+    // Refresh note data after image upload
+    const handleImageUploaded = useCallback(() => {
+        queryClient.invalidateQueries({ queryKey: ['note', note.id] });
+        queryClient.invalidateQueries({ queryKey: ['notes'] });
+    }, [queryClient, note.id]);
+
+    // When an image is removed from the editor body, delete the matching attachment
+    const handleImageRemoved = useCallback(async (src: string) => {
+        const att = (note.attachments || []).find(a => a.url === src);
+        if (!att) return;
+        try {
+            await deleteAttachment(note.id, att.id);
+            queryClient.invalidateQueries({ queryKey: ['note', note.id] });
+            queryClient.invalidateQueries({ queryKey: ['notes'] });
+        } catch (e) {
+            console.error('Failed to auto-delete attachment after image removal', e);
+        }
+    }, [note.id, note.attachments, queryClient]);
+
+    // Delete attachment with confirmation + remove from editor body
+    const handleAttachmentDeleteRequest = useCallback((attachmentId: string) => {
+        const att = (note.attachments || []).find(a => a.id === attachmentId);
+        setAttachmentToDelete(att ? { id: att.id, url: att.url } : { id: attachmentId, url: '' });
+    }, [note.attachments]);
+
+    const handleAttachmentDeleteConfirm = useCallback(async () => {
+        if (!attachmentToDelete) return;
+        try {
+            await deleteAttachment(note.id, attachmentToDelete.id);
+
+            // Remove matching image nodes from the editor body
+            const editor = editorRef.current?.getEditor();
+            if (editor && attachmentToDelete.url) {
+                const { doc, tr } = editor.state;
+                const nodesToRemove: { pos: number; size: number }[] = [];
+                doc.descendants((node: any, pos: number) => {
+                    if (node.type.name === 'image' && node.attrs.src === attachmentToDelete.url) {
+                        nodesToRemove.push({ pos, size: node.nodeSize });
+                    }
+                });
+                // Remove in reverse order to keep positions valid
+                for (const { pos, size } of nodesToRemove.reverse()) {
+                    tr.delete(pos, pos + size);
+                }
+                if (nodesToRemove.length > 0) {
+                    // Mark transaction so imageRemovalTracker ignores it
+                    tr.setMeta('attachment-delete', true);
+                    editor.view.dispatch(tr);
+                }
+            }
+
+            // Update cached note data without re-fetching (avoids stale content overwriting editor)
+            queryClient.setQueryData(['note', note.id], (oldData: any) => {
+                if (!oldData) return oldData;
+                return {
+                    ...oldData,
+                    attachments: oldData.attachments?.filter((a: any) => a.id !== attachmentToDelete.id)
+                };
+            });
+            queryClient.invalidateQueries({ queryKey: ['notes'] });
+            toast.success(t('common.deleted'));
+        } catch (e) {
+            console.error('Failed to delete attachment', e);
+            toast.error(t('common.error'));
+        }
+        setAttachmentToDelete(null);
+    }, [attachmentToDelete, note.id, queryClient, t]);
 
     // Misc
     const userColor = user?.color || '#319795';
@@ -397,6 +466,10 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         onChange={setContentInput}
                         editable={!isReadOnly}
                         noteId={note.id}
+                        onImageUploaded={handleImageUploaded}
+                        onImageRemoved={handleImageRemoved}
+                        notebookName={notebooks?.find(nb => nb.id === note.notebookId)?.name}
+                        isVault={note.isVault}
                         provider={provider}
                         collaboration={collaborationConfig}
                     />
@@ -454,9 +527,11 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
             <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
 
-            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); await deleteNote(note.id); toast.success(t('notes.deleted')); onBack ? onBack() : window.history.back(); }} title={t('notes.moveToTrash')} message={t('notes.moveToTrashConfirm')} confirmText={t('notes.moveToTrashAction')} variant="danger" />
+            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); if (note.isVault) { await permanentlyDeleteNote(note.id); } else { await deleteNote(note.id); } toast.success(t(note.isVault ? 'vault.deletedPermanently' : 'notes.deleted')); onBack ? onBack() : window.history.back(); }} title={t(note.isVault ? 'vault.deletePermanently' : 'notes.moveToTrash')} message={t(note.isVault ? 'vault.deletePermanentlyConfirm' : 'notes.moveToTrashConfirm')} confirmText={t(note.isVault ? 'common.deleteForever' : 'notes.moveToTrashAction')} variant="danger" />
 
-            {isAttachmentSidebarOpen && <AttachmentSidebar noteId={note.id} attachments={note.attachments || []} onClose={() => setIsAttachmentSidebarOpen(false)} onDelete={deleteAttachment.bind(null, note.id)} onAdd={() => fileInputRef.current?.click()} />}
+            {isAttachmentSidebarOpen && <AttachmentSidebar noteId={note.id} attachments={note.attachments || []} onClose={() => setIsAttachmentSidebarOpen(false)} onDelete={handleAttachmentDeleteRequest} onAdd={() => fileInputRef.current?.click()} />}
+
+            <ConfirmDialog isOpen={!!attachmentToDelete} onClose={() => setAttachmentToDelete(null)} onConfirm={handleAttachmentDeleteConfirm} title={t('notes.deleteAttachment')} message={t('notes.deleteAttachmentConfirm')} confirmText={t('common.delete')} variant="danger" />
 
             {isSizeModalOpen && <NoteSizeModal noteId={note.id} onClose={() => setIsSizeModalOpen(false)} />}
         </div>

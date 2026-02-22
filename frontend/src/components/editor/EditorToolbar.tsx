@@ -364,7 +364,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           { label: '2.5', value: '2.5' },
           { label: '3.0', value: '3.0' },
         ]}
-        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '1.5'}
+        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '0.5'}
         onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
         placeholder={t('editor.lineHeight')}
         title={t('editor.lineHeight')}

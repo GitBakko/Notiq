@@ -228,6 +228,8 @@
     "attachments": "Allegati",
     "noAttachments": "Nessun allegato",
     "addAttachment": "Aggiungi allegato",
+    "deleteAttachment": "Elimina allegato",
+    "deleteAttachmentConfirm": "Sei sicuro di voler eliminare questo allegato? Se il file è un'immagine inserita nella nota, verrà rimossa anche dal testo.",
     "attachmentDeleted": "Allegato eliminato",
     "deleteAttachmentFailed": "Eliminazione allegato fallita",
     "selectNotebook": "Seleziona Taccuino",
@@ -371,6 +373,9 @@
     "resetVaultButton": "Reimposta Vault",
     "resetVaultSuccess": "Il vault è stato reimpostato. Ora puoi configurare un nuovo PIN.",
     "resetVaultPlaceholder": "Scrivi ELIMINA per confermare",
+    "deletePermanently": "Elimina Definitivamente",
+    "deletePermanentlyConfirm": "Sei sicuro di voler eliminare definitivamente questo elemento? L'azione non può essere annullata.",
+    "deletedPermanently": "Eliminato definitivamente",
     "createSecureNote": "Nuova Nota Sicura",
     "filterAll": "Tutti",
     "filterNote": "Note",
@@ -418,6 +423,7 @@
       "loadingScreenshot": "Cattura sito in corso...",
       "retakeScreenshot": "Riprendi",
       "deleteConfirm": "Sei sicuro di voler eliminare questa credenziale?",
+      "deleteConfirmPermanent": "Sei sicuro di voler eliminare definitivamente questa credenziale? L'azione non può essere annullata.",
       "deleted": "Credenziale eliminata"
     }
   },
@@ -553,7 +559,12 @@
     "cut": "Taglia",
     "copy": "Copia",
     "paste": "Incolla",
-    "pasteAsPlainText": "Incolla come testo"
+    "pasteAsPlainText": "Incolla come testo",
+    "characters": "caratteri",
+    "lines": "righe",
+    "line": "Riga",
+    "column": "Col",
+    "vault": "Vault"
   },
   "public": {
     "attachments": "Allegati"
@@ -591,6 +602,11 @@
       "credentials": "Gestione credenziali nel Vault",
       "notebookPicker": "Selettore taccuino per importazioni",
       "projectCleanup": "Pulizia e ottimizzazione del progetto",
+      "editorStatusBar": "Barra di stato live nell'editor (caratteri, righe, posizione cursore)",
+      "notebookPickerNewNote": "Selettore taccuino alla creazione di una nuova nota dalla home",
+      "vaultPermanentDelete": "Gli elementi del Vault vengono ora eliminati definitivamente",
+      "attachmentRaceCondition": "Risolto il problema dell'immagine che riappariva dopo l'eliminazione dell'allegato",
+      "lineHeightRefinement": "Interlinea predefinita ottimizzata per una migliore leggibilita'",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

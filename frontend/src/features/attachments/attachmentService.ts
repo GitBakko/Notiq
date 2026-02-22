@@ -38,8 +38,15 @@ export const uploadAttachment = async (noteId: string, file: File) => {
 };
 
 export const deleteAttachment = async (noteId: string, attachmentId: string) => {
-    await api.delete(`/attachments/${attachmentId}`);
-    
+    try {
+        await api.delete(`/attachments/${attachmentId}`);
+    } catch (error: any) {
+        // If 404, the attachment is already gone from the server — clean up locally anyway
+        if (error?.response?.status !== 404) {
+            throw error;
+        }
+    }
+
     const note = await db.notes.get(noteId);
     if (note) {
         const updatedAttachments = (note.attachments || []).filter(a => a.id !== attachmentId);
