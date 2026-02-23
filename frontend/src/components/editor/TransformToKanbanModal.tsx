@@ -45,7 +45,11 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
       const boardTitle = boardDetail?.title || '';
 
       for (const item of items) {
-        await createCard.mutateAsync({ columnId, title: item.text });
+        const lines = item.text.split('\n');
+        const title = lines[0];
+        // Multi-line: first line = title, all lines = description
+        const description = lines.length > 1 ? item.text : undefined;
+        await createCard.mutateAsync({ columnId, title, description });
       }
 
       toast.success(t('editor.transform.kanbanSuccess', { count: items.length, board: boardTitle }));

@@ -21,8 +21,15 @@ function extractListItems(editor: Editor): ListItemInfo[] {
 
   state.doc.nodesBetween(from, to, (node, pos) => {
     if (node.type.name === 'listItem' || node.type.name === 'taskItem') {
+      // Preserve newlines between block-level children (e.g. multiple paragraphs)
+      const lines: string[] = [];
+      node.forEach(child => {
+        if (child.isTextblock) {
+          lines.push(child.textContent);
+        }
+      });
       items.push({
-        text: node.textContent.trim(),
+        text: lines.join('\n').trim(),
         from: pos,
         to: pos + node.nodeSize,
       });
