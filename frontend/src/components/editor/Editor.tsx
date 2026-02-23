@@ -25,6 +25,9 @@ import { RemoteEditTracker } from './extensions/RemoteEditTracker';
 import { rowResizing } from './extensions/rowResizing';
 import TableContextMenu from './TableContextMenu';
 import EditorContextMenu from './EditorContextMenu';
+import type { ListItemInfo } from './EditorContextMenu';
+import TransformToKanbanModal from './TransformToKanbanModal';
+import TransformToTaskListModal from './TransformToTaskListModal';
 import { uploadAttachment } from '../../features/attachments/attachmentService';
 import EditorStatusBar from './EditorStatusBar';
 
@@ -457,6 +460,10 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   const [tableContextMenu, setTableContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number } | null>(null);
 
+  // Transform modals state
+  const [kanbanTransformItems, setKanbanTransformItems] = useState<ListItemInfo[] | null>(null);
+  const [taskListTransformItems, setTaskListTransformItems] = useState<ListItemInfo[] | null>(null);
+
   const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
     if (editor?.isActive('table')) {
       e.preventDefault();
@@ -497,6 +504,24 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             editor={editor}
             position={editorContextMenu}
             onClose={() => setEditorContextMenu(null)}
+            onTransformToKanban={(items) => setKanbanTransformItems(items)}
+            onTransformToTaskList={(items) => setTaskListTransformItems(items)}
+          />
+        )}
+        {editor && kanbanTransformItems && (
+          <TransformToKanbanModal
+            isOpen={true}
+            onClose={() => setKanbanTransformItems(null)}
+            items={kanbanTransformItems}
+            editor={editor}
+          />
+        )}
+        {editor && taskListTransformItems && (
+          <TransformToTaskListModal
+            isOpen={true}
+            onClose={() => setTaskListTransformItems(null)}
+            items={taskListTransformItems}
+            editor={editor}
           />
         )}
       </div>
@@ -528,6 +553,24 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           editor={editor}
           position={editorContextMenu}
           onClose={() => setEditorContextMenu(null)}
+          onTransformToKanban={(items) => setKanbanTransformItems(items)}
+          onTransformToTaskList={(items) => setTaskListTransformItems(items)}
+        />
+      )}
+      {editor && kanbanTransformItems && (
+        <TransformToKanbanModal
+          isOpen={true}
+          onClose={() => setKanbanTransformItems(null)}
+          items={kanbanTransformItems}
+          editor={editor}
+        />
+      )}
+      {editor && taskListTransformItems && (
+        <TransformToTaskListModal
+          isOpen={true}
+          onClose={() => setTaskListTransformItems(null)}
+          items={taskListTransformItems}
+          editor={editor}
         />
       )}
     </div>

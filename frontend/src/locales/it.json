@@ -595,7 +595,28 @@
     "lines": "righe",
     "line": "Riga",
     "column": "Col",
-    "vault": "Vault"
+    "vault": "Vault",
+    "transform": {
+      "toKanban": "Trasforma in Kanban Board",
+      "toTaskList": "Trasforma in Task List",
+      "selectBoard": "Seleziona una board",
+      "newBoard": "Nuova board",
+      "existingBoard": "Board esistente",
+      "selectColumn": "Seleziona una colonna",
+      "selectList": "Seleziona una task list",
+      "newList": "Nuova lista",
+      "existingList": "Lista esistente",
+      "itemsSelected": "{{count}} elementi selezionati",
+      "preview": "Anteprima",
+      "confirm": "Trasforma",
+      "removeFromNote": "Rimuovere i punti dalla nota?",
+      "keepItems": "No, mantieni",
+      "removeItems": "Si, rimuovi",
+      "kanbanSuccess": "{{count}} card create in {{board}}",
+      "taskListSuccess": "{{count}} elementi aggiunti a {{list}}",
+      "boardTitle": "Titolo board",
+      "listTitle": "Titolo lista"
+    }
   },
   "public": {
     "attachments": "Allegati"

@@ -1,22 +1,56 @@
 import { Editor } from '@tiptap/react';
 import { createPortal } from 'react-dom';
-import { Scissors, Copy, ClipboardPaste, ClipboardType } from 'lucide-react';
+import { Scissors, Copy, ClipboardPaste, ClipboardType, LayoutDashboard, ListChecks } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useEffect, useRef, useLayoutEffect, useState } from 'react';
+import { useEffect, useRef, useLayoutEffect, useState, useMemo } from 'react';
+
+export interface ListItemInfo {
+  text: string;
+  from: number;
+  to: number;
+}
+
+/**
+ * Walk the current selection and extract list item texts with positions.
+ * Supports bulletList/orderedList listItem and taskItem nodes.
+ */
+function extractListItems(editor: Editor): ListItemInfo[] {
+  const { state } = editor;
+  const { from, to } = state.selection;
+  const items: ListItemInfo[] = [];
+
+  state.doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name === 'listItem' || node.type.name === 'taskItem') {
+      items.push({
+        text: node.textContent.trim(),
+        from: pos,
+        to: pos + node.nodeSize,
+      });
+      return false; // Don't descend into the listItem children
+    }
+    return true;
+  });
+
+  return items.filter(item => item.text.length > 0);
+}
 
 interface EditorContextMenuProps {
   editor: Editor;
   position: { x: number; y: number };
   onClose: () => void;
+  onTransformToKanban?: (items: ListItemInfo[]) => void;
+  onTransformToTaskList?: (items: ListItemInfo[]) => void;
 }
 
 const MENU_WIDTH = 240;
 const VIEWPORT_MARGIN = 8;
 
-export default function EditorContextMenu({ editor, position, onClose }: EditorContextMenuProps) {
+export default function EditorContextMenu({ editor, position, onClose, onTransformToKanban, onTransformToTaskList }: EditorContextMenuProps) {
   const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState({ x: position.x, y: position.y });
+
+  const listItems = useMemo(() => extractListItems(editor), [editor, position]);
 
   // Adjust position to stay within viewport
   useLayoutEffect(() => {
@@ -134,6 +168,41 @@ export default function EditorContextMenu({ editor, position, onClose }: EditorC
         </span>
         <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+Shift+V</span>
       </button>
+
+      {listItems.length > 0 && (
+        <>
+          <div className={separatorClass} />
+          <div className="px-3 py-1">
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {t('editor.transform.itemsSelected', { count: listItems.length })}
+            </span>
+          </div>
+          <button
+            className={menuItemClass}
+            onClick={() => {
+              onTransformToKanban?.(listItems);
+              onClose();
+            }}
+          >
+            <span className="flex items-center gap-3">
+              <LayoutDashboard size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+              <span>{t('editor.transform.toKanban')}</span>
+            </span>
+          </button>
+          <button
+            className={menuItemClass}
+            onClick={() => {
+              onTransformToTaskList?.(listItems);
+              onClose();
+            }}
+          >
+            <span className="flex items-center gap-3">
+              <ListChecks size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+              <span>{t('editor.transform.toTaskList')}</span>
+            </span>
+          </button>
+        </>
+      )}
     </div>,
     document.body
   );

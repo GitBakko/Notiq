@@ -4,7 +4,7 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 
 ## Features
 
-- **Rich Text Editor** — TipTap v2 with tables, code blocks, task lists, images, audio recording, live status bar (characters, lines, cursor position)
+- **Rich Text Editor** — TipTap v2 with tables, code blocks, task lists, images, audio recording, live status bar, and list-to-Kanban/TaskList transform via context menu
 - **Real-time Collaboration** — Yjs + Hocuspocus WebSocket server with persistent user colors and avatar presence
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
 - **Encrypted Vault** — AES-encrypted notes and credentials behind PIN protection

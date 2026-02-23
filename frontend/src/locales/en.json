@@ -595,7 +595,28 @@
     "lines": "lines",
     "line": "Ln",
     "column": "Col",
-    "vault": "Vault"
+    "vault": "Vault",
+    "transform": {
+      "toKanban": "Transform to Kanban Board",
+      "toTaskList": "Transform to Task List",
+      "selectBoard": "Select a board",
+      "newBoard": "New board",
+      "existingBoard": "Existing board",
+      "selectColumn": "Select a column",
+      "selectList": "Select a task list",
+      "newList": "New list",
+      "existingList": "Existing list",
+      "itemsSelected": "{{count}} items selected",
+      "preview": "Preview",
+      "confirm": "Transform",
+      "removeFromNote": "Remove items from note?",
+      "keepItems": "No, keep them",
+      "removeItems": "Yes, remove",
+      "kanbanSuccess": "{{count}} cards created in {{board}}",
+      "taskListSuccess": "{{count}} items added to {{list}}",
+      "boardTitle": "Board title",
+      "listTitle": "List title"
+    }
   },
   "public": {
     "attachments": "Attachments"
