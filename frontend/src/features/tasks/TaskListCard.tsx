@@ -3,6 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Share2, MoreVertical, Trash2, Users } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import TaskItemRow from './TaskItemRow';
 import * as taskListService from './taskListService';
 import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
@@ -24,11 +38,37 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
   const newItemInputRef = useRef<HTMLInputElement>(null);
 
   const items = taskList.items || [];
-  const uncheckedItems = items.filter(i => !i.isChecked).sort((a, b) => a.position - b.position);
-  const checkedItems = items.filter(i => i.isChecked).sort((a, b) => a.position - b.position);
-  const sortedItems = [...uncheckedItems, ...checkedItems];
-  const doneCount = checkedItems.length;
+  const sortedItems = [...items].sort((a, b) => a.position - b.position);
+  const doneCount = items.filter(i => i.isChecked).length;
   const totalCount = items.length;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sortedItems.findIndex(i => i.id === active.id);
+    const newIndex = sortedItems.findIndex(i => i.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // Create new order
+    const reordered = [...sortedItems];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+
+    // Update positions
+    const updates = reordered.map((item, index) => ({
+      id: item.id,
+      position: index,
+    }));
+
+    await taskListService.reorderTaskItems(updates);
+  };
 
   const handleSaveTitle = () => {
     setIsEditingTitle(false);
@@ -167,17 +207,31 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
             <p className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500 italic">
               {t('taskLists.emptyList')}
             </p>
-          ) : (
+          ) : readOnly ? (
             sortedItems.map(item => (
               <TaskItemRow
                 key={item.id}
                 item={item}
-                readOnly={readOnly}
+                readOnly
                 onToggle={handleToggle}
                 onUpdate={handleUpdateItem}
                 onDelete={handleDeleteItem}
               />
             ))
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={sortedItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                {sortedItems.map(item => (
+                  <TaskItemRow
+                    key={item.id}
+                    item={item}
+                    onToggle={handleToggle}
+                    onUpdate={handleUpdateItem}
+                    onDelete={handleDeleteItem}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           )}
 
           {/* Add item input */}

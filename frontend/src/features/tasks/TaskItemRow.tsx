@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, GripVertical, Calendar } from 'lucide-react';
 import clsx from 'clsx';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import TaskPriorityBadge from './TaskPriorityBadge';
 import type { LocalTaskItem } from '../../lib/db';
 
@@ -11,14 +13,28 @@ interface TaskItemRowProps {
   onToggle: (id: string) => void;
   onUpdate: (id: string, data: Partial<Pick<LocalTaskItem, 'text' | 'priority' | 'dueDate'>>) => void;
   onDelete: (id: string) => void;
-  dragHandleProps?: Record<string, unknown>;
 }
 
-export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDelete, dragHandleProps }: TaskItemRowProps) {
+export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDelete }: TaskItemRowProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id, disabled: readOnly });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -52,17 +68,23 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
   };
 
   return (
-    <div className={clsx(
-      'group flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
-      'hover:bg-gray-50 dark:hover:bg-gray-800/50',
-      item.isChecked && 'opacity-60'
-    )}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={clsx(
+        'group flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
+        'hover:bg-gray-50 dark:hover:bg-gray-800/50',
+        item.isChecked && 'opacity-60',
+        isDragging && 'z-50 shadow-lg bg-white dark:bg-gray-800'
+      )}
+    >
       {/* Drag handle */}
       {!readOnly && (
         <div
           data-dnd-handle
-          {...(dragHandleProps || {})}
-          className="cursor-grab text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400"
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 touch-none"
         >
           <GripVertical size={16} />
         </div>
