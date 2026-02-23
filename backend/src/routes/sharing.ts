@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as sharingService from '../services/sharing.service';
+import * as taskListSharingService from '../services/tasklist-sharing.service';
+import * as taskListService from '../services/tasklist.service';
 import { Permission } from '@prisma/client';
 
 const shareSchema = z.object({
@@ -15,7 +17,7 @@ const respondSchema = z.object({
 
 const respondByIdSchema = z.object({
   itemId: z.string().uuid(),
-  type: z.enum(['NOTE', 'NOTEBOOK']),
+  type: z.enum(['NOTE', 'NOTEBOOK', 'TASKLIST']),
   action: z.enum(['accept', 'decline']),
 });
 
@@ -53,6 +55,10 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     const { itemId, type, action } = respondByIdSchema.parse(request.body);
 
     try {
+      if (type === 'TASKLIST') {
+        const result = await taskListSharingService.respondToTaskListShareById(request.user.id, itemId, action);
+        return result;
+      }
       const result = await sharingService.respondToShareById(request.user.id, itemId, type, action);
       return result;
     } catch (error: any) {
@@ -213,5 +219,55 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
       return reply.status(500).send({ message: 'An internal error occurred' });
     }
+  });
+
+  // ── Task List Sharing ─────────────────────────────────────────
+
+  // Share Task List
+  fastify.post('/tasklists/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { email, permission } = shareSchema.parse(request.body);
+
+    try {
+      const result = await taskListSharingService.shareTaskList(request.user.id, id, email, permission);
+      return result;
+    } catch (error: any) {
+      if (error.message === 'User not found') {
+        return reply.status(404).send({ message: 'User not found' });
+      }
+      if (error.message === 'TaskList not found or access denied') {
+        return reply.status(403).send({ message: 'Access denied' });
+      }
+      if (error.message === 'Cannot share with yourself') {
+        return reply.status(400).send({ message: 'Cannot share with yourself' });
+      }
+      request.log.error(error, 'Share TaskList Error');
+      return reply.status(500).send({ message: 'An internal error occurred' });
+    }
+  });
+
+  // Revoke Task List Share
+  fastify.delete('/tasklists/:id/:userId', async (request, reply) => {
+    const { id, userId } = request.params as { id: string; userId: string };
+
+    try {
+      await taskListSharingService.revokeTaskListShare(request.user.id, id, userId);
+      return { success: true };
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        return { success: true };
+      }
+      throw error;
+    }
+  });
+
+  // Get Shared Task Lists (all statuses)
+  fastify.get('/tasklists', async (request) => {
+    return taskListSharingService.getSharedTaskLists(request.user.id);
+  });
+
+  // Get Accepted Shared Task Lists (for sync)
+  fastify.get('/tasklists/accepted', async (request) => {
+    return taskListService.getAcceptedSharedTaskLists(request.user.id);
   });
 }

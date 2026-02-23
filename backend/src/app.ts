@@ -23,6 +23,7 @@ import searchRoutes from './routes/search';
 import aiRoutes from './routes/ai';
 import groupRoutes from './routes/groups';
 import urlMetadataRoutes from './routes/url-metadata';
+import taskListRoutes from './routes/tasklists';
 
 
 // ... ensure start
@@ -118,6 +119,7 @@ server.register(searchRoutes, { prefix: '/api/search' });
 server.register(aiRoutes, { prefix: '/api/ai' });
 server.register(groupRoutes, { prefix: '/api/groups' });
 server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
+server.register(taskListRoutes, { prefix: '/api/tasklists' });
 
 // Uploads base directory — consistent with attachment.service.ts
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
