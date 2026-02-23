@@ -616,6 +616,10 @@
       "taskListSuccess": "{{count}} elementi aggiunti a {{list}}",
       "boardTitle": "Titolo board",
       "listTitle": "Titolo lista"
+    },
+    "shortcuts": {
+      "title": "Scorciatoie da tastiera",
+      "transformHint": "Le scorciatoie di trasformazione funzionano con elementi lista selezionati"
     }
   },
   "public": {

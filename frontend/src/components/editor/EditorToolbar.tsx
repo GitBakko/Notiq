@@ -27,7 +27,8 @@ import {
   MicOff,
   AudioLines,
   Lock,
-  ArrowUpDown
+  ArrowUpDown,
+  Keyboard
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -528,6 +529,36 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
       >
         <Redo size={18} />
       </ToolbarButton>
+
+      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
+
+      {/* Keyboard Shortcuts Info */}
+      <div className="relative group">
+        <ToolbarButton
+          onClick={() => {}}
+          title={t('editor.shortcuts.title')}
+        >
+          <Keyboard size={18} />
+        </ToolbarButton>
+        <div className="absolute top-full right-0 mt-1 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-3 w-64">
+          <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('editor.shortcuts.title')}</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-600 dark:text-gray-400">{t('editor.pasteAsPlainText')}</span>
+              <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toKanban')}</span>
+              <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toTaskList')}</span>
+              <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -616,6 +616,10 @@
       "taskListSuccess": "{{count}} items added to {{list}}",
       "boardTitle": "Board title",
       "listTitle": "List title"
+    },
+    "shortcuts": {
+      "title": "Keyboard Shortcuts",
+      "transformHint": "Transform shortcuts work when list items are selected"
     }
   },
   "public": {

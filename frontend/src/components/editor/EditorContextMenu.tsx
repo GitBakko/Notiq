@@ -14,7 +14,7 @@ export interface ListItemInfo {
  * Walk the current selection and extract list item texts with positions.
  * Supports bulletList/orderedList listItem and taskItem nodes.
  */
-function extractListItems(editor: Editor): ListItemInfo[] {
+export function extractListItems(editor: Editor): ListItemInfo[] {
   const { state } = editor;
   const { from, to } = state.selection;
   const items: ListItemInfo[] = [];

@@ -24,7 +24,7 @@ import { CollaborativeHighlighter } from './extensions/CollaborativeHighlighter'
 import { RemoteEditTracker } from './extensions/RemoteEditTracker';
 import { rowResizing } from './extensions/rowResizing';
 import TableContextMenu from './TableContextMenu';
-import EditorContextMenu from './EditorContextMenu';
+import EditorContextMenu, { extractListItems } from './EditorContextMenu';
 import type { ListItemInfo } from './EditorContextMenu';
 import TransformToKanbanModal from './TransformToKanbanModal';
 import TransformToTaskListModal from './TransformToTaskListModal';
@@ -463,6 +463,25 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   // Transform modals state
   const [kanbanTransformItems, setKanbanTransformItems] = useState<ListItemInfo[] | null>(null);
   const [taskListTransformItems, setTaskListTransformItems] = useState<ListItemInfo[] | null>(null);
+
+  // Keyboard shortcuts: Ctrl+Shift+K → Kanban, Ctrl+Shift+L → Task List
+  useEffect(() => {
+    if (!editor || !editable) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey) return;
+      if (e.key === 'K' || e.key === 'k') {
+        e.preventDefault();
+        const items = extractListItems(editor);
+        if (items.length > 0) setKanbanTransformItems(items);
+      } else if (e.key === 'L' || e.key === 'l') {
+        e.preventDefault();
+        const items = extractListItems(editor);
+        if (items.length > 0) setTaskListTransformItems(items);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editor, editable]);
 
   const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
     if (editor?.isActive('table')) {
