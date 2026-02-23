@@ -52,6 +52,9 @@ model User {
 
   ownedGroups      Group[]       @relation("OwnedGroups")
   groupMemberships GroupMember[] @relation("GroupMemberships")
+
+  taskLists        TaskList[]
+  sharedTaskLists  SharedTaskList[]
 }
 
 enum Role {
@@ -168,6 +171,12 @@ enum NoteType {
   CREDENTIAL
 }
 
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum Permission {
   READ
   WRITE
@@ -223,6 +232,10 @@ enum NotificationType {
   CHAT_MESSAGE
   GROUP_INVITE
   GROUP_REMOVE
+  TASK_ITEM_ADDED
+  TASK_ITEM_CHECKED
+  TASK_ITEM_REMOVED
+  TASK_LIST_SHARED
 }
 
 model PushSubscription {
@@ -324,4 +337,47 @@ model PendingGroupInvite {
   createdAt DateTime @default(now())
 
   @@unique([groupId, email])
+}
+
+model TaskList {
+  id          String           @id @default(uuid())
+  title       String
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  items       TaskItem[]
+  sharedWith  SharedTaskList[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  isTrashed   Boolean          @default(false)
+
+  @@index([userId, isTrashed])
+}
+
+model TaskItem {
+  id          String        @id @default(uuid())
+  taskListId  String
+  taskList    TaskList      @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  text        String
+  isChecked   Boolean       @default(false)
+  priority    TaskPriority  @default(MEDIUM)
+  dueDate     DateTime?
+  position    Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([taskListId])
+}
+
+model SharedTaskList {
+  id          String      @id @default(uuid())
+  taskListId  String
+  taskList    TaskList    @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission  Permission  @default(READ)
+  status      ShareStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+
+  @@unique([taskListId, userId])
+  @@index([userId, status])
 }
