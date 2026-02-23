@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead, deleteNotification } from '../services/notification.service';
+import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead, deleteNotification, deleteAllNotifications } from '../services/notification.service';
 import { subscribeUser } from '../services/push.service';
 
 const paginationSchema = z.object({
@@ -40,6 +40,14 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const userId = request.user.id;
     await markAllNotificationsAsRead(userId);
+    return { success: true };
+  });
+
+  fastify.delete('/all', {
+    preValidation: [fastify.authenticate]
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    await deleteAllNotifications(userId);
     return { success: true };
   });
 

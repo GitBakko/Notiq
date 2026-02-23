@@ -4,12 +4,14 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 
 ## Features
 
-- **Rich Text Editor** — TipTap v2 with tables, code blocks, task lists, images, audio recording
+- **Rich Text Editor** — TipTap v2 with tables, code blocks, task lists, images, audio recording, live status bar (characters, lines, cursor position)
 - **Real-time Collaboration** — Yjs + Hocuspocus WebSocket server with persistent user colors and avatar presence
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
-- **Encrypted Vault** — AES-encrypted notes behind PIN protection
-- **Sharing** — Note and notebook sharing with granular permissions (read/write)
+- **Encrypted Vault** — AES-encrypted notes and credentials behind PIN protection
+- **Task Lists** — Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking
+- **Sharing** — Note, notebook, and task list sharing with granular permissions (read/write)
 - **Groups** — User groups with avatar, invitation management, and shared notebooks
+- **Reminders** — Date-based reminders with notification support
 - **AI Chat** — Per-note AI assistant powered by AWS Bedrock with dynamic titles and notification badges
 - **Import** — Evernote ENEX file import with attachment and tag support
 - **Multi-language** — English and Italian (i18next)
@@ -112,11 +114,11 @@ notiq/
       plugins/       # Prisma client singleton
       scripts/       # CLI tools (admin, backup, migration)
     prisma/
-      schema.prisma  # 19 models, 13 migrations
+      schema.prisma  # 22 models, 15 migrations
   frontend/
     src/
       components/    # Reusable UI (editor/, layout/, sharing/, ui/)
-      features/      # Domain modules (auth/, notes/, admin/, vault/, groups/, etc.)
+      features/      # Domain modules (auth/, notes/, admin/, vault/, groups/, tasks/, etc.)
       store/         # Zustand stores (auth, vault)
       lib/           # API client, Dexie DB, i18n
       locales/       # en.json, it.json

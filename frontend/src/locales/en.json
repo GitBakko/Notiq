@@ -215,7 +215,8 @@
     "dueDate": "Due date",
     "noDueDate": "No due date",
     "deleteItem": "Delete item",
-    "deleteItemConfirm": "Remove this item?"
+    "deleteItemConfirm": "Remove this item?",
+    "onlyCheckerCanUncheck": "Only the person who checked this item can uncheck it"
   },
   "auth": {
     "logout": "Logout",
@@ -600,6 +601,7 @@
   "notifications": {
     "title": "Notifications",
     "markAllAsRead": "Mark all as read",
+    "deleteAll": "Delete all",
     "empty": "No notifications",
     "markAsRead": "Mark as read",
     "pushNotifications": "Push Notifications",
@@ -624,6 +626,8 @@
     "taskItemAdded_TITLE": "Item Added",
     "taskItemChecked": "{{userName}} checked \"{{itemText}}\" in {{listTitle}}",
     "taskItemChecked_TITLE": "Item Completed",
+    "taskItemUnchecked": "{{userName}} unchecked \"{{itemText}}\" in {{listTitle}}",
+    "taskItemUnchecked_TITLE": "Item Unchecked",
     "taskItemRemoved": "{{userName}} removed \"{{itemText}}\" from {{listTitle}}",
     "taskItemRemoved_TITLE": "Item Removed",
     "taskListShared": "{{sharerName}} shared the list \"{{listTitle}}\" with you",

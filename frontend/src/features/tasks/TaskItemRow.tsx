@@ -69,6 +69,10 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
     onUpdate(item.id, { priority: next });
   };
 
+  // Only the user who checked the item can uncheck it
+  const canUncheck = !item.isChecked || !item.checkedByUser || item.checkedByUser.id === currentUserId;
+  const checkDisabled = readOnly || (item.isChecked && !canUncheck);
+
   return (
     <div
       ref={setNodeRef}
@@ -95,17 +99,20 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       {/* Checkbox */}
       <button
         type="button"
-        onClick={() => !readOnly && onToggle(item.id)}
-        disabled={readOnly}
+        onClick={() => !checkDisabled && onToggle(item.id)}
+        disabled={checkDisabled}
         className={clsx(
           'flex-shrink-0 transition-all duration-200 ease-in-out',
-          readOnly ? 'cursor-default' : 'cursor-pointer',
+          checkDisabled ? 'cursor-default' : 'cursor-pointer',
           item.isChecked
-            ? 'text-emerald-500 dark:text-emerald-400 scale-110'
+            ? canUncheck
+              ? 'text-emerald-500 dark:text-emerald-400 scale-110'
+              : 'text-emerald-500/50 dark:text-emerald-400/50 scale-110'
             : 'text-gray-300 dark:text-gray-600 hover:text-emerald-400 dark:hover:text-emerald-500'
         )}
         aria-checked={item.isChecked}
         role="checkbox"
+        title={checkDisabled && !readOnly ? t('taskLists.onlyCheckerCanUncheck') : undefined}
       >
         {item.isChecked ? (
           <CheckCircle2 size={20} strokeWidth={2.5} />

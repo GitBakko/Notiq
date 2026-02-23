@@ -301,7 +301,8 @@
     "dueDate": "Scadenza",
     "noDueDate": "Nessuna scadenza",
     "deleteItem": "Elimina elemento",
-    "deleteItemConfirm": "Rimuovere questo elemento?"
+    "deleteItemConfirm": "Rimuovere questo elemento?",
+    "onlyCheckerCanUncheck": "Solo chi ha completato questo elemento può deselezionarlo"
   },
   "auth": {
     "logout": "Esci",
@@ -646,6 +647,7 @@
   "notifications": {
     "title": "Notifiche",
     "markAllAsRead": "Segna tutte come lette",
+    "deleteAll": "Cancella tutte",
     "empty": "Nessuna notifica",
     "markAsRead": "Segna come letta",
     "pushNotifications": "Notifiche Push",
@@ -670,6 +672,8 @@
     "taskItemAdded_TITLE": "Elemento Aggiunto",
     "taskItemChecked": "{{userName}} ha completato \"{{itemText}}\" in {{listTitle}}",
     "taskItemChecked_TITLE": "Elemento Completato",
+    "taskItemUnchecked": "{{userName}} ha deselezionato \"{{itemText}}\" in {{listTitle}}",
+    "taskItemUnchecked_TITLE": "Elemento Deselezionato",
     "taskItemRemoved": "{{userName}} ha rimosso \"{{itemText}}\" da {{listTitle}}",
     "taskItemRemoved_TITLE": "Elemento Rimosso",
     "taskListShared": "{{sharerName}} ha condiviso la lista \"{{listTitle}}\" con te",

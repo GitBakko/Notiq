@@ -120,6 +120,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
       if (error.message === 'TaskItem not found') {
         return reply.status(404).send({ message: 'TaskItem not found' });
       }
+      if (error.message === 'Only the user who checked this item can uncheck it') {
+        return reply.status(403).send({ message: error.message });
+      }
       throw error;
     }
   });

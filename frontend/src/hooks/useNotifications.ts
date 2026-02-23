@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getNotifications, markAsRead, markAllAsRead, deleteNotification } from '../features/notifications/notificationService';
+import { getNotifications, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } from '../features/notifications/notificationService';
 import { playNotificationSound } from '../utils/notificationSound';
 
 export const useNotifications = () => {
@@ -35,6 +35,13 @@ export const useNotifications = () => {
     },
   });
 
+  const deleteAllMutation = useMutation({
+    mutationFn: deleteAllNotifications,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
 
   // Play sound when new unread notifications arrive
@@ -61,5 +68,6 @@ export const useNotifications = () => {
     markAsRead: markAsReadMutation.mutate,
     markAllAsRead: markAllAsReadMutation.mutate,
     deleteNotification: deleteMutation.mutate,
+    deleteAllNotifications: deleteAllMutation.mutate,
   };
 };

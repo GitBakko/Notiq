@@ -121,7 +121,21 @@ export const updateTaskItem = async (id: string, data: Partial<Pick<LocalTaskIte
   const item = await db.taskItems.get(id);
   if (!item) throw new Error('TaskItem not found');
 
-  await db.taskItems.update(id, { ...data, updatedAt: now, syncStatus: 'updated' });
+  // When toggling isChecked, also store checkedByUser locally so the UI
+  // can immediately show who checked the item (before the next sync pull)
+  const localUpdate: Record<string, unknown> = { ...data, updatedAt: now, syncStatus: 'updated' };
+  if (data.isChecked !== undefined) {
+    if (data.isChecked) {
+      const user = useAuthStore.getState().user;
+      localUpdate.checkedByUser = user
+        ? { id: user.id, name: user.name, email: user.email, color: user.color ?? null }
+        : null;
+    } else {
+      localUpdate.checkedByUser = null;
+    }
+  }
+
+  await db.taskItems.update(id, localUpdate);
 
   // Touch parent task list
   await db.taskLists.update(item.taskListId, { updatedAt: now });

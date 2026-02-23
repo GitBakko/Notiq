@@ -70,7 +70,7 @@ Notiq/
 │   │   ├── app.ts           # Server entry point
 │   │   └── hocuspocus.ts    # Yjs collab server
 │   ├── prisma/
-│   │   ├── schema.prisma    # 19 models, 6 enums
+│   │   ├── schema.prisma    # 22 models, 8 enums
 │   │   └── migrations/      # 14 migrations
 │   ├── prisma.config.js     # Prisma config (dotenv loader)
 │   ├── Dockerfile
@@ -99,7 +99,7 @@ Notiq/
 | Cosa | Path |
 |------|------|
 | Server entry | `backend/src/app.ts` (port 3001, route + Hocuspocus su `/ws`) |
-| DB schema | `backend/prisma/schema.prisma` (19 modelli, 14 migrations) |
+| DB schema | `backend/prisma/schema.prisma` (22 modelli, 15 migrations) |
 | Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
 | Logger | `backend/src/utils/logger.ts` (Pino shared; nelle route usare `request.log`) |
@@ -108,7 +108,7 @@ Notiq/
 | Frontend entry | `frontend/src/main.tsx` (React 19, QueryClient, BrowserRouter, SW) |
 | Route/pagine | `frontend/src/App.tsx` (protette dentro `<AppLayout />`, pubbliche fuori) |
 | Sync engine | `frontend/src/features/sync/syncService.ts` (syncPull + syncPush) |
-| Offline DB | `frontend/src/lib/db.ts` (Dexie v12, 12 versioni schema) |
+| Offline DB | `frontend/src/lib/db.ts` (Dexie v13, 13 versioni schema) |
 | API client | `frontend/src/lib/api.ts` (Axios + JWT interceptor + 401 auto-logout) |
 | Vault crypto | `frontend/src/utils/crypto.ts` (CryptoJS AES, PIN come chiave diretta) |
 | Auth store | `frontend/src/store/authStore.ts` (Zustand persisted, key: `auth-storage`) |
@@ -165,10 +165,10 @@ Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` �
 - **Script deploy:** `deploy/pre-install.cmd` (stop + backup) e `deploy/post-install.cmd` (npm ci + prisma + start)
 - **Flusso:** build locale → zip → copia su server → pre-install → estrai → post-install → verifica
 
-### Prisma models (19) ed enums
+### Prisma models (22) ed enums
 
-**Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite
-**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL)
+**Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite, TaskList, TaskItem, SharedTaskList
+**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE/GROUP_INVITE/GROUP_REMOVE/TASK_ITEM_ADDED/TASK_ITEM_CHECKED/TASK_ITEM_REMOVED/TASK_LIST_SHARED), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL), TaskPriority (LOW/MEDIUM/HIGH)
 
 ### Campi notevoli su User
 

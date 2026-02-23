@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Trash2 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import NotificationItem from './NotificationItem';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 export default function NotificationDropdown() {
   const { t } = useTranslation();
-  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -41,15 +41,26 @@ export default function NotificationDropdown() {
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
               {t('notifications.title')}
             </h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={() => markAllAsRead()}
-                className="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1"
-              >
-                <CheckCheck size={14} />
-                {t('notifications.markAllAsRead')}
-              </button>
-            )}
+            <div className="flex items-center gap-1">
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => markAllAsRead()}
+                  className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors"
+                  title={t('notifications.markAllAsRead')}
+                >
+                  <CheckCheck size={16} />
+                </button>
+              )}
+              {notifications && notifications.length > 0 && (
+                <button
+                  onClick={() => deleteAllNotifications()}
+                  className="p-1 text-red-500 hover:text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                  title={t('notifications.deleteAll')}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-y-auto flex-1">

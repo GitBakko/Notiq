@@ -34,7 +34,8 @@ async function notifyCollaborators(
   actorUserId: string,
   taskListId: string,
   type: 'TASK_ITEM_ADDED' | 'TASK_ITEM_CHECKED' | 'TASK_ITEM_REMOVED',
-  itemText: string
+  itemText: string,
+  extra?: { isChecked?: boolean }
 ): Promise<void> {
   const taskList = await prisma.taskList.findUnique({
     where: { id: taskListId },
@@ -71,6 +72,12 @@ async function notifyCollaborators(
 
   for (const recipientId of recipientIds) {
     try {
+      // Determine the correct localization key based on type and action
+      let locKeyName: string;
+      if (type === 'TASK_ITEM_ADDED') locKeyName = 'taskItemAdded';
+      else if (type === 'TASK_ITEM_REMOVED') locKeyName = 'taskItemRemoved';
+      else locKeyName = extra?.isChecked === false ? 'taskItemUnchecked' : 'taskItemChecked';
+
       await notificationService.createNotification(
         recipientId,
         type,
@@ -81,7 +88,7 @@ async function notifyCollaborators(
           taskListTitle: taskList.title,
           actorName,
           itemText,
-          localizationKey: `notifications.${type === 'TASK_ITEM_ADDED' ? 'taskItemAdded' : type === 'TASK_ITEM_CHECKED' ? 'taskItemChecked' : 'taskItemRemoved'}`,
+          localizationKey: `notifications.${locKeyName}`,
           localizationArgs: { userName: actorName, itemText, listTitle: taskList.title },
         }
       );
@@ -221,11 +228,16 @@ export const updateTaskItem = async (
 
   const existing = await prisma.taskItem.findUnique({
     where: { id: itemId },
-    select: { taskListId: true, isChecked: true, text: true },
+    select: { taskListId: true, isChecked: true, text: true, checkedByUserId: true },
   });
 
   if (!existing || existing.taskListId !== taskListId) {
     throw new Error('TaskItem not found');
+  }
+
+  // Only the user who checked the item can uncheck it
+  if (data.isChecked === false && existing.isChecked && existing.checkedByUserId && existing.checkedByUserId !== userId) {
+    throw new Error('Only the user who checked this item can uncheck it');
   }
 
   const updateData: any = {};
@@ -247,7 +259,7 @@ export const updateTaskItem = async (
   });
 
   if (data.isChecked !== undefined && data.isChecked !== existing.isChecked) {
-    await notifyCollaborators(userId, taskListId, 'TASK_ITEM_CHECKED', existing.text);
+    await notifyCollaborators(userId, taskListId, 'TASK_ITEM_CHECKED', existing.text, { isChecked: data.isChecked });
   }
 
   return item;

@@ -73,3 +73,9 @@ export const deleteNotification = async (id: string, userId: string) => {
     where: { id, userId },
   });
 };
+
+export const deleteAllNotifications = async (userId: string) => {
+  return prisma.notification.deleteMany({
+    where: { userId },
+  });
+};
