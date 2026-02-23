@@ -3,6 +3,7 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
+import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
 
 export const syncPull = async () => {
   try {
@@ -156,6 +157,93 @@ export const syncPull = async () => {
       console.error('Sync Pull Shared Notes Failed:', error);
     }
 
+    // --- Task Lists Pull ---
+    try {
+      const taskListsRes = await api.get<any[]>('/tasklists');
+      const serverTaskLists = taskListsRes.data;
+
+      await db.transaction('rw', db.taskLists, db.taskItems, async () => {
+        const dirtyTaskLists = await db.taskLists.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyTaskLists.map(tl => tl.id));
+
+        const taskListsToPut: LocalTaskList[] = serverTaskLists
+          .filter((tl: any) => !dirtyIds.has(tl.id))
+          .map((tl: any) => ({
+            ...tl,
+            ownership: 'owned' as const,
+            syncStatus: 'synced' as const,
+          }));
+
+        const serverIds = new Set(serverTaskLists.map((tl: any) => tl.id));
+        const allLocalSynced = await db.taskLists.where('syncStatus').equals('synced')
+          .filter(tl => tl.ownership !== 'shared').toArray();
+        const toDeleteIds = allLocalSynced
+          .filter(tl => !serverIds.has(tl.id))
+          .map(tl => tl.id);
+
+        if (toDeleteIds.length > 0) {
+          await db.taskLists.bulkDelete(toDeleteIds);
+          for (const tlId of toDeleteIds) {
+            await db.taskItems.where('taskListId').equals(tlId).delete();
+          }
+        }
+        if (taskListsToPut.length > 0) await db.taskLists.bulkPut(taskListsToPut);
+
+        // Sync items for each task list
+        for (const tl of taskListsToPut) {
+          if (tl.items && tl.items.length > 0) {
+            const itemsToPut = tl.items.map((item: any) => ({
+              ...item,
+              syncStatus: 'synced' as const,
+            }));
+            await db.taskItems.bulkPut(itemsToPut);
+          }
+        }
+      });
+    } catch (e) {
+      console.error('syncPull taskLists failed', e);
+    }
+
+    // --- Shared Task Lists Pull ---
+    try {
+      const sharedRes = await api.get<any[]>('/share/tasklists/accepted');
+      const sharedTaskLists = sharedRes.data;
+
+      await db.transaction('rw', db.taskLists, db.taskItems, async () => {
+        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: any) => ({
+          ...tl,
+          ownership: 'shared' as const,
+          sharedPermission: tl._sharedPermission,
+          syncStatus: 'synced' as const,
+        }));
+
+        const serverSharedIds = new Set(sharedMapped.map(tl => tl.id));
+        const allLocalShared = await db.taskLists
+          .filter(tl => tl.ownership === 'shared').toArray();
+        const toRemoveIds = allLocalShared.filter(tl => !serverSharedIds.has(tl.id)).map(tl => tl.id);
+        if (toRemoveIds.length > 0) {
+          await db.taskLists.bulkDelete(toRemoveIds);
+          for (const tlId of toRemoveIds) {
+            await db.taskItems.where('taskListId').equals(tlId).delete();
+          }
+        }
+
+        if (sharedMapped.length > 0) await db.taskLists.bulkPut(sharedMapped);
+
+        for (const tl of sharedMapped) {
+          if (tl.items && tl.items.length > 0) {
+            const itemsToPut = tl.items.map((item: any) => ({
+              ...item,
+              syncStatus: 'synced' as const,
+            }));
+            await db.taskItems.bulkPut(itemsToPut);
+          }
+        }
+      });
+    } catch (e) {
+      console.error('syncPull shared taskLists failed', e);
+    }
+
   } catch (error) {
     console.error('Sync Pull Failed:', error);
   }
@@ -215,6 +303,25 @@ export const syncPush = async () => {
           } else if (item.type === 'DELETE') {
             await api.delete(`/tags/${item.entityId}`);
           }
+        } else if (item.entity === 'TASK_LIST') {
+          if (item.type === 'CREATE') {
+            await api.post('/tasklists', { ...item.data, id: item.entityId });
+          } else if (item.type === 'UPDATE') {
+            await api.put(`/tasklists/${item.entityId}`, item.data);
+          } else if (item.type === 'DELETE') {
+            await api.delete(`/tasklists/${item.entityId}`);
+          }
+        } else if (item.entity === 'TASK_ITEM') {
+          if (item.type === 'CREATE') {
+            const taskListId = (item.data as any)?.taskListId;
+            await api.post(`/tasklists/${taskListId}/items`, { ...item.data, id: item.entityId });
+          } else if (item.type === 'UPDATE') {
+            const taskListId = (item.data as any)?.taskListId;
+            await api.put(`/tasklists/${taskListId}/items/${item.entityId}`, item.data);
+          } else if (item.type === 'DELETE') {
+            const taskListId = (item.data as any)?.taskListId;
+            await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
+          }
         }
 
         // If successful, remove from queue
@@ -248,13 +355,13 @@ export const syncPush = async () => {
               }
             } else if (item.entity === 'TAG') {
               // Tags might not have updatedAt? Interface says LocalTag has synced/created/updated.
-              // Let's check db.ts interface. 
+              // Let's check db.ts interface.
               // LocalTag: id, name, userId, syncStatus. No updatedAt?
-              // Looking at db.ts step 270: LocalTag interface... 
+              // Looking at db.ts step 270: LocalTag interface...
               // syncStatus, _count. No updatedAt!
               // So for tags, we might have to assume safe or check syncStatus != 'updated'?
               // If tag is 'updated', leave it.
-              // But createTag sets 'created'. 
+              // But createTag sets 'created'.
               // If we blindly set 'synced', we might overwrite 'updated'.
               // Better: check if syncStatus is NOT 'updated' or 'created' (wait, if we are processing, it WAS created/updated).
               // Actually, if we just check if there are pending items, that usually covers it.
@@ -263,6 +370,16 @@ export const syncPush = async () => {
               // Checking Step 270: LocalTag indeed NO updatedAt.
               // So we just update Tag.
               await db.tags.update(item.entityId, { syncStatus: 'synced' });
+            } else if (item.entity === 'TASK_LIST') {
+              const currentTaskList = await db.taskLists.get(item.entityId);
+              if (currentTaskList && new Date(currentTaskList.updatedAt).getTime() <= item.createdAt) {
+                await db.taskLists.update(item.entityId, { syncStatus: 'synced' });
+              }
+            } else if (item.entity === 'TASK_ITEM') {
+              const currentTaskItem = await db.taskItems.get(item.entityId);
+              if (currentTaskItem && new Date(currentTaskItem.updatedAt).getTime() <= item.createdAt) {
+                await db.taskItems.update(item.entityId, { syncStatus: 'synced' });
+              }
             }
           }
         }
