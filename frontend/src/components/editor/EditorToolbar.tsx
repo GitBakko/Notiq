@@ -235,7 +235,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
 
   return (
-    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap sm:flex-nowrap overflow-visible sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800 items-center">
+    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap overflow-visible sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800 items-center">
       {/* Online Users */}
       {users.length > 0 && (
         <div className="flex -space-x-2 mr-4 border-r pr-4 border-gray-200 dark:border-gray-700">
