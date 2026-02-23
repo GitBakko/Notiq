@@ -11,6 +11,17 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.3.0',
+    date: '2026-02-23',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.taskLists' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskListSharing' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskListNotifications' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskListDragDrop' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.remindersRename' },
+    ],
+  },
+  {
     version: '1.2.0',
     date: '2026-02-22',
     entries: [

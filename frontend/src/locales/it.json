@@ -635,6 +635,11 @@
       "vaultPermanentDelete": "Gli elementi del Vault vengono ora eliminati definitivamente",
       "attachmentRaceCondition": "Risolto il problema dell'immagine che riappariva dopo l'eliminazione dell'allegato",
       "lineHeightRefinement": "Interlinea predefinita ottimizzata per una migliore leggibilita'",
+      "taskLists": "Task List — Crea e gestisci liste di attività con elementi spuntabili, priorità e scadenze",
+      "taskListSharing": "Condivisione Task List — Condividi le liste con collaboratori via email o gruppi",
+      "taskListNotifications": "Notifiche Task List — Ricevi notifiche quando i collaboratori aggiungono, spuntano o rimuovono elementi",
+      "taskListDragDrop": "Riordinamento Drag & Drop — Riordina gli elementi trascinandoli nella posizione desiderata",
+      "remindersRename": "Sezione Promemoria — Attività rinominata in Promemoria per chiarezza",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

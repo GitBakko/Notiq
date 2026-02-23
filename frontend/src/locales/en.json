@@ -724,6 +724,11 @@
       "vaultPermanentDelete": "Vault items are now permanently deleted (no longer stuck in limbo)",
       "attachmentRaceCondition": "Fixed image reappearing after deleting attachment",
       "lineHeightRefinement": "Refined default line height for better readability",
+      "taskLists": "Task Lists — Create and manage task lists with checkable items, priorities, and due dates",
+      "taskListSharing": "Task List Sharing — Share task lists with collaborators via email or groups",
+      "taskListNotifications": "Task List Notifications — Get notified when collaborators add, check, or remove items",
+      "taskListDragDrop": "Drag & Drop Reordering — Reorder task items by dragging them into position",
+      "remindersRename": "Reminders section — Activities renamed to Reminders for clarity",
       "initialRelease": "Initial release with full feature set"
     }
   },
