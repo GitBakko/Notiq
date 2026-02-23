@@ -19,6 +19,7 @@ import ProfilePage from './features/user/ProfilePage';
 import VaultPage from './features/vault/VaultPage';
 import SharedWithMePage from './features/sharing/SharedWithMePage';
 import GroupsPage from './features/groups/GroupsPage';
+import TaskListsPage from './features/tasks/TaskListsPage';
 import RespondToShare from './pages/RespondToShare';
 
 import { Toaster } from 'react-hot-toast';
@@ -44,7 +45,7 @@ function App() {
           <Route path="notes" element={<NotesPage />} />
           <Route path="notebooks" element={<NotebooksPage />} />
           <Route path="reminders" element={<RemindersPage />} />
-          <Route path="tasks" element={<div>TaskListsPage placeholder</div>} />
+          <Route path="tasks" element={<TaskListsPage />} />
           <Route path="tags" element={<TagsPage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="settings" element={<SettingsPage />} />

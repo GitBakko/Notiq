@@ -456,6 +456,7 @@
   "sharing": {
     "title": "Condividi Nota",
     "titleNotebook": "Condividi Taccuino",
+    "titleTaskList": "Condividi Task List",
     "emailPlaceholder": "Inserisci indirizzo email",
     "read": "Lettura",
     "write": "Scrittura",

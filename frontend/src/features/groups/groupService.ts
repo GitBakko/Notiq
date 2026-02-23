@@ -89,3 +89,8 @@ export const shareNotebookWithGroup = async (notebookId: string, groupId: string
   const res = await api.post(`/share/notebooks/${notebookId}/group`, { groupId, permission });
   return res.data;
 };
+
+export const shareTaskListWithGroup = async (taskListId: string, groupId: string, permission: 'READ' | 'WRITE' = 'READ') => {
+  const res = await api.post(`/share/tasklists/${taskListId}/group`, { groupId, permission });
+  return res.data;
+};

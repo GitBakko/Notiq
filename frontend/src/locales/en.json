@@ -370,6 +370,7 @@
   "sharing": {
     "title": "Share Note",
     "titleNotebook": "Share Notebook",
+    "titleTaskList": "Share Task List",
     "emailPlaceholder": "Enter email address",
     "read": "Read",
     "write": "Write",
