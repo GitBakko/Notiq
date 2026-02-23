@@ -70,8 +70,8 @@ Notiq/
 │   │   ├── app.ts           # Server entry point
 │   │   └── hocuspocus.ts    # Yjs collab server
 │   ├── prisma/
-│   │   ├── schema.prisma    # 22 models, 8 enums
-│   │   └── migrations/      # 14 migrations
+│   │   ├── schema.prisma    # 27 models, 8 enums
+│   │   └── migrations/      # 17 migrations
 │   ├── prisma.config.js     # Prisma config (dotenv loader)
 │   ├── Dockerfile
 │   └── .env                 # DB, JWT, SMTP credentials (gitignored)
@@ -99,7 +99,7 @@ Notiq/
 | Cosa | Path |
 |------|------|
 | Server entry | `backend/src/app.ts` (port 3001, route + Hocuspocus su `/ws`) |
-| DB schema | `backend/prisma/schema.prisma` (22 modelli, 15 migrations) |
+| DB schema | `backend/prisma/schema.prisma` (27 modelli, 17 migrations) |
 | Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
 | Logger | `backend/src/utils/logger.ts` (Pino shared; nelle route usare `request.log`) |
@@ -165,10 +165,10 @@ Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` �
 - **Script deploy:** `deploy/pre-install.cmd` (stop + backup) e `deploy/post-install.cmd` (npm ci + prisma + start)
 - **Flusso:** build locale → zip → copia su server → pre-install → estrai → post-install → verifica
 
-### Prisma models (22) ed enums
+### Prisma models (27) ed enums
 
-**Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite, TaskList, TaskItem, SharedTaskList
-**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE/GROUP_INVITE/GROUP_REMOVE/TASK_ITEM_ADDED/TASK_ITEM_CHECKED/TASK_ITEM_REMOVED/TASK_LIST_SHARED), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL), TaskPriority (LOW/MEDIUM/HIGH)
+**Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite, TaskList, TaskItem, SharedTaskList, KanbanBoard, KanbanColumn, KanbanCard, KanbanComment, SharedKanbanBoard
+**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE/GROUP_INVITE/GROUP_REMOVE/TASK_ITEM_ADDED/TASK_ITEM_CHECKED/TASK_ITEM_REMOVED/TASK_LIST_SHARED/KANBAN_BOARD_SHARED/KANBAN_CARD_ASSIGNED/KANBAN_COMMENT_ADDED), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL), TaskPriority (LOW/MEDIUM/HIGH)
 
 ### Campi notevoli su User
 

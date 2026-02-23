@@ -132,6 +132,72 @@ export const revokeNoteShare = async (ownerId: string, noteId: string, targetUse
   });
 };
 
+/**
+ * Auto-share a note with specific users in the context of a Kanban board.
+ * Creates SharedNote records with ACCEPTED status (auto-accepted).
+ * Sends a confirmation email + in-app notification.
+ */
+export const autoShareNoteForBoard = async (
+  ownerId: string,
+  noteId: string,
+  targetUserIds: string[],
+  permission: Permission,
+  boardTitle: string
+): Promise<void> => {
+  const note = await prisma.note.findUnique({ where: { id: noteId }, select: { title: true, userId: true } });
+  if (!note) throw new Error('Note not found');
+  if (note.userId !== ownerId) throw new Error('Only the note owner can share it');
+
+  const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { name: true, email: true } });
+  const sharerName = owner?.name || owner?.email || '?';
+
+  for (const targetUserId of targetUserIds) {
+    if (targetUserId === ownerId) continue;
+
+    try {
+      await prisma.sharedNote.upsert({
+        where: { noteId_userId: { noteId, userId: targetUserId } },
+        update: { permission, status: 'ACCEPTED' },
+        create: { noteId, userId: targetUserId, permission, status: 'ACCEPTED' },
+      });
+
+      // In-app notification
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { email: true, name: true } });
+      if (targetUser) {
+        await notificationService.createNotification(
+          targetUserId,
+          'SHARE_NOTE',
+          'Note shared via Kanban',
+          `${sharerName} shared note "${note.title}" with you via board "${boardTitle}"`,
+          {
+            noteId,
+            noteTitle: note.title,
+            sharerName,
+            boardTitle,
+            status: 'ACCEPTED',
+            localizationKey: 'notifications.noteSharedViaKanban',
+            localizationArgs: { sharerName, noteTitle: note.title, boardTitle },
+          }
+        );
+
+        // Confirmation email
+        await emailService.sendNotificationEmail(
+          targetUser.email,
+          'SHARE_INVITATION',
+          {
+            sharerName,
+            itemName: note.title,
+            itemType: 'Note',
+            token: '', // No token needed, auto-accepted
+          }
+        ).catch((e) => logger.error(e, 'Failed to send auto-share email'));
+      }
+    } catch (err) {
+      logger.warn({ err, noteId, targetUserId }, 'Failed to auto-share note for board');
+    }
+  }
+};
+
 export const getAcceptedSharedNotes = async (userId: string) => {
   const shared = await prisma.sharedNote.findMany({
     where: { userId, status: 'ACCEPTED' },
@@ -401,7 +467,7 @@ export const respondToShare = async (token: string, action: 'accept' | 'decline'
 };
 
 
-export const respondToShareById = async (userId: string, itemId: string, type: 'NOTE' | 'NOTEBOOK', action: 'accept' | 'decline') => {
+export const respondToShareById = async (userId: string, itemId: string, type: 'NOTE' | 'NOTEBOOK' | 'KANBAN', action: 'accept' | 'decline') => {
   const status = action === 'accept' ? 'ACCEPTED' : 'DECLINED';
 
   let result;
@@ -438,13 +504,39 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
       data: { status },
       include: { notebook: { include: { user: true } }, user: true }
     });
+  } else if (type === 'KANBAN') {
+    const existing = await prisma.sharedKanbanBoard.findUnique({
+      where: { boardId_userId: { boardId: itemId, userId } }
+    });
+    if (!existing) throw new Error('Invitation not found');
+
+    result = await prisma.sharedKanbanBoard.update({
+      where: {
+        boardId_userId: {
+          boardId: itemId,
+          userId,
+        },
+      },
+      data: { status },
+      include: { board: { include: { owner: true } }, user: true }
+    });
   }
 
   // Notify Owner
   if (result) {
-    const owner = type === 'NOTE' ? (result as any).note.user : (result as any).notebook.user;
+    let owner: any;
+    let itemName: string;
+    if (type === 'NOTE') {
+      owner = (result as any).note.user;
+      itemName = (result as any).note.title;
+    } else if (type === 'NOTEBOOK') {
+      owner = (result as any).notebook.user;
+      itemName = (result as any).notebook.name;
+    } else {
+      owner = (result as any).board.owner;
+      itemName = (result as any).board.title;
+    }
     const responder = (result as any).user;
-    const itemName = type === 'NOTE' ? (result as any).note.title : (result as any).notebook.name;
 
     if (owner) {
       await emailService.sendNotificationEmail(
@@ -477,4 +569,85 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
   }
 
   return { success: true, status };
+};
+
+// ─── Kanban Board Sharing ───────────────────────────────────
+
+export const shareKanbanBoard = async (
+  ownerId: string,
+  boardId: string,
+  email: string,
+  permission: Permission = 'READ'
+) => {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { title: true, ownerId: true },
+  });
+  if (!board) throw new Error('Board not found');
+  if (board.ownerId !== ownerId) throw new Error('Not the owner');
+
+  const targetUser = await prisma.user.findUnique({ where: { email } });
+  if (!targetUser) throw new Error('User not found');
+  if (targetUser.id === ownerId) throw new Error('Cannot share with yourself');
+
+  const share = await prisma.sharedKanbanBoard.upsert({
+    where: { boardId_userId: { boardId, userId: targetUser.id } },
+    update: { permission, status: 'PENDING' },
+    create: { boardId, userId: targetUser.id, permission, status: 'PENDING' },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+
+  const sharer = await prisma.user.findUnique({
+    where: { id: ownerId },
+    select: { name: true, email: true },
+  });
+  const sharerName = sharer?.name || sharer?.email || 'Someone';
+
+  await notificationService.createNotification(
+    targetUser.id,
+    'KANBAN_BOARD_SHARED',
+    'Board Shared',
+    `${sharerName} shared "${board.title}" with you`,
+    {
+      boardId,
+      boardTitle: board.title,
+      sharerName,
+      localizationKey: 'notifications.kanbanBoardShared',
+      localizationArgs: { sharerName, itemName: board.title },
+    }
+  );
+
+  try {
+    await emailService.sendNotificationEmail(email, 'SHARE_INVITATION', {
+      sharerName,
+      itemName: board.title,
+      itemType: 'kanban board',
+    });
+  } catch {
+    // Email failure should not block sharing
+  }
+
+  return share;
+};
+
+export const revokeKanbanBoardShare = async (
+  ownerId: string,
+  boardId: string,
+  targetUserId: string
+) => {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { ownerId: true },
+  });
+  if (!board) throw new Error('Board not found');
+  if (board.ownerId !== ownerId) throw new Error('Not the owner');
+
+  try {
+    await prisma.sharedKanbanBoard.delete({
+      where: { boardId_userId: { boardId, userId: targetUserId } },
+    });
+  } catch {
+    // Record may not exist — treat as success
+  }
+  return { success: true };
 };

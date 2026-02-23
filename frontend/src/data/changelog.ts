@@ -11,6 +11,19 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.4.0',
+    date: '2026-02-23',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanBoards' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanCoverImages' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanPresence' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanChat' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanSharing' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.notificationLinks' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.chatTieredNotifications' },
+    ],
+  },
+  {
     version: '1.3.0',
     date: '2026-02-23',
     entries: [

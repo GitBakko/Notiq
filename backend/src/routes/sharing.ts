@@ -4,6 +4,7 @@ import * as sharingService from '../services/sharing.service';
 import * as taskListSharingService from '../services/tasklist-sharing.service';
 import * as taskListService from '../services/tasklist.service';
 import { Permission } from '@prisma/client';
+import prisma from '../plugins/prisma';
 
 const shareSchema = z.object({
   email: z.string().email(),
@@ -17,7 +18,7 @@ const respondSchema = z.object({
 
 const respondByIdSchema = z.object({
   itemId: z.string().uuid(),
-  type: z.enum(['NOTE', 'NOTEBOOK', 'TASKLIST']),
+  type: z.enum(['NOTE', 'NOTEBOOK', 'TASKLIST', 'KANBAN']),
   action: z.enum(['accept', 'decline']),
 });
 
@@ -57,6 +58,10 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       if (type === 'TASKLIST') {
         const result = await taskListSharingService.respondToTaskListShareById(request.user.id, itemId, action);
+        return result;
+      }
+      if (type === 'KANBAN') {
+        const result = await sharingService.respondToShareById(request.user.id, itemId, 'KANBAN', action);
         return result;
       }
       const result = await sharingService.respondToShareById(request.user.id, itemId, type, action);
@@ -269,5 +274,50 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   // Get Accepted Shared Task Lists (for sync)
   fastify.get('/tasklists/accepted', async (request) => {
     return taskListService.getAcceptedSharedTaskLists(request.user.id);
+  });
+
+  // ── Kanban Board Sharing ────────────────────────────────────
+
+  // Share Kanban Board
+  fastify.post('/kanbans/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { email, permission } = shareSchema.parse(request.body);
+      const result = await sharingService.shareKanbanBoard(request.user.id, id, email, permission);
+      return result;
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Board not found') return reply.status(404).send({ message: msg });
+      if (msg === 'Not the owner') return reply.status(403).send({ message: msg });
+      if (msg === 'User not found') return reply.status(404).send({ message: msg });
+      if (msg === 'Cannot share with yourself') return reply.status(400).send({ message: msg });
+      throw error;
+    }
+  });
+
+  // Revoke Kanban Board Share
+  fastify.delete('/kanbans/:id/:userId', async (request, reply) => {
+    const { id, userId } = request.params as { id: string; userId: string };
+    await sharingService.revokeKanbanBoardShare(request.user.id, id, userId);
+    return { success: true };
+  });
+
+  // Get Shared Kanban Boards (all statuses)
+  fastify.get('/kanbans', async (request) => {
+    const shares = await prisma.sharedKanbanBoard.findMany({
+      where: { userId: request.user.id },
+      include: {
+        board: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            ownerId: true,
+            owner: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+    return shares;
   });
 }

@@ -56,6 +56,15 @@ model User {
   taskLists        TaskList[]
   sharedTaskLists  SharedTaskList[]
   checkedTaskItems TaskItem[]     @relation("CheckedTaskItems")
+
+  // Kanban
+  kanbanBoards         KanbanBoard[]       @relation("KanbanOwner")
+  kanbanAssignedCards  KanbanCard[]        @relation("KanbanAssignee")
+  kanbanComments       KanbanComment[]     @relation("KanbanCommentAuthor")
+  sharedKanbanBoards   SharedKanbanBoard[] @relation("KanbanBoardShares")
+  kanbanBoardChats     KanbanBoardChat[]   @relation("KanbanBoardChatAuthor")
+  kanbanCardActivities KanbanCardActivity[] @relation("KanbanActivityUser")
+  kanbanLinkedCards     KanbanCard[]         @relation("KanbanNoteLinker")
 }
 
 enum Role {
@@ -124,6 +133,8 @@ model Note {
   noteType    NoteType @default(NOTE)
   ydocState   Bytes?   // Yjs binary state for CRDT-safe collaboration
   searchVector Unsupported("tsvector")?
+
+  kanbanCards  KanbanCard[]
 
   @@index([userId, isTrashed])
   @@index([notebookId])
@@ -237,6 +248,9 @@ enum NotificationType {
   TASK_ITEM_CHECKED
   TASK_ITEM_REMOVED
   TASK_LIST_SHARED
+  KANBAN_BOARD_SHARED
+  KANBAN_CARD_ASSIGNED
+  KANBAN_COMMENT_ADDED
 }
 
 model PushSubscription {
@@ -383,4 +397,123 @@ model SharedTaskList {
 
   @@unique([taskListId, userId])
   @@index([userId, status])
+}
+
+// ─── Kanban ──────────────────────────────────────────────────
+
+model KanbanBoard {
+  id          String              @id @default(uuid())
+  title       String
+  description String?
+  coverImage  String?
+  ownerId     String
+  owner       User                @relation("KanbanOwner", fields: [ownerId], references: [id])
+  columns     KanbanColumn[]
+  shares      SharedKanbanBoard[]
+  chatMessages KanbanBoardChat[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([ownerId])
+}
+
+model KanbanColumn {
+  id       String       @id @default(uuid())
+  title    String
+  position Int
+  boardId  String
+  board    KanbanBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards    KanbanCard[]
+
+  @@index([boardId])
+}
+
+model KanbanCard {
+  id          String          @id @default(uuid())
+  title       String
+  description String?
+  position    Int
+  columnId    String
+  column      KanbanColumn    @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?           @relation("KanbanAssignee", fields: [assigneeId], references: [id])
+  dueDate     DateTime?
+  noteId          String?
+  note            Note?           @relation(fields: [noteId], references: [id])
+  noteLinkedById  String?
+  noteLinkedBy    User?           @relation("KanbanNoteLinker", fields: [noteLinkedById], references: [id])
+  comments        KanbanComment[]
+  activities      KanbanCardActivity[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([columnId])
+  @@index([assigneeId])
+  @@index([noteId])
+}
+
+model KanbanComment {
+  id        String     @id @default(uuid())
+  content   String
+  cardId    String
+  card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User       @relation("KanbanCommentAuthor", fields: [authorId], references: [id])
+  createdAt DateTime   @default(now())
+
+  @@index([cardId])
+}
+
+model SharedKanbanBoard {
+  id         String      @id @default(uuid())
+  boardId    String
+  board      KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User        @relation("KanbanBoardShares", fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission  @default(READ)
+  status     ShareStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+
+  @@unique([boardId, userId])
+  @@index([userId, status])
+}
+
+model KanbanBoardChat {
+  id        String      @id @default(uuid())
+  boardId   String
+  board     KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User        @relation("KanbanBoardChatAuthor", fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime    @default(now())
+
+  @@index([boardId])
+}
+
+enum KanbanCardAction {
+  CREATED
+  MOVED
+  UPDATED
+  ASSIGNED
+  UNASSIGNED
+  DUE_DATE_SET
+  DUE_DATE_REMOVED
+  NOTE_LINKED
+  NOTE_UNLINKED
+  DELETED
+}
+
+model KanbanCardActivity {
+  id             String           @id @default(uuid())
+  cardId         String
+  card           KanbanCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation("KanbanActivityUser", fields: [userId], references: [id])
+  action         KanbanCardAction
+  fromColumnTitle String?
+  toColumnTitle   String?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  @@index([cardId, createdAt])
 }

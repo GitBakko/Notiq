@@ -82,7 +82,8 @@
     "search": "Cerca",
     "externalSources": "Fonti Esterne",
     "importEvernote": "Evernote (.enex)",
-    "groups": "Gruppi"
+    "groups": "Gruppi",
+    "kanban": "Kanban"
   },
   "settings": {
     "appearance": "Aspetto",
@@ -487,6 +488,7 @@
     "noSharedNotes": "Nessuna nota condivisa con te",
     "noSharedNotebooks": "Nessun taccuino condiviso con te",
     "noSharedTaskLists": "Nessuna task list condivisa",
+    "noSharedKanbanBoards": "Nessuna board kanban condivisa con te",
     "sharedBy": "Condiviso da",
     "share": "Condividi",
     "acceptedRedirect": "Invito accettato! Reindirizzamento in corso...",
@@ -641,6 +643,13 @@
       "taskListNotifications": "Notifiche Task List — Ricevi notifiche quando i collaboratori aggiungono, spuntano o rimuovono elementi",
       "taskListDragDrop": "Riordinamento Drag & Drop — Riordina gli elementi trascinandoli nella posizione desiderata",
       "remindersRename": "Sezione Promemoria — Attività rinominata in Promemoria per chiarezza",
+      "kanbanBoards": "Kanban Board — Gestione visuale dei progetti con colonne, card e drag & drop",
+      "kanbanCoverImages": "Immagini di copertina — Personalizza le board con immagini di copertina",
+      "kanbanPresence": "Presenza nelle board — Vedi chi sta visualizzando la board in tempo reale",
+      "kanbanChat": "Chat nelle board — Messaggistica in tempo reale con i collaboratori della board",
+      "kanbanSharing": "Condivisione board — Condividi le board kanban e accetta gli inviti",
+      "notificationLinks": "Notifiche cliccabili — Le notifiche ora puntano direttamente all'elemento pertinente",
+      "chatTieredNotifications": "Notifiche chat intelligenti — Suono, badge, in-app o email in base alla tua attivita'",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -677,7 +686,15 @@
     "taskItemRemoved": "{{userName}} ha rimosso \"{{itemText}}\" da {{listTitle}}",
     "taskItemRemoved_TITLE": "Elemento Rimosso",
     "taskListShared": "{{sharerName}} ha condiviso la lista \"{{listTitle}}\" con te",
-    "taskListShared_TITLE": "Task List Condivisa"
+    "taskListShared_TITLE": "Task List Condivisa",
+    "kanbanBoardShared": "{{sharerName}} ha condiviso la board \"{{itemName}}\" con te",
+    "kanbanBoardShared_TITLE": "Board Condivisa",
+    "kanbanCardAssigned": "{{assignerName}} ti ha assegnato a \"{{cardTitle}}\" nella board \"{{boardTitle}}\"",
+    "kanbanCardAssigned_TITLE": "Card Assegnata",
+    "kanbanCommentAdded": "{{authorName}} ha commentato \"{{cardTitle}}\" nella board \"{{boardTitle}}\"",
+    "kanbanCommentAdded_TITLE": "Nuovo Commento",
+    "noteSharedViaKanban": "{{sharerName}} ha condiviso la nota \"{{noteTitle}}\" con te tramite la board \"{{boardTitle}}\"",
+    "noteSharedViaKanban_TITLE": "Nota Condivisa tramite Board"
   },
   "groups": {
     "title": "Gruppi",
@@ -717,6 +734,119 @@
     "cannotAddSelf": "Non puoi aggiungere te stesso a un gruppo",
     "avatarUpdated": "Avatar del gruppo aggiornato",
     "avatarUpdateFailed": "Impossibile aggiornare l'avatar del gruppo"
+  },
+  "kanban": {
+    "title": "Kanban",
+    "newBoard": "Nuova Board",
+    "boardTitle": "Titolo board",
+    "boardDescription": "Descrizione (opzionale)",
+    "noBoards": "Nessuna board. Crea la tua prima!",
+    "deleteBoard": "Elimina board",
+    "deleteBoardConfirm": "Eliminare questa board e tutte le sue card?",
+    "sharedBoard": "Condivisa",
+    "columns": "colonne",
+    "cards": "card",
+    "column": {
+      "todo": "Da fare",
+      "inProgress": "In corso",
+      "done": "Completato",
+      "addColumn": "Aggiungi colonna",
+      "columnTitle": "Titolo colonna",
+      "deleteColumn": "Elimina colonna",
+      "deleteConfirm": "Eliminare questa colonna?",
+      "hasCards": "Sposta o elimina tutte le card prima di rimuovere questa colonna."
+    },
+    "card": {
+      "addCard": "Aggiungi card",
+      "cardTitle": "Titolo card",
+      "untitled": "Card senza titolo",
+      "assignee": "Assegnatario",
+      "unassigned": "Non assegnato",
+      "assigneeEmail": "Email assegnatario",
+      "dueDate": "Scadenza",
+      "overdue": "Scaduta",
+      "linkedNote": "Nota collegata",
+      "selectNote": "Seleziona una nota...",
+      "noDescription": "Nessuna descrizione",
+      "description": "Descrizione",
+      "deleteConfirm": "Eliminare questa card?",
+      "deleteCard": "Elimina card"
+    },
+    "comment": {
+      "placeholder": "Scrivi un commento...",
+      "send": "Invia",
+      "noComments": "Nessun commento.",
+      "comments": "Commenti"
+    },
+    "stats": {
+      "columns": "{{count}} colonne",
+      "cards": "{{count}} card"
+    },
+    "share": {
+      "title": "Condividi Board",
+      "permissions": {
+        "READ": "Può visualizzare",
+        "WRITE": "Può modificare"
+      },
+      "emailPlaceholder": "Indirizzo email",
+      "shareSuccess": "Board condivisa con successo",
+      "shareFailed": "Impossibile condividere la board",
+      "userNotFound": "Utente non trovato",
+      "revoked": "Accesso revocato",
+      "revokeFailed": "Impossibile revocare l'accesso",
+      "sharedWith": "Condivisa con",
+      "noOne": "Non ancora condivisa con nessuno"
+    },
+    "sharedWithMe": "Condivise con me",
+    "ownerLabel": "Proprietario: {{name}}",
+    "cover": {
+      "add": "Aggiungi immagine di copertina",
+      "change": "Cambia copertina",
+      "remove": "Rimuovi copertina",
+      "uploadError": "Errore nel caricamento della copertina"
+    },
+    "chat": {
+      "title": "Chat Board",
+      "chatWith": "Chat con {{name}}",
+      "chatWithMany": "Chat — {{count}} partecipanti",
+      "placeholder": "Scrivi un messaggio...",
+      "empty": "Nessun messaggio. Inizia la conversazione!",
+      "you": "Tu"
+    },
+    "presence": {
+      "you": "Tu",
+      "online": "{{count}} online"
+    },
+    "activity": {
+      "title": "Attività",
+      "noActivity": "Nessuna attività.",
+      "CREATED": "ha creato questa card in {{column}}",
+      "MOVED": "spostata da {{from}} a {{to}}",
+      "ASSIGNED": "assegnata a {{assignee}}",
+      "UNASSIGNED": "rimosso assegnatario",
+      "DUE_DATE_SET": "scadenza impostata al {{date}}",
+      "DUE_DATE_REMOVED": "scadenza rimossa",
+      "UPDATED": "aggiornato {{field}}",
+      "NOTE_LINKED": "collegata nota \"{{noteTitle}}\"",
+      "NOTE_UNLINKED": "scollegata nota \"{{noteTitle}}\"",
+      "DELETED": "card eliminata",
+      "fieldTitle": "titolo",
+      "fieldDescription": "descrizione"
+    },
+    "noteLink": {
+      "pickerTitle": "Collega una Nota",
+      "searchPlaceholder": "Cerca note per titolo o contenuto...",
+      "untitledNote": "Nota senza titolo",
+      "noResults": "Nessuna nota trovata",
+      "typeToSearch": "Digita per cercare le tue note",
+      "linkNote": "Collega nota",
+      "unlink": "Scollega nota",
+      "goToBoard": "Vai alla board: {{boardTitle}}",
+      "sharingGapTitle": "Condividi Nota con i Membri della Board",
+      "usersWithAccess": "Hanno gia' accesso",
+      "usersWithoutAccess": "Riceveranno accesso",
+      "confirmLink": "Collega e Condividi"
+    }
   },
   "encryption": {
     "locked": "Contenuto Criptato",

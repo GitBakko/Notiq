@@ -20,6 +20,7 @@ import VaultPage from './features/vault/VaultPage';
 import SharedWithMePage from './features/sharing/SharedWithMePage';
 import GroupsPage from './features/groups/GroupsPage';
 import TaskListsPage from './features/tasks/TaskListsPage';
+import KanbanPage from './features/kanban/KanbanPage';
 import RespondToShare from './pages/RespondToShare';
 
 import { Toaster } from 'react-hot-toast';
@@ -46,6 +47,7 @@ function App() {
           <Route path="notebooks" element={<NotebooksPage />} />
           <Route path="reminders" element={<RemindersPage />} />
           <Route path="tasks" element={<TaskListsPage />} />
+          <Route path="kanban" element={<KanbanPage />} />
           <Route path="tags" element={<TagsPage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="settings" element={<SettingsPage />} />

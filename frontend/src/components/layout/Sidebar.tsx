@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, Bell, ListChecks, XCircle, UserPen } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, Bell, ListChecks, Kanban, XCircle, UserPen } from 'lucide-react';
 import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useNotebooks } from '../../hooks/useNotebooks';
@@ -127,6 +127,7 @@ export default function Sidebar() {
     { icon: FileText, label: t('sidebar.notes'), path: '/notes' },
     { icon: Bell, label: t('sidebar.reminders'), path: '/reminders' },
     { icon: ListChecks, label: t('sidebar.taskLists'), path: '/tasks' },
+    { icon: Kanban, label: t('sidebar.kanban'), path: '/kanban' },
     // Notebooks is handled separately
     { icon: Users, label: t('sharing.sharedWithMe'), path: '/shared' },
     { icon: Orbit, label: t('groups.title'), path: '/groups' },

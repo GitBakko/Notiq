@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare, ListChecks } from 'lucide-react';
+import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare, ListChecks, Kanban } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { Notification } from './notificationService';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +10,49 @@ interface NotificationItemProps {
   notification: Notification;
   onRead: (id: string) => void;
   onDelete: (id: string) => void;
+  onClose?: () => void;
+}
+
+/** Resolve a contextual URL for the notification, or null if no navigation target */
+function getNotificationUrl(notification: Notification): string | null {
+  const data = notification.data || {};
+
+  switch (notification.type) {
+    case 'SHARE_NOTE':
+      return data.noteId ? `/notes?noteId=${data.noteId}` : '/shared';
+    case 'SHARE_NOTEBOOK':
+      return data.notebookId ? `/notes?notebookId=${data.notebookId}` : '/shared';
+    case 'CHAT_MESSAGE':
+      return data.noteId ? `/notes?noteId=${data.noteId}` : null;
+    case 'GROUP_INVITE':
+    case 'GROUP_REMOVE':
+      return '/groups';
+    case 'TASK_LIST_SHARED':
+      return '/shared';
+    case 'TASK_ITEM_ADDED':
+    case 'TASK_ITEM_CHECKED':
+    case 'TASK_ITEM_REMOVED':
+      return '/tasks';
+    case 'KANBAN_BOARD_SHARED':
+      return data.boardId ? `/kanban?boardId=${data.boardId}` : '/shared';
+    case 'KANBAN_CARD_ASSIGNED':
+    case 'KANBAN_COMMENT_ADDED':
+      return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';
+    case 'SYSTEM': {
+      // Share responses
+      if (data.localizationKey?.includes('shareResponse')) {
+        if (data.type === 'NOTE' && data.itemId) return `/notes?noteId=${data.itemId}`;
+        if (data.type === 'NOTEBOOK' && data.itemId) return `/notes?notebookId=${data.itemId}`;
+        if (data.type === 'TASKLIST') return '/tasks';
+        if (data.type === 'KANBAN' && data.itemId) return `/kanban?boardId=${data.itemId}`;
+      }
+      // Group events
+      if (data.localizationKey?.includes('group')) return '/groups';
+      return null;
+    }
+    default:
+      return null;
+  }
 }
 
 /** Map notification type → i18n key (for old notifications without localizationKey) */
@@ -21,6 +65,9 @@ const TYPE_TO_KEY: Record<string, string> = {
   TASK_ITEM_REMOVED: 'notifications.taskItemRemoved',
   GROUP_INVITE: 'notifications.groupInvite',
   GROUP_REMOVE: 'notifications.groupRemove',
+  KANBAN_BOARD_SHARED: 'notifications.kanbanBoardShared',
+  KANBAN_CARD_ASSIGNED: 'notifications.kanbanCardAssigned',
+  KANBAN_COMMENT_ADDED: 'notifications.kanbanCommentAdded',
 };
 
 /** Normalize localization args — handles old notifications with mismatched field names */
@@ -60,12 +107,27 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   // memberEmail — used by groupMemberJoined
   if (src.memberEmail) args.memberEmail = src.memberEmail;
 
+  // Kanban — assignerName, cardTitle, boardTitle, authorName
+  if (src.assignerName) args.assignerName = src.assignerName;
+  if (src.cardTitle) args.cardTitle = src.cardTitle;
+  if (src.boardTitle) args.boardTitle = src.boardTitle;
+  if (src.authorName) args.authorName = src.authorName;
+
   return args;
 }
 
-export default function NotificationItem({ notification, onRead, onDelete }: NotificationItemProps) {
+export default function NotificationItem({ notification, onRead, onDelete, onClose }: NotificationItemProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const dateLocale = i18n.language?.startsWith('it') ? itLocale : enUS;
+  const targetUrl = getNotificationUrl(notification);
+
+  function handleClick(): void {
+    if (!targetUrl) return;
+    if (!notification.isRead) onRead(notification.id);
+    onClose?.();
+    navigate(targetUrl);
+  }
 
   const getIcon = () => {
     switch (notification.type) {
@@ -84,6 +146,10 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
       case 'TASK_ITEM_REMOVED':
       case 'TASK_LIST_SHARED':
         return <ListChecks size={16} className="text-emerald-500" />;
+      case 'KANBAN_BOARD_SHARED':
+      case 'KANBAN_CARD_ASSIGNED':
+      case 'KANBAN_COMMENT_ADDED':
+        return <Kanban size={16} className="text-purple-500" />;
       case 'SYSTEM':
       default:
         return <Info size={16} className="text-gray-500" />;
@@ -114,10 +180,14 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
   }
 
   return (
-    <div className={clsx(
-      "p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group relative",
-      !notification.isRead && "bg-blue-50/50 dark:bg-blue-900/10"
-    )}>
+    <div
+      onClick={handleClick}
+      className={clsx(
+        "p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group relative",
+        !notification.isRead && "bg-blue-50/50 dark:bg-blue-900/10",
+        targetUrl && "cursor-pointer"
+      )}
+    >
       <div className="flex gap-3">
         <div className="mt-1 flex-shrink-0">
           {getIcon()}

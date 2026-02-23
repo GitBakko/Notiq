@@ -1,0 +1,712 @@
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  DndContext,
+  closestCenter,
+  pointerWithin,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  type CollisionDetection,
+  DragOverlay,
+} from '@dnd-kit/core';
+import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
+import { ArrowLeft, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X } from 'lucide-react';
+import clsx from 'clsx';
+import toast from 'react-hot-toast';
+import { useKanbanBoard } from './hooks/useKanbanBoard';
+import { useKanbanMutations } from './hooks/useKanbanMutations';
+import { useKanbanRealtime } from './hooks/useKanbanRealtime';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
+import KanbanColumn from './components/KanbanColumn';
+import KanbanCard from './components/KanbanCard';
+import CardDetailModal from './components/CardDetailModal';
+import ShareBoardModal from './components/ShareBoardModal';
+import BoardChatSidebar from './components/BoardChatSidebar';
+import type { KanbanCard as KanbanCardType } from './types';
+
+interface KanbanBoardPageProps {
+  boardId: string;
+}
+
+export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const { toggleSidebar } = useUIStore();
+  const user = useAuthStore((s) => s.user);
+
+  const { data: board, isLoading } = useKanbanBoard(boardId);
+  const mutations = useKanbanMutations(boardId);
+
+  // Subscribe to SSE real-time updates + presence
+  const { presenceUsers, highlightedCardIds: realtimeHighlights } = useKanbanRealtime(boardId);
+
+  // Parse ?highlightCards=id1,id2 from URL (used when navigating from NoteEditor)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [urlHighlightIds, setUrlHighlightIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const raw = searchParams.get('highlightCards');
+    if (!raw) return;
+    const ids = raw.split(',').filter(Boolean);
+    if (ids.length === 0) return;
+
+    setUrlHighlightIds(new Set(ids));
+
+    // Remove param from URL so it doesn't persist on refresh
+    searchParams.delete('highlightCards');
+    setSearchParams(searchParams, { replace: true });
+
+    // Auto-clear after 3s
+    const timer = setTimeout(() => setUrlHighlightIds(new Set()), 3000);
+    return () => clearTimeout(timer);
+  }, []); // Run once on mount
+
+  // Merge SSE highlights + URL-based highlights
+  const highlightedCardIds = useMemo(() => {
+    if (urlHighlightIds.size === 0) return realtimeHighlights;
+    const merged = new Set(realtimeHighlights);
+    for (const id of urlHighlightIds) merged.add(id);
+    return merged;
+  }, [realtimeHighlights, urlHighlightIds]);
+
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [showBoardMenu, setShowBoardMenu] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState('');
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  // ── DnD multi-container state ──────────────────────────────────
+  // Local copy of columns that can be mutated during drag for smooth cross-column moves
+  const [localColumns, setLocalColumns] = useState(board?.columns ?? []);
+  const [isMoveInFlight, setIsMoveInFlight] = useState(false);
+
+  // Sync local columns with server data when not dragging and no mutation in progress
+  useEffect(() => {
+    if (board?.columns && !activeCardId && !isMoveInFlight) {
+      setLocalColumns(board.columns);
+    }
+  }, [board?.columns, activeCardId, isMoveInFlight]);
+
+  const columnIds = useMemo(() => localColumns.map((c) => c.id), [localColumns]);
+
+  /** Find which column contains the given card or column ID */
+  const findColumnId = useCallback(
+    (id: string): string | undefined => {
+      if (columnIds.includes(id)) return id;
+      return localColumns.find((col) => col.cards.some((c) => c.id === id))?.id;
+    },
+    [localColumns, columnIds],
+  );
+
+  /** Custom collision detection: pointer-based for columns, closest-center for cards */
+  const kanbanCollisionDetection: CollisionDetection = useCallback(
+    (args) => {
+      // Find columns the pointer is inside
+      const columnContainers = args.droppableContainers.filter((c) =>
+        columnIds.includes(c.id as string),
+      );
+      const pointerCollisions = pointerWithin({
+        ...args,
+        droppableContainers: columnContainers,
+      });
+
+      if (pointerCollisions.length > 0) {
+        const targetColumnId = pointerCollisions[0].id as string;
+        // Find the closest card within that column
+        const targetColumn = localColumns.find((c) => c.id === targetColumnId);
+        const cardContainers = args.droppableContainers.filter((c) =>
+          targetColumn?.cards.some((card) => card.id === c.id),
+        );
+
+        if (cardContainers.length > 0) {
+          const cardCollisions = closestCenter({
+            ...args,
+            droppableContainers: cardContainers,
+          });
+          if (cardCollisions.length > 0) return cardCollisions;
+        }
+        // Empty column — return column itself
+        return pointerCollisions;
+      }
+
+      // Fallback: closest center across all droppables
+      return closestCenter(args);
+    },
+    [columnIds, localColumns],
+  );
+  // ── End DnD multi-container state ──────────────────────────────
+
+  const isOwner = board?.ownerId === user?.id;
+  const readOnly = !isOwner && board?.shares?.every((s) => s.permission === 'READ');
+  const isShared = board && (board.shares?.some((s) => s.status === 'ACCEPTED') || false);
+
+  // Clear unread when chat opens
+  const handleChatToggle = useCallback(() => {
+    setIsChatOpen((prev) => {
+      if (!prev) setUnreadCount(0);
+      return !prev;
+    });
+  }, []);
+
+  // Find selected card across all columns
+  const selectedCard = useMemo(() => {
+    if (!selectedCardId || !board) return null;
+    for (const col of board.columns) {
+      const card = col.cards.find((c) => c.id === selectedCardId);
+      if (card) return card;
+    }
+    return null;
+  }, [selectedCardId, board]);
+
+  // Find active card for DragOverlay (search localColumns so it works during cross-column drag)
+  const activeCard = useMemo(() => {
+    if (!activeCardId) return null;
+    for (const col of localColumns) {
+      const card = col.cards.find((c) => c.id === activeCardId);
+      if (card) return card;
+    }
+    return null;
+  }, [activeCardId, localColumns]);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveCardId(event.active.id as string);
+  }, []);
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+
+      const activeId = active.id as string;
+      const overId = over.id as string;
+
+      const activeColId = findColumnId(activeId);
+      const overColId = findColumnId(overId);
+
+      // Only handle cross-column moves (same-column reorder is handled by SortableContext)
+      if (!activeColId || !overColId || activeColId === overColId) return;
+
+      setLocalColumns((prev) => {
+        const srcCol = prev.find((c) => c.id === activeColId);
+        const dstCol = prev.find((c) => c.id === overColId);
+        if (!srcCol || !dstCol) return prev;
+
+        const card = srcCol.cards.find((c) => c.id === activeId);
+        if (!card) return prev;
+
+        // Build destination cards list without the active card
+        const dstCards = [...dstCol.cards]
+          .filter((c) => c.id !== activeId)
+          .sort((a, b) => a.position - b.position);
+
+        // Insert at the over-item position, or at end for column drop target
+        let insertIdx: number;
+        if (overId === overColId) {
+          insertIdx = dstCards.length;
+        } else {
+          const idx = dstCards.findIndex((c) => c.id === overId);
+          insertIdx = idx >= 0 ? idx : dstCards.length;
+        }
+        dstCards.splice(insertIdx, 0, card);
+
+        return prev.map((col) => {
+          if (col.id === activeColId) {
+            return { ...col, cards: col.cards.filter((c) => c.id !== activeId) };
+          }
+          if (col.id === overColId) {
+            return { ...col, cards: dstCards.map((c, i) => ({ ...c, position: i })) };
+          }
+          return col;
+        });
+      });
+    },
+    [findColumnId],
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveCardId(null);
+
+      if (!over || !board) return;
+
+      const cardId = active.id as string;
+      const overId = over.id as string;
+
+      // Find the column the card is in now (localColumns, after any onDragOver moves)
+      const currentColId = findColumnId(cardId);
+      if (!currentColId) return;
+
+      const currentCol = localColumns.find((c) => c.id === currentColId);
+      if (!currentCol) return;
+
+      const sortedCards = [...currentCol.cards].sort((a, b) => a.position - b.position);
+
+      // Same-column reorder (onDragOver didn't fire — same container)
+      const overColId = findColumnId(overId);
+      if (currentColId === overColId && overId !== currentColId) {
+        const oldIdx = sortedCards.findIndex((c) => c.id === cardId);
+        const newIdx = sortedCards.findIndex((c) => c.id === overId);
+
+        if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
+          const reordered = arrayMove(sortedCards, oldIdx, newIdx);
+          setLocalColumns((prev) =>
+            prev.map((col) =>
+              col.id === currentColId
+                ? { ...col, cards: reordered.map((c, i) => ({ ...c, position: i })) }
+                : col,
+            ),
+          );
+          setIsMoveInFlight(true);
+          mutations.moveCard.mutate(
+            { cardId, toColumnId: currentColId, position: newIdx },
+            { onSettled: () => setIsMoveInFlight(false) },
+          );
+          return;
+        }
+      }
+
+      // Cross-column move — card was already transferred in onDragOver
+      const position = sortedCards.findIndex((c) => c.id === cardId);
+
+      // Verify something actually changed
+      const origCol = board.columns.find((col) => col.cards.some((c) => c.id === cardId));
+      const origCard = origCol?.cards.find((c) => c.id === cardId);
+      if (origCol?.id === currentColId && origCard?.position === position) return;
+
+      setIsMoveInFlight(true);
+      mutations.moveCard.mutate(
+        { cardId, toColumnId: currentColId, position: position >= 0 ? position : sortedCards.length },
+        { onSettled: () => setIsMoveInFlight(false) },
+      );
+    },
+    [board, localColumns, findColumnId, mutations.moveCard],
+  );
+
+  // Board title editing
+  function handleStartEditTitle(): void {
+    if (readOnly || !board) return;
+    setEditTitle(board.title);
+    setIsEditingTitle(true);
+  }
+
+  function handleSaveTitle(): void {
+    setIsEditingTitle(false);
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== board?.title) {
+      mutations.updateBoard.mutate({ id: boardId, title: trimmed });
+    }
+  }
+
+  // Column handlers
+  function handleRenameColumn(columnId: string, title: string): void {
+    mutations.updateColumn.mutate({ columnId, title });
+  }
+
+  function handleDeleteColumn(columnId: string): void {
+    mutations.deleteColumn.mutate(columnId, {
+      onError: () => toast.error(t('kanban.column.hasCards')),
+    });
+  }
+
+  function handleAddCard(columnId: string, title: string): void {
+    mutations.createCard.mutate({ columnId, title });
+  }
+
+  function handleAddColumn(): void {
+    const trimmed = newColumnTitle.trim();
+    if (!trimmed) return;
+    mutations.createColumn.mutate(
+      { boardId, title: trimmed },
+      {
+        onSuccess: () => {
+          setNewColumnTitle('');
+          setIsAddingColumn(false);
+        },
+      },
+    );
+  }
+
+  function handleDeleteBoard(): void {
+    if (!window.confirm(t('kanban.deleteBoardConfirm'))) return;
+    mutations.deleteBoard.mutate(boardId, {
+      onSuccess: () => navigate('/kanban'),
+    });
+  }
+
+  // Cover image
+  function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    mutations.uploadCover.mutate(
+      { bid: boardId, file },
+      { onError: () => toast.error(t('kanban.cover.uploadError')) },
+    );
+    e.target.value = '';
+  }
+
+  function handleRemoveCover(): void {
+    mutations.deleteCover.mutate(boardId);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
+      </div>
+    );
+  }
+
+  if (!board) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <p className="text-gray-500 dark:text-gray-400">{t('kanban.noBoards')}</p>
+      </div>
+    );
+  }
+
+  const sortedColumns = [...localColumns].sort((a, b) => a.position - b.position);
+  const userColor = user?.color || '#319795';
+
+  return (
+    <div className="flex-1 flex h-full bg-gray-50 dark:bg-gray-900">
+      {/* Main board area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Cover Image */}
+        {board.coverImage && (
+          <div className="relative h-40 flex-shrink-0 overflow-hidden group/cover">
+            <img
+              src={board.coverImage}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+            {!readOnly && (
+              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/cover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => coverInputRef.current?.click()}
+                  className="p-1.5 rounded-md bg-black/40 hover:bg-black/60 text-white text-xs transition-colors"
+                  title={t('kanban.cover.change')}
+                >
+                  <ImagePlus size={14} />
+                </button>
+                <button
+                  onClick={handleRemoveCover}
+                  className="p-1.5 rounded-md bg-black/40 hover:bg-black/60 text-white text-xs transition-colors"
+                  title={t('kanban.cover.remove')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {isMobile && (
+                <button
+                  onClick={toggleSidebar}
+                  className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <Menu size={20} />
+                </button>
+              )}
+              <button
+                onClick={() => navigate('/kanban')}
+                className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <ArrowLeft size={20} />
+              </button>
+
+              {isEditingTitle ? (
+                <input
+                  autoFocus
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onBlur={handleSaveTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveTitle();
+                    if (e.key === 'Escape') setIsEditingTitle(false);
+                  }}
+                  className="text-lg font-bold bg-transparent border-b-2 border-emerald-500 text-gray-900 dark:text-white outline-none min-w-0"
+                />
+              ) : (
+                <h1
+                  onDoubleClick={handleStartEditTitle}
+                  className={clsx(
+                    'text-lg font-bold text-gray-900 dark:text-white truncate',
+                    !readOnly && 'cursor-pointer',
+                  )}
+                >
+                  {board.title}
+                </h1>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Presence avatars */}
+              {presenceUsers.length > 0 && (
+                <div className="flex items-center -space-x-2 mr-2">
+                  {presenceUsers.slice(0, 5).map((u) => {
+                    const isMe = u.id === user?.id;
+                    const initial = isMe
+                      ? 'ME'
+                      : u.name?.charAt(0)?.toUpperCase() || '?';
+                    return (
+                      <div
+                        key={u.id}
+                        className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center text-[9px] font-bold text-white shadow-sm overflow-hidden relative"
+                        style={{ backgroundColor: u.color || '#319795' }}
+                        title={isMe ? t('kanban.presence.you') : (u.name || '?')}
+                      >
+                        {u.avatarUrl ? (
+                          <>
+                            <img
+                              src={u.avatarUrl}
+                              alt=""
+                              className="w-full h-full object-cover absolute inset-0"
+                            />
+                            <span
+                              className="relative z-10 text-[8px] font-bold text-white"
+                              style={{ textShadow: '0 0 3px rgba(0,0,0,0.9)' }}
+                            >
+                              {initial}
+                            </span>
+                          </>
+                        ) : (
+                          <span>{initial}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {presenceUsers.length > 5 && (
+                    <div className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-900 bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[9px] font-bold text-gray-700 dark:text-gray-200">
+                      +{presenceUsers.length - 5}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Chat toggle */}
+              {(isOwner || isShared) && (
+                <button
+                  onClick={handleChatToggle}
+                  className={clsx(
+                    'p-2 rounded-lg transition-colors relative',
+                    isChatOpen
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+                  )}
+                  title={t('kanban.chat.title')}
+                >
+                  <MessageSquare size={18} />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* Cover image button (no cover yet) */}
+              {!readOnly && !board.coverImage && (
+                <button
+                  onClick={() => coverInputRef.current?.click()}
+                  className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  title={t('kanban.cover.add')}
+                >
+                  <ImagePlus size={18} />
+                </button>
+              )}
+
+              {isOwner && (
+                <button
+                  onClick={() => setIsShareOpen(true)}
+                  className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  title={t('kanban.share.title')}
+                >
+                  <Share2 size={18} />
+                </button>
+              )}
+
+              {isOwner && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowBoardMenu(!showBoardMenu)}
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  >
+                    <MoreVertical size={18} />
+                  </button>
+                  {showBoardMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowBoardMenu(false)} />
+                      <div className="absolute right-0 top-10 z-20 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+                        <button
+                          onClick={() => {
+                            setShowBoardMenu(false);
+                            handleDeleteBoard();
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 size={14} />
+                          {t('kanban.deleteBoard')}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Board content — horizontal scroll */}
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={kanbanCollisionDetection}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 p-4 h-full items-start">
+              {sortedColumns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  boardId={boardId}
+                  onCardSelect={(cardId) => setSelectedCardId(cardId)}
+                  onRenameColumn={handleRenameColumn}
+                  onDeleteColumn={handleDeleteColumn}
+                  onAddCard={handleAddCard}
+                  readOnly={readOnly}
+                  highlightedCardIds={highlightedCardIds}
+                />
+              ))}
+
+              {/* Add Column button / inline input */}
+              {!readOnly && (
+                <div className="min-w-[280px] w-[280px] flex-shrink-0">
+                  {isAddingColumn ? (
+                    <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl p-3 space-y-2">
+                      <input
+                        autoFocus
+                        value={newColumnTitle}
+                        onChange={(e) => setNewColumnTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleAddColumn();
+                          if (e.key === 'Escape') {
+                            setIsAddingColumn(false);
+                            setNewColumnTitle('');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!newColumnTitle.trim()) {
+                            setIsAddingColumn(false);
+                            setNewColumnTitle('');
+                          }
+                        }}
+                        placeholder={t('kanban.column.columnTitle')}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsAddingColumn(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-600 dark:hover:text-emerald-400 transition-colors text-sm font-medium"
+                    >
+                      <Plus size={16} />
+                      {t('kanban.column.addColumn')}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Drag overlay */}
+            <DragOverlay>
+              {activeCard ? (
+                <div className="opacity-90">
+                  <KanbanCard
+                    card={activeCard}
+                    onSelect={() => {}}
+                    readOnly
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </div>
+
+        {/* Hidden cover image input */}
+        <input
+          ref={coverInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="hidden"
+          onChange={handleCoverUpload}
+        />
+      </div>
+
+      {/* Chat Sidebar */}
+      {(isOwner || isShared) && (
+        <BoardChatSidebar
+          boardId={boardId}
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          currentUser={{
+            id: user?.id || 'anon',
+            name: user?.name || 'User',
+            color: userColor,
+            avatarUrl: user?.avatarUrl || null,
+          }}
+          onNewMessage={() => setUnreadCount((prev) => prev + 1)}
+          participants={presenceUsers}
+        />
+      )}
+
+      {/* Card Detail Modal */}
+      <CardDetailModal
+        isOpen={!!selectedCardId}
+        onClose={() => setSelectedCardId(null)}
+        card={selectedCard}
+        boardId={boardId}
+        readOnly={readOnly}
+      />
+
+      {/* Share Modal */}
+      {isOwner && (
+        <ShareBoardModal
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          boardId={boardId}
+          boardTitle={board.title}
+          sharedWith={board.shares?.filter((s) => s.status === 'ACCEPTED')}
+        />
+      )}
+    </div>
+  );
+}

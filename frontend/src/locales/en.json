@@ -82,7 +82,8 @@
     "search": "Search",
     "externalSources": "External Sources",
     "importEvernote": "Evernote (.enex)",
-    "groups": "Groups"
+    "groups": "Groups",
+    "kanban": "Kanban"
   },
   "settings": {
     "appearance": "Appearance",
@@ -401,6 +402,7 @@
     "noSharedNotes": "No notes shared with you yet",
     "noSharedNotebooks": "No notebooks shared with you yet",
     "noSharedTaskLists": "No shared task lists",
+    "noSharedKanbanBoards": "No kanban boards shared with you yet",
     "sharedBy": "Shared by",
     "share": "Share",
     "acceptedRedirect": "Invitation accepted! Redirecting...",
@@ -631,7 +633,15 @@
     "taskItemRemoved": "{{userName}} removed \"{{itemText}}\" from {{listTitle}}",
     "taskItemRemoved_TITLE": "Item Removed",
     "taskListShared": "{{sharerName}} shared the list \"{{listTitle}}\" with you",
-    "taskListShared_TITLE": "Task List Shared"
+    "taskListShared_TITLE": "Task List Shared",
+    "kanbanBoardShared": "{{sharerName}} shared the board \"{{itemName}}\" with you",
+    "kanbanBoardShared_TITLE": "Board Shared",
+    "kanbanCardAssigned": "{{assignerName}} assigned you to \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
+    "kanbanCardAssigned_TITLE": "Card Assigned",
+    "kanbanCommentAdded": "{{authorName}} commented on \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
+    "kanbanCommentAdded_TITLE": "New Comment",
+    "noteSharedViaKanban": "{{sharerName}} shared note \"{{noteTitle}}\" with you via board \"{{boardTitle}}\"",
+    "noteSharedViaKanban_TITLE": "Note Shared via Board"
   },
   "groups": {
     "title": "Groups",
@@ -671,6 +681,119 @@
     "cannotAddSelf": "You cannot add yourself to a group",
     "avatarUpdated": "Group avatar updated",
     "avatarUpdateFailed": "Failed to update group avatar"
+  },
+  "kanban": {
+    "title": "Kanban",
+    "newBoard": "New Board",
+    "boardTitle": "Board title",
+    "boardDescription": "Description (optional)",
+    "noBoards": "No boards yet. Create your first one!",
+    "deleteBoard": "Delete board",
+    "deleteBoardConfirm": "Delete this board and all its cards permanently?",
+    "sharedBoard": "Shared",
+    "columns": "columns",
+    "cards": "cards",
+    "column": {
+      "todo": "To Do",
+      "inProgress": "In Progress",
+      "done": "Done",
+      "addColumn": "Add column",
+      "columnTitle": "Column title",
+      "deleteColumn": "Delete column",
+      "deleteConfirm": "Delete this column?",
+      "hasCards": "Move or delete all cards before removing this column."
+    },
+    "card": {
+      "addCard": "Add card",
+      "cardTitle": "Card title",
+      "untitled": "Untitled card",
+      "assignee": "Assignee",
+      "unassigned": "Unassigned",
+      "assigneeEmail": "Assignee email",
+      "dueDate": "Due date",
+      "overdue": "Overdue",
+      "linkedNote": "Linked note",
+      "selectNote": "Select a note...",
+      "noDescription": "No description",
+      "description": "Description",
+      "deleteConfirm": "Delete this card permanently?",
+      "deleteCard": "Delete card"
+    },
+    "comment": {
+      "placeholder": "Write a comment...",
+      "send": "Send",
+      "noComments": "No comments yet.",
+      "comments": "Comments"
+    },
+    "stats": {
+      "columns": "{{count}} columns",
+      "cards": "{{count}} cards"
+    },
+    "share": {
+      "title": "Share Board",
+      "permissions": {
+        "READ": "Can view",
+        "WRITE": "Can edit"
+      },
+      "emailPlaceholder": "Email address",
+      "shareSuccess": "Board shared successfully",
+      "shareFailed": "Failed to share board",
+      "userNotFound": "User not found",
+      "revoked": "Access revoked",
+      "revokeFailed": "Failed to revoke access",
+      "sharedWith": "Shared with",
+      "noOne": "Not shared with anyone yet"
+    },
+    "sharedWithMe": "Shared with me",
+    "ownerLabel": "Owner: {{name}}",
+    "cover": {
+      "add": "Add cover image",
+      "change": "Change cover",
+      "remove": "Remove cover",
+      "uploadError": "Failed to upload cover image"
+    },
+    "chat": {
+      "title": "Board Chat",
+      "chatWith": "Chat with {{name}}",
+      "chatWithMany": "Chat — {{count}} participants",
+      "placeholder": "Type a message...",
+      "empty": "No messages yet. Start the conversation!",
+      "you": "You"
+    },
+    "presence": {
+      "you": "You",
+      "online": "{{count}} online"
+    },
+    "activity": {
+      "title": "Activity",
+      "noActivity": "No activity yet.",
+      "CREATED": "created this card in {{column}}",
+      "MOVED": "moved from {{from}} to {{to}}",
+      "ASSIGNED": "assigned to {{assignee}}",
+      "UNASSIGNED": "removed assignee",
+      "DUE_DATE_SET": "set due date to {{date}}",
+      "DUE_DATE_REMOVED": "removed due date",
+      "UPDATED": "updated {{field}}",
+      "NOTE_LINKED": "linked note \"{{noteTitle}}\"",
+      "NOTE_UNLINKED": "unlinked note \"{{noteTitle}}\"",
+      "DELETED": "deleted this card",
+      "fieldTitle": "title",
+      "fieldDescription": "description"
+    },
+    "noteLink": {
+      "pickerTitle": "Link a Note",
+      "searchPlaceholder": "Search notes by title or content...",
+      "untitledNote": "Untitled note",
+      "noResults": "No notes found",
+      "typeToSearch": "Type to search your notes",
+      "linkNote": "Link note",
+      "unlink": "Unlink note",
+      "goToBoard": "Go to board: {{boardTitle}}",
+      "sharingGapTitle": "Share Note with Board Members",
+      "usersWithAccess": "Already have access",
+      "usersWithoutAccess": "Will be given access",
+      "confirmLink": "Link & Share"
+    }
   },
   "encryption": {
     "locked": "Encrypted Content",
@@ -741,6 +864,13 @@
       "taskListNotifications": "Task List Notifications — Get notified when collaborators add, check, or remove items",
       "taskListDragDrop": "Drag & Drop Reordering — Reorder task items by dragging them into position",
       "remindersRename": "Reminders section — Activities renamed to Reminders for clarity",
+      "kanbanBoards": "Kanban Boards — Visual project management with columns, cards, and drag & drop",
+      "kanbanCoverImages": "Board Cover Images — Customize boards with cover images",
+      "kanbanPresence": "Board Presence — See who is viewing a board in real time",
+      "kanbanChat": "Board Chat — Real-time messaging with board collaborators",
+      "kanbanSharing": "Board Sharing — Share kanban boards with collaborators and accept invitations",
+      "notificationLinks": "Clickable Notifications — Notifications now link directly to the relevant item",
+      "chatTieredNotifications": "Smart Chat Notifications — Sound, badge, in-app, or email depending on your activity",
       "initialRelease": "Initial release with full feature set"
     }
   },

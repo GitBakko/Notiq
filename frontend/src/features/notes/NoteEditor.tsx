@@ -23,6 +23,7 @@ import { useNoteController } from './useNoteController';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAiStatus } from '../../hooks/useAiStatus';
 import ScrollToEditButton from '../../components/editor/ScrollToEditButton';
+import KanbanBoardLink from '../kanban/components/KanbanBoardLink';
 
 interface NoteEditorProps {
     note: Note;
@@ -456,6 +457,9 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     {t('notes.readOnlyShared')}
                 </div>
             )}
+
+            {/* Kanban board quick-link (if note is linked to a kanban card) */}
+            {!note.isVault && <KanbanBoardLink noteId={note.id} />}
 
             {/* Editor + Sidebars */}
             <div className="flex-1 flex overflow-hidden relative">

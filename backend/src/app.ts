@@ -24,6 +24,7 @@ import aiRoutes from './routes/ai';
 import groupRoutes from './routes/groups';
 import urlMetadataRoutes from './routes/url-metadata';
 import taskListRoutes from './routes/tasklists';
+import kanbanRoutes from './routes/kanban';
 
 
 // ... ensure start
@@ -120,6 +121,7 @@ server.register(aiRoutes, { prefix: '/api/ai' });
 server.register(groupRoutes, { prefix: '/api/groups' });
 server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
 server.register(taskListRoutes, { prefix: '/api/tasklists' });
+server.register(kanbanRoutes, { prefix: '/api/kanban' });
 
 // Uploads base directory — consistent with attachment.service.ts
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
@@ -141,6 +143,18 @@ server.get('/uploads/groups/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'groups', safeName);
+  if (!fs.existsSync(filepath)) {
+    return reply.code(404).send({ message: 'Not found' });
+  }
+  const stream = fs.createReadStream(filepath);
+  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+});
+
+// Public kanban board cover serving (no auth required)
+server.get('/uploads/kanban/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename);
+  const filepath = path.join(UPLOADS_DIR, 'kanban', safeName);
   if (!fs.existsSync(filepath)) {
     return reply.code(404).send({ message: 'Not found' });
   }

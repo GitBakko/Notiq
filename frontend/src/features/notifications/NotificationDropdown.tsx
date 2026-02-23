@@ -71,6 +71,7 @@ export default function NotificationDropdown() {
                   notification={notification}
                   onRead={markAsRead}
                   onDelete={deleteNotification}
+                  onClose={() => setIsOpen(false)}
                 />
               ))
             ) : (

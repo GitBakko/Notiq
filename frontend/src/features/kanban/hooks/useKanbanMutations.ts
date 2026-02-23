@@ -1,0 +1,122 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import * as kanbanService from '../kanbanService';
+
+export function useKanbanMutations(boardId?: string) {
+  const queryClient = useQueryClient();
+
+  function invalidateBoard(): void {
+    if (boardId) {
+      queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+  }
+
+  const createBoard = useMutation({
+    mutationFn: kanbanService.createBoard,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kanban-boards'] }),
+  });
+
+  const deleteBoard = useMutation({
+    mutationFn: kanbanService.deleteBoard,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kanban-boards'] }),
+  });
+
+  const updateBoard = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; title?: string; description?: string | null }) =>
+      kanbanService.updateBoard(id, data),
+    onSuccess: invalidateBoard,
+  });
+
+  const createColumn = useMutation({
+    mutationFn: ({ boardId: bid, title }: { boardId: string; title: string }) =>
+      kanbanService.createColumn(bid, title),
+    onSuccess: invalidateBoard,
+  });
+
+  const updateColumn = useMutation({
+    mutationFn: ({ columnId, title }: { columnId: string; title: string }) =>
+      kanbanService.updateColumn(columnId, title),
+    onSuccess: invalidateBoard,
+  });
+
+  const deleteColumn = useMutation({
+    mutationFn: kanbanService.deleteColumn,
+    onSuccess: invalidateBoard,
+  });
+
+  const reorderColumns = useMutation({
+    mutationFn: kanbanService.reorderColumns,
+    onSuccess: invalidateBoard,
+  });
+
+  const createCard = useMutation({
+    mutationFn: ({ columnId, ...data }: { columnId: string; title: string; description?: string }) =>
+      kanbanService.createCard(columnId, data),
+    onSuccess: invalidateBoard,
+  });
+
+  const updateCard = useMutation({
+    mutationFn: ({
+      cardId,
+      ...data
+    }: {
+      cardId: string;
+      title?: string;
+      description?: string | null;
+      assigneeId?: string | null;
+      dueDate?: string | null;
+    }) => kanbanService.updateCard(cardId, data),
+    onSuccess: invalidateBoard,
+  });
+
+  const moveCard = useMutation({
+    mutationFn: ({ cardId, toColumnId, position }: { cardId: string; toColumnId: string; position: number }) =>
+      kanbanService.moveCard(cardId, toColumnId, position),
+    onSuccess: invalidateBoard,
+  });
+
+  const deleteCard = useMutation({
+    mutationFn: kanbanService.deleteCard,
+    onSuccess: invalidateBoard,
+  });
+
+  const uploadCover = useMutation({
+    mutationFn: ({ bid, file }: { bid: string; file: File }) =>
+      kanbanService.uploadCoverImage(bid, file),
+    onSuccess: invalidateBoard,
+  });
+
+  const deleteCover = useMutation({
+    mutationFn: kanbanService.deleteCoverImage,
+    onSuccess: invalidateBoard,
+  });
+
+  const linkNote = useMutation({
+    mutationFn: ({ cardId, noteId, shareWithUserIds }: { cardId: string; noteId: string; shareWithUserIds?: string[] }) =>
+      kanbanService.linkNoteToCard(cardId, noteId, shareWithUserIds),
+    onSuccess: invalidateBoard,
+  });
+
+  const unlinkNote = useMutation({
+    mutationFn: kanbanService.unlinkNoteFromCard,
+    onSuccess: invalidateBoard,
+  });
+
+  return {
+    createBoard,
+    deleteBoard,
+    updateBoard,
+    createColumn,
+    updateColumn,
+    deleteColumn,
+    reorderColumns,
+    createCard,
+    updateCard,
+    moveCard,
+    deleteCard,
+    uploadCover,
+    deleteCover,
+    linkNote,
+    unlinkNote,
+  };
+}
