@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
-import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare } from 'lucide-react';
+import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare, ListChecks } from 'lucide-react';
 import type { Notification } from './notificationService';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +25,11 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
       case 'GROUP_INVITE':
       case 'GROUP_REMOVE':
         return <Orbit size={16} className="text-emerald-500" />;
+      case 'TASK_ITEM_ADDED':
+      case 'TASK_ITEM_CHECKED':
+      case 'TASK_ITEM_REMOVED':
+      case 'TASK_LIST_SHARED':
+        return <ListChecks size={16} className="text-emerald-500" />;
       case 'SYSTEM':
       default:
         return <Info size={16} className="text-gray-500" />;
