@@ -3,7 +3,7 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
-import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
+import type { LocalTaskList } from '../../lib/db';
 
 export const syncPull = async () => {
   try {
