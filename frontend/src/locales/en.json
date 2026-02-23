@@ -610,6 +610,10 @@
     "shareNotebook_TITLE": "Collaboration Invitation",
     "shareResponse": "{{responderName}} {{action}} your invitation to {{itemName}}",
     "shareResponse_TITLE": "Invitation Update",
+    "shareResponseAccepted": "{{responderName}} accepted your invitation to {{itemName}}",
+    "shareResponseAccepted_TITLE": "Invitation Accepted",
+    "shareResponseDeclined": "{{responderName}} declined your invitation to {{itemName}}",
+    "shareResponseDeclined_TITLE": "Invitation Declined",
     "groupInvite": "{{ownerName}} added you to the group \"{{groupName}}\"",
     "groupInvite_TITLE": "Added to Group",
     "groupRemove": "{{ownerName}} removed you from the group \"{{groupName}}\"",
@@ -617,9 +621,13 @@
     "groupMemberJoined": "{{memberEmail}} has registered and joined your group \"{{groupName}}\"",
     "groupMemberJoined_TITLE": "New Group Member",
     "taskItemAdded": "{{userName}} added \"{{itemText}}\" to {{listTitle}}",
+    "taskItemAdded_TITLE": "Item Added",
     "taskItemChecked": "{{userName}} checked \"{{itemText}}\" in {{listTitle}}",
+    "taskItemChecked_TITLE": "Item Completed",
     "taskItemRemoved": "{{userName}} removed \"{{itemText}}\" from {{listTitle}}",
-    "taskListShared": "{{sharerName}} shared the list \"{{listTitle}}\" with you"
+    "taskItemRemoved_TITLE": "Item Removed",
+    "taskListShared": "{{sharerName}} shared the list \"{{listTitle}}\" with you",
+    "taskListShared_TITLE": "Task List Shared"
   },
   "groups": {
     "title": "Groups",

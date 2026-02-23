@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
+import { it as itLocale, enUS } from 'date-fns/locale';
 import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare, ListChecks } from 'lucide-react';
 import type { Notification } from './notificationService';
 import clsx from 'clsx';
@@ -10,8 +11,61 @@ interface NotificationItemProps {
   onDelete: (id: string) => void;
 }
 
+/** Map notification type → i18n key (for old notifications without localizationKey) */
+const TYPE_TO_KEY: Record<string, string> = {
+  SHARE_NOTE: 'notifications.shareNote',
+  SHARE_NOTEBOOK: 'notifications.shareNotebook',
+  TASK_LIST_SHARED: 'notifications.taskListShared',
+  TASK_ITEM_ADDED: 'notifications.taskItemAdded',
+  TASK_ITEM_CHECKED: 'notifications.taskItemChecked',
+  TASK_ITEM_REMOVED: 'notifications.taskItemRemoved',
+  GROUP_INVITE: 'notifications.groupInvite',
+  GROUP_REMOVE: 'notifications.groupRemove',
+};
+
+/** Normalize localization args — handles old notifications with mismatched field names */
+function buildArgs(data: Record<string, any>): Record<string, string> {
+  const args: Record<string, string> = {};
+  const src = { ...(data.localizationArgs || {}), ...data };
+
+  // sharerName — used by shareNote, shareNotebook, taskListShared
+  if (src.sharerName) args.sharerName = src.sharerName;
+
+  // itemName — used by shareNote, shareNotebook, shareResponse
+  if (src.itemName) args.itemName = src.itemName;
+  if (!args.itemName && src.noteTitle) args.itemName = src.noteTitle;
+  if (!args.itemName && src.notebookName) args.itemName = src.notebookName;
+  if (!args.itemName && src.taskListTitle) args.itemName = src.taskListTitle;
+
+  // listTitle — used by taskListShared, taskItem*
+  if (src.listTitle) args.listTitle = src.listTitle;
+  if (!args.listTitle && src.taskListTitle) args.listTitle = src.taskListTitle;
+  if (!args.listTitle && src.itemName) args.listTitle = src.itemName;
+
+  // userName — used by taskItem*
+  if (src.userName) args.userName = src.userName;
+  if (!args.userName && src.actorName) args.userName = src.actorName;
+
+  // itemText — used by taskItem*
+  if (src.itemText) args.itemText = src.itemText;
+
+  // responderName, action — used by shareResponse
+  if (src.responderName) args.responderName = src.responderName;
+  if (src.action) args.action = src.action;
+
+  // ownerName, groupName — used by group*
+  if (src.ownerName) args.ownerName = src.ownerName;
+  if (src.groupName) args.groupName = src.groupName;
+
+  // memberEmail — used by groupMemberJoined
+  if (src.memberEmail) args.memberEmail = src.memberEmail;
+
+  return args;
+}
+
 export default function NotificationItem({ notification, onRead, onDelete }: NotificationItemProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const dateLocale = i18n.language?.startsWith('it') ? itLocale : enUS;
 
   const getIcon = () => {
     switch (notification.type) {
@@ -36,6 +90,29 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
     }
   };
 
+  // Resolve localization key: prefer explicit, fall back to type-based mapping
+  const data = notification.data || {};
+  const locKey = data.localizationKey || TYPE_TO_KEY[notification.type];
+  const args = locKey ? buildArgs(data) : {};
+
+  // Try localized title/message, fall back to raw DB values
+  let title = notification.title;
+  let message = notification.message;
+
+  if (locKey) {
+    const localizedTitle = t(locKey + '_TITLE', args) as string;
+    // i18next returns the key itself if not found — detect and fall back
+    if (localizedTitle && !localizedTitle.endsWith('_TITLE')) {
+      title = localizedTitle;
+    }
+
+    const localizedMessage = t(locKey, args) as string;
+    // If interpolation failed (still has {{), fall back to raw message
+    if (localizedMessage && !localizedMessage.includes('{{') && localizedMessage !== locKey) {
+      message = localizedMessage;
+    }
+  }
+
   return (
     <div className={clsx(
       "p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group relative",
@@ -47,13 +124,13 @@ export default function NotificationItem({ notification, onRead, onDelete }: Not
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-            {notification.data?.localizationKey ? t(notification.data.localizationKey + '_TITLE', notification.data.localizationArgs) as string : notification.title}
+            {title}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
-            {notification.data?.localizationKey ? t(notification.data.localizationKey, notification.data.localizationArgs) as string : notification.message}
+            {message}
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true, locale: dateLocale })}
           </p>
         </div>
         <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

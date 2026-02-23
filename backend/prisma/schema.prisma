@@ -55,6 +55,7 @@ model User {
 
   taskLists        TaskList[]
   sharedTaskLists  SharedTaskList[]
+  checkedTaskItems TaskItem[]     @relation("CheckedTaskItems")
 }
 
 enum Role {
@@ -354,16 +355,18 @@ model TaskList {
 }
 
 model TaskItem {
-  id          String        @id @default(uuid())
-  taskListId  String
-  taskList    TaskList      @relation(fields: [taskListId], references: [id], onDelete: Cascade)
-  text        String
-  isChecked   Boolean       @default(false)
-  priority    TaskPriority  @default(MEDIUM)
-  dueDate     DateTime?
-  position    Int           @default(0)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  taskListId      String
+  taskList        TaskList      @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  text            String
+  isChecked       Boolean       @default(false)
+  checkedByUserId String?
+  checkedByUser   User?         @relation("CheckedTaskItems", fields: [checkedByUserId], references: [id], onDelete: SetNull)
+  priority        TaskPriority  @default(MEDIUM)
+  dueDate         DateTime?
+  position        Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([taskListId])
 }

@@ -115,7 +115,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700/50">
         <button onClick={() => setIsExpanded(!isExpanded)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -149,11 +149,22 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
           )}
         </div>
 
-        {/* Shared by badge */}
+        {/* Shared by badge (for received shared lists) */}
         {taskList.ownership === 'shared' && taskList.sharedByUser && (
           <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
             <Users size={12} />
             {t('taskLists.sharedBy', { name: taskList.sharedByUser.name || taskList.sharedByUser.email })}
+          </span>
+        )}
+
+        {/* Active collaborators badge (for own lists) */}
+        {taskList.ownership !== 'shared' && taskList.sharedWith && taskList.sharedWith.filter(s => s.status === 'ACCEPTED').length > 0 && (
+          <span
+            className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full"
+            title={taskList.sharedWith.filter(s => s.status === 'ACCEPTED').map(s => s.user.name || s.user.email).join(', ')}
+          >
+            <Users size={12} />
+            {taskList.sharedWith.filter(s => s.status === 'ACCEPTED').length}
           </span>
         )}
 

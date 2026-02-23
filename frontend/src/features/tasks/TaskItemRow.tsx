@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2, GripVertical, Calendar } from 'lucide-react';
+import { Trash2, GripVertical, Calendar, Circle, CheckCircle2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import TaskPriorityBadge from './TaskPriorityBadge';
+import { useAuthStore } from '../../store/authStore';
 import type { LocalTaskItem } from '../../lib/db';
 
 interface TaskItemRowProps {
@@ -17,6 +18,7 @@ interface TaskItemRowProps {
 
 export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDelete }: TaskItemRowProps) {
   const { t } = useTranslation();
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,13 +93,26 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       )}
 
       {/* Checkbox */}
-      <input
-        type="checkbox"
-        checked={item.isChecked}
-        onChange={() => !readOnly && onToggle(item.id)}
+      <button
+        type="button"
+        onClick={() => !readOnly && onToggle(item.id)}
         disabled={readOnly}
-        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800"
-      />
+        className={clsx(
+          'flex-shrink-0 transition-all duration-200 ease-in-out',
+          readOnly ? 'cursor-default' : 'cursor-pointer',
+          item.isChecked
+            ? 'text-emerald-500 dark:text-emerald-400 scale-110'
+            : 'text-gray-300 dark:text-gray-600 hover:text-emerald-400 dark:hover:text-emerald-500'
+        )}
+        aria-checked={item.isChecked}
+        role="checkbox"
+      >
+        {item.isChecked ? (
+          <CheckCircle2 size={20} strokeWidth={2.5} />
+        ) : (
+          <Circle size={20} strokeWidth={1.5} />
+        )}
+      </button>
 
       {/* Text */}
       <div className="flex-1 min-w-0">
@@ -127,6 +142,24 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
           </span>
         )}
       </div>
+
+      {/* Checked by indicator (only if checked by someone else) */}
+      {item.isChecked && item.checkedByUser && item.checkedByUser.id !== currentUserId && (
+        <span
+          className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"
+          title={item.checkedByUser.name || item.checkedByUser.email}
+        >
+          <span
+            className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+            style={{ backgroundColor: item.checkedByUser.color || '#6b7280' }}
+          >
+            {(item.checkedByUser.name || item.checkedByUser.email).charAt(0).toUpperCase()}
+          </span>
+          <span className="hidden sm:inline truncate max-w-[80px]">
+            {item.checkedByUser.name || item.checkedByUser.email.split('@')[0]}
+          </span>
+        </span>
+      )}
 
       {/* Priority badge — click to cycle */}
       <button onClick={cyclePriority} disabled={readOnly} className="flex-shrink-0">

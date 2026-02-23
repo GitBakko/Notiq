@@ -78,7 +78,7 @@ export const shareTaskList = async (
           sharerName: owner.name || owner.email,
           status: 'PENDING',
           localizationKey: 'notifications.taskListShared',
-          localizationArgs: { sharerName: owner.name || owner.email, itemName: taskList.title },
+          localizationArgs: { sharerName: owner.name || owner.email, listTitle: taskList.title },
         }
       );
     } catch (e) {
@@ -118,7 +118,12 @@ export const getSharedTaskLists = async (userId: string) => {
     include: {
       taskList: {
         include: {
-          items: { orderBy: { position: 'asc' } },
+          items: {
+            orderBy: { position: 'asc' },
+            include: {
+              checkedByUser: { select: { id: true, name: true, email: true, color: true } },
+            },
+          },
           user: {
             select: { id: true, name: true, email: true },
           },
@@ -174,7 +179,15 @@ export const respondToTaskListShareById = async (
         'SYSTEM',
         'Invitation Update',
         `${responder.name || responder.email} ${action}ed your invitation to ${result.taskList.title}`,
-        { itemId: taskListId, type: 'TASKLIST', action }
+        {
+          itemId: taskListId,
+          type: 'TASKLIST',
+          action,
+          responderName: responder.name || responder.email,
+          itemName: result.taskList.title,
+          localizationKey: action === 'accept' ? 'notifications.shareResponseAccepted' : 'notifications.shareResponseDeclined',
+          localizationArgs: { responderName: responder.name || responder.email, itemName: result.taskList.title },
+        }
       );
     } catch (e) {
       logger.error(e, 'Failed to send task list share response notification');

@@ -2,6 +2,14 @@ import prisma from '../plugins/prisma';
 import logger from '../utils/logger';
 import * as notificationService from './notification.service';
 
+/** Reusable include for task items with checkedByUser */
+const ITEMS_INCLUDE = {
+  orderBy: { position: 'asc' as const },
+  include: {
+    checkedByUser: { select: { id: true, name: true, email: true, color: true } },
+  },
+};
+
 // ── Internal helpers ──────────────────────────────────────────────
 
 async function assertWriteAccess(userId: string, taskListId: string): Promise<void> {
@@ -73,8 +81,8 @@ async function notifyCollaborators(
           taskListTitle: taskList.title,
           actorName,
           itemText,
-          localizationKey: `notifications.${type}`,
-          localizationArgs: { actorName, itemText, listTitle: taskList.title },
+          localizationKey: `notifications.${type === 'TASK_ITEM_ADDED' ? 'taskItemAdded' : type === 'TASK_ITEM_CHECKED' ? 'taskItemChecked' : 'taskItemRemoved'}`,
+          localizationArgs: { userName: actorName, itemText, listTitle: taskList.title },
         }
       );
     } catch (err) {
@@ -93,7 +101,7 @@ export const createTaskList = async (userId: string, title: string, id?: string)
       userId,
     },
     include: {
-      items: { orderBy: { position: 'asc' } },
+      items: ITEMS_INCLUDE,
     },
   });
 };
@@ -102,7 +110,7 @@ export const getTaskLists = async (userId: string) => {
   return prisma.taskList.findMany({
     where: { userId, isTrashed: false },
     include: {
-      items: { orderBy: { position: 'asc' } },
+      items: ITEMS_INCLUDE,
       sharedWith: {
         include: {
           user: { select: { id: true, name: true, email: true } },
@@ -117,7 +125,7 @@ export const getTaskList = async (userId: string, id: string) => {
   const taskList = await prisma.taskList.findUnique({
     where: { id },
     include: {
-      items: { orderBy: { position: 'asc' } },
+      items: ITEMS_INCLUDE,
       sharedWith: {
         include: {
           user: { select: { id: true, name: true, email: true } },
@@ -150,7 +158,7 @@ export const updateTaskList = async (userId: string, id: string, data: { title?:
     where: { id },
     data,
     include: {
-      items: { orderBy: { position: 'asc' } },
+      items: ITEMS_INCLUDE,
     },
   });
 };
@@ -222,7 +230,10 @@ export const updateTaskItem = async (
 
   const updateData: any = {};
   if (data.text !== undefined) updateData.text = data.text;
-  if (data.isChecked !== undefined) updateData.isChecked = data.isChecked;
+  if (data.isChecked !== undefined) {
+    updateData.isChecked = data.isChecked;
+    updateData.checkedByUserId = data.isChecked ? userId : null;
+  }
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.dueDate !== undefined) updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
   if (data.position !== undefined) updateData.position = data.position;
@@ -230,6 +241,9 @@ export const updateTaskItem = async (
   const item = await prisma.taskItem.update({
     where: { id: itemId },
     data: updateData,
+    include: {
+      checkedByUser: { select: { id: true, name: true, email: true, color: true } },
+    },
   });
 
   if (data.isChecked !== undefined && data.isChecked !== existing.isChecked) {
@@ -286,7 +300,7 @@ export const getAcceptedSharedTaskLists = async (userId: string) => {
       permission: true,
       taskList: {
         include: {
-          items: { orderBy: { position: 'asc' } },
+          items: ITEMS_INCLUDE,
           user: { select: { id: true, name: true, email: true } },
           sharedWith: {
             include: {

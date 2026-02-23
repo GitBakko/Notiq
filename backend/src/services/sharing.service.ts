@@ -94,7 +94,14 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
         'SHARE_NOTE', // Keep generic or specific INVITE type? Existing logic uses SHARE_NOTE.
         'Collaboration Invitation',
         `${owner.name || owner.email} invited you to collaborate on note: ${note.title}`,
-        { noteId, noteTitle: note.title, sharerName: owner.name || owner.email, status: 'PENDING' }
+        {
+          noteId,
+          noteTitle: note.title,
+          sharerName: owner.name || owner.email,
+          status: 'PENDING',
+          localizationKey: 'notifications.shareNote',
+          localizationArgs: { sharerName: owner.name || owner.email, itemName: note.title },
+        }
       );
 
     } catch (e) {
@@ -371,10 +378,18 @@ export const respondToShare = async (token: string, action: 'accept' | 'decline'
 
         await notificationService.createNotification(
           owner.id,
-          'SYSTEM', // Or specific type
+          'SYSTEM',
           'Invitation Update',
           `${responder.name || responder.email} ${action}ed your invitation to ${itemName}`,
-          { itemId: type === 'NOTE' ? noteId : notebookId, type, action }
+          {
+            itemId: type === 'NOTE' ? noteId : notebookId,
+            type,
+            action,
+            responderName: responder.name || responder.email,
+            itemName,
+            localizationKey: action === 'accept' ? 'notifications.shareResponseAccepted' : 'notifications.shareResponseDeclined',
+            localizationArgs: { responderName: responder.name || responder.email, itemName },
+          }
         );
       }
     }
@@ -448,7 +463,15 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
         'SYSTEM',
         'Invitation Update',
         `${responder.name || responder.email} ${action}ed your invitation to ${itemName}`,
-        { itemId, type, action }
+        {
+          itemId,
+          type,
+          action,
+          responderName: responder.name || responder.email,
+          itemName,
+          localizationKey: action === 'accept' ? 'notifications.shareResponseAccepted' : 'notifications.shareResponseDeclined',
+          localizationArgs: { responderName: responder.name || responder.email, itemName },
+        }
       );
     }
   }
