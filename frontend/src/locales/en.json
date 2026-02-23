@@ -69,6 +69,8 @@
     "home": "Home",
     "notes": "Notes",
     "tasks": "Tasks",
+    "reminders": "Reminders",
+    "taskLists": "Task Lists",
     "tags": "Tags",
     "trash": "Trash",
     "notebooks": "Notebooks",
@@ -190,6 +192,30 @@
     "upcoming": "Upcoming",
     "completed": "Completed",
     "noTasks": "No tasks found. Add a reminder to a note to see it here."
+  },
+  "taskLists": {
+    "title": "Task Lists",
+    "newList": "New List",
+    "addItem": "Add item...",
+    "deleteList": "Delete List",
+    "deleteListConfirm": "Are you sure you want to delete this list? This action cannot be undone.",
+    "editTitle": "Edit title",
+    "noLists": "No task lists yet",
+    "noListsDescription": "Create your first list to get started",
+    "emptyList": "No items in this list",
+    "progress": "{{done}}/{{total}} completed",
+    "share": "Share List",
+    "shared": "Shared",
+    "sharedBy": "Shared by {{name}}",
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "dueDate": "Due date",
+    "noDueDate": "No due date",
+    "deleteItem": "Delete item",
+    "deleteItemConfirm": "Remove this item?"
   },
   "auth": {
     "logout": "Logout",
@@ -587,7 +613,11 @@
     "groupRemove": "{{ownerName}} removed you from the group \"{{groupName}}\"",
     "groupRemove_TITLE": "Removed from Group",
     "groupMemberJoined": "{{memberEmail}} has registered and joined your group \"{{groupName}}\"",
-    "groupMemberJoined_TITLE": "New Group Member"
+    "groupMemberJoined_TITLE": "New Group Member",
+    "taskItemAdded": "{{userName}} added \"{{itemText}}\" to {{listTitle}}",
+    "taskItemChecked": "{{userName}} checked \"{{itemText}}\" in {{listTitle}}",
+    "taskItemRemoved": "{{userName}} removed \"{{itemText}}\" from {{listTitle}}",
+    "taskListShared": "{{sharerName}} shared the list \"{{listTitle}}\" with you"
   },
   "groups": {
     "title": "Groups",

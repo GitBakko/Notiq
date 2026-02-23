@@ -62,10 +62,44 @@ export interface LocalTag {
   };
 }
 
+export interface LocalTaskList {
+  id: string;
+  title: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  isTrashed: boolean;
+  ownership?: 'owned' | 'shared';
+  sharedPermission?: 'READ' | 'WRITE' | null;
+  sharedByUser?: { id: string; name: string | null; email: string } | null;
+  sharedWith?: {
+    id: string;
+    userId: string;
+    permission: 'READ' | 'WRITE';
+    status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+    user: { id: string; name: string | null; email: string };
+  }[];
+  items?: LocalTaskItem[];
+  syncStatus: 'synced' | 'created' | 'updated';
+}
+
+export interface LocalTaskItem {
+  id: string;
+  taskListId: string;
+  text: string;
+  isChecked: boolean;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  dueDate?: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: 'synced' | 'created' | 'updated';
+}
+
 export interface SyncQueueItem {
   id?: number; // Auto-increment
   type: 'CREATE' | 'UPDATE' | 'DELETE';
-  entity: 'NOTE' | 'NOTEBOOK' | 'TAG';
+  entity: 'NOTE' | 'NOTEBOOK' | 'TAG' | 'TASK_LIST' | 'TASK_ITEM';
   entityId: string;
   userId: string; // Added for data isolation
   data?: Record<string, unknown>;
@@ -76,6 +110,8 @@ class AppDatabase extends Dexie {
   notes!: Table<LocalNote>;
   notebooks!: Table<LocalNotebook>;
   tags!: Table<LocalTag>;
+  taskLists!: Table<LocalTaskList>;
+  taskItems!: Table<LocalTaskItem>;
   syncQueue!: Table<SyncQueueItem>;
 
   constructor() {
@@ -144,6 +180,12 @@ class AppDatabase extends Dexie {
       return tx.table('notes').toCollection().modify(note => {
         note.noteType = 'NOTE';
       });
+    });
+
+    // v13: Add taskLists and taskItems tables for task list feature
+    this.version(13).stores({
+      taskLists: 'id, userId, updatedAt, syncStatus, isTrashed',
+      taskItems: 'id, taskListId, updatedAt, syncStatus, position',
     });
   }
 }

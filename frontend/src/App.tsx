@@ -11,7 +11,7 @@ import NotesPage from './features/notes/NotesPage';
 import NotebooksPage from './features/notebooks/NotebooksPage';
 import TagsPage from './features/tags/TagsPage';
 import TrashPage from './features/trash/TrashPage';
-import TasksPage from './features/tasks/TasksPage';
+import RemindersPage from './features/reminders/RemindersPage';
 import PublicNotePage from './features/public/PublicNotePage';
 import SettingsPage from './features/settings/SettingsPage';
 import WhatsNewPage from './features/settings/WhatsNewPage';
@@ -43,7 +43,8 @@ function App() {
           <Route index element={<Navigate to="/notes" replace />} />
           <Route path="notes" element={<NotesPage />} />
           <Route path="notebooks" element={<NotebooksPage />} />
-          <Route path="tasks" element={<TasksPage />} />
+          <Route path="reminders" element={<RemindersPage />} />
+          <Route path="tasks" element={<div>TaskListsPage placeholder</div>} />
           <Route path="tags" element={<TagsPage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="settings" element={<SettingsPage />} />

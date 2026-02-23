@@ -69,6 +69,8 @@
     "home": "Home",
     "notes": "Note",
     "tasks": "Attività",
+    "reminders": "Promemoria",
+    "taskLists": "Task List",
     "tags": "Tag",
     "trash": "Cestino",
     "notebooks": "Taccuini",
@@ -276,6 +278,30 @@
     "upcoming": "In arrivo",
     "completed": "Completati",
     "noTasks": "Nessuna attività trovata. Aggiungi un promemoria a una nota per vederlo qui."
+  },
+  "taskLists": {
+    "title": "Task List",
+    "newList": "Nuova Lista",
+    "addItem": "Aggiungi elemento...",
+    "deleteList": "Elimina Lista",
+    "deleteListConfirm": "Sei sicuro di voler eliminare questa lista? L'azione non puo' essere annullata.",
+    "editTitle": "Modifica titolo",
+    "noLists": "Nessuna task list",
+    "noListsDescription": "Crea la tua prima lista per iniziare",
+    "emptyList": "Nessun elemento in questa lista",
+    "progress": "{{done}}/{{total}} completati",
+    "share": "Condividi Lista",
+    "shared": "Condivisa",
+    "sharedBy": "Condivisa da {{name}}",
+    "priority": {
+      "low": "Bassa",
+      "medium": "Media",
+      "high": "Alta"
+    },
+    "dueDate": "Scadenza",
+    "noDueDate": "Nessuna scadenza",
+    "deleteItem": "Elimina elemento",
+    "deleteItemConfirm": "Rimuovere questo elemento?"
   },
   "auth": {
     "logout": "Esci",
@@ -628,7 +654,11 @@
     "groupRemove": "{{ownerName}} ti ha rimosso dal gruppo \"{{groupName}}\"",
     "groupRemove_TITLE": "Rimosso dal Gruppo",
     "groupMemberJoined": "{{memberEmail}} si è registrato e si è unito al tuo gruppo \"{{groupName}}\"",
-    "groupMemberJoined_TITLE": "Nuovo Membro nel Gruppo"
+    "groupMemberJoined_TITLE": "Nuovo Membro nel Gruppo",
+    "taskItemAdded": "{{userName}} ha aggiunto \"{{itemText}}\" a {{listTitle}}",
+    "taskItemChecked": "{{userName}} ha completato \"{{itemText}}\" in {{listTitle}}",
+    "taskItemRemoved": "{{userName}} ha rimosso \"{{itemText}}\" da {{listTitle}}",
+    "taskListShared": "{{sharerName}} ha condiviso la lista \"{{listTitle}}\" con te"
   },
   "groups": {
     "title": "Gruppi",
