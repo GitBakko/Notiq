@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { MoreVertical, Share2, Trash2, Columns3, CreditCard } from 'lucide-react';
+import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import type { KanbanBoardListItem } from '../types';
@@ -108,10 +108,23 @@ export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardC
           </div>
         )}
 
-        {/* Title */}
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate pr-8">
-          {board.title}
-        </h3>
+        {/* Title row with avatar */}
+        <div className="flex items-center gap-2 pr-8">
+          {board.avatarUrl ? (
+            <img
+              src={board.avatarUrl}
+              alt=""
+              className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+              <Kanban size={12} className="text-emerald-600 dark:text-emerald-400" />
+            </div>
+          )}
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">
+            {board.title}
+          </h3>
+        </div>
 
         {/* Description */}
         {board.description ? (

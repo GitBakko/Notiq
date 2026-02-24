@@ -111,6 +111,7 @@ export async function listBoards(userId: string) {
         title: true,
         description: true,
         coverImage: true,
+        avatarUrl: true,
         ownerId: true,
         createdAt: true,
         updatedAt: true,
@@ -131,6 +132,7 @@ export async function listBoards(userId: string) {
             title: true,
             description: true,
             coverImage: true,
+            avatarUrl: true,
             ownerId: true,
             createdAt: true,
             updatedAt: true,
@@ -150,6 +152,7 @@ export async function listBoards(userId: string) {
     title: b.title,
     description: b.description,
     coverImage: b.coverImage,
+    avatarUrl: b.avatarUrl,
     ownerId: b.ownerId,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt,
@@ -163,6 +166,7 @@ export async function listBoards(userId: string) {
     title: s.board.title,
     description: s.board.description,
     coverImage: s.board.coverImage,
+    avatarUrl: s.board.avatarUrl,
     ownerId: s.board.ownerId,
     owner: s.board.owner,
     createdAt: s.board.createdAt,
@@ -222,29 +226,34 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
         },
       },
       owner: { select: { id: true, name: true, email: true, color: true } },
+      note: { select: { id: true, title: true, userId: true } },
     },
   });
   if (!board) throw new Error('Board not found');
 
   // Filter note visibility: only show linked note data if requesting user has access
   if (requestingUserId) {
-    // Get all noteIds from cards that have linked notes
+    // Collect all noteIds from cards AND the board itself
     const noteIds = board.columns
       .flatMap((col) => col.cards)
       .map((c) => c.noteId)
       .filter((id): id is string => !!id);
 
+    if (board.noteId) noteIds.push(board.noteId);
+
     if (noteIds.length > 0) {
+      const uniqueNoteIds = [...new Set(noteIds)];
+
       // Get notes the user can see (owned or shared-ACCEPTED)
       const accessibleShares = await prisma.sharedNote.findMany({
-        where: { noteId: { in: noteIds }, userId: requestingUserId, status: 'ACCEPTED' },
+        where: { noteId: { in: uniqueNoteIds }, userId: requestingUserId, status: 'ACCEPTED' },
         select: { noteId: true },
       });
       const accessibleNoteIds = new Set(accessibleShares.map((s) => s.noteId));
 
       // Also add notes owned by the requesting user
       const ownedNotes = await prisma.note.findMany({
-        where: { id: { in: noteIds }, userId: requestingUserId },
+        where: { id: { in: uniqueNoteIds }, userId: requestingUserId },
         select: { id: true },
       });
       for (const n of ownedNotes) accessibleNoteIds.add(n.id);
@@ -256,6 +265,11 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
             (card as Record<string, unknown>).note = null;
           }
         }
+      }
+
+      // Null out board-level note if user can't access it
+      if (board.noteId && !accessibleNoteIds.has(board.noteId)) {
+        (board as Record<string, unknown>).note = null;
       }
     }
   }
@@ -1003,6 +1017,74 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
 }
 
 /**
+ * Link a note to a board. Optionally auto-share with specified users.
+ */
+export async function linkNoteToBoard(
+  boardId: string,
+  noteId: string,
+  actorId: string,
+  shareWithUserIds?: string[]
+) {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { noteId: true, title: true },
+  });
+  if (!board) throw new Error('Board not found');
+  if (board.noteId) throw new Error('Board already has a linked note');
+
+  const note = await prisma.note.findUnique({
+    where: { id: noteId },
+    select: { id: true, title: true, userId: true },
+  });
+  if (!note) throw new Error('Note not found');
+
+  // Only the note owner can link their note
+  if (note.userId !== actorId) throw new Error('Only the note owner can link this note');
+
+  const updatedBoard = await prisma.kanbanBoard.update({
+    where: { id: boardId },
+    data: { noteId, noteLinkedById: actorId },
+    select: {
+      noteId: true,
+      noteLinkedById: true,
+      note: { select: { id: true, title: true, userId: true } },
+    },
+  });
+
+  // Auto-share with selected users
+  if (shareWithUserIds && shareWithUserIds.length > 0) {
+    const { autoShareNoteForBoard } = await import('./sharing.service');
+    await autoShareNoteForBoard(actorId, noteId, shareWithUserIds, 'READ', board.title);
+  }
+
+  broadcast(boardId, { type: 'board:updated', boardId });
+
+  return updatedBoard;
+}
+
+/**
+ * Unlink a note from a board. Only the user who linked it can unlink.
+ */
+export async function unlinkNoteFromBoard(boardId: string, actorId: string) {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { noteId: true, noteLinkedById: true },
+  });
+  if (!board) throw new Error('Board not found');
+  if (!board.noteId) throw new Error('Board has no linked note');
+  if (board.noteLinkedById !== actorId) throw new Error('Only the user who linked the note can unlink it');
+
+  await prisma.kanbanBoard.update({
+    where: { id: boardId },
+    data: { noteId: null, noteLinkedById: null },
+  });
+
+  broadcast(boardId, { type: 'board:updated', boardId });
+
+  return { success: true };
+}
+
+/**
  * Search notes that belong to the user (owned) for the note picker.
  */
 export async function searchUserNotes(
@@ -1037,48 +1119,86 @@ export async function searchUserNotes(
 }
 
 /**
- * Get kanban boards that have cards linked to the given note,
+ * Get kanban boards linked to the given note (via cards or directly),
  * accessible to the requesting user.
  */
 export async function getLinkedBoardsForNote(noteId: string, userId: string) {
-  // Find all cards that reference this note
-  const cards = await prisma.kanbanCard.findMany({
-    where: { noteId },
-    select: {
-      id: true,
-      title: true,
-      column: {
-        select: {
-          board: {
-            select: {
-              id: true,
-              title: true,
-              ownerId: true,
-              shares: {
-                where: { userId, status: 'ACCEPTED' },
-                select: { id: true },
-              },
-            },
-          },
-        },
-      },
+  const boardSelect = {
+    id: true,
+    title: true,
+    avatarUrl: true,
+    ownerId: true,
+    shares: {
+      where: { userId, status: 'ACCEPTED' as const },
+      select: { id: true },
     },
-  });
+  };
 
-  // Filter to boards the user has access to (owner or accepted share)
-  const boardMap = new Map<string, { boardId: string; boardTitle: string; cardIds: string[] }>();
+  // Find cards and boards that reference this note in parallel
+  const [cards, directBoards] = await Promise.all([
+    prisma.kanbanCard.findMany({
+      where: { noteId },
+      select: {
+        id: true,
+        title: true,
+        column: { select: { board: { select: boardSelect } } },
+      },
+    }),
+    prisma.kanbanBoard.findMany({
+      where: { noteId },
+      select: boardSelect,
+    }),
+  ]);
+
+  type LinkedBoardEntry = {
+    boardId: string;
+    boardTitle: string;
+    boardAvatarUrl: string | null;
+    linkedAs: 'board' | 'card';
+    cardIds: string[];
+    cardTitles: string[];
+  };
+
+  const results = new Map<string, LinkedBoardEntry>();
+
+  // Process card-level links (grouped by board)
   for (const card of cards) {
     const board = card.column.board;
     const hasAccess = board.ownerId === userId || board.shares.length > 0;
     if (!hasAccess) continue;
 
-    const existing = boardMap.get(board.id);
-    if (existing) {
+    const existing = results.get(board.id);
+    if (existing && existing.linkedAs === 'card') {
       existing.cardIds.push(card.id);
-    } else {
-      boardMap.set(board.id, { boardId: board.id, boardTitle: board.title, cardIds: [card.id] });
+      existing.cardTitles.push(card.title);
+    } else if (!results.has(board.id)) {
+      results.set(board.id, {
+        boardId: board.id,
+        boardTitle: board.title,
+        boardAvatarUrl: board.avatarUrl,
+        linkedAs: 'card',
+        cardIds: [card.id],
+        cardTitles: [card.title],
+      });
     }
   }
 
-  return Array.from(boardMap.values());
+  // Process board-level links
+  for (const board of directBoards) {
+    const hasAccess = board.ownerId === userId || board.shares.length > 0;
+    if (!hasAccess) continue;
+
+    // If already in results from a card link, add a separate board entry
+    const key = `board:${board.id}`;
+    results.set(key, {
+      boardId: board.id,
+      boardTitle: board.title,
+      boardAvatarUrl: board.avatarUrl,
+      linkedAs: 'board',
+      cardIds: [],
+      cardTitles: [],
+    });
+  }
+
+  return Array.from(results.values());
 }

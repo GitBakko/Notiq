@@ -196,10 +196,50 @@ export async function searchNotes(query: string): Promise<NoteSearchResult[]> {
 export interface LinkedBoardInfo {
   boardId: string;
   boardTitle: string;
+  boardAvatarUrl: string | null;
+  linkedAs: 'board' | 'card';
   cardIds: string[];
+  cardTitles: string[];
 }
 
 export async function getLinkedBoardsForNote(noteId: string): Promise<LinkedBoardInfo[]> {
   const res = await api.get<LinkedBoardInfo[]>(`/kanban/notes/${noteId}/linked-boards`);
   return res.data;
+}
+
+// ── Board Note Linking ───────────────────────────────────────────────────
+
+export async function checkBoardNoteSharing(boardId: string, noteId: string): Promise<NoteSharingCheck> {
+  const res = await api.get<NoteSharingCheck>(`/kanban/boards/${boardId}/check-note-sharing`, {
+    params: { noteId },
+  });
+  return res.data;
+}
+
+export async function linkNoteToBoard(
+  boardId: string,
+  noteId: string,
+  shareWithUserIds?: string[],
+): Promise<{ noteId: string; noteLinkedById: string; note: { id: string; title: string; userId: string } }> {
+  const res = await api.post(`/kanban/boards/${boardId}/link-note`, { noteId, shareWithUserIds });
+  return res.data;
+}
+
+export async function unlinkNoteFromBoard(boardId: string): Promise<void> {
+  await api.delete(`/kanban/boards/${boardId}/link-note`);
+}
+
+// ── Board Avatar ─────────────────────────────────────────────────────────
+
+export async function uploadAvatar(boardId: string, file: File): Promise<{ avatarUrl: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await api.post<{ avatarUrl: string }>(`/kanban/boards/${boardId}/avatar`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
+export async function deleteAvatar(boardId: string): Promise<void> {
+  await api.delete(`/kanban/boards/${boardId}/avatar`);
 }

@@ -28,6 +28,7 @@ export type KanbanEvent =
   | { type: 'columns:reordered'; boardId: string; columns: { id: string; position: number }[] }
   | { type: 'comment:added'; boardId: string; cardId: string; comment: Record<string, unknown> }
   | { type: 'chat:message'; boardId: string; message: Record<string, unknown> }
+  | { type: 'board:updated'; boardId: string }
   | { type: 'presence:update'; boardId: string; users: BoardUser[] };
 
 // ─── Presence helpers ──────────────────────────────────────────

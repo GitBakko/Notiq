@@ -16,7 +16,7 @@ import {
   DragOverlay,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
-import { ArrowLeft, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X } from 'lucide-react';
+import { ArrowLeft, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
@@ -25,11 +25,15 @@ import { useKanbanRealtime } from './hooks/useKanbanRealtime';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
+import * as kanbanService from './kanbanService';
+import type { NoteSharingCheck, NoteSearchResult } from './types';
 import KanbanColumn from './components/KanbanColumn';
 import KanbanCard from './components/KanbanCard';
 import CardDetailModal from './components/CardDetailModal';
 import ShareBoardModal from './components/ShareBoardModal';
 import BoardChatSidebar from './components/BoardChatSidebar';
+import NoteLinkPicker from './components/NoteLinkPicker';
+import SharingGapModal from './components/SharingGapModal';
 import KanbanFilterBar, {
   type KanbanFilters,
   defaultKanbanFilters,
@@ -95,7 +99,12 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [filters, setFilters] = useState<KanbanFilters>(defaultKanbanFilters);
+  const [isNoteLinkPickerOpen, setIsNoteLinkPickerOpen] = useState(false);
+  const [boardSharingCheck, setBoardSharingCheck] = useState<NoteSharingCheck | null>(null);
+  const [pendingBoardNote, setPendingBoardNote] = useState<NoteSearchResult | null>(null);
+  const [isBoardSharingGapOpen, setIsBoardSharingGapOpen] = useState(false);
   const filtersActive = isFiltersActive(filters);
 
   // ── DnD multi-container state ──────────────────────────────────
@@ -378,6 +387,52 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     mutations.deleteCover.mutate(boardId);
   }
 
+  // Board note linking
+  async function handleBoardNoteSelected(note: NoteSearchResult): Promise<void> {
+    setIsNoteLinkPickerOpen(false);
+    setPendingBoardNote(note);
+    try {
+      const check = await kanbanService.checkBoardNoteSharing(boardId, note.id);
+      if (check.alreadyFullyShared) {
+        mutations.linkBoardNote.mutate({ boardId, noteId: note.id });
+        setPendingBoardNote(null);
+      } else {
+        setBoardSharingCheck(check);
+        setIsBoardSharingGapOpen(true);
+      }
+    } catch {
+      setPendingBoardNote(null);
+    }
+  }
+
+  function handleBoardNoteSharingConfirm(selectedUserIds: string[]): void {
+    if (!pendingBoardNote) return;
+    mutations.linkBoardNote.mutate(
+      { boardId, noteId: pendingBoardNote.id, shareWithUserIds: selectedUserIds },
+      {
+        onSuccess: () => {
+          setIsBoardSharingGapOpen(false);
+          setBoardSharingCheck(null);
+          setPendingBoardNote(null);
+        },
+      },
+    );
+  }
+
+  function handleUnlinkBoardNote(): void {
+    mutations.unlinkBoardNote.mutate(boardId);
+  }
+
+  function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    mutations.uploadAvatar.mutate(
+      { bid: boardId, file },
+      { onError: () => toast.error(t('common.genericError')) },
+    );
+    e.target.value = '';
+  }
+
   // ── These useMemo hooks MUST be above early returns to satisfy React hook rules ──
   const sortedColumns = useMemo(
     () => [...localColumns].sort((a, b) => a.position - b.position),
@@ -483,6 +538,35 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               >
                 <ArrowLeft size={20} />
               </button>
+
+              {/* Board Avatar */}
+              <div className="relative group/avatar flex-shrink-0">
+                {board.avatarUrl ? (
+                  <img
+                    src={board.avatarUrl}
+                    alt=""
+                    className="w-8 h-8 rounded-full object-cover cursor-pointer"
+                    onClick={() => !readOnly && avatarInputRef.current?.click()}
+                  />
+                ) : !readOnly ? (
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    title={t('kanban.avatar.upload')}
+                  >
+                    <ImagePlus size={14} />
+                  </button>
+                ) : null}
+                {!readOnly && board.avatarUrl && (
+                  <button
+                    onClick={() => mutations.deleteAvatar.mutate(boardId)}
+                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+                    title={t('kanban.avatar.remove')}
+                  >
+                    <X size={8} />
+                  </button>
+                )}
+              </div>
 
               {isEditingTitle ? (
                 <input
@@ -626,6 +710,46 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           </div>
         </div>
 
+        {/* Board-linked note */}
+        {(board.noteId || !readOnly) && (
+          <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 py-2">
+            {board.note ? (
+              <div className="flex items-center gap-2 text-sm">
+                <FileText size={14} className="text-emerald-500 flex-shrink-0" />
+                <span className="text-xs text-gray-500 dark:text-gray-400">{t('kanban.boardNote.linkedNote')}:</span>
+                <button
+                  onClick={() => navigate(`/notes?noteId=${board.note!.id}`)}
+                  className="text-emerald-600 dark:text-emerald-400 hover:underline truncate text-sm"
+                >
+                  {board.note.title}
+                </button>
+                {!readOnly && user?.id === board.noteLinkedById && (
+                  <button
+                    onClick={handleUnlinkBoardNote}
+                    className="ml-auto flex-shrink-0 p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    title={t('kanban.boardNote.unlink')}
+                  >
+                    <Unlink size={14} />
+                  </button>
+                )}
+              </div>
+            ) : board.noteId ? (
+              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 italic">
+                <FileText size={14} />
+                {t('kanban.boardNote.noAccess')}
+              </div>
+            ) : !readOnly ? (
+              <button
+                onClick={() => setIsNoteLinkPickerOpen(true)}
+                className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+              >
+                <Link2 size={14} />
+                {t('kanban.boardNote.link')}
+              </button>
+            ) : null}
+          </div>
+        )}
+
         {/* Filter bar */}
         <KanbanFilterBar
           filters={filters}
@@ -720,6 +844,14 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           className="hidden"
           onChange={handleCoverUpload}
         />
+        {/* Hidden avatar input */}
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="hidden"
+          onChange={handleAvatarUpload}
+        />
       </div>
 
       {/* Chat Sidebar */}
@@ -756,6 +888,26 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           boardId={boardId}
           boardTitle={board.title}
           sharedWith={board.shares?.filter((s) => s.status === 'ACCEPTED')}
+        />
+      )}
+
+      {/* Board note picker + sharing gap modal */}
+      <NoteLinkPicker
+        isOpen={isNoteLinkPickerOpen}
+        onClose={() => setIsNoteLinkPickerOpen(false)}
+        onSelect={handleBoardNoteSelected}
+      />
+      {boardSharingCheck && (
+        <SharingGapModal
+          isOpen={isBoardSharingGapOpen}
+          onClose={() => {
+            setIsBoardSharingGapOpen(false);
+            setBoardSharingCheck(null);
+            setPendingBoardNote(null);
+          }}
+          sharingCheck={boardSharingCheck}
+          onConfirm={handleBoardNoteSharingConfirm}
+          isPending={mutations.linkBoardNote.isPending}
         />
       )}
     </div>

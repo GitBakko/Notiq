@@ -10,6 +10,7 @@ export interface KanbanReminderItem {
   cardTitle: string;
   boardTitle: string;
   columnTitle: string;
+  boardAvatarUrl: string | null;
 }
 
 export function useKanbanReminders() {

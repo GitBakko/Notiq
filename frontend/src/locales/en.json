@@ -808,6 +808,17 @@
       "fieldTitle": "title",
       "fieldDescription": "description"
     },
+    "boardNote": {
+      "link": "Link note",
+      "unlink": "Unlink note",
+      "linkedNote": "Board note",
+      "noAccess": "Linked note (no access)"
+    },
+    "avatar": {
+      "upload": "Upload avatar",
+      "change": "Change avatar",
+      "remove": "Remove avatar"
+    },
     "noteLink": {
       "pickerTitle": "Link a Note",
       "searchPlaceholder": "Search notes by title or content...",
@@ -817,6 +828,8 @@
       "linkNote": "Link note",
       "unlink": "Unlink note",
       "goToBoard": "Go to board: {{boardTitle}}",
+      "boardLabel": "Board: {{boardTitle}}",
+      "cardLabel": "Card: {{cardTitle}} ({{boardTitle}})",
       "sharingGapTitle": "Share Note with Board Members",
       "usersWithAccess": "Already have access",
       "usersWithoutAccess": "Will be given access",

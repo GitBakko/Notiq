@@ -75,11 +75,19 @@ function handleKanbanError(error: unknown, reply: any) {
   if (
     msg === 'Access denied' ||
     msg === 'Write access required' ||
-    msg === 'Not your comment'
+    msg === 'Not your comment' ||
+    msg === 'Only the note owner can link this note' ||
+    msg === 'Only the user who linked the note can unlink it'
   ) {
     return reply.status(403).send({ message: msg });
   }
-  if (msg === 'Column has cards') {
+  if (
+    msg === 'Column has cards' ||
+    msg === 'Board already has a linked note' ||
+    msg === 'Board has no linked note' ||
+    msg === 'Card already has a linked note' ||
+    msg === 'Card has no linked note'
+  ) {
     return reply.status(409).send({ message: msg });
   }
   throw error;
@@ -89,8 +97,10 @@ function handleKanbanError(error: unknown, reply: any) {
 
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 const KANBAN_UPLOADS_DIR = path.join(UPLOADS_DIR, 'kanban');
+const KANBAN_AVATARS_DIR = path.join(UPLOADS_DIR, 'kanban', 'avatars');
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
 
 // ─── Route plugin ───────────────────────────────────────────
 
@@ -111,6 +121,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       cardTitle: r.card.title,
       boardTitle: r.card.column.board.title,
       columnTitle: r.card.column.title,
+      boardAvatarUrl: r.card.column.board.avatarUrl,
     }));
   });
 
@@ -264,6 +275,134 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       });
 
       return { success: true };
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  // ── Board Avatar ──────────────────────────────────────────
+
+  fastify.post('/boards/:id/avatar', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'WRITE');
+
+      const data = await request.file();
+      if (!data) {
+        return reply.status(400).send({ message: 'No file uploaded' });
+      }
+      if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
+        return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
+      }
+
+      // Read file into buffer and check size
+      const chunks: Buffer[] = [];
+      let totalSize = 0;
+      for await (const chunk of data.file) {
+        totalSize += chunk.length;
+        if (totalSize > MAX_AVATAR_SIZE) {
+          return reply.status(400).send({ message: 'File too large (max 2MB)' });
+        }
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+
+      // Ensure directory exists
+      if (!fs.existsSync(KANBAN_AVATARS_DIR)) {
+        fs.mkdirSync(KANBAN_AVATARS_DIR, { recursive: true });
+      }
+
+      // Delete old avatar if present
+      const currentBoard = await prisma.kanbanBoard.findUnique({
+        where: { id },
+        select: { avatarUrl: true },
+      });
+      if (currentBoard?.avatarUrl) {
+        const oldFile = path.join(UPLOADS_DIR, currentBoard.avatarUrl.replace(/^\/uploads\//, ''));
+        if (fs.existsSync(oldFile)) {
+          fs.unlinkSync(oldFile);
+        }
+      }
+
+      // Save new file
+      const ext = path.extname(data.filename || '.jpg').toLowerCase();
+      const filename = `${randomUUID()}${ext}`;
+      const filepath = path.join(KANBAN_AVATARS_DIR, filename);
+      fs.writeFileSync(filepath, buffer);
+
+      const avatarUrl = `/uploads/kanban/avatars/${filename}`;
+      await prisma.kanbanBoard.update({
+        where: { id },
+        data: { avatarUrl },
+      });
+
+      return { avatarUrl };
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  fastify.delete('/boards/:id/avatar', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'WRITE');
+
+      const board = await prisma.kanbanBoard.findUnique({
+        where: { id },
+        select: { avatarUrl: true },
+      });
+      if (board?.avatarUrl) {
+        const oldFile = path.join(UPLOADS_DIR, board.avatarUrl.replace(/^\/uploads\//, ''));
+        if (fs.existsSync(oldFile)) {
+          fs.unlinkSync(oldFile);
+        }
+      }
+
+      await prisma.kanbanBoard.update({
+        where: { id },
+        data: { avatarUrl: null },
+      });
+
+      return { success: true };
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  // ── Board Note Linking ─────────────────────────────────────
+
+  const boardLinkNoteSchema = z.object({
+    noteId: z.string().uuid(),
+    shareWithUserIds: z.array(z.string().uuid()).optional(),
+  });
+
+  fastify.get('/boards/:id/check-note-sharing', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'READ');
+      const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.query);
+      return await kanbanService.checkNoteSharingForBoard(noteId, id, request.user.id);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  fastify.post('/boards/:id/link-note', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'WRITE');
+      const { noteId, shareWithUserIds } = boardLinkNoteSchema.parse(request.body);
+      return await kanbanService.linkNoteToBoard(id, noteId, request.user.id, shareWithUserIds);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  fastify.delete('/boards/:id/link-note', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'WRITE');
+      return await kanbanService.unlinkNoteFromBoard(id, request.user.id);
     } catch (error) {
       return handleKanbanError(error, reply);
     }

@@ -867,6 +867,17 @@
       "fieldTitle": "titolo",
       "fieldDescription": "descrizione"
     },
+    "boardNote": {
+      "link": "Collega nota",
+      "unlink": "Scollega nota",
+      "linkedNote": "Nota della board",
+      "noAccess": "Nota collegata (nessun accesso)"
+    },
+    "avatar": {
+      "upload": "Carica avatar",
+      "change": "Cambia avatar",
+      "remove": "Rimuovi avatar"
+    },
     "noteLink": {
       "pickerTitle": "Collega una Nota",
       "searchPlaceholder": "Cerca note per titolo o contenuto...",
@@ -876,6 +887,8 @@
       "linkNote": "Collega nota",
       "unlink": "Scollega nota",
       "goToBoard": "Vai alla board: {{boardTitle}}",
+      "boardLabel": "Board: {{boardTitle}}",
+      "cardLabel": "Card: {{cardTitle}} ({{boardTitle}})",
       "sharingGapTitle": "Condividi Nota con i Membri della Board",
       "usersWithAccess": "Hanno gia' accesso",
       "usersWithoutAccess": "Riceveranno accesso",

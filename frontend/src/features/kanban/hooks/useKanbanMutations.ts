@@ -102,6 +102,28 @@ export function useKanbanMutations(boardId?: string) {
     onSuccess: invalidateBoard,
   });
 
+  const linkBoardNote = useMutation({
+    mutationFn: ({ boardId: bid, noteId, shareWithUserIds }: { boardId: string; noteId: string; shareWithUserIds?: string[] }) =>
+      kanbanService.linkNoteToBoard(bid, noteId, shareWithUserIds),
+    onSuccess: invalidateBoard,
+  });
+
+  const unlinkBoardNote = useMutation({
+    mutationFn: kanbanService.unlinkNoteFromBoard,
+    onSuccess: invalidateBoard,
+  });
+
+  const uploadAvatar = useMutation({
+    mutationFn: ({ bid, file }: { bid: string; file: File }) =>
+      kanbanService.uploadAvatar(bid, file),
+    onSuccess: invalidateBoard,
+  });
+
+  const deleteAvatar = useMutation({
+    mutationFn: kanbanService.deleteAvatar,
+    onSuccess: invalidateBoard,
+  });
+
   return {
     createBoard,
     deleteBoard,
@@ -118,5 +140,9 @@ export function useKanbanMutations(boardId?: string) {
     deleteCover,
     linkNote,
     unlinkNote,
+    linkBoardNote,
+    unlinkBoardNote,
+    uploadAvatar,
+    deleteAvatar,
   };
 }

@@ -139,7 +139,7 @@ export async function getUserKanbanReminders(userId: string) {
           column: {
             select: {
               title: true,
-              board: { select: { title: true } },
+              board: { select: { title: true, avatarUrl: true } },
             },
           },
         },

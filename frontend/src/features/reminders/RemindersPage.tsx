@@ -22,6 +22,7 @@ interface UnifiedReminder {
   boardId?: string;
   boardTitle?: string;
   columnTitle?: string;
+  boardAvatarUrl?: string | null;
 }
 
 export default function RemindersPage() {
@@ -74,6 +75,7 @@ export default function RemindersPage() {
         boardId: kr.boardId,
         boardTitle: kr.boardTitle,
         columnTitle: kr.columnTitle,
+        boardAvatarUrl: kr.boardAvatarUrl,
       });
     }
   }
@@ -125,6 +127,8 @@ export default function RemindersPage() {
         <div className="flex items-center gap-2">
           {item.type === 'note' ? (
             <FileText size={14} className="text-blue-500 dark:text-blue-400 flex-shrink-0" />
+          ) : item.boardAvatarUrl ? (
+            <img src={item.boardAvatarUrl} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
           ) : (
             <LayoutDashboard size={14} className="text-purple-500 dark:text-purple-400 flex-shrink-0" />
           )}

@@ -65,6 +65,7 @@ model User {
   kanbanBoardChats     KanbanBoardChat[]   @relation("KanbanBoardChatAuthor")
   kanbanCardActivities KanbanCardActivity[] @relation("KanbanActivityUser")
   kanbanLinkedCards     KanbanCard[]         @relation("KanbanNoteLinker")
+  kanbanLinkedBoards   KanbanBoard[]        @relation("KanbanBoardNoteLinker")
   kanbanReminders      KanbanReminder[]     @relation("KanbanReminderUser")
 }
 
@@ -135,7 +136,8 @@ model Note {
   ydocState   Bytes?   // Yjs binary state for CRDT-safe collaboration
   searchVector Unsupported("tsvector")?
 
-  kanbanCards  KanbanCard[]
+  kanbanCards   KanbanCard[]
+  kanbanBoards  KanbanBoard[] @relation("KanbanBoardNote")
 
   @@index([userId, isTrashed])
   @@index([notebookId])
@@ -403,20 +405,26 @@ model SharedTaskList {
 // ─── Kanban ──────────────────────────────────────────────────
 
 model KanbanBoard {
-  id          String              @id @default(uuid())
-  title       String
-  description String?
-  coverImage  String?
-  ownerId     String
-  owner       User                @relation("KanbanOwner", fields: [ownerId], references: [id])
-  columns     KanbanColumn[]
-  shares      SharedKanbanBoard[]
-  chatMessages KanbanBoardChat[]
-  reminders   KanbanReminder[]
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id              String              @id @default(uuid())
+  title           String
+  description     String?
+  coverImage      String?
+  avatarUrl       String?
+  noteId          String?
+  note            Note?               @relation("KanbanBoardNote", fields: [noteId], references: [id])
+  noteLinkedById  String?
+  noteLinkedBy    User?               @relation("KanbanBoardNoteLinker", fields: [noteLinkedById], references: [id])
+  ownerId         String
+  owner           User                @relation("KanbanOwner", fields: [ownerId], references: [id])
+  columns         KanbanColumn[]
+  shares          SharedKanbanBoard[]
+  chatMessages    KanbanBoardChat[]
+  reminders       KanbanReminder[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@index([ownerId])
+  @@index([noteId])
 }
 
 model KanbanColumn {

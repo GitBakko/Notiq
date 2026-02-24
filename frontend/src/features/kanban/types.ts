@@ -3,6 +3,10 @@ export interface KanbanBoard {
   title: string;
   description: string | null;
   coverImage: string | null;
+  avatarUrl: string | null;
+  noteId: string | null;
+  noteLinkedById: string | null;
+  note: { id: string; title: string; userId: string } | null;
   ownerId: string;
   owner?: { id: string; name: string | null; email: string; color: string | null };
   columns: KanbanColumn[];
@@ -16,6 +20,7 @@ export interface KanbanBoardListItem {
   title: string;
   description: string | null;
   coverImage: string | null;
+  avatarUrl: string | null;
   ownerId: string;
   owner?: { id: string; name: string | null; email: string };
   columnCount: number;
