@@ -150,6 +150,18 @@ server.get('/uploads/groups/:filename', async (request, reply) => {
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
 });
 
+// Public kanban board avatar serving (no auth required)
+server.get('/uploads/kanban/avatars/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename);
+  const filepath = path.join(UPLOADS_DIR, 'kanban', 'avatars', safeName);
+  if (!fs.existsSync(filepath)) {
+    return reply.code(404).send({ message: 'Not found' });
+  }
+  const stream = fs.createReadStream(filepath);
+  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+});
+
 // Public kanban board cover serving (no auth required)
 server.get('/uploads/kanban/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
