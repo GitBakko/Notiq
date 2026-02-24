@@ -30,6 +30,13 @@ import KanbanCard from './components/KanbanCard';
 import CardDetailModal from './components/CardDetailModal';
 import ShareBoardModal from './components/ShareBoardModal';
 import BoardChatSidebar from './components/BoardChatSidebar';
+import KanbanFilterBar, {
+  type KanbanFilters,
+  defaultKanbanFilters,
+  isFiltersActive,
+  cardMatchesFilters,
+} from './components/KanbanFilterBar';
+// ganttExport loaded lazily on demand (exceljs ~500KB)
 import type { KanbanCard as KanbanCardType } from './types';
 
 interface KanbanBoardPageProps {
@@ -37,7 +44,7 @@ interface KanbanBoardPageProps {
 }
 
 export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
@@ -89,6 +96,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const [filters, setFilters] = useState<KanbanFilters>(defaultKanbanFilters);
+  const filtersActive = isFiltersActive(filters);
 
   // ── DnD multi-container state ──────────────────────────────────
   // Local copy of columns that can be mutated during drag for smooth cross-column moves
@@ -370,6 +379,35 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     mutations.deleteCover.mutate(boardId);
   }
 
+  // ── These useMemo hooks MUST be above early returns to satisfy React hook rules ──
+  const sortedColumns = useMemo(
+    () => [...localColumns].sort((a, b) => a.position - b.position),
+    [localColumns],
+  );
+
+  // Unique assignees from all cards for the filter dropdown
+  const allAssignees = useMemo(() => {
+    if (!board) return [];
+    const map = new Map<string, { id: string; name: string | null; email: string; color: string | null }>();
+    for (const col of board.columns) {
+      for (const card of col.cards) {
+        if (card.assignee && !map.has(card.assignee.id)) {
+          map.set(card.assignee.id, card.assignee);
+        }
+      }
+    }
+    return Array.from(map.values());
+  }, [board]);
+
+  // Filtered columns for display (DnD uses localColumns unfiltered)
+  const displayColumns = useMemo(() => {
+    if (!filtersActive) return sortedColumns;
+    return sortedColumns.map((col) => ({
+      ...col,
+      cards: col.cards.filter((card) => cardMatchesFilters(card, filters)),
+    }));
+  }, [sortedColumns, filtersActive, filters]);
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -386,8 +424,14 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     );
   }
 
-  const sortedColumns = [...localColumns].sort((a, b) => a.position - b.position);
   const userColor = user?.color || '#319795';
+
+  // Gantt XLSX export (lazy-loaded)
+  async function handleExportGantt(): Promise<void> {
+    if (!board) return;
+    const { exportGanttXLSX } = await import('./ganttExport');
+    await exportGanttXLSX(board, t, i18n.language);
+  }
 
   return (
     <div className="flex-1 flex h-full bg-gray-50 dark:bg-gray-900">
@@ -583,6 +627,14 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           </div>
         </div>
 
+        {/* Filter bar */}
+        <KanbanFilterBar
+          filters={filters}
+          onFiltersChange={setFilters}
+          assignees={allAssignees}
+          onExport={handleExportGantt}
+        />
+
         {/* Board content — horizontal scroll */}
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <DndContext
@@ -593,7 +645,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
             onDragEnd={handleDragEnd}
           >
             <div className="flex gap-4 p-4 h-full items-start">
-              {sortedColumns.map((column) => (
+              {displayColumns.map((column) => (
                 <KanbanColumn
                   key={column.id}
                   column={column}
@@ -602,7 +654,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                   onRenameColumn={handleRenameColumn}
                   onDeleteColumn={handleDeleteColumn}
                   onAddCard={handleAddCard}
-                  readOnly={readOnly}
+                  readOnly={readOnly || filtersActive}
                   highlightedCardIds={highlightedCardIds}
                 />
               ))}

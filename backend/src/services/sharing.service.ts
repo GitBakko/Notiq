@@ -520,6 +520,16 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
       data: { status },
       include: { board: { include: { owner: true } }, user: true }
     });
+
+    // Create catch-up reminders when accepting a board share
+    if (action === 'accept') {
+      try {
+        const { createRemindersForNewBoardUser } = await import('./kanbanReminder.service');
+        await createRemindersForNewBoardUser(userId, itemId);
+      } catch {
+        // Non-critical
+      }
+    }
   }
 
   // Notify Owner
@@ -649,5 +659,14 @@ export const revokeKanbanBoardShare = async (
   } catch {
     // Record may not exist — treat as success
   }
+
+  // Clean up kanban reminders for the revoked user
+  try {
+    const { deleteRemindersForUserOnBoard } = await import('./kanbanReminder.service');
+    await deleteRemindersForUserOnBoard(targetUserId, boardId);
+  } catch {
+    // Non-critical
+  }
+
   return { success: true };
 };

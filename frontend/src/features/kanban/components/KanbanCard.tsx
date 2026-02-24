@@ -2,6 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 import { formatDistanceToNow, isToday, isPast, startOfDay } from 'date-fns';
+import { it as itLocale, enUS } from 'date-fns/locale';
 import { GripVertical, MessageSquare, FileText, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { KanbanCard as KanbanCardType } from '../types';
@@ -23,7 +24,8 @@ function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
 }
 
 export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: KanbanCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
 
   const {
     attributes,
@@ -108,7 +110,7 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
                   )}
                 >
                   <Calendar size={12} />
-                  {formatDistanceToNow(new Date(card.dueDate), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(card.dueDate), { addSuffix: true, locale: dateLocale })}
                 </span>
               )}
 

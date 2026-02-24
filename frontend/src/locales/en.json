@@ -82,6 +82,7 @@
     "search": "Search",
     "externalSources": "External Sources",
     "importEvernote": "Evernote (.enex)",
+    "importOneNote": "OneNote (.mht)",
     "groups": "Groups",
     "kanban": "Kanban"
   },
@@ -95,6 +96,8 @@
     "import": "Import Data",
     "importTitle": "Import from Evernote",
     "importDesc": "Upload an .enex file to import your notes.",
+    "importTitleOneNote": "Import from OneNote",
+    "importDescOneNote": "Export your OneNote pages as .mht (File > Export > Single File Web Page), then upload here. Also supports .html and .zip files.",
     "selectFile": "Select .enex file",
     "importing": "Importing...",
     "importSuccess": "Successfully imported {{count}} notes!",
@@ -192,7 +195,7 @@
     "today": "Today",
     "upcoming": "Upcoming",
     "completed": "Completed",
-    "noTasks": "No tasks found. Add a reminder to a note to see it here."
+    "noTasks": "No reminders found. Add a reminder to a note or set a due date on a Kanban card."
   },
   "taskLists": {
     "title": "Task Lists",
@@ -818,6 +821,50 @@
       "usersWithAccess": "Already have access",
       "usersWithoutAccess": "Will be given access",
       "confirmLink": "Link & Share"
+    },
+    "filters": {
+      "searchPlaceholder": "Search cards...",
+      "assignee": "Assignee",
+      "noAssignees": "No assignees yet",
+      "unassigned": "Unassigned",
+      "dueDate": "Due date",
+      "dueDateAll": "All",
+      "dueDateOverdue": "Overdue",
+      "dueDateToday": "Today",
+      "dueDateUpcoming": "Upcoming",
+      "dueDateNone": "No due date",
+      "noteAll": "All notes",
+      "noteLinked": "Linked",
+      "noteNotLinked": "No note",
+      "commentsAll": "All comments",
+      "commentsHas": "With comments",
+      "commentsNone": "No comments",
+      "clearAll": "Clear"
+    },
+    "export": {
+      "ganttCsv": "Export XLSX",
+      "cardTitle": "Title",
+      "description": "Description",
+      "column": "Column",
+      "assignee": "Assignee",
+      "createdAt": "Created",
+      "startDate": "Start",
+      "dueDate": "Due Date",
+      "daysRemaining": "Days Left",
+      "hasNote": "Note",
+      "commentCount": "Comments",
+      "sheetOverview": "Overview",
+      "sheetGantt": "Gantt Chart",
+      "sheetAllCards": "All Cards",
+      "exportDate": "Export Date",
+      "statistics": "Statistics",
+      "totalCards": "Total Cards",
+      "withDueDate": "With Due Date",
+      "overdueCards": "Overdue",
+      "dueTodayCards": "Due Today",
+      "upcomingCards": "Upcoming",
+      "noDueDate": "No Due Date",
+      "columnBreakdown": "Cards by Column"
     }
   },
   "encryption": {
@@ -896,6 +943,12 @@
       "kanbanSharing": "Board Sharing — Share kanban boards with collaborators and accept invitations",
       "notificationLinks": "Clickable Notifications — Notifications now link directly to the relevant item",
       "chatTieredNotifications": "Smart Chat Notifications — Sound, badge, in-app, or email depending on your activity",
+      "onenoteImport": "OneNote Import — Import notes from OneNote via .mht, .html, or .zip files",
+      "kanbanFilters": "Kanban Filters — Search, filter by assignee, due date, linked notes, and comments",
+      "ganttExport": "Gantt XLSX Export — Professional 3-sheet Excel report with Gantt chart, overview, and all cards",
+      "kanbanReminders": "Kanban Reminders — Set reminders on Kanban cards with due dates, shown in Reminders page",
+      "kanbanHooksFix": "Fixed Kanban board crash when navigating between pages",
+      "kanbanLocaleFix": "Fixed due date display language on Kanban cards",
       "initialRelease": "Initial release with full feature set"
     }
   },

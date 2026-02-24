@@ -82,6 +82,7 @@
     "search": "Cerca",
     "externalSources": "Fonti Esterne",
     "importEvernote": "Evernote (.enex)",
+    "importOneNote": "OneNote (.mht)",
     "groups": "Gruppi",
     "kanban": "Kanban"
   },
@@ -101,6 +102,8 @@
     "import": "Importa Dati",
     "importTitle": "Importa da Evernote",
     "importDesc": "Carica un file .enex per importare le tue note.",
+    "importTitleOneNote": "Importa da OneNote",
+    "importDescOneNote": "Esporta le pagine di OneNote come .mht (File > Esporta > Pagina Web file unico), poi caricale qui. Supporta anche file .html e .zip.",
     "selectFile": "Seleziona file .enex",
     "importing": "Importazione...",
     "importSuccess": "Importate con successo {{count}} note!",
@@ -278,7 +281,7 @@
     "today": "Oggi",
     "upcoming": "In arrivo",
     "completed": "Completati",
-    "noTasks": "Nessuna attività trovata. Aggiungi un promemoria a una nota per vederlo qui."
+    "noTasks": "Nessun promemoria trovato. Aggiungi un promemoria a una nota o imposta una scadenza su una card Kanban."
   },
   "taskLists": {
     "title": "Task List",
@@ -675,6 +678,12 @@
       "kanbanSharing": "Condivisione board — Condividi le board kanban e accetta gli inviti",
       "notificationLinks": "Notifiche cliccabili — Le notifiche ora puntano direttamente all'elemento pertinente",
       "chatTieredNotifications": "Notifiche chat intelligenti — Suono, badge, in-app o email in base alla tua attivita'",
+      "onenoteImport": "Import OneNote — Importa note da OneNote tramite file .mht, .html o .zip",
+      "kanbanFilters": "Filtri Kanban — Cerca, filtra per assegnatario, scadenza, note collegate e commenti",
+      "ganttExport": "Export Gantt XLSX — Report Excel professionale a 3 fogli con diagramma Gantt, panoramica e tutte le card",
+      "kanbanReminders": "Promemoria Kanban — Imposta promemoria sulle card Kanban con scadenza, visibili nella pagina Promemoria",
+      "kanbanHooksFix": "Risolto crash della board Kanban navigando tra le pagine",
+      "kanbanLocaleFix": "Corretta la lingua della scadenza sulle card Kanban",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -871,6 +880,50 @@
       "usersWithAccess": "Hanno gia' accesso",
       "usersWithoutAccess": "Riceveranno accesso",
       "confirmLink": "Collega e Condividi"
+    },
+    "filters": {
+      "searchPlaceholder": "Cerca card...",
+      "assignee": "Assegnatario",
+      "noAssignees": "Nessun assegnatario",
+      "unassigned": "Non assegnato",
+      "dueDate": "Scadenza",
+      "dueDateAll": "Tutte",
+      "dueDateOverdue": "Scadute",
+      "dueDateToday": "Oggi",
+      "dueDateUpcoming": "Prossime",
+      "dueDateNone": "Senza scadenza",
+      "noteAll": "Tutte le note",
+      "noteLinked": "Con nota",
+      "noteNotLinked": "Senza nota",
+      "commentsAll": "Tutti i commenti",
+      "commentsHas": "Con commenti",
+      "commentsNone": "Senza commenti",
+      "clearAll": "Pulisci"
+    },
+    "export": {
+      "ganttCsv": "Esporta XLSX",
+      "cardTitle": "Titolo",
+      "description": "Descrizione",
+      "column": "Colonna",
+      "assignee": "Assegnatario",
+      "createdAt": "Creata",
+      "startDate": "Inizio",
+      "dueDate": "Scadenza",
+      "daysRemaining": "Giorni",
+      "hasNote": "Nota",
+      "commentCount": "Commenti",
+      "sheetOverview": "Riepilogo",
+      "sheetGantt": "Diagramma Gantt",
+      "sheetAllCards": "Tutte le Card",
+      "exportDate": "Data Esportazione",
+      "statistics": "Statistiche",
+      "totalCards": "Card Totali",
+      "withDueDate": "Con Scadenza",
+      "overdueCards": "Scadute",
+      "dueTodayCards": "Scadono Oggi",
+      "upcomingCards": "Prossime",
+      "noDueDate": "Senza Scadenza",
+      "columnBreakdown": "Card per Colonna"
     }
   },
   "encryption": {

@@ -42,6 +42,7 @@ export default function Sidebar() {
   const { notebooks } = useNotebooks();
   const pinnedNotes = usePinnedNotes();
   const { isUploading, importFile, hiddenInput, notebookPickerModal } = useImport();
+  const { isUploading: isUploadingOneNote, importFile: importFileOneNote, hiddenInput: hiddenInputOneNote, notebookPickerModal: notebookPickerModalOneNote } = useImport({ source: 'onenote' });
 
   const handleCreateNote = async () => {
     let defaultNotebookId: string;
@@ -405,8 +406,18 @@ export default function Sidebar() {
               </svg>
               <span>{t('sidebar.importEvernote')}</span>
             </button>
+            <button
+              onClick={() => importFileOneNote()}
+              disabled={isUploadingOneNote}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white transition-colors disabled:opacity-50"
+            >
+              <img src="/oneNote.png" alt="OneNote" width="16" height="16" className="flex-shrink-0" />
+              <span>{t('sidebar.importOneNote')}</span>
+            </button>
             {hiddenInput}
             {notebookPickerModal}
+            {hiddenInputOneNote}
+            {notebookPickerModalOneNote}
           </div>
         </div>
 

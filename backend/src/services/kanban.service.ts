@@ -436,6 +436,24 @@ export async function updateCard(
       await logCardActivity(cardId, actorId, 'DUE_DATE_REMOVED');
     }
   }
+
+  // Manage kanban reminders based on dueDate changes
+  if (data.dueDate !== undefined) {
+    const { createRemindersForCard, updateRemindersForCard, deleteRemindersForCard } =
+      await import('./kanbanReminder.service');
+
+    if (data.dueDate !== null && !currentCard.dueDate) {
+      // dueDate SET for the first time: create reminders for all board users
+      await createRemindersForCard(cardId, boardId, new Date(data.dueDate));
+    } else if (data.dueDate !== null && currentCard.dueDate) {
+      // dueDate CHANGED: update all existing reminders
+      await updateRemindersForCard(cardId, new Date(data.dueDate));
+    } else if (data.dueDate === null && currentCard.dueDate) {
+      // dueDate REMOVED: delete all reminders for this card
+      await deleteRemindersForCard(cardId);
+    }
+  }
+
   if (data.title !== undefined && data.title !== currentCard.title) {
     await logCardActivity(cardId, actorId, 'UPDATED', {
       metadata: { field: 'title', oldValue: currentCard.title, newValue: data.title },

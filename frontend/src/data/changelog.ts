@@ -11,6 +11,18 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.5.0',
+    date: '2026-02-24',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.onenoteImport' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanFilters' },
+      { type: 'feature', titleKey: 'whatsNew.entries.ganttExport' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanReminders' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanHooksFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanLocaleFix' },
+    ],
+  },
+  {
     version: '1.4.0',
     date: '2026-02-23',
     entries: [

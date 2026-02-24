@@ -67,7 +67,8 @@ function handleKanbanError(error: unknown, reply: any) {
     msg === 'Board not found' ||
     msg === 'Column not found' ||
     msg === 'Card not found' ||
-    msg === 'Comment not found'
+    msg === 'Comment not found' ||
+    msg === 'Reminder not found'
   ) {
     return reply.status(404).send({ message: msg });
   }
@@ -95,6 +96,39 @@ const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5MB
 
 export default async function kanbanRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
+
+  // ── Kanban Reminders ───────────────────────────────────
+
+  fastify.get('/reminders', async (request) => {
+    const { getUserKanbanReminders } = await import('../services/kanbanReminder.service');
+    const reminders = await getUserKanbanReminders(request.user.id);
+    return reminders.map((r) => ({
+      id: r.id,
+      cardId: r.cardId,
+      boardId: r.boardId,
+      dueDate: r.dueDate,
+      isDone: r.isDone,
+      cardTitle: r.card.title,
+      boardTitle: r.card.column.board.title,
+      columnTitle: r.card.column.title,
+    }));
+  });
+
+  const updateReminderSchema = z.object({
+    isDone: z.boolean(),
+  });
+
+  fastify.put('/reminders/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { isDone } = updateReminderSchema.parse(request.body);
+      const { toggleReminderDone } = await import('../services/kanbanReminder.service');
+      await toggleReminderDone(id, request.user.id, isDone);
+      return { success: true };
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
 
   // ── Boards ──────────────────────────────────────────────
 

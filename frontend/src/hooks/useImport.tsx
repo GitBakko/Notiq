@@ -10,11 +10,13 @@ import { db } from '../lib/db';
 import { X, FileDown } from 'lucide-react';
 
 interface UseImportOptions {
+  source?: 'evernote' | 'onenote';
   onSuccess?: (count: number) => void;
   onError?: (error: any) => void;
 }
 
 export const useImport = (options?: UseImportOptions) => {
+  const source = options?.source || 'evernote';
   const { t } = useTranslation();
   const [isUploading, setIsUploading] = useState(false);
   const [showNotebookPicker, setShowNotebookPicker] = useState(false);
@@ -63,9 +65,16 @@ export const useImport = (options?: UseImportOptions) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.enex')) {
-      toast.error(t('settings.importError') + ' (.enex)');
-      return;
+    if (source === 'evernote') {
+      if (!file.name.endsWith('.enex')) {
+        toast.error(t('settings.importError') + ' (.enex)');
+        return;
+      }
+    } else {
+      if (!file.name.match(/\.(mht|mhtml|html?|zip)$/i)) {
+        toast.error(t('settings.importError') + ' (.mht, .html, .zip)');
+        return;
+      }
     }
 
     const { notebookId, isVault } = scopeRef.current;
@@ -83,7 +92,8 @@ export const useImport = (options?: UseImportOptions) => {
       if (notebookId) params.append('notebookId', notebookId);
       if (isVault) params.append('isVault', 'true');
 
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/import/evernote?${params.toString()}`, formData, {
+      const endpoint = source === 'evernote' ? 'evernote' : 'onenote';
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/import/${endpoint}?${params.toString()}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
@@ -107,10 +117,12 @@ export const useImport = (options?: UseImportOptions) => {
     }
   };
 
+  const acceptTypes = source === 'evernote' ? '.enex' : '.mht,.mhtml,.html,.htm,.zip';
+
   const hiddenInput = (
     <input
       type="file"
-      accept=".enex"
+      accept={acceptTypes}
       ref={fileInputRef}
       className="hidden"
       onChange={handleFileChange}

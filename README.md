@@ -14,7 +14,7 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Groups** — User groups with avatar, invitation management, and shared notebooks
 - **Reminders** — Date-based reminders with notification support
 - **AI Chat** — Per-note AI assistant powered by AWS Bedrock with dynamic titles and notification badges
-- **Import** — Evernote ENEX file import with attachment and tag support
+- **Import** — Evernote (.enex) and OneNote (.mht, .html, .zip) import with attachment support
 - **Multi-language** — English and Italian (i18next)
 - **PWA** — Installable, push notifications via Web Push API
 - **Admin Panel** — User management, audit logs, invitation system

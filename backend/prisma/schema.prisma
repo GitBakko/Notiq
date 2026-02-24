@@ -65,6 +65,7 @@ model User {
   kanbanBoardChats     KanbanBoardChat[]   @relation("KanbanBoardChatAuthor")
   kanbanCardActivities KanbanCardActivity[] @relation("KanbanActivityUser")
   kanbanLinkedCards     KanbanCard[]         @relation("KanbanNoteLinker")
+  kanbanReminders      KanbanReminder[]     @relation("KanbanReminderUser")
 }
 
 enum Role {
@@ -411,6 +412,7 @@ model KanbanBoard {
   columns     KanbanColumn[]
   shares      SharedKanbanBoard[]
   chatMessages KanbanBoardChat[]
+  reminders   KanbanReminder[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
@@ -444,6 +446,7 @@ model KanbanCard {
   noteLinkedBy    User?           @relation("KanbanNoteLinker", fields: [noteLinkedById], references: [id])
   comments        KanbanComment[]
   activities      KanbanCardActivity[]
+  reminders       KanbanReminder[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -516,4 +519,22 @@ model KanbanCardActivity {
   createdAt      DateTime         @default(now())
 
   @@index([cardId, createdAt])
+}
+
+model KanbanReminder {
+  id        String      @id @default(uuid())
+  cardId    String
+  card      KanbanCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation("KanbanReminderUser", fields: [userId], references: [id], onDelete: Cascade)
+  boardId   String
+  board     KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  dueDate   DateTime
+  isDone    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([cardId, userId])
+  @@index([userId, isDone])
+  @@index([boardId])
 }
