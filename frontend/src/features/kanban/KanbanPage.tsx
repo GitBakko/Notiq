@@ -6,7 +6,6 @@ import { useKanbanBoards } from './hooks/useKanbanBoards';
 import { useKanbanMutations } from './hooks/useKanbanMutations';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
-import { useAuthStore } from '../../store/authStore';
 import BoardCard from './components/BoardCard';
 import CreateBoardModal from './components/CreateBoardModal';
 import ShareBoardModal from './components/ShareBoardModal';
@@ -23,8 +22,6 @@ export default function KanbanPage() {
   const { deleteBoard } = useKanbanMutations();
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
-  const user = useAuthStore((s) => s.user);
-
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [sharingBoardId, setSharingBoardId] = useState<string | null>(null);
 

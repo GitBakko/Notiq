@@ -21,7 +21,7 @@ interface KanbanColumnProps {
 
 export default function KanbanColumn({
   column,
-  boardId,
+  boardId: _boardId,
   onCardSelect,
   onRenameColumn,
   onDeleteColumn,

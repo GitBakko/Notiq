@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { it, enUS } from 'date-fns/locale';
 import { useReminders } from '../../hooks/useReminders';
 import { useKanbanReminders, useToggleKanbanReminder } from '../../hooks/useKanbanReminders';
-import type { KanbanReminderItem } from '../../hooks/useKanbanReminders';
 import { format, isPast, isToday, isFuture } from 'date-fns';
 import { CheckCircle, Circle, Calendar, Menu, FileText, LayoutDashboard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';

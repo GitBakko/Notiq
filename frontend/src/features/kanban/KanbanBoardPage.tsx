@@ -37,7 +37,6 @@ import KanbanFilterBar, {
   cardMatchesFilters,
 } from './components/KanbanFilterBar';
 // ganttExport loaded lazily on demand (exceljs ~500KB)
-import type { KanbanCard as KanbanCardType } from './types';
 
 interface KanbanBoardPageProps {
   boardId: string;

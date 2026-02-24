@@ -16,8 +16,6 @@ interface KanbanCardProps {
 
 function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
   const due = startOfDay(new Date(dueDate));
-  const now = startOfDay(new Date());
-
   if (isToday(due)) return 'today';
   if (isPast(due)) return 'overdue';
   return 'default';

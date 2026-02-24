@@ -10,6 +10,7 @@ import {
   isWithinInterval,
 } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
+import type { Locale } from 'date-fns';
 import type { KanbanBoard } from './types';
 
 // ── Colors (ARGB without #) ────────────────────────────────────────────
@@ -443,7 +444,7 @@ function createAllCardsSheet(
   workbook: ExcelJS.Workbook,
   allCards: CardData[],
   t: (key: string, opts?: Record<string, unknown>) => string,
-  locale: Locale,
+  _locale: Locale,
 ): void {
   const ws = workbook.addWorksheet(t('kanban.export.sheetAllCards'), {
     properties: { tabColor: { argb: COLORS.blue600 } },
