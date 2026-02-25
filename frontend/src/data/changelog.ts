@@ -11,7 +11,7 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
-    version: '1.6.0',
+    version: '1.6.1',
     date: '2026-02-25',
     entries: [
       { type: 'feature', titleKey: 'whatsNew.entries.boardNoteLink' },
@@ -93,4 +93,6 @@ export const changelog: VersionEntry[] = [
   },
 ];
 
-export const CURRENT_VERSION = changelog[0].version;
+// Read version from package.json (single source of truth)
+import packageJson from '../../package.json';
+export const CURRENT_VERSION = packageJson.version;
