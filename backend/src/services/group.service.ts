@@ -312,7 +312,12 @@ export const processPendingGroupInvites = async (userId: string, email: string) 
 
 export const getGroupsForSharing = async (userId: string) => {
   return prisma.group.findMany({
-    where: { ownerId: userId },
+    where: {
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
     include: {
       members: { include: { user: { select: { id: true, email: true, name: true } } } },
       _count: { select: { members: true } },
