@@ -962,6 +962,9 @@
       "kanbanReminders": "Kanban Reminders — Set reminders on Kanban cards with due dates, shown in Reminders page",
       "kanbanHooksFix": "Fixed Kanban board crash when navigating between pages",
       "kanbanLocaleFix": "Fixed due date display language on Kanban cards",
+      "boardNoteLink": "Board Note Linking — Link a note to an entire Kanban board with automatic sharing",
+      "boardAvatar": "Board Avatar — Add a small avatar image to Kanban boards, shown everywhere",
+      "groupSharingMembers": "Group Sharing for Members — All group members can now use the group to share items",
       "initialRelease": "Initial release with full feature set"
     }
   },

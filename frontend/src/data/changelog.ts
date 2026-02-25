@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.6.0',
+    date: '2026-02-25',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.boardNoteLink' },
+      { type: 'feature', titleKey: 'whatsNew.entries.boardAvatar' },
+      { type: 'fix', titleKey: 'whatsNew.entries.groupSharingMembers' },
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-02-24',
     entries: [

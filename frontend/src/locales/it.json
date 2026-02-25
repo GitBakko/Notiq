@@ -684,6 +684,9 @@
       "kanbanReminders": "Promemoria Kanban — Imposta promemoria sulle card Kanban con scadenza, visibili nella pagina Promemoria",
       "kanbanHooksFix": "Risolto crash della board Kanban navigando tra le pagine",
       "kanbanLocaleFix": "Corretta la lingua della scadenza sulle card Kanban",
+      "boardNoteLink": "Nota associata alla Board — Collega una nota a un'intera Kanban board con condivisione automatica",
+      "boardAvatar": "Avatar Board — Aggiungi un'immagine avatar alle Kanban board, visibile ovunque",
+      "groupSharingMembers": "Condivisione Gruppi per Membri — Tutti i membri del gruppo possono ora usarlo per condividere",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
