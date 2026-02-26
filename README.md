@@ -9,15 +9,16 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
 - **Encrypted Vault** — AES-encrypted notes and credentials behind PIN protection
 - **Task Lists** — Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking
-- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, note linking with smart sharing, activity history, board chat, cover images, and real-time SSE updates
-- **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write)
+- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, note linking with smart sharing, activity history, board chat, cover images, column reordering, and real-time SSE updates
+- **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, resend/cancel, and smart merge duplicate detection
 - **Groups** — User groups with avatar, invitation management, and shared notebooks
 - **Reminders** — Date-based reminders with notification support
 - **AI Chat** — Per-note AI assistant powered by AWS Bedrock with dynamic titles and notification badges
 - **Import** — Evernote (.enex) and OneNote (.mht, .html, .zip) import with attachment support
 - **Multi-language** — English and Italian (i18next)
 - **PWA** — Installable, push notifications via Web Push API
-- **Admin Panel** — User management, audit logs, invitation system
+- **Collapsible Panels** — Collapse the note/vault list for a wider editor view, with persistent state
+- **Admin Panel** — User management, audit logs, invitation system, configurable invitation expiry
 
 ## Tech Stack
 
@@ -115,7 +116,7 @@ notiq/
       plugins/       # Prisma client singleton
       scripts/       # CLI tools (admin, backup, migration)
     prisma/
-      schema.prisma  # 27 models, 17 migrations
+      schema.prisma  # 30 models, 20 migrations
   frontend/
     src/
       components/    # Reusable UI (editor/, layout/, sharing/, ui/)
