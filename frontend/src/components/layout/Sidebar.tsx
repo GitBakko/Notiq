@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, Home, FileText, Bell, ListChecks, Kanban, XCircle, UserPen } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, FileText, Bell, ListChecks, Kanban, XCircle, UserPen, Pencil } from 'lucide-react';
 import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useNotebooks } from '../../hooks/useNotebooks';
@@ -9,7 +9,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { InputDialog } from '../ui/InputDialog';
 import { DeleteConfirmationDialog } from '../ui/DeleteConfirmationDialog';
-import { createNotebook, deleteNotebook } from '../../features/notebooks/notebookService';
+import { createNotebook, deleteNotebook, updateNotebook } from '../../features/notebooks/notebookService';
 import { createNote, permanentlyDeleteNote } from '../../features/notes/noteService';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import TagList from '../../features/tags/TagList';
@@ -38,6 +38,10 @@ export default function Sidebar() {
   const [deleteNotebookId, setDeleteNotebookId] = useState<string | null>(null);
   const [deleteNotebookName, setDeleteNotebookName] = useState('');
   const [isEmptyTrashConfirmOpen, setIsEmptyTrashConfirmOpen] = useState(false);
+  const [renamingNotebookId, setRenamingNotebookId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { notebooks } = useNotebooks();
   const pinnedNotes = usePinnedNotes();
@@ -106,6 +110,40 @@ export default function Sidebar() {
 
 
 
+  const startRename = useCallback((notebookId: string, currentName: string) => {
+    setRenamingNotebookId(notebookId);
+    setRenameText(currentName);
+  }, []);
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renamingNotebookId) return;
+    const trimmed = renameText.trim();
+    const notebook = notebooks?.find(n => n.id === renamingNotebookId);
+    if (!trimmed || trimmed === notebook?.name) {
+      setRenamingNotebookId(null);
+      return;
+    }
+    try {
+      await updateNotebook(renamingNotebookId, trimmed);
+      toast.success(t('notebooks.renamed'));
+    } catch (error: any) {
+      toast.error(error.message || t('notebooks.renameFailed'));
+    }
+    setRenamingNotebookId(null);
+  }, [renamingNotebookId, renameText, notebooks, t]);
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingNotebookId(null);
+  }, []);
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingNotebookId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingNotebookId]);
+
   const confirmEmptyTrash = async () => {
     if (!trashedNotes || trashedNotes.length === 0) return;
     try {
@@ -124,13 +162,12 @@ export default function Sidebar() {
   const trashCount = trashedNotes?.length || 0;
 
   const navItems = [
-    { icon: Home, label: t('sidebar.home'), path: '/' },
     { icon: FileText, label: t('sidebar.notes'), path: '/notes' },
     { icon: Bell, label: t('sidebar.reminders'), path: '/reminders' },
     { icon: ListChecks, label: t('sidebar.taskLists'), path: '/tasks' },
     { icon: Kanban, label: t('sidebar.kanban'), path: '/kanban' },
     // Notebooks is handled separately
-    { icon: Users, label: t('sharing.sharedWithMe'), path: '/shared' },
+    { icon: Users, label: t('sharing.title'), path: '/shared' },
     { icon: Orbit, label: t('groups.title'), path: '/groups' },
     { icon: Lock, label: t('vault.title'), path: '/vault' },
     { icon: Trash2, label: t('sidebar.trash'), path: '/trash', count: trashCount },
@@ -232,7 +269,7 @@ export default function Sidebar() {
                   data-testid={`sidebar-item-${item.path === '/' ? 'home' : item.path.substring(1)}`}
                   className={clsx(
                     'flex-1 flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                    location.pathname === item.path
+                    (location.pathname === item.path || (item.path === '/notes' && location.pathname === '/'))
                       ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white'
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
                   )}
@@ -316,19 +353,70 @@ export default function Sidebar() {
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
                     )}
                   >
-                    <Link
-                      to={`/notes?notebookId=${notebook.id}`}
-                      className="flex items-center gap-3 flex-1 min-w-0"
-                    >
-                      <Book size={16} className="flex-shrink-0" />
-                      <span className="truncate">{notebook.name}</span>
-                      <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                        {(notebook as any).count || 0}
-                      </span>
-                    </Link>
+                    {renamingNotebookId === notebook.id ? (
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <Book size={16} className="flex-shrink-0" />
+                        <input
+                          ref={renameInputRef}
+                          value={renameText}
+                          onChange={(e) => setRenameText(e.target.value)}
+                          onBlur={handleRenameSubmit}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameSubmit();
+                            if (e.key === 'Escape') handleRenameCancel();
+                          }}
+                          className="flex-1 min-w-0 bg-transparent border-b-2 border-emerald-500 text-sm text-gray-900 dark:text-white outline-none py-0"
+                        />
+                      </div>
+                    ) : (
+                      <Link
+                        to={`/notes?notebookId=${notebook.id}`}
+                        className="flex items-center gap-3 flex-1 min-w-0"
+                        onDoubleClick={(e) => {
+                          if (notebook.userId === user?.id) {
+                            e.preventDefault();
+                            startRename(notebook.id, notebook.name);
+                          }
+                        }}
+                        onTouchStart={() => {
+                          if (notebook.userId !== user?.id) return;
+                          longPressTimerRef.current = setTimeout(() => {
+                            startRename(notebook.id, notebook.name);
+                          }, 600);
+                        }}
+                        onTouchEnd={() => {
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                        }}
+                        onTouchMove={() => {
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                        }}
+                      >
+                        <Book size={16} className="flex-shrink-0" />
+                        <span className="truncate">{notebook.name}</span>
+                        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                          {(notebook as any).count || 0}
+                        </span>
+                      </Link>
+                    )}
                     <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                       {notebook.userId === user?.id && (
                         <>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              startRename(notebook.id, notebook.name);
+                            }}
+                            className="p-1 hover:text-emerald-600 transition-colors"
+                            title={t('common.rename')}
+                          >
+                            <Pencil size={14} />
+                          </button>
                           <button
                             onClick={(e) => {
                               e.preventDefault();

@@ -24,6 +24,11 @@ export async function createBoard(data: { title: string; description?: string })
   return res.data;
 }
 
+export async function createBoardFromTaskList(taskListId: string): Promise<KanbanBoard> {
+  const res = await api.post<KanbanBoard>('/kanban/boards/from-tasklist', { taskListId });
+  return res.data;
+}
+
 export async function getBoard(boardId: string): Promise<KanbanBoard> {
   const res = await api.get<KanbanBoard>(`/kanban/boards/${boardId}`);
   return res.data;
@@ -53,8 +58,8 @@ export async function updateColumn(columnId: string, title: string): Promise<Kan
   return res.data;
 }
 
-export async function reorderColumns(columns: { id: string; position: number }[]): Promise<void> {
-  await api.patch('/kanban/columns/reorder', { columns });
+export async function reorderColumns(boardId: string, columns: { id: string; position: number }[]): Promise<void> {
+  await api.put(`/kanban/boards/${boardId}/columns/reorder`, { columns });
 }
 
 export async function deleteColumn(columnId: string): Promise<void> {

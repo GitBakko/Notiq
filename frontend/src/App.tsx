@@ -21,7 +21,6 @@ import SharedWithMePage from './features/sharing/SharedWithMePage';
 import GroupsPage from './features/groups/GroupsPage';
 import TaskListsPage from './features/tasks/TaskListsPage';
 import KanbanPage from './features/kanban/KanbanPage';
-import RespondToShare from './pages/RespondToShare';
 
 import { Toaster } from 'react-hot-toast';
 
@@ -60,7 +59,6 @@ function App() {
 
         {/* Public Routes */}
         <Route path="public/notes/:noteId" element={<PublicNotePage />} />
-        <Route path="share/respond" element={<RespondToShare />} />
 
         {/* Auth Routes */}
         <Route path="login" element={<LoginPage />} />

@@ -11,11 +11,6 @@ const shareSchema = z.object({
   permission: z.nativeEnum(Permission).optional().default('READ'),
 });
 
-const respondSchema = z.object({
-  token: z.string().min(1),
-  action: z.enum(['accept', 'decline']),
-});
-
 const respondByIdSchema = z.object({
   itemId: z.string().uuid(),
   type: z.enum(['NOTE', 'NOTEBOOK', 'TASKLIST', 'KANBAN']),
@@ -34,22 +29,34 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     return note;
   });
 
-  // Respond to Share Invitation
-  fastify.post('/respond', async (request, reply) => {
-    const { token, action } = respondSchema.parse(request.body);
+  fastify.addHook('onRequest', fastify.authenticate);
+
+  // Get Sent Shares (all types, for "My Invitations" panel)
+  fastify.get('/sent', async (request) => {
+    return sharingService.getSentShares(request.user.id);
+  });
+
+  // Resend share invitation email
+  fastify.post('/resend/:type/:id', async (request, reply) => {
+    const { type, id } = request.params as { type: string; id: string };
+    const validTypes = ['NOTE', 'NOTEBOOK', 'TASKLIST', 'KANBAN'];
+    if (!validTypes.includes(type.toUpperCase())) {
+      return reply.status(400).send({ message: 'Invalid type' });
+    }
 
     try {
-      const result = await sharingService.respondToShare(token, action);
+      const result = await sharingService.resendShareInvitation(
+        request.user.id,
+        type.toUpperCase() as 'NOTE' | 'NOTEBOOK' | 'TASKLIST' | 'KANBAN',
+        id
+      );
       return result;
     } catch (error: any) {
-      if (error.message === 'Invalid or expired token') {
-        return reply.status(400).send({ message: 'Invalid or expired invitation' });
-      }
+      if (error.message === 'Share not found') return reply.status(404).send({ message: error.message });
+      if (error.message === 'Only pending shares can be resent') return reply.status(400).send({ message: error.message });
       throw error;
     }
   });
-
-  fastify.addHook('onRequest', fastify.authenticate);
 
   // Respond to Share by ID (Directly from dashboard)
   fastify.post('/respond-id', async (request, reply) => {
@@ -274,6 +281,35 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   // Get Accepted Shared Task Lists (for sync)
   fastify.get('/tasklists/accepted', async (request) => {
     return taskListService.getAcceptedSharedTaskLists(request.user.id);
+  });
+
+  // Share Task List with Group
+  fastify.post('/tasklists/:id/group', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { groupId, permission } = z.object({
+      groupId: z.string(),
+      permission: z.nativeEnum(Permission).optional().default('READ'),
+    }).parse(request.body);
+
+    try {
+      const group = await groupService.getGroup(groupId, request.user.id);
+      const results = [];
+      const errors = [];
+      for (const member of group.members) {
+        if (member.userId === request.user.id) continue;
+        try {
+          const r = await taskListSharingService.shareTaskList(request.user.id, id, member.user.email, permission);
+          results.push(r);
+        } catch (e: any) {
+          errors.push({ userId: member.userId, error: e.message });
+        }
+      }
+      return { shared: results.length, errors };
+    } catch (error: any) {
+      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+      return reply.status(500).send({ message: 'An internal error occurred' });
+    }
   });
 
   // ── Kanban Board Sharing ────────────────────────────────────

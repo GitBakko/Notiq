@@ -8,10 +8,8 @@ import {
   shareNotebook,
   revokeNotebookShare,
   getSharedNotebooks,
-  respondToShare,
   respondToShareById,
 } from '../sharing.service';
-import jwt from 'jsonwebtoken';
 
 // Mock sibling services
 vi.mock('../audit.service', () => ({
@@ -572,148 +570,6 @@ describe('getSharedNotebooks', () => {
     const result = await getSharedNotebooks(TARGET_USER_ID);
 
     expect(result).toEqual([]);
-  });
-});
-
-// ===========================================================================
-// respondToShare (token-based)
-// ===========================================================================
-
-describe('respondToShare', () => {
-  function signToken(payload: object): string {
-    return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '7d' });
-  }
-
-  describe('NOTE type', () => {
-    it('should accept a note share invitation and notify the owner', async () => {
-      const token = signToken({ noteId: NOTE_ID, userId: TARGET_USER_ID, type: 'NOTE' });
-      const updateResult = {
-        noteId: NOTE_ID,
-        userId: TARGET_USER_ID,
-        status: 'ACCEPTED',
-        note: { ...sampleNote, user: ownerUser },
-        user: targetUser,
-      };
-      prismaMock.sharedNote.update.mockResolvedValue(updateResult);
-
-      const result = await respondToShare(token, 'accept');
-
-      expect(result).toEqual({ success: true, status: 'ACCEPTED' });
-      expect(prismaMock.sharedNote.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { noteId_userId: { noteId: NOTE_ID, userId: TARGET_USER_ID } },
-          data: { status: 'ACCEPTED' },
-        }),
-      );
-      expect(emailService.sendNotificationEmail).toHaveBeenCalledWith(
-        ownerUser.email,
-        'SHARE_RESPONSE',
-        expect.objectContaining({ action: 'accepted', itemName: sampleNote.title }),
-      );
-      expect(notificationService.createNotification).toHaveBeenCalledWith(
-        OWNER_ID,
-        'SYSTEM',
-        'Invitation Update',
-        expect.stringContaining('accepted'),
-        expect.objectContaining({ type: 'NOTE', action: 'accept' }),
-      );
-    });
-
-    it('should decline a note share invitation', async () => {
-      const token = signToken({ noteId: NOTE_ID, userId: TARGET_USER_ID, type: 'NOTE' });
-      const updateResult = {
-        noteId: NOTE_ID,
-        userId: TARGET_USER_ID,
-        status: 'DECLINED',
-        note: { ...sampleNote, user: ownerUser },
-        user: targetUser,
-      };
-      prismaMock.sharedNote.update.mockResolvedValue(updateResult);
-
-      const result = await respondToShare(token, 'decline');
-
-      expect(result).toEqual({ success: true, status: 'DECLINED' });
-      expect(prismaMock.sharedNote.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { status: 'DECLINED' },
-        }),
-      );
-      expect(emailService.sendNotificationEmail).toHaveBeenCalledWith(
-        ownerUser.email,
-        'SHARE_RESPONSE',
-        expect.objectContaining({ action: 'declined' }),
-      );
-    });
-  });
-
-  describe('NOTEBOOK type', () => {
-    it('should accept a notebook share invitation and notify the owner', async () => {
-      const token = signToken({ notebookId: NOTEBOOK_ID, userId: TARGET_USER_ID, type: 'NOTEBOOK' });
-      const updateResult = {
-        notebookId: NOTEBOOK_ID,
-        userId: TARGET_USER_ID,
-        status: 'ACCEPTED',
-        notebook: { ...sampleNotebook, user: ownerUser },
-        user: targetUser,
-      };
-      prismaMock.sharedNotebook.update.mockResolvedValue(updateResult);
-
-      const result = await respondToShare(token, 'accept');
-
-      expect(result).toEqual({ success: true, status: 'ACCEPTED' });
-      expect(prismaMock.sharedNotebook.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { notebookId_userId: { notebookId: NOTEBOOK_ID, userId: TARGET_USER_ID } },
-          data: { status: 'ACCEPTED' },
-        }),
-      );
-      expect(emailService.sendNotificationEmail).toHaveBeenCalledWith(
-        ownerUser.email,
-        'SHARE_RESPONSE',
-        expect.objectContaining({ action: 'accepted', itemName: sampleNotebook.name }),
-      );
-    });
-
-    it('should decline a notebook share invitation', async () => {
-      const token = signToken({ notebookId: NOTEBOOK_ID, userId: TARGET_USER_ID, type: 'NOTEBOOK' });
-      const updateResult = {
-        notebookId: NOTEBOOK_ID,
-        userId: TARGET_USER_ID,
-        status: 'DECLINED',
-        notebook: { ...sampleNotebook, user: ownerUser },
-        user: targetUser,
-      };
-      prismaMock.sharedNotebook.update.mockResolvedValue(updateResult);
-
-      const result = await respondToShare(token, 'decline');
-
-      expect(result).toEqual({ success: true, status: 'DECLINED' });
-    });
-  });
-
-  it('should throw on an expired or invalid token', async () => {
-    await expect(respondToShare('invalid-token', 'accept')).rejects.toThrow(
-      'Invalid or expired token',
-    );
-    expect(prismaMock.sharedNote.update).not.toHaveBeenCalled();
-    expect(prismaMock.sharedNotebook.update).not.toHaveBeenCalled();
-  });
-
-  it('should throw when the token has been tampered with', async () => {
-    const token = jwt.sign(
-      { noteId: NOTE_ID, userId: TARGET_USER_ID, type: 'NOTE' },
-      'wrong-secret',
-      { expiresIn: '7d' },
-    );
-
-    await expect(respondToShare(token, 'accept')).rejects.toThrow('Invalid or expired token');
-  });
-
-  it('should throw when prisma update fails (wraps as invalid token)', async () => {
-    const token = signToken({ noteId: NOTE_ID, userId: TARGET_USER_ID, type: 'NOTE' });
-    prismaMock.sharedNote.update.mockRejectedValue(new Error('Record not found'));
-
-    await expect(respondToShare(token, 'accept')).rejects.toThrow('Invalid or expired token');
   });
 });
 

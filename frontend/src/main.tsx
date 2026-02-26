@@ -15,9 +15,14 @@ const queryClient = new QueryClient({
   },
 })
 
+// Auto-reload when a new service worker takes control (new app version deployed)
+let refreshing = false;
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
   });
 }
 

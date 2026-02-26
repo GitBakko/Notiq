@@ -22,6 +22,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dueDateRef = useRef<HTMLInputElement>(null);
 
   const {
     attributes,
@@ -175,15 +176,19 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
 
       {/* Due date */}
       {item.dueDate ? (
-        <div className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 relative">
+        <div
+          onClick={() => !readOnly && dueDateRef.current?.showPicker()}
+          className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 relative cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        >
           <Calendar size={12} />
           <span>{new Date(item.dueDate).toLocaleDateString()}</span>
           {!readOnly && (
             <input
+              ref={dueDateRef}
               type="date"
               value={item.dueDate.split('T')[0]}
               onChange={(e) => onUpdate(item.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              className="absolute inset-0 opacity-0 cursor-pointer w-0 h-0 overflow-hidden"
             />
           )}
         </div>

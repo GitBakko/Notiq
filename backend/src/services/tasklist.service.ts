@@ -158,7 +158,7 @@ export const getTaskList = async (userId: string, id: string) => {
   throw new Error('TaskList not found');
 };
 
-export const updateTaskList = async (userId: string, id: string, data: { title?: string }) => {
+export const updateTaskList = async (userId: string, id: string, data: { title?: string; isTrashed?: boolean }) => {
   await assertWriteAccess(userId, id);
 
   return prisma.taskList.update({

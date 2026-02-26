@@ -4,6 +4,7 @@ import { it as itLocale, enUS } from 'date-fns/locale';
 import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import type { KanbanBoardListItem } from '../types';
 
 interface BoardCardProps {
@@ -16,6 +17,7 @@ interface BoardCardProps {
 export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardCardProps) {
   const { t, i18n } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
@@ -49,20 +51,17 @@ export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardC
   function handleDelete(e: React.MouseEvent): void {
     e.stopPropagation();
     setMenuOpen(false);
-
-    if (window.confirm(t('kanban.deleteBoardConfirm'))) {
-      onDelete(board.id);
-    }
+    setShowDeleteConfirm(true);
   }
 
   return (
     <div
       onClick={() => onSelect(board.id)}
-      className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer relative group overflow-hidden"
+      className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer relative group"
     >
       {/* Cover Image */}
       {board.coverImage && (
-        <div className="h-32 w-full overflow-hidden">
+        <div className="h-32 w-full overflow-hidden rounded-t-xl">
           <img
             src={board.coverImage}
             alt=""
@@ -94,7 +93,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardC
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <Share2 size={14} />
-                  {t('sharing.title')}
+                  {t('kanban.shareBoard')}
                 </button>
                 <button
                   onClick={handleDelete}
@@ -166,6 +165,16 @@ export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardC
           </span>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={() => onDelete(board.id)}
+        title={t('kanban.deleteBoard')}
+        message={t('kanban.deleteBoardConfirm')}
+        confirmText={t('common.delete')}
+        variant="danger"
+      />
     </div>
   );
 }

@@ -11,6 +11,54 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.6.6',
+    date: '2026-02-26',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanColumnDnD' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskListToKanbanModal' },
+      { type: 'feature', titleKey: 'whatsNew.entries.notebookRenameSidebar' },
+      { type: 'feature', titleKey: 'whatsNew.entries.collapsibleNoteList' },
+      { type: 'fix', titleKey: 'whatsNew.entries.notebookMoveFix' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.removedHomeItem' },
+    ],
+  },
+  {
+    version: '1.6.5',
+    date: '2026-02-26',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.sharingEmailFix' },
+      { type: 'feature', titleKey: 'whatsNew.entries.sentInvitationsPanel' },
+      { type: 'feature', titleKey: 'whatsNew.entries.smartMerge' },
+    ],
+  },
+  {
+    version: '1.6.4',
+    date: '2026-02-25',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.conversionNavigation' },
+      { type: 'fix', titleKey: 'whatsNew.entries.notebookSelectorDisabled' },
+      { type: 'fix', titleKey: 'whatsNew.entries.taskListDeleteError' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanReminderAutoComplete' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.taskReminderAutoComplete' },
+    ],
+  },
+  {
+    version: '1.6.3',
+    date: '2026-02-25',
+    entries: [
+      { type: 'improvement', titleKey: 'whatsNew.entries.taskListKeepOrRemove' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.notificationSmartLinks' },
+    ],
+  },
+  {
+    version: '1.6.2',
+    date: '2026-02-25',
+    entries: [
+      { type: 'improvement', titleKey: 'whatsNew.entries.autoNavigateKanban' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.autoNavigateTasks' },
+    ],
+  },
+  {
     version: '1.6.1',
     date: '2026-02-25',
     entries: [

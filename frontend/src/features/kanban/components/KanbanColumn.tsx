@@ -1,7 +1,8 @@
-import { useDroppable } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import clsx from 'clsx';
-import { MoreVertical, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, MoreVertical, Plus, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import KanbanCard from './KanbanCard';
@@ -40,7 +41,19 @@ export default function KanbanColumn({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const newCardInputRef = useRef<HTMLInputElement>(null);
 
-  const { setNodeRef } = useDroppable({ id: column.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortableRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id, disabled: readOnly });
+
+  const columnStyle = {
+    transform: CSS.Transform.toString(transform ? { ...transform, scaleX: 1, scaleY: 1 } : null),
+    transition,
+  };
 
   const sortedCards = [...column.cards].sort((a, b) => a.position - b.position);
   const hasCards = column.cards.length > 0;
@@ -95,9 +108,25 @@ export default function KanbanColumn({
   }
 
   return (
-    <div className="min-w-[280px] w-[280px] flex-shrink-0 bg-gray-100 dark:bg-gray-800/50 rounded-xl flex flex-col max-h-full">
+    <div
+      ref={setSortableRef}
+      style={columnStyle}
+      className={clsx(
+        'min-w-[280px] w-[280px] flex-shrink-0 bg-gray-100 dark:bg-gray-800/50 rounded-xl flex flex-col max-h-full',
+        isDragging && 'opacity-40',
+      )}
+    >
       {/* Header */}
       <div className="p-3 flex items-center justify-between gap-2">
+        {!readOnly && (
+          <button
+            className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors touch-none"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical size={16} />
+          </button>
+        )}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isEditingTitle && !readOnly ? (
             <input
@@ -176,7 +205,6 @@ export default function KanbanColumn({
 
       {/* Card list */}
       <div
-        ref={setNodeRef}
         className="flex-1 overflow-y-auto p-2 space-y-2"
       >
         <SortableContext

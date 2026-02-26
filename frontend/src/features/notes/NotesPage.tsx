@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, FileDown, X, Book } from 'lucide-react';
+import { Search, Menu, FileDown, X, Book, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import NoteList from './NoteList';
 import { createNote, getNote } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -27,7 +27,7 @@ export default function NotesPage() {
   const selectedTagId = searchParams.get('tagId') || undefined;
 
   const isMobile = useIsMobile();
-  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort } = useUIStore();
+  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed } = useUIStore();
   const user = useAuthStore((state) => state.user);
   const [showNotebookPicker, setShowNotebookPicker] = useState(false);
 
@@ -151,16 +151,27 @@ export default function NotesPage() {
               </button>
             )}
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white">{t('sidebar.notes')}</h2>
-            {selectedNotebookId && (
-              <button
-                onClick={() => importFile(selectedNotebookId, false)}
-                disabled={isUploading}
-                className="ml-auto text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
-                title={t('settings.importTitle')}
-              >
-                <FileDown size={18} />
-              </button>
-            )}
+            <div className="ml-auto flex items-center gap-1">
+              {selectedNotebookId && (
+                <button
+                  onClick={() => importFile(selectedNotebookId, false)}
+                  disabled={isUploading}
+                  className="text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+                  title={t('settings.importTitle')}
+                >
+                  <FileDown size={18} />
+                </button>
+              )}
+              {!isMobile && (
+                <button
+                  onClick={toggleListCollapsed}
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                  title={t('common.collapseList')}
+                >
+                  <PanelLeftClose size={18} />
+                </button>
+              )}
+            </div>
           </div>
           {hiddenInput}
           {notebookPickerModal}
@@ -278,7 +289,19 @@ export default function NotesPage() {
 
   return (
     <div className="flex h-full bg-white dark:bg-gray-900">
-      {renderNoteList()}
+      {isListCollapsed ? (
+        <div className="flex flex-col items-center py-3 px-1 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+          <button
+            onClick={toggleListCollapsed}
+            className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
+            title={t('common.expandList')}
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+        </div>
+      ) : (
+        renderNoteList()
+      )}
       {renderEditor()}
       {notebookPickerForCreate}
     </div>

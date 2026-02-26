@@ -92,18 +92,25 @@ export const sendNotificationEmail = async (
 
     // ... (Keep generic types as is)
 
-    case 'SHARE_INVITATION':
+    case 'SHARE_INVITATION': {
+      const dashboardLink = data.shareId
+        ? `${FRONTEND_URL}/shared?tab=${data.tab}&highlight=${data.shareId}`
+        : `${FRONTEND_URL}/shared`;
+
       if (isIt) {
+        const itemTypeIt = data.itemType === 'Note' ? 'la nota'
+          : data.itemType === 'Notebook' ? 'il taccuino'
+          : data.itemType === 'Task List' ? 'la lista attivita'
+          : 'la board kanban';
         subject = `${escapeHtml(data.sharerName)} ti ha invitato a collaborare su: ${escapeHtml(data.itemName)}`;
         html = `
           <div style="font-family: sans-serif; padding: 20px;">
             <h2>Invito alla Collaborazione</h2>
-            <p><strong>${escapeHtml(data.sharerName)}</strong> vuole condividere ${data.itemType === 'Note' ? 'la nota' : 'il taccuino'} "<strong>${escapeHtml(data.itemName)}</strong>" con te.</p>
-            <div style="margin-top: 20px;">
-              <a href="${FRONTEND_URL}/share/respond?token=${data.token}&action=accept" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">Accetta</a>
-              <a href="${FRONTEND_URL}/share/respond?token=${data.token}&action=decline" style="background: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Rifiuta</a>
-            </div>
-            <p style="margin-top: 20px; font-size: 12px; color: #666;">Oppure vedi gli inviti in sospeso nella tua dashboard: <a href="${FRONTEND_URL}/shared">Vedi Tutti gli Inviti</a></p>
+            <p><strong>${escapeHtml(data.sharerName)}</strong> vuole condividere ${itemTypeIt} "<strong>${escapeHtml(data.itemName)}</strong>" con te.</p>
+            <p style="margin-top: 20px;">
+              <a href="${dashboardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Vedi Invito</a>
+            </p>
+            <p style="margin-top: 20px; font-size: 12px; color: #666;">Accedi a Notiq per accettare o rifiutare l'invito.</p>
           </div>
         `;
       } else {
@@ -112,15 +119,15 @@ export const sendNotificationEmail = async (
           <div style="font-family: sans-serif; padding: 20px;">
             <h2>Collaboration Invitation</h2>
             <p><strong>${escapeHtml(data.sharerName)}</strong> wants to share the ${data.itemType} "<strong>${escapeHtml(data.itemName)}</strong>" with you.</p>
-            <div style="margin-top: 20px;">
-              <a href="${FRONTEND_URL}/share/respond?token=${data.token}&action=accept" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">Accept Invitation</a>
-              <a href="${FRONTEND_URL}/share/respond?token=${data.token}&action=decline" style="background: #ef4444; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Decline Invitation</a>
-            </div>
-            <p style="margin-top: 20px; font-size: 12px; color: #666;">Or view pending invites in your dashboard: <a href="${FRONTEND_URL}/shared">View All Invites</a></p>
+            <p style="margin-top: 20px;">
+              <a href="${dashboardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Invitation</a>
+            </p>
+            <p style="margin-top: 20px; font-size: 12px; color: #666;">Sign in to Notiq to accept or decline the invitation.</p>
           </div>
         `;
       }
       break;
+    }
 
     case 'REGISTRATION_INVITATION':
       if (isIt) {

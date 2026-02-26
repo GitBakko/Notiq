@@ -61,11 +61,11 @@ export const deleteTaskList = async (id: string) => {
 
   await db.taskLists.update(id, { isTrashed: true, updatedAt: now, syncStatus: 'updated' });
   await db.syncQueue.add({
-    type: 'UPDATE',
+    type: 'DELETE',
     entity: 'TASK_LIST',
     entityId: id,
     userId,
-    data: { isTrashed: true },
+    data: {},
     createdAt: Date.now(),
   });
 };

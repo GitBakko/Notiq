@@ -532,7 +532,7 @@ export async function moveCard(
 
   const targetColumn = await prisma.kanbanColumn.findUnique({
     where: { id: toColumnId },
-    select: { boardId: true, title: true },
+    select: { boardId: true, title: true, position: true },
   });
   if (!targetColumn) throw new Error('Column not found');
 
@@ -589,6 +589,19 @@ export async function moveCard(
       fromColumnTitle: card.column.title,
       toColumnTitle: targetColumn.title,
     });
+
+    // Auto-complete reminders when card moves to the last column (done)
+    const maxPositionCol = await prisma.kanbanColumn.findFirst({
+      where: { boardId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+    if (maxPositionCol && targetColumn.position === maxPositionCol.position) {
+      await prisma.kanbanReminder.updateMany({
+        where: { cardId, isDone: false },
+        data: { isDone: true },
+      });
+    }
   }
 }
 
@@ -854,6 +867,88 @@ export async function createBoardChatMessage(
   }
 
   return message;
+}
+
+// ─── Create Board from Task List ────────────────────────────
+
+export async function createBoardFromTaskList(userId: string, taskListId: string) {
+  // Fetch the task list with items
+  const taskList = await prisma.taskList.findUnique({
+    where: { id: taskListId },
+    include: {
+      items: { orderBy: { position: 'asc' } },
+    },
+  });
+
+  if (!taskList) throw new Error('TaskList not found');
+
+  // Only the owner can convert
+  if (taskList.userId !== userId) {
+    // Check if user has shared access
+    const shared = await prisma.sharedTaskList.findUnique({
+      where: { taskListId_userId: { taskListId, userId } },
+      select: { status: true, permission: true },
+    });
+    if (!shared || shared.status !== 'ACCEPTED' || shared.permission !== 'WRITE') {
+      throw new Error('Access denied');
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Create board with two columns
+    const board = await tx.kanbanBoard.create({
+      data: {
+        title: taskList.title,
+        ownerId: userId,
+        columns: {
+          create: [
+            { title: 'Da fare', position: 0 },
+            { title: 'Completato', position: 1 },
+          ],
+        },
+      },
+      include: {
+        columns: { orderBy: { position: 'asc' } },
+      },
+    });
+
+    const todoColumnId = board.columns[0].id;
+    const doneColumnId = board.columns[1].id;
+
+    // Separate items by checked status
+    const uncheckedItems = taskList.items.filter((i) => !i.isChecked);
+    const checkedItems = taskList.items.filter((i) => i.isChecked);
+
+    // Create cards for unchecked items → "Da fare" column
+    for (let i = 0; i < uncheckedItems.length; i++) {
+      const item = uncheckedItems[i];
+      await tx.kanbanCard.create({
+        data: {
+          columnId: todoColumnId,
+          title: item.text,
+          position: i,
+          dueDate: item.dueDate,
+        },
+      });
+    }
+
+    // Create cards for checked items → "Completato" column
+    // Assign the card to whoever checked the task item
+    for (let i = 0; i < checkedItems.length; i++) {
+      const item = checkedItems[i];
+      await tx.kanbanCard.create({
+        data: {
+          columnId: doneColumnId,
+          title: item.text,
+          position: i,
+          dueDate: item.dueDate,
+          assigneeId: item.checkedByUserId,
+        },
+      });
+    }
+
+    return board;
+  });
 }
 
 // ─── Note Linking ──────────────────────────────────────────

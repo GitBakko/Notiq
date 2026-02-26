@@ -6,7 +6,7 @@ import VaultUnlock from './VaultUnlock';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, Plus, Lock, KeyRound } from 'lucide-react';
+import { Search, Menu, Plus, Lock, KeyRound, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
@@ -35,7 +35,7 @@ export default function VaultPage() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const isMobile = useIsMobile();
-  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort } = useUIStore();
+  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed } = useUIStore();
   const queryClient = useQueryClient();
   const { notebooks } = useNotebooks();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -232,6 +232,15 @@ export default function VaultPage() {
           <Button onClick={() => lockVault()} variant="ghost" size="icon" className="h-8 w-8 rounded-full" title={t('vault.lock')}>
             <Lock size={16} />
           </Button>
+          {!isMobile && (
+            <button
+              onClick={toggleListCollapsed}
+              className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+              title={t('common.collapseList')}
+            >
+              <PanelLeftClose size={18} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -359,7 +368,19 @@ export default function VaultPage() {
 
   return (
     <div className="flex h-full bg-white dark:bg-gray-900">
-      {renderNoteList()}
+      {isListCollapsed ? (
+        <div className="flex flex-col items-center py-3 px-1 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+          <button
+            onClick={toggleListCollapsed}
+            className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
+            title={t('common.expandList')}
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+        </div>
+      ) : (
+        renderNoteList()
+      )}
       {renderEditor()}
     </div>
   );

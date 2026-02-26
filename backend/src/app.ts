@@ -50,9 +50,7 @@ if (!JWT_SECRET) {
 server.register(jwt, { secret: JWT_SECRET });
 
 server.register(rateLimit, {
-  global: true,
-  max: 100,
-  timeWindow: '1 minute',
+  global: false,
 });
 
 import path from 'path';

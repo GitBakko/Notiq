@@ -1,7 +1,9 @@
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export function ResizableImage({ node, updateAttributes, selected }: NodeViewProps) {
+  const { t } = useTranslation();
   const imgRef = useRef<HTMLImageElement>(null);
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -48,7 +50,7 @@ export function ResizableImage({ node, updateAttributes, selected }: NodeViewPro
           <div
             className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-tl cursor-se-resize border border-white dark:border-gray-900 shadow-sm"
             onMouseDown={onMouseDown}
-            title="Drag to resize"
+            title={t('editor.dragToResize')}
           />
         )}
       </div>

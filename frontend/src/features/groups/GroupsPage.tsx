@@ -7,6 +7,7 @@ import type { Group } from './groupService';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import toast from 'react-hot-toast';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
 export default function GroupsPage() {
   const { t } = useTranslation();
@@ -23,6 +24,7 @@ export default function GroupsPage() {
   const [editName, setEditName] = useState('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploadGroupId, setAvatarUploadGroupId] = useState<string | null>(null);
+  const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
   const createAvatarInputRef = useRef<HTMLInputElement>(null);
   const [newGroupAvatarFile, setNewGroupAvatarFile] = useState<File | null>(null);
   const [newGroupAvatarPreview, setNewGroupAvatarPreview] = useState<string | null>(null);
@@ -226,9 +228,7 @@ export default function GroupsPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirm(t('groups.deleteConfirm'))) {
-                    deleteMutation.mutate(group.id);
-                  }
+                  setDeleteGroupId(group.id);
                 }}
                 className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
               >
@@ -486,6 +486,18 @@ export default function GroupsPage() {
         className="hidden"
         accept="image/jpeg,image/png,image/gif,image/webp"
         onChange={handleAvatarChange}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deleteGroupId}
+        onClose={() => setDeleteGroupId(null)}
+        onConfirm={() => {
+          if (deleteGroupId) deleteMutation.mutate(deleteGroupId);
+        }}
+        title={t('groups.deleteTitle')}
+        message={t('groups.deleteConfirm')}
+        confirmText={t('common.delete')}
+        variant="danger"
       />
     </div>
   );

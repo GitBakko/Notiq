@@ -2,8 +2,7 @@ import prisma from '../plugins/prisma';
 import * as auditService from './audit.service';
 import * as emailService from './email.service';
 import * as notificationService from './notification.service';
-import jwt from 'jsonwebtoken';
-import { Permission, ShareStatus } from '@prisma/client';
+import { Permission } from '@prisma/client';
 import logger from '../utils/logger';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
@@ -65,13 +64,6 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
   // Audit Log
   await auditService.logEvent(ownerId, 'SHARE_SENT', { noteId, targetEmail, permission });
 
-  // Generate Invite Token
-  const token = jwt.sign(
-    { noteId, userId: targetUser.id, type: 'NOTE' },
-    process.env.JWT_SECRET!,
-    { expiresIn: '7d' }
-  );
-
   // Send Invitation Email
   const owner = await prisma.user.findUnique({ where: { id: ownerId } });
 
@@ -84,7 +76,8 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
           sharerName: owner.name || owner.email,
           itemName: note.title,
           itemType: 'Note',
-          token,
+          shareId: sharedNote.id,
+          tab: 'notes',
         }
       );
 
@@ -188,7 +181,8 @@ export const autoShareNoteForBoard = async (
             sharerName,
             itemName: note.title,
             itemType: 'Note',
-            token: '', // No token needed, auto-accepted
+            shareId: '',
+            tab: 'notes',
           }
         ).catch((e) => logger.error(e, 'Failed to send auto-share email'));
       }
@@ -302,14 +296,6 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
   // Audit Log
   await auditService.logEvent(ownerId, 'SHARE_SENT', { notebookId, targetEmail, permission });
 
-  // Generate Invite Token
-  const token = jwt.sign(
-    { notebookId, userId: targetUser.id, type: 'NOTEBOOK' },
-    process.env.JWT_SECRET!,
-    { expiresIn: '7d' }
-  );
-
-
   // Send Invite
   const owner = await prisma.user.findUnique({ where: { id: ownerId } });
 
@@ -322,8 +308,8 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
           sharerName: owner.name || owner.email,
           itemName: notebook.name,
           itemType: 'Notebook',
-          token,
-          locale: (targetUser as any).locale
+          shareId: sharedNotebook.id,
+          tab: 'notebooks',
         }
       );
 
@@ -389,83 +375,6 @@ export const getSharedNotebooks = async (userId: string) => {
     },
   });
 };
-
-export const respondToShare = async (token: string, action: 'accept' | 'decline') => {
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
-    const { userId, type } = decoded;
-    const noteId = decoded.noteId;
-    const notebookId = decoded.notebookId;
-
-    const status = action === 'accept' ? 'ACCEPTED' : 'DECLINED';
-
-    let result;
-    if (type === 'NOTE') {
-      result = await prisma.sharedNote.update({
-        where: {
-          noteId_userId: {
-            noteId,
-            userId,
-          },
-        },
-        data: { status },
-        include: { note: { include: { user: true } }, user: true }
-      });
-    } else if (type === 'NOTEBOOK') {
-      result = await prisma.sharedNotebook.update({
-        where: {
-          notebookId_userId: {
-            notebookId,
-            userId,
-          },
-        },
-        data: { status },
-        include: { notebook: { include: { user: true } }, user: true }
-      });
-    }
-
-    // Notify Owner
-    if (result) {
-      const owner = type === 'NOTE' ? (result as any).note.user : (result as any).notebook.user;
-      const responder = (result as any).user;
-      const itemName = type === 'NOTE' ? (result as any).note.title : (result as any).notebook.name;
-
-      if (owner) {
-        await emailService.sendNotificationEmail(
-          owner.email,
-          'SHARE_RESPONSE',
-          {
-            responderName: responder.name || responder.email,
-            action: action === 'accept' ? 'accepted' : 'declined', // Past tense for email
-            itemName,
-            itemId: type === 'NOTE' ? noteId : notebookId,
-          }
-        );
-
-        await notificationService.createNotification(
-          owner.id,
-          'SYSTEM',
-          'Invitation Update',
-          `${responder.name || responder.email} ${action}ed your invitation to ${itemName}`,
-          {
-            itemId: type === 'NOTE' ? noteId : notebookId,
-            type,
-            action,
-            responderName: responder.name || responder.email,
-            itemName,
-            localizationKey: action === 'accept' ? 'notifications.shareResponseAccepted' : 'notifications.shareResponseDeclined',
-            localizationArgs: { responderName: responder.name || responder.email, itemName },
-          }
-        );
-      }
-    }
-
-    return { success: true, status };
-  } catch (error) {
-    throw new Error('Invalid or expired token');
-  }
-};
-
 
 export const respondToShareById = async (userId: string, itemId: string, type: 'NOTE' | 'NOTEBOOK' | 'KANBAN', action: 'accept' | 'decline') => {
   const status = action === 'accept' ? 'ACCEPTED' : 'DECLINED';
@@ -549,32 +458,36 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
     const responder = (result as any).user;
 
     if (owner) {
-      await emailService.sendNotificationEmail(
-        owner.email,
-        'SHARE_RESPONSE',
-        {
-          responderName: responder.name || responder.email,
-          action: action === 'accept' ? 'accepted' : 'declined',
-          itemName,
-          itemId,
-        }
-      );
+      try {
+        await emailService.sendNotificationEmail(
+          owner.email,
+          'SHARE_RESPONSE',
+          {
+            responderName: responder.name || responder.email,
+            action: action === 'accept' ? 'accepted' : 'declined',
+            itemName,
+            itemId,
+          }
+        );
 
-      await notificationService.createNotification(
-        owner.id,
-        'SYSTEM',
-        'Invitation Update',
-        `${responder.name || responder.email} ${action}ed your invitation to ${itemName}`,
-        {
-          itemId,
-          type,
-          action,
-          responderName: responder.name || responder.email,
-          itemName,
-          localizationKey: action === 'accept' ? 'notifications.shareResponseAccepted' : 'notifications.shareResponseDeclined',
-          localizationArgs: { responderName: responder.name || responder.email, itemName },
-        }
-      );
+        await notificationService.createNotification(
+          owner.id,
+          'SYSTEM',
+          'Invitation Update',
+          `${responder.name || responder.email} ${action}ed your invitation to ${itemName}`,
+          {
+            itemId,
+            type,
+            action,
+            responderName: responder.name || responder.email,
+            itemName,
+            localizationKey: action === 'accept' ? 'notifications.shareResponseAccepted' : 'notifications.shareResponseDeclined',
+            localizationArgs: { responderName: responder.name || responder.email, itemName },
+          }
+        );
+      } catch (err) {
+        // Non-critical: don't fail the accept/decline if notification fails
+      }
     }
   }
 
@@ -632,6 +545,8 @@ export const shareKanbanBoard = async (
       sharerName,
       itemName: board.title,
       itemType: 'kanban board',
+      shareId: share.id,
+      tab: 'kanbanBoards',
     });
   } catch {
     // Email failure should not block sharing
@@ -667,6 +582,118 @@ export const revokeKanbanBoardShare = async (
   } catch {
     // Non-critical
   }
+
+  return { success: true };
+};
+
+// ─── Sent Shares & Resend ──────────────────────────────────
+
+export const getSentShares = async (userId: string) => {
+  const [notes, notebooks, taskLists, kanbanBoards] = await Promise.all([
+    prisma.sharedNote.findMany({
+      where: { note: { userId } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        note: { select: { id: true, title: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.sharedNotebook.findMany({
+      where: { notebook: { userId } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        notebook: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.sharedTaskList.findMany({
+      where: { taskList: { userId } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        taskList: { select: { id: true, title: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.sharedKanbanBoard.findMany({
+      where: { board: { ownerId: userId } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        board: { select: { id: true, title: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  return { notes, notebooks, taskLists, kanbanBoards };
+};
+
+export const resendShareInvitation = async (
+  userId: string,
+  type: 'NOTE' | 'NOTEBOOK' | 'TASKLIST' | 'KANBAN',
+  shareId: string
+) => {
+  const owner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  if (!owner) throw new Error('User not found');
+  const sharerName = owner.name || owner.email;
+
+  let targetEmail: string;
+  let itemName: string;
+  let itemType: string;
+  let tab: string;
+
+  if (type === 'NOTE') {
+    const share = await prisma.sharedNote.findUnique({
+      where: { id: shareId },
+      include: { user: { select: { email: true } }, note: { select: { title: true, userId: true } } },
+    });
+    if (!share || share.note.userId !== userId) throw new Error('Share not found');
+    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    targetEmail = share.user.email;
+    itemName = share.note.title;
+    itemType = 'Note';
+    tab = 'notes';
+  } else if (type === 'NOTEBOOK') {
+    const share = await prisma.sharedNotebook.findUnique({
+      where: { id: shareId },
+      include: { user: { select: { email: true } }, notebook: { select: { name: true, userId: true } } },
+    });
+    if (!share || share.notebook.userId !== userId) throw new Error('Share not found');
+    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    targetEmail = share.user.email;
+    itemName = share.notebook.name;
+    itemType = 'Notebook';
+    tab = 'notebooks';
+  } else if (type === 'TASKLIST') {
+    const share = await prisma.sharedTaskList.findUnique({
+      where: { id: shareId },
+      include: { user: { select: { email: true } }, taskList: { select: { title: true, userId: true } } },
+    });
+    if (!share || share.taskList.userId !== userId) throw new Error('Share not found');
+    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    targetEmail = share.user.email;
+    itemName = share.taskList.title;
+    itemType = 'Task List';
+    tab = 'taskLists';
+  } else {
+    const share = await prisma.sharedKanbanBoard.findUnique({
+      where: { id: shareId },
+      include: { user: { select: { email: true } }, board: { select: { title: true, ownerId: true } } },
+    });
+    if (!share || share.board.ownerId !== userId) throw new Error('Share not found');
+    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    targetEmail = share.user.email;
+    itemName = share.board.title;
+    itemType = 'kanban board';
+    tab = 'kanbanBoards';
+  }
+
+  await emailService.sendNotificationEmail(targetEmail, 'SHARE_INVITATION', {
+    sharerName,
+    itemName,
+    itemType,
+    shareId,
+    tab,
+  });
 
   return { success: true };
 };

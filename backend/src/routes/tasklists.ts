@@ -8,7 +8,8 @@ const createTaskListSchema = z.object({
 });
 
 const updateTaskListSchema = z.object({
-  title: z.string().min(1),
+  title: z.string().min(1).optional(),
+  isTrashed: z.boolean().optional(),
 });
 
 const createTaskItemSchema = z.object({

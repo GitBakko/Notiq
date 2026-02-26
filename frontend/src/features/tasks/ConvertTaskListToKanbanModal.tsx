@@ -1,62 +1,88 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { LayoutDashboard, Plus, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
-import Modal from '../ui/Modal';
-import { useKanbanBoards } from '../../features/kanban/hooks/useKanbanBoards';
-import { useKanbanBoard } from '../../features/kanban/hooks/useKanbanBoard';
-import { useKanbanMutations } from '../../features/kanban/hooks/useKanbanMutations';
-import type { ListItemInfo } from './EditorContextMenu';
-import type { Editor } from '@tiptap/react';
+import Modal from '../../components/ui/Modal';
+import { useKanbanBoards } from '../kanban/hooks/useKanbanBoards';
+import { useKanbanBoard } from '../kanban/hooks/useKanbanBoard';
+import { useKanbanMutations } from '../kanban/hooks/useKanbanMutations';
+import { createBoardFromTaskList } from '../kanban/kanbanService';
+import { syncPush } from '../sync/syncService';
+import * as taskListService from './taskListService';
+import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
 
-interface TransformToKanbanModalProps {
+interface ConvertTaskListToKanbanModalProps {
   isOpen: boolean;
   onClose: () => void;
-  items: ListItemInfo[];
-  editor: Editor;
+  taskList: LocalTaskList & { items: LocalTaskItem[] };
 }
 
-type Step = 'board' | 'column' | 'review' | 'confirm-remove';
+interface ChecklistItem {
+  text: string;
+  isChecked: boolean;
+  isDuplicate: boolean;
+  selected: boolean;
+}
 
-export default function TransformToKanbanModal({ isOpen, onClose, items, editor }: TransformToKanbanModalProps) {
+type Step = 'board' | 'review' | 'confirm-remove';
+
+export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList }: ConvertTaskListToKanbanModalProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>('board');
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
-  const [newBoardTitle, setNewBoardTitle] = useState('');
-  const [selectedColumnId, setSelectedColumnId] = useState<string>('');
-  const [itemChecklist, setItemChecklist] = useState<{ text: string; isDuplicate: boolean; checked: boolean }[]>([]);
+  const [itemChecklist, setItemChecklist] = useState<ChecklistItem[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [convertedBoardId, setConvertedBoardId] = useState<string | null>(null);
+  const [pendingBoardId, setPendingBoardId] = useState<string>('');
 
   const { data: boards, isLoading: boardsLoading } = useKanbanBoards();
   const { data: boardDetail } = useKanbanBoard(selectedBoardId || undefined);
-  const { createBoard, createCard } = useKanbanMutations(selectedBoardId || undefined);
+  const { createCard } = useKanbanMutations(selectedBoardId || undefined);
+
+  const taskItems = taskList.items || [];
+
+  // When boardDetail loads for a pending board selection, run duplicate check
+  useEffect(() => {
+    if (pendingBoardId && boardDetail && boardDetail.id === pendingBoardId) {
+      setPendingBoardId('');
+      runDuplicateCheck();
+    }
+  }, [boardDetail, pendingBoardId]);
 
   function handleClose() {
     setStep('board');
     setMode('existing');
     setSelectedBoardId('');
-    setNewBoardTitle('');
-    setSelectedColumnId('');
+    setPendingBoardId('');
     setItemChecklist([]);
     setIsCreating(false);
+    setConvertedBoardId(null);
     onClose();
   }
 
-  function handleCheckDuplicates(columnId: string) {
-    setSelectedColumnId(columnId);
-    const column = boardDetail?.columns.find(c => c.id === columnId);
+  function handleSelectExistingBoard(boardId: string) {
+    setSelectedBoardId(boardId);
+    setPendingBoardId(boardId);
+  }
+
+  function runDuplicateCheck() {
+    if (!boardDetail) return;
+
+    const columns = boardDetail.columns;
+    // Collect all existing card titles across all columns
     const existingTitles = new Set(
-      (column?.cards || []).map(c => c.title.trim().toLowerCase())
+      columns.flatMap(col => (col.cards || []).map(c => c.title.trim().toLowerCase()))
     );
 
-    const checklist = items.map(item => {
-      const title = item.text.split('\n')[0].trim().toLowerCase();
-      const isDuplicate = existingTitles.has(title);
-      return { text: item.text, isDuplicate, checked: !isDuplicate };
+    const checklist: ChecklistItem[] = taskItems.map(item => {
+      const isDuplicate = existingTitles.has(item.text.trim().toLowerCase());
+      return { text: item.text, isChecked: !!item.isChecked, isDuplicate, selected: !isDuplicate };
     });
 
     const hasDuplicates = checklist.some(i => i.isDuplicate);
@@ -64,21 +90,26 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
       setItemChecklist(checklist);
       setStep('review');
     } else {
-      handleCreateCards(columnId, items);
+      distributeCards(taskItems.map(i => ({ text: i.text, isChecked: !!i.isChecked })));
     }
   }
 
-  async function handleCreateCards(columnId: string, itemsToAdd: ListItemInfo[]) {
+  async function distributeCards(items: { text: string; isChecked: boolean }[]) {
+    if (!boardDetail || boardDetail.columns.length === 0) return;
+
     setIsCreating(true);
     try {
-      const boardTitle = boardDetail?.title || '';
-      for (const item of itemsToAdd) {
-        const lines = item.text.split('\n');
-        const title = lines[0];
-        const description = lines.length > 1 ? item.text : undefined;
-        await createCard.mutateAsync({ columnId, title, description });
+      const columns = boardDetail.columns;
+      const todoColumnId = columns[0].id;
+      const doneColumnId = columns[columns.length - 1].id;
+
+      for (const item of items) {
+        const columnId = item.isChecked ? doneColumnId : todoColumnId;
+        await createCard.mutateAsync({ columnId, title: item.text });
       }
-      toast.success(t('editor.transform.kanbanSuccess', { count: itemsToAdd.length, board: boardTitle }));
+
+      toast.success(t('editor.transform.kanbanSuccess', { count: items.length, board: boardDetail.title }));
+      setConvertedBoardId(selectedBoardId);
       setStep('confirm-remove');
     } catch {
       toast.error(t('common.somethingWentWrong'));
@@ -87,59 +118,63 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
     }
   }
 
-  async function handleNewBoardConfirm() {
-    if (!newBoardTitle.trim()) return;
+  async function handleNewBoardConvert() {
     setIsCreating(true);
     try {
-      const board = await createBoard.mutateAsync({ title: newBoardTitle.trim() });
-      setSelectedBoardId(board.id);
-      setStep('column');
+      await syncPush();
+      const board = await createBoardFromTaskList(taskList.id);
+      queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+      toast.success(t('taskLists.convertedToKanban'));
+      setConvertedBoardId(board.id);
+      setStep('confirm-remove');
     } catch {
-      toast.error(t('common.somethingWentWrong'));
+      toast.error(t('taskLists.convertToKanbanFailed'));
     } finally {
       setIsCreating(false);
     }
   }
 
-  function handleRemoveItems() {
-    const boardId = selectedBoardId;
-    // Delete in reverse order to preserve positions
-    const sorted = [...items].sort((a, b) => b.from - a.from);
-    const chain = editor.chain();
-    for (const item of sorted) {
-      chain.deleteRange({ from: item.from, to: item.to });
-    }
-    chain.run();
+  function handleKeepAndNavigate() {
+    const boardId = convertedBoardId;
     handleClose();
     if (boardId) navigate(`/kanban?boardId=${boardId}`);
   }
 
-  function handleKeepItems() {
-    const boardId = selectedBoardId;
+  async function handleRemoveAndNavigate() {
+    const boardId = convertedBoardId;
+    try {
+      await taskListService.deleteTaskList(taskList.id);
+    } catch (e) {
+      console.error('Failed to delete task list', e);
+    }
     handleClose();
     if (boardId) navigate(`/kanban?boardId=${boardId}`);
   }
 
   const title = step === 'board'
-    ? t('editor.transform.toKanban')
-    : step === 'column'
-    ? t('editor.transform.selectColumn')
+    ? t('taskLists.convertToKanban')
     : step === 'review'
     ? t('editor.transform.duplicatesFound', { count: itemChecklist.filter(i => i.isDuplicate).length })
-    : t('editor.transform.removeFromNote');
+    : t('taskLists.keepOrRemoveTitle');
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={title} size="md">
       {/* Items preview */}
-      {step !== 'confirm-remove' && step !== 'review' && (
+      {step === 'board' && (
         <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg max-h-32 overflow-y-auto">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            {t('editor.transform.itemsSelected', { count: items.length })}
+            {t('editor.transform.itemsSelected', { count: taskItems.length })}
           </p>
           <ul className="space-y-1">
-            {items.map((item, i) => (
-              <li key={i} className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                • {item.text}
+            {taskItems.map((item, i) => (
+              <li key={i} className="text-sm text-gray-700 dark:text-gray-300 truncate flex items-center gap-2">
+                <span className={clsx(
+                  'w-3 h-3 rounded-sm border flex-shrink-0',
+                  item.isChecked
+                    ? 'bg-emerald-500 border-emerald-500'
+                    : 'border-gray-300 dark:border-gray-600'
+                )} />
+                <span className={item.isChecked ? 'line-through text-gray-400' : ''}>{item.text}</span>
               </li>
             ))}
           </ul>
@@ -183,75 +218,41 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
                 boards.map(board => (
                   <button
                     key={board.id}
-                    onClick={() => {
-                      setSelectedBoardId(board.id);
-                      setStep('column');
-                    }}
-                    className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    disabled={!!pendingBoardId}
+                    onClick={() => handleSelectExistingBoard(board.id)}
+                    className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left disabled:opacity-50"
                   >
                     <span className="flex items-center gap-2">
                       <LayoutDashboard size={16} className="text-gray-400" />
                       <span className="text-sm text-gray-900 dark:text-white">{board.title}</span>
                     </span>
-                    <ChevronRight size={16} className="text-gray-400" />
+                    {pendingBoardId === board.id ? (
+                      <span className="text-xs text-gray-400">{t('common.loading')}</span>
+                    ) : (
+                      <ChevronRight size={16} className="text-gray-400" />
+                    )}
                   </button>
                 ))
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                  {t('common.noResults', { query: '' })}
+                  {t('kanban.noBoards')}
                 </p>
               )}
             </div>
           ) : (
             <div className="space-y-3">
-              <input
-                type="text"
-                value={newBoardTitle}
-                onChange={e => setNewBoardTitle(e.target.value)}
-                placeholder={t('editor.transform.boardTitle')}
-                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleNewBoardConfirm();
-                }}
-              />
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {t('taskLists.convertToKanbanConfirm')}
+              </p>
               <button
-                onClick={handleNewBoardConfirm}
-                disabled={!newBoardTitle.trim() || isCreating}
+                onClick={handleNewBoardConvert}
+                disabled={isCreating}
                 className="w-full py-2 px-4 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
               >
                 {isCreating ? t('common.loading') : t('editor.transform.confirm')}
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Step: Column Selection */}
-      {step === 'column' && (
-        <div className="space-y-2">
-          {boardDetail?.columns.map(col => (
-            <button
-              key={col.id}
-              onClick={() => handleCheckDuplicates(col.id)}
-              disabled={isCreating}
-              className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left disabled:opacity-50"
-            >
-              <span className="text-sm text-gray-900 dark:text-white">
-                {t(`kanban.column.${col.title === 'TODO' ? 'todo' : col.title === 'IN_PROGRESS' ? 'inProgress' : col.title === 'DONE' ? 'done' : 'custom'}`, { defaultValue: col.title })}
-              </span>
-              <span className="text-xs text-gray-400">{col.cards.length}</span>
-            </button>
-          ))}
-          <button
-            onClick={() => {
-              setSelectedBoardId('');
-              setStep('board');
-            }}
-            className="w-full py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-          >
-            {t('common.back')}
-          </button>
         </div>
       )}
 
@@ -269,10 +270,10 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
               <label key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={item.checked}
+                  checked={item.selected}
                   onChange={() => {
                     const updated = [...itemChecklist];
-                    updated[i] = { ...updated[i], checked: !updated[i].checked };
+                    updated[i] = { ...updated[i], selected: !updated[i].selected };
                     setItemChecklist(updated);
                   }}
                   className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
@@ -292,8 +293,10 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => {
-                const selectedItems = items.filter((_, i) => itemChecklist[i].checked);
-                if (selectedItems.length > 0) handleCreateCards(selectedColumnId, selectedItems);
+                const selected = itemChecklist
+                  .filter(i => i.selected)
+                  .map(i => ({ text: i.text, isChecked: i.isChecked }));
+                if (selected.length > 0) distributeCards(selected);
                 else handleClose();
               }}
               disabled={isCreating}
@@ -302,7 +305,7 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
               {isCreating ? t('common.loading') : t('editor.transform.addSelected')}
             </button>
             <button
-              onClick={() => handleCreateCards(selectedColumnId, items)}
+              onClick={() => distributeCards(itemChecklist.map(i => ({ text: i.text, isChecked: i.isChecked })))}
               disabled={isCreating}
               className="flex-1 py-2 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
@@ -316,20 +319,20 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
       {step === 'confirm-remove' && (
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            {t('editor.transform.removeFromNote')}
+            {t('taskLists.keepOrRemoveMessage')}
           </p>
           <div className="flex gap-3">
             <button
-              onClick={handleKeepItems}
+              onClick={handleKeepAndNavigate}
               className="flex-1 py-2 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
-              {t('editor.transform.keepItems')}
+              {t('taskLists.keepTaskList')}
             </button>
             <button
-              onClick={handleRemoveItems}
+              onClick={handleRemoveAndNavigate}
               className="flex-1 py-2 px-4 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
             >
-              {t('editor.transform.removeItems')}
+              {t('taskLists.removeTaskList')}
             </button>
           </div>
         </div>

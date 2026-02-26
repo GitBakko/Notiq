@@ -68,7 +68,8 @@ function handleKanbanError(error: unknown, reply: any) {
     msg === 'Column not found' ||
     msg === 'Card not found' ||
     msg === 'Comment not found' ||
-    msg === 'Reminder not found'
+    msg === 'Reminder not found' ||
+    msg === 'TaskList not found'
   ) {
     return reply.status(404).send({ message: msg });
   }
@@ -151,6 +152,20 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     try {
       const { title, description } = createBoardSchema.parse(request.body);
       return await kanbanService.createBoard(request.user.id, title, description);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  // Create board from task list
+  const fromTaskListSchema = z.object({
+    taskListId: z.string().uuid(),
+  });
+
+  fastify.post('/boards/from-tasklist', async (request, reply) => {
+    try {
+      const { taskListId } = fromTaskListSchema.parse(request.body);
+      return await kanbanService.createBoardFromTaskList(request.user.id, taskListId);
     } catch (error) {
       return handleKanbanError(error, reply);
     }

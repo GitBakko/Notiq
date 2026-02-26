@@ -354,19 +354,19 @@ export default function AdminPage() {
               <StatCard
                 title={t('admin.stats.activeUsers')}
                 value={stats?.kpi.activeUsers || 0}
-                subValue="Last 30 days"
+                subValue={t('admin.stats.last30days')}
                 icon={Activity} color="text-emerald-600 bg-emerald-600"
               />
               <StatCard
-                title="Storage"
+                title={t('admin.stats.storage')}
                 value={formatBytes(stats?.kpi.totalStorageBytes || 0)}
-                subValue={`${stats?.kpi.totalAttachments} files`}
+                subValue={t('admin.stats.files', { count: stats?.kpi.totalAttachments || 0 })}
                 icon={HardDrive} color="text-purple-600 bg-purple-600"
               />
               <StatCard
-                title="Engagement"
+                title={t('admin.stats.engagement')}
                 value={stats?.kpi.avgNotesPerUser || 0}
-                subValue="Avg notes/user"
+                subValue={t('admin.stats.avgNotesPerUser')}
                 icon={TrendingUp} color="text-amber-600 bg-amber-600"
               />
             </div>
@@ -374,27 +374,27 @@ export default function AdminPage() {
             {/* Content & Collaboration Stats (New Row) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard
-                title="Notebooks"
+                title={t('admin.stats.notebooks')}
                 value={stats?.kpi.totalNotebooks || 0}
-                subValue="Total collections"
+                subValue={t('admin.stats.totalCollections')}
                 icon={Book} color="text-indigo-600 bg-indigo-600"
               />
               <StatCard
-                title="Tags"
+                title={t('admin.stats.tags')}
                 value={stats?.kpi.totalTags || 0}
-                subValue="Total distinct tags"
+                subValue={t('admin.stats.totalDistinctTags')}
                 icon={Tag} color="text-pink-600 bg-pink-600"
               />
               <StatCard
-                title="Collaboration"
+                title={t('admin.stats.collaboration')}
                 value={(stats?.kpi.totalSharedNotes || 0) + (stats?.kpi.totalSharedNotebooks || 0)}
-                subValue="Shared notes & books"
+                subValue={t('admin.stats.sharedNotesAndBooks')}
                 icon={Share2} color="text-cyan-600 bg-cyan-600"
               />
               <StatCard
-                title="Vault Adoption"
+                title={t('admin.stats.vaultAdoption')}
                 value={stats?.kpi.vaultUsersCount || 0}
-                subValue="Users with vault items"
+                subValue={t('admin.stats.usersWithVaultItems')}
                 icon={Lock} color="text-rose-600 bg-rose-600"
               />
             </div>
@@ -402,7 +402,7 @@ export default function AdminPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* User Growth */}
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">User Growth</h3>
+                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{t('admin.charts.registrations')}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={stats?.charts.registrationHistory}>
@@ -424,7 +424,7 @@ export default function AdminPage() {
 
               {/* Sharing Activity (New Chart) */}
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Sharing Activity</h3>
+                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{t('admin.charts.sharingActivity')}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stats?.charts.sharingHistory}>
@@ -433,7 +433,7 @@ export default function AdminPage() {
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} allowDecimals={false} />
                       <Tooltip cursor={{ fill: 'transparent' }} />
                       <Legend />
-                      <Bar dataKey="count" name="Shared Items" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="count" name={t('admin.charts.sharedItems')} fill="#06b6d4" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -441,7 +441,7 @@ export default function AdminPage() {
 
               {/* Storage Composition */}
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Storage Breakdown</h3>
+                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{t('admin.charts.storageBreakdown')}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -483,7 +483,7 @@ export default function AdminPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type="text"
-                  placeholder="Search users..."
+                  placeholder={t('admin.users.searchPlaceholder')}
                   className="pl-10 pr-4 py-2 w-full border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600"
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
@@ -495,18 +495,18 @@ export default function AdminPage() {
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 uppercase font-medium dark:bg-gray-900/50">
                   <tr>
-                    <th className="px-6 py-3">User</th>
-                    <th className="px-6 py-3">Role</th>
-                    <th className="px-6 py-3">Stats</th>
-                    <th className="px-6 py-3">Joined</th>
-                    <th className="px-6 py-3 text-right">Actions</th>
+                    <th className="px-6 py-3">{t('admin.users.user')}</th>
+                    <th className="px-6 py-3">{t('admin.users.role')}</th>
+                    <th className="px-6 py-3">{t('admin.users.stats')}</th>
+                    <th className="px-6 py-3">{t('admin.users.joined')}</th>
+                    <th className="px-6 py-3 text-right">{t('admin.users.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {users.map((user) => (
                     <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">{user.name || 'Anonymous'}</div>
+                        <div className="font-medium text-gray-900 dark:text-white">{user.name || t('admin.users.anonymous')}</div>
                         <div className="text-gray-500">{user.email}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -515,7 +515,7 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-500">
-                        {user._count?.notes || 0} notes
+                        {t('admin.users.notesCount', { count: user._count?.notes || 0 })}
                       </td>
                       <td className="px-6 py-4 text-gray-500">
                         {format(new Date(user.createdAt), 'MMM d, yyyy')}
@@ -524,18 +524,18 @@ export default function AdminPage() {
                         <div className="flex justify-end gap-2">
                           {/* Verify Action */}
                           {!user.isVerified && (
-                            <Button size="sm" variant="secondary" className="text-blue-600" title="Manual Verification" onClick={() => updateUserRole(user.id, 'VERIFY')}>
+                            <Button size="sm" variant="secondary" className="text-blue-600" title={t('admin.users.manualVerification')} onClick={() => updateUserRole(user.id, 'VERIFY')}>
                               <Check size={16} />
                             </Button>
                           )}
 
                           {user.role === 'USER' ? (
                             <Button size="sm" variant="secondary" className="text-emerald-600" onClick={() => updateUserRole(user.id, 'SUPERADMIN')}>
-                              Promote
+                              {t('admin.users.promote')}
                             </Button>
                           ) : (
                             <Button size="sm" variant="secondary" className="text-red-500" onClick={() => updateUserRole(user.id, 'USER')}>
-                              Demote
+                              {t('admin.users.demote')}
                             </Button>
                           )}
                         </div>
@@ -555,10 +555,10 @@ export default function AdminPage() {
                   onClick={() => setUserPage(p => Math.max(1, p - 1))}
                   disabled={userPage === 1}
                 >
-                  Previous
+                  {t('admin.users.previous')}
                 </Button>
                 <span className="text-sm text-gray-500">
-                  Page {userPage} of {userTotalPages}
+                  {t('admin.users.pageOf', { page: userPage, total: userTotalPages })}
                 </span>
                 <Button
                   variant="secondary"
@@ -566,7 +566,7 @@ export default function AdminPage() {
                   onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))}
                   disabled={userPage === userTotalPages}
                 >
-                  Next
+                  {t('admin.users.next')}
                 </Button>
               </div>
             )}

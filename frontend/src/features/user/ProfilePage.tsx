@@ -463,7 +463,7 @@ export default function ProfilePage() {
               onChange={(e) => setSendInviteData({ ...sendInviteData, email: e.target.value })}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               required
-              placeholder="friend@example.com"
+              placeholder={t('profile.invitePlaceholderEmail')}
             />
           </div>
           <div className="space-y-2">
@@ -473,7 +473,7 @@ export default function ProfilePage() {
               value={sendInviteData.name}
               onChange={(e) => setSendInviteData({ ...sendInviteData, name: e.target.value })}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              placeholder="Friend's Name"
+              placeholder={t('profile.invitePlaceholderName')}
             />
           </div>
 

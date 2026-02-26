@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp, Share2, MoreVertical, Trash2, Users } from 'lucide-react';
+import { ChevronDown, ChevronUp, Share2, MoreVertical, Trash2, Users, Kanban } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import {
@@ -19,6 +19,8 @@ import {
 } from '@dnd-kit/sortable';
 import TaskItemRow from './TaskItemRow';
 import * as taskListService from './taskListService';
+import ConvertTaskListToKanbanModal from './ConvertTaskListToKanbanModal';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
 
 interface TaskListCardProps {
@@ -34,6 +36,8 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
   const [editTitle, setEditTitle] = useState(taskList.title);
   const [newItemText, setNewItemText] = useState('');
   const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const newItemInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,7 +109,6 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
   };
 
   const handleDeleteList = async () => {
-    if (!confirm(t('taskLists.deleteListConfirm'))) return;
     try {
       await taskListService.deleteTaskList(taskList.id);
       toast.success(t('taskLists.deleteList'));
@@ -113,6 +116,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
       console.error('Failed to delete list', e);
     }
   };
+
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
@@ -198,7 +202,14 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
                 <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
                   <button
-                    onClick={() => { setShowMenu(false); handleDeleteList(); }}
+                    onClick={() => { setShowMenu(false); setShowConvertModal(true); }}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Kanban size={14} />
+                    {t('taskLists.convertToKanban')}
+                  </button>
+                  <button
+                    onClick={() => { setShowMenu(false); setShowDeleteConfirm(true); }}
                     className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                   >
                     <Trash2 size={14} />
@@ -262,6 +273,22 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteList}
+        title={t('taskLists.deleteList')}
+        message={t('taskLists.deleteListConfirm')}
+        confirmText={t('common.delete')}
+        variant="danger"
+      />
+
+      <ConvertTaskListToKanbanModal
+        isOpen={showConvertModal}
+        onClose={() => setShowConvertModal(false)}
+        taskList={taskList as LocalTaskList & { items: LocalTaskItem[] }}
+      />
     </div>
   );
 }

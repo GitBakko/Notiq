@@ -42,6 +42,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB
         navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/ws/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        importScripts: ['/push-sw.js'],
         runtimeCaching: [{
           urlPattern: ({ url }) => url.pathname.startsWith('/api'),
           handler: 'NetworkFirst',

@@ -6,6 +6,7 @@ import { Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink } fr
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import Modal from '../../../components/ui/Modal';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useKanbanComments } from '../hooks/useKanbanComments';
 import { useKanbanMutations } from '../hooks/useKanbanMutations';
 import { useAuthStore } from '../../../store/authStore';
@@ -61,6 +62,7 @@ export default function CardDetailModal({
   const [sharingCheck, setSharingCheck] = useState<NoteSharingCheck | null>(null);
   const [pendingNote, setPendingNote] = useState<NoteSearchResult | null>(null);
   const [isSharingGapOpen, setIsSharingGapOpen] = useState(false);
+  const [showDeleteCardConfirm, setShowDeleteCardConfirm] = useState(false);
 
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
@@ -163,10 +165,7 @@ export default function CardDetailModal({
 
   function handleDeleteCard(): void {
     if (!card) return;
-    if (window.confirm(t('kanban.card.deleteConfirm'))) {
-      deleteCard.mutate(card.id);
-      onClose();
-    }
+    setShowDeleteCardConfirm(true);
   }
 
   function handleSendComment(): void {
@@ -227,6 +226,7 @@ export default function CardDetailModal({
   const overdue = card.dueDate ? isDueOverdue(card.dueDate) : false;
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -562,5 +562,21 @@ export default function CardDetailModal({
         />
       )}
     </Modal>
+
+    <ConfirmDialog
+      isOpen={showDeleteCardConfirm}
+      onClose={() => setShowDeleteCardConfirm(false)}
+      onConfirm={() => {
+        if (card) {
+          deleteCard.mutate(card.id);
+          onClose();
+        }
+      }}
+      title={t('kanban.card.deleteCard')}
+      message={t('kanban.card.deleteConfirm')}
+      confirmText={t('common.delete')}
+      variant="danger"
+    />
+    </>
   );
 }

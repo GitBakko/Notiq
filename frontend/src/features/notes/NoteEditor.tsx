@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive } from 'lucide-react';
+import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X } from 'lucide-react';
 import Editor from '../../components/editor/Editor';
 import { revokeShare, updateNoteLocalOnly, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -73,6 +73,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const [unreadCount, setUnreadCount] = useState(0);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const reminderInputRef = useRef<HTMLInputElement>(null);
 
     // -- Sync from Prop to State (Guarded) --
     useEffect(() => {
@@ -379,7 +380,13 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             <NotebookSelector
                                 notebooks={notebooks || []}
                                 selectedNotebookId={note.notebookId}
-                                onSelect={(notebookId) => saveNote({ notebookId })}
+                                onSelect={(notebookId) => {
+                                    saveNote({ notebookId });
+                                    queryClient.setQueryData(['note', note.id], (old: any) =>
+                                        old ? { ...old, notebookId } : old
+                                    );
+                                    queryClient.invalidateQueries({ queryKey: ['notes'] });
+                                }}
                             />
                             <TagSelector
                                 noteId={note.id}
@@ -437,6 +444,43 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             </span>
                         )}
                     </button>
+
+                    {!isSharedNote && !note.isTrashed && (
+                        <div className="relative">
+                            <button
+                                onClick={() => reminderInputRef.current?.showPicker()}
+                                title={note.reminderDate ? t('notes.editReminder') : t('notes.addReminder')}
+                                className={clsx(
+                                    "p-2 rounded-full transition-colors",
+                                    note.reminderDate
+                                        ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20"
+                                        : "text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                )}
+                            >
+                                <Bell className={clsx("w-5 h-5", note.reminderDate && "fill-current")} />
+                            </button>
+                            {note.reminderDate && (
+                                <button
+                                    onClick={() => saveNote({ reminderDate: null, isReminderDone: false })}
+                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                                    title={t('notes.removeReminder')}
+                                >
+                                    <X size={10} />
+                                </button>
+                            )}
+                            <input
+                                ref={reminderInputRef}
+                                type="datetime-local"
+                                value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        saveNote({ reminderDate: new Date(e.target.value).toISOString(), isReminderDone: false });
+                                    }
+                                }}
+                                className="absolute opacity-0 w-0 h-0 overflow-hidden"
+                            />
+                        </div>
+                    )}
 
                     {!isSharedNote && (
                         <>

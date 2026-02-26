@@ -64,6 +64,8 @@ export const shareTaskList = async (
           sharerName: owner.name || owner.email,
           itemName: taskList.title,
           itemType: 'Task List',
+          shareId: sharedTaskList.id,
+          tab: 'taskLists',
         }
       );
 

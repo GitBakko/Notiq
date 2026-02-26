@@ -19,22 +19,22 @@ function getNotificationUrl(notification: Notification): string | null {
 
   switch (notification.type) {
     case 'SHARE_NOTE':
-      return data.noteId ? `/notes?noteId=${data.noteId}` : '/shared';
+      return data.noteId ? `/shared?tab=notes&highlight=${data.noteId}` : '/shared';
     case 'SHARE_NOTEBOOK':
-      return data.notebookId ? `/notes?notebookId=${data.notebookId}` : '/shared';
+      return data.notebookId ? `/shared?tab=notebooks&highlight=${data.notebookId}` : '/shared';
     case 'CHAT_MESSAGE':
       return data.noteId ? `/notes?noteId=${data.noteId}` : null;
     case 'GROUP_INVITE':
     case 'GROUP_REMOVE':
       return '/groups';
     case 'TASK_LIST_SHARED':
-      return '/shared';
+      return data.taskListId ? `/shared?tab=taskLists&highlight=${data.taskListId}` : '/shared?tab=taskLists';
     case 'TASK_ITEM_ADDED':
     case 'TASK_ITEM_CHECKED':
     case 'TASK_ITEM_REMOVED':
       return '/tasks';
     case 'KANBAN_BOARD_SHARED':
-      return data.boardId ? `/kanban?boardId=${data.boardId}` : '/shared';
+      return data.boardId ? `/shared?tab=kanbanBoards&highlight=${data.boardId}` : '/shared?tab=kanbanBoards';
     case 'KANBAN_CARD_ASSIGNED':
     case 'KANBAN_COMMENT_ADDED':
       return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';

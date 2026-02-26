@@ -15,7 +15,7 @@ import {
   type CollisionDetection,
   DragOverlay,
 } from '@dnd-kit/core';
-import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
+import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { ArrowLeft, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -27,6 +27,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import * as kanbanService from './kanbanService';
 import type { NoteSharingCheck, NoteSearchResult } from './types';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import KanbanColumn from './components/KanbanColumn';
 import KanbanCard from './components/KanbanCard';
 import CardDetailModal from './components/CardDetailModal';
@@ -96,6 +97,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +107,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [boardSharingCheck, setBoardSharingCheck] = useState<NoteSharingCheck | null>(null);
   const [pendingBoardNote, setPendingBoardNote] = useState<NoteSearchResult | null>(null);
   const [isBoardSharingGapOpen, setIsBoardSharingGapOpen] = useState(false);
+  const [showDeleteBoardConfirm, setShowDeleteBoardConfirm] = useState(false);
   const filtersActive = isFiltersActive(filters);
 
   // ── DnD multi-container state ──────────────────────────────────
@@ -114,10 +117,10 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
   // Sync local columns with server data when not dragging and no mutation in progress
   useEffect(() => {
-    if (board?.columns && !activeCardId && !isMoveInFlight) {
+    if (board?.columns && !activeCardId && !activeColumnId && !isMoveInFlight) {
       setLocalColumns(board.columns);
     }
-  }, [board?.columns, activeCardId, isMoveInFlight]);
+  }, [board?.columns, activeCardId, activeColumnId, isMoveInFlight]);
 
   const columnIds = useMemo(() => localColumns.map((c) => c.id), [localColumns]);
 
@@ -133,7 +136,16 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   /** Custom collision detection: pointer-based for columns, closest-center for cards */
   const kanbanCollisionDetection: CollisionDetection = useCallback(
     (args) => {
-      // Find columns the pointer is inside
+      // When dragging a column, only detect collisions with other columns
+      const isDraggingColumn = columnIds.includes(args.active.id as string);
+      if (isDraggingColumn) {
+        const columnContainers = args.droppableContainers.filter((c) =>
+          columnIds.includes(c.id as string),
+        );
+        return closestCenter({ ...args, droppableContainers: columnContainers });
+      }
+
+      // Card dragging: find columns the pointer is inside
       const columnContainers = args.droppableContainers.filter((c) =>
         columnIds.includes(c.id as string),
       );
@@ -200,6 +212,12 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     return null;
   }, [activeCardId, localColumns]);
 
+  // Find active column for DragOverlay
+  const activeColumn = useMemo(() => {
+    if (!activeColumnId) return null;
+    return localColumns.find((c) => c.id === activeColumnId) ?? null;
+  }, [activeColumnId, localColumns]);
+
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -207,13 +225,21 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveCardId(event.active.id as string);
-  }, []);
+    const id = event.active.id as string;
+    if (columnIds.includes(id)) {
+      setActiveColumnId(id);
+    } else {
+      setActiveCardId(id);
+    }
+  }, [columnIds]);
 
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
       const { active, over } = event;
       if (!over) return;
+
+      // Skip cross-column card logic when dragging a column
+      if (columnIds.includes(active.id as string)) return;
 
       const activeId = active.id as string;
       const overId = over.id as string;
@@ -258,18 +284,42 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         });
       });
     },
-    [findColumnId],
+    [columnIds, findColumnId],
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveCardId(null);
+      setActiveColumnId(null);
 
       if (!over || !board) return;
 
-      const cardId = active.id as string;
+      const activeId = active.id as string;
       const overId = over.id as string;
+
+      // ── Column reorder ──
+      if (columnIds.includes(activeId)) {
+        if (activeId === overId) return;
+        const oldIdx = localColumns.findIndex((c) => c.id === activeId);
+        const newIdx = localColumns.findIndex((c) => c.id === overId);
+        if (oldIdx < 0 || newIdx < 0 || oldIdx === newIdx) return;
+
+        const reordered = arrayMove(localColumns, oldIdx, newIdx);
+        setLocalColumns(reordered);
+
+        const columnsPayload = reordered.map((col, i) => ({ id: col.id, position: i }));
+        setIsMoveInFlight(true);
+        mutations.reorderColumns.mutate(
+          { boardId, columns: columnsPayload },
+          { onSettled: () => setIsMoveInFlight(false) },
+        );
+        return;
+      }
+
+      // ── Card reorder / cross-column move ──
+      const cardId = activeId;
+
 
       // Find the column the card is in now (localColumns, after any onDragOver moves)
       const currentColId = findColumnId(cardId);
@@ -318,7 +368,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         { onSettled: () => setIsMoveInFlight(false) },
       );
     },
-    [board, localColumns, findColumnId, mutations.moveCard],
+    [board, boardId, localColumns, columnIds, findColumnId, mutations.moveCard, mutations.reorderColumns],
   );
 
   // Board title editing
@@ -366,10 +416,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   function handleDeleteBoard(): void {
-    if (!window.confirm(t('kanban.deleteBoardConfirm'))) return;
-    mutations.deleteBoard.mutate(boardId, {
-      onSuccess: () => navigate('/kanban'),
-    });
+    setShowDeleteBoardConfirm(true);
   }
 
   // Cover image
@@ -768,19 +815,21 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
             onDragEnd={handleDragEnd}
           >
             <div className="flex gap-4 p-4 h-full items-start">
-              {displayColumns.map((column) => (
-                <KanbanColumn
-                  key={column.id}
-                  column={column}
-                  boardId={boardId}
-                  onCardSelect={(cardId) => setSelectedCardId(cardId)}
-                  onRenameColumn={handleRenameColumn}
-                  onDeleteColumn={handleDeleteColumn}
-                  onAddCard={handleAddCard}
-                  readOnly={readOnly || filtersActive}
-                  highlightedCardIds={highlightedCardIds}
-                />
-              ))}
+              <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+                {displayColumns.map((column) => (
+                  <KanbanColumn
+                    key={column.id}
+                    column={column}
+                    boardId={boardId}
+                    onCardSelect={(cardId) => setSelectedCardId(cardId)}
+                    onRenameColumn={handleRenameColumn}
+                    onDeleteColumn={handleDeleteColumn}
+                    onAddCard={handleAddCard}
+                    readOnly={readOnly || filtersActive}
+                    highlightedCardIds={highlightedCardIds}
+                  />
+                ))}
+              </SortableContext>
 
               {/* Add Column button / inline input */}
               {!readOnly && (
@@ -828,6 +877,18 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                   <KanbanCard
                     card={activeCard}
                     onSelect={() => {}}
+                    readOnly
+                  />
+                </div>
+              ) : activeColumn ? (
+                <div className="opacity-90">
+                  <KanbanColumn
+                    column={activeColumn}
+                    boardId={boardId}
+                    onCardSelect={() => {}}
+                    onRenameColumn={() => {}}
+                    onDeleteColumn={() => {}}
+                    onAddCard={() => {}}
                     readOnly
                   />
                 </div>
@@ -910,6 +971,16 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           isPending={mutations.linkBoardNote.isPending}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteBoardConfirm}
+        onClose={() => setShowDeleteBoardConfirm(false)}
+        onConfirm={() => mutations.deleteBoard.mutate(boardId, { onSuccess: () => navigate('/kanban') })}
+        title={t('kanban.deleteBoard')}
+        message={t('kanban.deleteBoardConfirm')}
+        confirmText={t('common.delete')}
+        variant="danger"
+      />
     </div>
   );
 }

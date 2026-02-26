@@ -19,6 +19,8 @@ interface UIState {
   setNotesSort: (field: SortField, order: SortOrder) => void;
   notificationSoundEnabled: boolean;
   setNotificationSoundEnabled: (enabled: boolean) => void;
+  isListCollapsed: boolean;
+  toggleListCollapsed: () => void;
 }
 
 const loadSort = (): { field: SortField; order: SortOrder } => {
@@ -68,6 +70,12 @@ export const useUIStore = create<UIState>((set) => ({
     set({ notificationSoundEnabled: enabled });
     localStorage.setItem('notificationSound', String(enabled));
   },
+  isListCollapsed: localStorage.getItem('listCollapsed') === 'true',
+  toggleListCollapsed: () => set((state) => {
+    const next = !state.isListCollapsed;
+    localStorage.setItem('listCollapsed', String(next));
+    return { isListCollapsed: next };
+  }),
 }));
 
 // Initialize theme

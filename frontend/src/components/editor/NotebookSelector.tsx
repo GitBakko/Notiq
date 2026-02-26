@@ -57,7 +57,7 @@ export default function NotebookSelector({ notebooks = [], selectedNotebookId, o
                       setOpen(false);
                     }}
                     className={clsx(
-                      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:text-gray-200",
+                      "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100 dark:text-gray-200",
                       selectedNotebookId === notebook.id && "bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100"
                     )}
                   >

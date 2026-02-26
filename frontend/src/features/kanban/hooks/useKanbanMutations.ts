@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as kanbanService from '../kanbanService';
+import type { KanbanBoardListItem } from '../types';
 
 export function useKanbanMutations(boardId?: string) {
   const queryClient = useQueryClient();
@@ -18,7 +19,22 @@ export function useKanbanMutations(boardId?: string) {
 
   const deleteBoard = useMutation({
     mutationFn: kanbanService.deleteBoard,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kanban-boards'] }),
+    onMutate: async (boardId) => {
+      await queryClient.cancelQueries({ queryKey: ['kanban-boards'] });
+      const previousBoards = queryClient.getQueryData<KanbanBoardListItem[]>(['kanban-boards']);
+      queryClient.setQueryData<KanbanBoardListItem[]>(['kanban-boards'], (old) =>
+        old ? old.filter((b) => b.id !== boardId) : [],
+      );
+      return { previousBoards };
+    },
+    onError: (_err, _boardId, context) => {
+      if (context?.previousBoards) {
+        queryClient.setQueryData(['kanban-boards'], context.previousBoards);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+    },
   });
 
   const updateBoard = useMutation({
@@ -45,7 +61,8 @@ export function useKanbanMutations(boardId?: string) {
   });
 
   const reorderColumns = useMutation({
-    mutationFn: kanbanService.reorderColumns,
+    mutationFn: ({ boardId: bid, columns }: { boardId: string; columns: { id: string; position: number }[] }) =>
+      kanbanService.reorderColumns(bid, columns),
     onSuccess: invalidateBoard,
   });
 

@@ -2,11 +2,13 @@ import { useTranslation } from 'react-i18next';
 import { it, enUS } from 'date-fns/locale';
 import { useReminders } from '../../hooks/useReminders';
 import { useKanbanReminders, useToggleKanbanReminder } from '../../hooks/useKanbanReminders';
+import { useTaskReminders } from '../../hooks/useTaskReminders';
 import { format, isPast, isToday, isFuture } from 'date-fns';
-import { CheckCircle, Circle, Calendar, Menu, FileText, LayoutDashboard } from 'lucide-react';
+import { CheckCircle, Circle, Calendar, Menu, FileText, LayoutDashboard, ListChecks } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { updateNote } from '../notes/noteService';
+import { updateTaskItem } from '../tasks/taskListService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
@@ -16,13 +18,15 @@ interface UnifiedReminder {
   title: string;
   dueDate: string;
   isDone: boolean;
-  type: 'note' | 'kanban';
+  type: 'note' | 'kanban' | 'task';
   noteId?: string;
   cardId?: string;
   boardId?: string;
   boardTitle?: string;
   columnTitle?: string;
   boardAvatarUrl?: string | null;
+  taskListId?: string;
+  taskListTitle?: string;
 }
 
 export default function RemindersPage() {
@@ -30,6 +34,7 @@ export default function RemindersPage() {
   const dateLocale = i18n.language.startsWith('it') ? it : enUS;
   const noteReminders = useReminders();
   const { data: kanbanReminders } = useKanbanReminders();
+  const taskReminders = useTaskReminders();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -45,7 +50,7 @@ export default function RemindersPage() {
 
   const toggleKanbanTask = useToggleKanbanReminder();
 
-  // Merge note + kanban reminders into unified list
+  // Merge note + kanban + task reminders into unified list
   const unified: UnifiedReminder[] = [];
 
   if (noteReminders) {
@@ -80,10 +85,24 @@ export default function RemindersPage() {
     }
   }
 
+  if (taskReminders) {
+    for (const tr of taskReminders) {
+      unified.push({
+        id: tr.id,
+        title: tr.text,
+        dueDate: tr.dueDate,
+        isDone: tr.isChecked,
+        type: 'task',
+        taskListId: tr.taskListId,
+        taskListTitle: tr.taskListTitle,
+      });
+    }
+  }
+
   // Sort by dueDate
   unified.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-  const isLoading = !noteReminders && !kanbanReminders;
+  const isLoading = !noteReminders && !kanbanReminders && !taskReminders;
 
   if (isLoading) return <div className="p-8 text-center text-gray-500">{t('common.loading')}</div>;
 
@@ -97,6 +116,8 @@ export default function RemindersPage() {
       toggleNoteTask.mutate({ id: item.noteId, isDone: !item.isDone });
     } else if (item.type === 'kanban') {
       toggleKanbanTask.mutate({ id: item.id, isDone: !item.isDone });
+    } else if (item.type === 'task') {
+      updateTaskItem(item.id, { isChecked: !item.isDone });
     }
   }
 
@@ -105,6 +126,8 @@ export default function RemindersPage() {
       navigate(`/notes?noteId=${item.noteId}`);
     } else if (item.type === 'kanban' && item.boardId) {
       navigate(`/kanban/${item.boardId}`);
+    } else if (item.type === 'task') {
+      navigate('/tasks');
     }
   }
 
@@ -127,6 +150,8 @@ export default function RemindersPage() {
         <div className="flex items-center gap-2">
           {item.type === 'note' ? (
             <FileText size={14} className="text-blue-500 dark:text-blue-400 flex-shrink-0" />
+          ) : item.type === 'task' ? (
+            <ListChecks size={14} className="text-amber-500 dark:text-amber-400 flex-shrink-0" />
           ) : item.boardAvatarUrl ? (
             <img src={item.boardAvatarUrl} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
           ) : (
@@ -144,11 +169,16 @@ export default function RemindersPage() {
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs text-gray-500 flex items-center gap-1 dark:text-gray-400">
             <Calendar size={12} />
-            {format(new Date(item.dueDate), 'PPP p', { locale: dateLocale })}
+            {format(new Date(item.dueDate), item.type === 'task' ? 'PPP' : 'PPP p', { locale: dateLocale })}
           </span>
           {item.type === 'kanban' && item.boardTitle && (
             <span className="text-xs text-purple-500 dark:text-purple-400 truncate">
               {item.boardTitle}
+            </span>
+          )}
+          {item.type === 'task' && item.taskListTitle && (
+            <span className="text-xs text-amber-500 dark:text-amber-400 truncate">
+              {item.taskListTitle}
             </span>
           )}
         </div>

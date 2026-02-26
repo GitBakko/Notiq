@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { ListChecks, Plus } from 'lucide-react';
+import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import Modal from '../ui/Modal';
 import { useTaskLists } from '../../hooks/useTaskLists';
@@ -15,13 +17,17 @@ interface TransformToTaskListModalProps {
   editor: Editor;
 }
 
-type Step = 'list' | 'confirm-remove';
+type Step = 'list' | 'review' | 'confirm-remove';
 
 export default function TransformToTaskListModal({ isOpen, onClose, items, editor }: TransformToTaskListModalProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>('list');
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [newListTitle, setNewListTitle] = useState('');
+  const [selectedListId, setSelectedListId] = useState<string>('');
+  const [selectedListTitle, setSelectedListTitle] = useState<string>('');
+  const [itemChecklist, setItemChecklist] = useState<{ text: string; isDuplicate: boolean; checked: boolean }[]>([]);
   const [isCreating, setIsCreating] = useState(false);
 
   const taskLists = useTaskLists();
@@ -30,17 +36,42 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
     setStep('list');
     setMode('existing');
     setNewListTitle('');
+    setSelectedListId('');
+    setSelectedListTitle('');
+    setItemChecklist([]);
     setIsCreating(false);
     onClose();
   }
 
-  async function handleSelectList(listId: string, listTitle: string) {
+  function handleCheckDuplicates(listId: string, listTitle: string) {
+    setSelectedListId(listId);
+    setSelectedListTitle(listTitle);
+    const list = taskLists?.find(l => l.id === listId);
+    const existingTitles = new Set(
+      (list?.items || []).map(i => i.text.trim().toLowerCase())
+    );
+
+    const checklist = items.map(item => {
+      const isDuplicate = existingTitles.has(item.text.trim().toLowerCase());
+      return { text: item.text, isDuplicate, checked: !isDuplicate };
+    });
+
+    const hasDuplicates = checklist.some(i => i.isDuplicate);
+    if (hasDuplicates) {
+      setItemChecklist(checklist);
+      setStep('review');
+    } else {
+      handleAddItems(listId, listTitle, items);
+    }
+  }
+
+  async function handleAddItems(listId: string, listTitle: string, itemsToAdd: ListItemInfo[]) {
     setIsCreating(true);
     try {
-      for (const item of items) {
+      for (const item of itemsToAdd) {
         await addTaskItem(listId, item.text, 'MEDIUM');
       }
-      toast.success(t('editor.transform.taskListSuccess', { count: items.length, list: listTitle }));
+      toast.success(t('editor.transform.taskListSuccess', { count: itemsToAdd.length, list: listTitle }));
       setStep('confirm-remove');
     } catch {
       toast.error(t('common.somethingWentWrong'));
@@ -74,20 +105,24 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
     }
     chain.run();
     handleClose();
+    navigate('/tasks');
   }
 
   function handleKeepItems() {
     handleClose();
+    navigate('/tasks');
   }
 
   const title = step === 'list'
     ? t('editor.transform.toTaskList')
+    : step === 'review'
+    ? t('editor.transform.duplicatesFound', { count: itemChecklist.filter(i => i.isDuplicate).length })
     : t('editor.transform.removeFromNote');
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={title} size="md">
       {/* Items preview */}
-      {step !== 'confirm-remove' && (
+      {step !== 'confirm-remove' && step !== 'review' && (
         <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg max-h-32 overflow-y-auto">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
             {t('editor.transform.itemsSelected', { count: items.length })}
@@ -139,7 +174,7 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
                 taskLists.map(list => (
                   <button
                     key={list.id}
-                    onClick={() => handleSelectList(list.id, list.title)}
+                    onClick={() => handleCheckDuplicates(list.id, list.title)}
                     disabled={isCreating}
                     className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left disabled:opacity-50"
                   >
@@ -178,6 +213,63 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Step: Review Duplicates */}
+      {step === 'review' && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            {t('editor.transform.duplicatesFound', { count: itemChecklist.filter(i => i.isDuplicate).length })}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {t('editor.transform.duplicatesFoundSub')}
+          </p>
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {itemChecklist.map((item, i) => (
+              <label key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  onChange={() => {
+                    const updated = [...itemChecklist];
+                    updated[i] = { ...updated[i], checked: !updated[i].checked };
+                    setItemChecklist(updated);
+                  }}
+                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="flex-1 text-sm text-gray-900 dark:text-white truncate">{item.text}</span>
+                <span className={clsx(
+                  "text-xs px-2 py-0.5 rounded-full font-medium",
+                  item.isDuplicate
+                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                )}>
+                  {item.isDuplicate ? t('editor.transform.statusDuplicate') : t('editor.transform.statusNew')}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => {
+                const selectedItems = items.filter((_, i) => itemChecklist[i].checked);
+                if (selectedItems.length > 0) handleAddItems(selectedListId, selectedListTitle, selectedItems);
+                else handleClose();
+              }}
+              disabled={isCreating}
+              className="flex-1 py-2 px-4 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg transition-colors"
+            >
+              {isCreating ? t('common.loading') : t('editor.transform.addSelected')}
+            </button>
+            <button
+              onClick={() => handleAddItems(selectedListId, selectedListTitle, items)}
+              disabled={isCreating}
+              className="flex-1 py-2 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              {t('editor.transform.addAll')}
+            </button>
+          </div>
         </div>
       )}
 

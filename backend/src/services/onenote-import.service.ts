@@ -36,6 +36,90 @@ interface AttachmentData {
 // --- Constants ---
 const MAX_IMPORT_SIZE = 50 * 1024 * 1024; // 50MB (ZIPs can be large)
 
+// --- OneNote screenshot alt text → HTML converter ---
+
+/** Escape HTML special characters and apply basic inline formatting (*emphasis*, **bold**) */
+function formatInlineText(text: string): string {
+  let result = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  return result;
+}
+
+/**
+ * Convert decoded OneNote screenshot alt text to structured HTML.
+ * OneNote exports pages as rasterized PNG screenshots but preserves the original
+ * text content in each image's alt attribute using a markdown-like syntax.
+ */
+function convertAltTextToHtml(text: string): string {
+  const lines = text.split('\n');
+  const htmlParts: string[] = [];
+  let inUl = false;
+  let inOl = false;
+
+  function closeList() {
+    if (inUl) { htmlParts.push('</ul>'); inUl = false; }
+    if (inOl) { htmlParts.push('</ol>'); inOl = false; }
+  }
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+
+    // Skip empty lines (close any open list)
+    if (!trimmed) {
+      closeList();
+      continue;
+    }
+
+    // Skip clip_image references (unrecoverable OneNote inline images)
+    if (/^clip_image\d+\.\w+$/i.test(trimmed)) continue;
+
+    // Separator lines (5+ dashes)
+    if (/^-{5,}$/.test(trimmed)) {
+      closeList();
+      htmlParts.push('<hr>');
+      continue;
+    }
+
+    // Headings: # Title, ## Subtitle, etc.
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      closeList();
+      const level = headingMatch[1].length;
+      htmlParts.push(`<h${level}>${formatInlineText(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    // Unordered list items: - item or • item
+    const ulMatch = trimmed.match(/^[-•]\s+(.+)$/);
+    if (ulMatch) {
+      if (inOl) { htmlParts.push('</ol>'); inOl = false; }
+      if (!inUl) { htmlParts.push('<ul>'); inUl = true; }
+      htmlParts.push(`<li><p>${formatInlineText(ulMatch[1])}</p></li>`);
+      continue;
+    }
+
+    // Ordered list items: 1. item, 2. item, etc.
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (olMatch) {
+      if (inUl) { htmlParts.push('</ul>'); inUl = false; }
+      if (!inOl) { htmlParts.push('<ol>'); inOl = true; }
+      htmlParts.push(`<li><p>${formatInlineText(olMatch[1])}</p></li>`);
+      continue;
+    }
+
+    // Regular paragraph
+    closeList();
+    htmlParts.push(`<p>${formatInlineText(trimmed)}</p>`);
+  }
+
+  closeList();
+  return htmlParts.join('');
+}
+
 // --- MHT/MHTML Parser ---
 
 /** Decode quoted-printable encoding: =XX → byte, =\r?\n → soft line break (removed) */
@@ -224,6 +308,35 @@ async function processOneNoteHtml(
   content = content.replace(/<link[^>]*\/?>/gi, '');
 
   // ============================================================
+  // Phase 1.5: Convert OneNote screenshot images to editable text
+  // ============================================================
+  // OneNote exports pages as rasterized PNG screenshots but preserves
+  // the original text in each image's alt attribute (HTML entities).
+  // Detect these (alt > 100 chars with line breaks) and replace with HTML.
+  content = content.replace(
+    /<img\s[^>]*?alt="([^"]+)"[^>]*?\/?>/gi,
+    (match, rawAlt: string) => {
+      const decoded = rawAlt
+        .replace(/&#13;&#10;/g, '\n')
+        .replace(/&#10;/g, '\n')
+        .replace(/&#13;/g, '\n')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#8203;/g, '')
+        .trim();
+
+      if (decoded.length < 100 || !decoded.includes('\n')) {
+        return match; // Keep as regular image
+      }
+
+      return convertAltTextToHtml(decoded);
+    }
+  );
+
+  // ============================================================
   // Phase 2: Extract and save embedded images (data URIs)
   // ============================================================
   content = content.replace(
@@ -277,7 +390,7 @@ async function processOneNoteHtml(
   // ============================================================
   // Phase 4: Remove non-semantic tags
   // ============================================================
-  content = content.replace(/<\/?(span|font|center|small|big|o:p)[^>]*>/gi, '');
+  content = content.replace(/<\/?(span|font|center|small|big|nobr|o:p)[^>]*>/gi, '');
 
   // ============================================================
   // Phase 5: Smart DIV conversion
