@@ -7,6 +7,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import CommandMenu from '../search/CommandMenu';
 import WhatsNewModal from '../WhatsNewModal';
@@ -15,6 +16,7 @@ import { CURRENT_VERSION } from '../../data/changelog';
 import { useSync } from '../../hooks/useSync';
 
 export default function AppLayout() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   useSync();
 
@@ -59,6 +61,7 @@ export default function AppLayout() {
           {isMobile && (
             <button
               onClick={closeSidebar}
+              aria-label={t('common.close')}
               className="absolute top-4 right-4 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 safe-area-top"
             >
               <X size={20} />

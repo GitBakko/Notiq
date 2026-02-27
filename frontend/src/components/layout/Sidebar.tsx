@@ -322,6 +322,7 @@ export default function Sidebar() {
                         onClick={() => setIsEmptyTrashConfirmOpen(true)}
                         className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
                         title={t('trash.emptyTrash')}
+                        aria-label={t('trash.emptyTrash')}
                       >
                         <XCircle size={14} />
                       </button>
@@ -373,6 +374,7 @@ export default function Sidebar() {
                 onClick={() => setIsNewNotebookOpen(true)}
                 className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded dark:hover:bg-gray-700 transition-all"
                 title={t('notebooks.create')}
+                aria-label={t('notebooks.create')}
               >
                 <Plus size={14} />
               </button>
@@ -465,6 +467,7 @@ export default function Sidebar() {
                               }}
                               className="p-1 text-gray-400 hover:text-emerald-600 dark:text-gray-500 dark:hover:text-emerald-400 transition-colors"
                               title={t('common.rename')}
+                              aria-label={t('common.rename')}
                             >
                               <Pencil size={14} />
                             </button>
@@ -475,6 +478,7 @@ export default function Sidebar() {
                               }}
                               className="p-1 text-gray-400 hover:text-emerald-600 dark:text-gray-500 dark:hover:text-emerald-400 transition-colors"
                               title={t('sharing.share')}
+                              aria-label={t('sharing.share')}
                             >
                               <Share2 size={14} />
                             </button>
@@ -486,6 +490,7 @@ export default function Sidebar() {
                               }}
                               className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
                               title={t('common.delete')}
+                              aria-label={t('common.delete')}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -514,6 +519,7 @@ export default function Sidebar() {
                 onClick={() => setIsNewTagOpen(true)}
                 className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded dark:hover:bg-gray-700 transition-all"
                 title={t('tags.addTag')}
+                aria-label={t('tags.addTag')}
               >
                 <Plus size={14} />
               </button>
@@ -576,6 +582,7 @@ export default function Sidebar() {
               onClick={toggleTheme}
               className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
               title={t('common.theme')}
+              aria-label={t('sidebar.toggleTheme')}
             >
               {getThemeIcon()}
             </button>
@@ -583,6 +590,7 @@ export default function Sidebar() {
               to="/settings"
               className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
               title={t('sidebar.settings')}
+              aria-label={t('sidebar.settings')}
             >
               <Settings size={18} />
             </Link>
@@ -590,6 +598,7 @@ export default function Sidebar() {
               onClick={logout}
               className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
               title={t('auth.logout')}
+              aria-label={t('auth.logout')}
             >
               <LogOut size={18} />
             </button>
