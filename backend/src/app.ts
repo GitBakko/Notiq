@@ -96,7 +96,9 @@ server.addHook('onRequest', async (request: FastifyRequest) => {
       prisma.user.update({
         where: { id: request.user.id },
         data: { lastActiveAt: new Date() }
-      }).catch(() => {}); // fire-and-forget
+      }).catch((err) => {
+        request.log.warn({ err, userId: request.user.id }, 'lastActiveAt update failed');
+      }); // fire-and-forget
     }
   }
 });
