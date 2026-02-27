@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Send } from 'lucide-react';
+import { X, Send, ArrowLeft } from 'lucide-react';
 import clsx from 'clsx';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useKanbanChat } from '../hooks/useKanbanChat';
 import { playNotificationSound } from '../../../utils/notificationSound';
 import type { KanbanBoardChatMessage, BoardPresenceUser } from '../types';
@@ -29,6 +30,7 @@ export default function BoardChatSidebar({
   participants = [],
 }: BoardChatSidebarProps) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   // Always fetch chat — sound/badge must work even when sidebar is closed
   const { messages, isLoading, sendMessage } = useKanbanChat(boardId);
   const [newMessage, setNewMessage] = useState('');
@@ -82,21 +84,8 @@ export default function BoardChatSidebar({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-          {chatTitle}
-        </h3>
-        <button
-          onClick={onClose}
-          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
+  const chatContent = (
+    <>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {isLoading ? (
@@ -167,7 +156,7 @@ export default function BoardChatSidebar({
       </div>
 
       {/* Input */}
-      <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+      <div className={clsx("px-4 py-3 border-t border-gray-200 dark:border-gray-700", isMobile && "safe-area-bottom")}>
         <div className="flex items-center gap-2">
           <input
             value={newMessage}
@@ -190,6 +179,46 @@ export default function BoardChatSidebar({
           </button>
         </div>
       </div>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white dark:bg-gray-900 flex flex-col">
+        {/* Mobile Header with back button */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 safe-area-top">
+          <button
+            onClick={onClose}
+            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            aria-label={t('common.back')}
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+            {chatTitle}
+          </h3>
+        </div>
+        {chatContent}
+      </div>
+    );
+  }
+
+  // Desktop: existing sidebar layout
+  return (
+    <div className="w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+          {chatTitle}
+        </h3>
+        <button
+          onClick={onClose}
+          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      {chatContent}
     </div>
   );
 }
