@@ -240,7 +240,7 @@ export const updateTaskItem = async (
     throw new Error('Only the user who checked this item can uncheck it');
   }
 
-  const updateData: any = {};
+  const updateData: Record<string, unknown> = {};
   if (data.text !== undefined) updateData.text = data.text;
   if (data.isChecked !== undefined) {
     updateData.isChecked = data.isChecked;

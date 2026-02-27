@@ -65,7 +65,7 @@ const TRANSACTIONAL_EMAIL_TYPES: Set<string> = new Set([
 export const sendNotificationEmail = async (
   to: string,
   type: EmailTemplateType,
-  data: any
+  data: Record<string, string>
 ) => {
   // Check user email preference (skip for transactional emails)
   if (!TRANSACTIONAL_EMAIL_TYPES.has(type)) {

@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
@@ -62,7 +62,7 @@ const paginationSchema = z.object({
 
 // ─── Error handler helper ───────────────────────────────────
 
-function handleKanbanError(error: unknown, reply: any) {
+function handleKanbanError(error: unknown, reply: FastifyReply) {
   const msg = error instanceof Error ? error.message : 'Unknown error';
   if (
     msg === 'Board not found' ||

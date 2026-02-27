@@ -51,9 +51,10 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
         id
       );
       return result;
-    } catch (error: any) {
-      if (error.message === 'Share not found') return reply.status(404).send({ message: error.message });
-      if (error.message === 'Only pending shares can be resent') return reply.status(400).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Share not found') return reply.status(404).send({ message: msg });
+      if (msg === 'Only pending shares can be resent') return reply.status(400).send({ message: msg });
       throw error;
     }
   });
@@ -73,8 +74,9 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       }
       const result = await sharingService.respondToShareById(request.user.id, itemId, type, action);
       return result;
-    } catch (error: any) {
-      if (error.message === 'Invitation not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Invitation not found') {
         return reply.status(404).send({ message: 'Invitation not found' });
       }
       throw error;
@@ -89,14 +91,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       const result = await sharingService.shareNote(request.user.id, id, email, permission);
       return result;
-    } catch (error: any) {
-      if (error.message === 'User not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'User not found') {
         return reply.status(404).send({ message: 'User not found' });
       }
-      if (error.message === 'Note not found or access denied') {
+      if (msg === 'Note not found or access denied') {
         return reply.status(403).send({ message: 'Access denied' });
       }
-      if (error.message === 'Cannot share with yourself') {
+      if (msg === 'Cannot share with yourself') {
         return reply.status(400).send({ message: 'Cannot share with yourself' });
       }
       request.log.error(error, 'Share Note Error');
@@ -111,8 +114,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       await sharingService.revokeNoteShare(request.user.id, id, userId);
       return { success: true };
-    } catch (error: any) {
-      if (error.code === 'P2025') { // Record to delete does not exist
+    } catch (error: unknown) {
+      if (error instanceof Object && 'code' in error && error.code === 'P2025') { // Record to delete does not exist
         return { success: true };
       }
       request.log.error(error, 'Revoke Share Error');
@@ -139,14 +142,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       const result = await sharingService.shareNotebook(request.user.id, id, email, permission);
       return result;
-    } catch (error: any) {
-      if (error.message === 'User not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'User not found') {
         return reply.status(404).send({ message: 'User not found' });
       }
-      if (error.message === 'Notebook not found or access denied') {
+      if (msg === 'Notebook not found or access denied') {
         return reply.status(403).send({ message: 'Access denied' });
       }
-      if (error.message === 'Cannot share with yourself') {
+      if (msg === 'Cannot share with yourself') {
         return reply.status(400).send({ message: 'Cannot share with yourself' });
       }
       request.log.error(error, 'Share Notebook Error');
@@ -161,8 +165,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       await sharingService.revokeNotebookShare(request.user.id, id, userId);
       return { success: true };
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+    } catch (error: unknown) {
+      if (error instanceof Object && 'code' in error && error.code === 'P2025') {
         return { success: true };
       }
       throw error;
@@ -192,14 +196,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
         try {
           const r = await sharingService.shareNote(request.user.id, id, member.user.email, permission);
           results.push(r);
-        } catch (e: any) {
-          errors.push({ userId: member.userId, error: e.message });
+        } catch (e: unknown) {
+          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
         }
       }
       return { shared: results.length, errors };
-    } catch (error: any) {
-      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
       return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
@@ -221,14 +226,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
         try {
           const r = await sharingService.shareNotebook(request.user.id, id, member.user.email, permission);
           results.push(r);
-        } catch (e: any) {
-          errors.push({ userId: member.userId, error: e.message });
+        } catch (e: unknown) {
+          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
         }
       }
       return { shared: results.length, errors };
-    } catch (error: any) {
-      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
       return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
@@ -243,14 +249,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       const result = await taskListSharingService.shareTaskList(request.user.id, id, email, permission);
       return result;
-    } catch (error: any) {
-      if (error.message === 'User not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'User not found') {
         return reply.status(404).send({ message: 'User not found' });
       }
-      if (error.message === 'TaskList not found or access denied') {
+      if (msg === 'TaskList not found or access denied') {
         return reply.status(403).send({ message: 'Access denied' });
       }
-      if (error.message === 'Cannot share with yourself') {
+      if (msg === 'Cannot share with yourself') {
         return reply.status(400).send({ message: 'Cannot share with yourself' });
       }
       request.log.error(error, 'Share TaskList Error');
@@ -265,8 +272,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     try {
       await taskListSharingService.revokeTaskListShare(request.user.id, id, userId);
       return { success: true };
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+    } catch (error: unknown) {
+      if (error instanceof Object && 'code' in error && error.code === 'P2025') {
         return { success: true };
       }
       throw error;
@@ -300,14 +307,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
         try {
           const r = await taskListSharingService.shareTaskList(request.user.id, id, member.user.email, permission);
           results.push(r);
-        } catch (e: any) {
-          errors.push({ userId: member.userId, error: e.message });
+        } catch (e: unknown) {
+          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
         }
       }
       return { shared: results.length, errors };
-    } catch (error: any) {
-      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
       return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });
@@ -321,7 +329,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       const { email, permission } = shareSchema.parse(request.body);
       const result = await sharingService.shareKanbanBoard(request.user.id, id, email, permission);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : '';
       if (msg === 'Board not found') return reply.status(404).send({ message: msg });
       if (msg === 'Not the owner') return reply.status(403).send({ message: msg });
@@ -355,14 +363,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
         try {
           const r = await sharingService.shareKanbanBoard(request.user.id, id, member.user.email, permission);
           results.push(r);
-        } catch (e: any) {
-          errors.push({ userId: member.userId, error: e.message });
+        } catch (e: unknown) {
+          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
         }
       }
       return { shared: results.length, errors };
-    } catch (error: any) {
-      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
       return reply.status(500).send({ message: 'An internal error occurred' });
     }
   });

@@ -1,7 +1,8 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../plugins/prisma';
 import logger from '../utils/logger';
 
-export const logEvent = async (userId: string, event: string, details?: any) => {
+export const logEvent = async (userId: string, event: string, details?: Prisma.InputJsonValue) => {
   try {
     await prisma.auditLog.create({
       data: {

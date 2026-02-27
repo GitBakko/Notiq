@@ -12,15 +12,16 @@ import AdmZip from 'adm-zip';
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
   const dom = new JSDOM('');
-  const origWindow = (globalThis as any).window;
-  (globalThis as any).window = dom.window;
+  const g = globalThis as Record<string, unknown>;
+  const origWindow = g.window;
+  g.window = dom.window;
   try {
     return fn();
   } finally {
     if (origWindow === undefined) {
-      delete (globalThis as any).window;
+      delete g.window;
     } else {
-      (globalThis as any).window = origWindow;
+      g.window = origWindow;
     }
   }
 }
@@ -486,7 +487,11 @@ async function processOneNoteHtml(
       // Override lineHeight on imported paragraphs/headings.
       // The LineHeight extension defaults to 0.5 which causes text overlap on long wrapping paragraphs.
       // Set to "normal" so CSS applies standard line-height for readable imported content.
-      function normalizeLineHeight(node: any): void {
+      interface TipTapNode {
+        attrs?: Record<string, unknown>;
+        content?: TipTapNode[];
+      }
+      function normalizeLineHeight(node: TipTapNode): void {
         if (node.attrs && 'lineHeight' in node.attrs) {
           node.attrs.lineHeight = 'normal';
         }

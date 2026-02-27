@@ -44,7 +44,7 @@ export class AnthropicProvider implements LLMProvider {
       }
 
       callbacks.onDone(fullText);
-    } catch (error: any) {
+    } catch (error: unknown) {
       callbacks.onError(error instanceof Error ? error : new Error(String(error)));
     }
   }

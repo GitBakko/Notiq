@@ -80,8 +80,8 @@ export default async function (fastify: FastifyInstance) {
       }
 
       return { title: title || null, faviconUrl };
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
         return reply.status(504).send({ message: 'URL fetch timed out' });
       }
       request.log.warn({ err, url }, 'Failed to fetch URL metadata');
@@ -121,8 +121,8 @@ export default async function (fastify: FastifyInstance) {
       const base64 = buffer.toString('base64');
 
       return { screenshotBase64: `data:${contentType};base64,${base64}` };
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
         return reply.status(504).send({ message: 'Screenshot timed out' });
       }
       request.log.warn({ err, url }, 'Failed to fetch screenshot');

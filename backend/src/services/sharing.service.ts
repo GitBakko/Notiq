@@ -443,19 +443,21 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
 
   // Notify Owner
   if (result) {
-    let owner: any;
+    let owner: { id: string; email: string; name: string | null } | undefined;
     let itemName: string;
-    if (type === 'NOTE') {
-      owner = (result as any).note.user;
-      itemName = (result as any).note.title;
-    } else if (type === 'NOTEBOOK') {
-      owner = (result as any).notebook.user;
-      itemName = (result as any).notebook.name;
+    if (type === 'NOTE' && 'note' in result) {
+      owner = result.note.user;
+      itemName = result.note.title;
+    } else if (type === 'NOTEBOOK' && 'notebook' in result) {
+      owner = result.notebook.user;
+      itemName = result.notebook.name;
+    } else if ('board' in result) {
+      owner = result.board.owner;
+      itemName = result.board.title;
     } else {
-      owner = (result as any).board.owner;
-      itemName = (result as any).board.title;
+      itemName = '';
     }
-    const responder = (result as any).user;
+    const responder = result.user;
 
     if (owner) {
       try {

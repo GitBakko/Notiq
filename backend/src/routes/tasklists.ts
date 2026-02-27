@@ -48,8 +48,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
 
     try {
       return await taskListService.getTaskList(request.user.id, id);
-    } catch (error: any) {
-      if (error.message === 'TaskList not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'TaskList not found') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
       throw error;
@@ -69,8 +70,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
 
     try {
       return await taskListService.updateTaskList(request.user.id, id, data);
-    } catch (error: any) {
-      if (error.message === 'Access denied') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
       throw error;
@@ -84,8 +86,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
     try {
       await taskListService.deleteTaskList(request.user.id, id);
       return { success: true };
-    } catch (error: any) {
-      if (error.message === 'Access denied') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
       throw error;
@@ -99,8 +102,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
 
     try {
       return await taskListService.addTaskItem(request.user.id, id, data);
-    } catch (error: any) {
-      if (error.message === 'Access denied' || error.message === 'TaskList not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied' || msg === 'TaskList not found') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
       throw error;
@@ -114,15 +118,16 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
 
     try {
       return await taskListService.updateTaskItem(request.user.id, id, itemId, data);
-    } catch (error: any) {
-      if (error.message === 'Access denied' || error.message === 'TaskList not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied' || msg === 'TaskList not found') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
-      if (error.message === 'TaskItem not found') {
+      if (msg === 'TaskItem not found') {
         return reply.status(404).send({ message: 'TaskItem not found' });
       }
-      if (error.message === 'Only the user who checked this item can uncheck it') {
-        return reply.status(403).send({ message: error.message });
+      if (msg === 'Only the user who checked this item can uncheck it') {
+        return reply.status(403).send({ message: msg });
       }
       throw error;
     }
@@ -134,11 +139,12 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
 
     try {
       return await taskListService.deleteTaskItem(request.user.id, id, itemId);
-    } catch (error: any) {
-      if (error.message === 'Access denied' || error.message === 'TaskList not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied' || msg === 'TaskList not found') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
-      if (error.message === 'TaskItem not found') {
+      if (msg === 'TaskItem not found') {
         return reply.status(404).send({ message: 'TaskItem not found' });
       }
       throw error;
@@ -152,8 +158,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
 
     try {
       return await taskListService.reorderTaskItems(request.user.id, id, items);
-    } catch (error: any) {
-      if (error.message === 'Access denied' || error.message === 'TaskList not found') {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'Access denied' || msg === 'TaskList not found') {
         return reply.status(404).send({ message: 'TaskList not found' });
       }
       throw error;

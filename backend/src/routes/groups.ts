@@ -25,9 +25,10 @@ export default async function groupRoutes(fastify: FastifyInstance) {
       const data = createGroupSchema.parse(request.body);
       const group = await groupService.createGroup(request.user.id, data);
       return reply.status(201).send(group);
-    } catch (error: any) {
-      if (error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid input' });
-      return reply.status(500).send({ message: error.message || 'Failed to create group' });
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid input' });
+      const msg = error instanceof Error ? error.message : 'Failed to create group';
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -36,8 +37,9 @@ export default async function groupRoutes(fastify: FastifyInstance) {
     try {
       const result = await groupService.getMyGroups(request.user.id);
       return result;
-    } catch (error: any) {
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -46,8 +48,9 @@ export default async function groupRoutes(fastify: FastifyInstance) {
     try {
       const groups = await groupService.getGroupsForSharing(request.user.id);
       return groups;
-    } catch (error: any) {
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -57,10 +60,11 @@ export default async function groupRoutes(fastify: FastifyInstance) {
     try {
       const group = await groupService.getGroup(id, request.user.id);
       return group;
-    } catch (error: any) {
-      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -71,10 +75,11 @@ export default async function groupRoutes(fastify: FastifyInstance) {
       const data = updateGroupSchema.parse(request.body);
       const group = await groupService.updateGroup(id, request.user.id, data);
       return group;
-    } catch (error: any) {
-      if (error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid input' });
-      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (error instanceof Error && error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid input' });
+      if (msg.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -84,9 +89,10 @@ export default async function groupRoutes(fastify: FastifyInstance) {
     try {
       await groupService.deleteGroup(id, request.user.id);
       return { success: true };
-    } catch (error: any) {
-      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -97,12 +103,13 @@ export default async function groupRoutes(fastify: FastifyInstance) {
       const { email } = addMemberSchema.parse(request.body);
       const result = await groupService.addMember(id, request.user.id, email);
       return result;
-    } catch (error: any) {
-      if (error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid email' });
-      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Group not found' });
-      if (error.message === 'User is already a member') return reply.status(409).send({ message: error.message });
-      if (error.message === 'Cannot add yourself to a group') return reply.status(400).send({ message: error.message });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (error instanceof Error && error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid email' });
+      if (msg.includes('Not found')) return reply.status(404).send({ message: 'Group not found' });
+      if (msg === 'User is already a member') return reply.status(409).send({ message: msg });
+      if (msg === 'Cannot add yourself to a group') return reply.status(400).send({ message: msg });
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -112,10 +119,11 @@ export default async function groupRoutes(fastify: FastifyInstance) {
     try {
       await groupService.removeMember(id, request.user.id, userId);
       return { success: true };
-    } catch (error: any) {
-      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
-      if (error.message === 'Cannot remove yourself as owner') return reply.status(400).send({ message: error.message });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
+      if (msg === 'Cannot remove yourself as owner') return reply.status(400).send({ message: msg });
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -127,10 +135,11 @@ export default async function groupRoutes(fastify: FastifyInstance) {
       if (!data) return reply.status(400).send({ message: 'No file uploaded' });
       const group = await groupService.uploadGroupAvatar(id, request.user.id, data);
       return group;
-    } catch (error: any) {
-      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
-      if (error.message === 'Only image files allowed') return reply.status(400).send({ message: error.message });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
+      if (msg === 'Only image files allowed') return reply.status(400).send({ message: msg });
+      return reply.status(500).send({ message: msg });
     }
   });
 
@@ -141,10 +150,11 @@ export default async function groupRoutes(fastify: FastifyInstance) {
       const { email } = z.object({ email: z.string().email() }).parse(request.body);
       await groupService.removePendingInvite(id, request.user.id, email);
       return { success: true };
-    } catch (error: any) {
-      if (error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid email' });
-      if (error.message.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
-      return reply.status(500).send({ message: error.message });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (error instanceof Error && error.name === 'ZodError') return reply.status(400).send({ message: 'Invalid email' });
+      if (msg.includes('Not found')) return reply.status(404).send({ message: 'Not found' });
+      return reply.status(500).send({ message: msg });
     }
   });
 }

@@ -198,6 +198,7 @@ server.get('/health', async (request, reply) => {
 
 
 import { hocuspocus } from './hocuspocus';
+import type { WebSocket } from 'ws';
 
 const start = async () => {
   try {
@@ -208,7 +209,7 @@ const start = async () => {
       server.log.debug('Upgrade request received for: %s', request.url);
       if (request.url === '/ws' || request.url?.startsWith('/ws?')) {
         server.log.debug('Handling upgrade for /ws');
-        hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: any) => {
+        hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
           hocuspocus.webSocketServer.emit('connection', ws, request);
         });
       }

@@ -24,7 +24,7 @@ async function notifyBoardUsers(
   type: KanbanNotificationType,
   title: string,
   message: string,
-  data: Record<string, unknown>,
+  data: Prisma.InputJsonObject,
   specificUserId?: string
 ): Promise<void> {
   const { createNotification } = await import('./notification.service');
@@ -70,8 +70,8 @@ async function notifyBoardUsersTiered(
   type: KanbanNotificationType,
   title: string,
   message: string,
-  data: Record<string, unknown>,
-  emailTemplate: { type: string; data: (recipientEmail: string, recipientLocale: string) => Record<string, unknown> },
+  data: Prisma.InputJsonObject,
+  emailTemplate: { type: 'KANBAN_COMMENT' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED'; data: (recipientEmail: string, recipientLocale: string) => Record<string, string> },
   debounceMs: number = CARD_ACTION_EMAIL_DEBOUNCE_MS
 ): Promise<void> {
   const board = await prisma.kanbanBoard.findUnique({
@@ -122,7 +122,7 @@ async function notifyBoardUsersTiered(
             const emailService = await import('./email.service');
             await emailService.sendNotificationEmail(
               recipient.email,
-              emailTemplate.type as any,
+              emailTemplate.type,
               emailTemplate.data(recipient.email, recipient.locale)
             );
             cardActionEmailDebounce.set(debounceKey, Date.now());
@@ -190,7 +190,7 @@ const cardWithAssigneeSelect = {
 } as const;
 
 /** Transform Prisma _count.comments → commentCount for frontend */
-function transformCard(card: { _count: { comments: number }; [key: string]: any }) {
+function transformCard(card: { _count: { comments: number }; [key: string]: unknown }) {
   const { _count, ...rest } = card;
   return { ...rest, commentCount: _count.comments };
 }

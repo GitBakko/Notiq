@@ -107,7 +107,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
       zlib: { level: 9 } // Sets the compression level.
     });
 
-    archive.on('error', (err: any) => {
+    archive.on('error', (err: Error) => {
       request.log.error(err);
       if (!reply.raw.headersSent) {
         reply.status(500).send({ message: 'Archiving error' });

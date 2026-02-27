@@ -63,8 +63,8 @@ export const createNote = async (
         noteType,
       },
     });
-  } catch (error: any) {
-    if (error.code === 'P2002') {
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2002') {
       // If ID conflict, try to find existing and return it (idempotency)
       const existing = await prisma.note.findUnique({ where: { id } });
       if (existing) return existing;
@@ -190,7 +190,7 @@ export const updateNote = async (userId: string, id: string, data: {
 
   const { tags, ...rest } = data;
 
-  return prisma.$transaction(async (tx: any) => {
+  return prisma.$transaction(async (tx) => {
     if (tags !== undefined) {
       // Replace tags
       await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
@@ -206,21 +206,26 @@ export const updateNote = async (userId: string, id: string, data: {
 
     // Guard: prevent overwriting substantial content with an empty TipTap doc
     // An empty doc is ~93 chars: {"type":"doc","content":[{"type":"paragraph",...}]}
-    if (rest.content !== undefined) {
-      const newLen = rest.content.length;
+    const { content: contentField, ...restWithoutContent } = rest;
+    let finalContent = contentField;
+    if (contentField !== undefined) {
+      const newLen = contentField.length;
       const oldLen = note.content?.length ?? 0;
       const isNewEmpty = newLen < 150;
       const isOldSubstantial = oldLen > 150;
       if (isNewEmpty && isOldSubstantial) {
         // Drop the content field — don't overwrite real content with empty
-        delete (rest as any).content;
+        finalContent = undefined;
       }
     }
 
     // Recalculate searchText if content changed
-    const updateData: any = { ...rest, updatedAt: new Date() };
-    if (rest.content && !rest.isEncrypted && !note.isEncrypted) {
-      updateData.searchText = extractTextFromTipTapJson(rest.content);
+    const updateData: Record<string, unknown> = { ...restWithoutContent, updatedAt: new Date() };
+    if (finalContent !== undefined) {
+      updateData.content = finalContent;
+    }
+    if (finalContent && !rest.isEncrypted && !note.isEncrypted) {
+      updateData.searchText = extractTextFromTipTapJson(finalContent);
     }
 
     return tx.note.update({

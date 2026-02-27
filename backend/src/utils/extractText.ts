@@ -1,3 +1,10 @@
+interface TipTapNode {
+  type?: string;
+  text?: string;
+  content?: TipTapNode[];
+  attrs?: Record<string, unknown>;
+}
+
 /**
  * Extracts plain text from TipTap JSON content.
  * Used by: import service, search indexing, AI context.
@@ -16,7 +23,7 @@ export function extractTextFromTipTapJson(content: string): string {
   }
 }
 
-function extractNodeText(node: any): string {
+function extractNodeText(node: TipTapNode): string {
   if (node.type === 'encryptedBlock') return '';
 
   if (node.type === 'text' && node.text) {
@@ -25,7 +32,7 @@ function extractNodeText(node: any): string {
 
   if (node.content && Array.isArray(node.content)) {
     return node.content
-      .map((child: any) => extractNodeText(child))
+      .map((child: TipTapNode) => extractNodeText(child))
       .filter(Boolean)
       .join(' ');
   }
@@ -63,17 +70,17 @@ export function countDocumentStats(content: string): { characters: number; lines
 }
 
 /** Counts total text characters across all text nodes (excluding encrypted blocks). */
-function countChars(node: any): number {
+function countChars(node: TipTapNode): number {
   if (node.type === 'encryptedBlock') return 0;
   if (node.type === 'text' && node.text) return node.text.length;
   if (node.content && Array.isArray(node.content)) {
-    return node.content.reduce((sum: number, c: any) => sum + countChars(c), 0);
+    return node.content.reduce((sum: number, c: TipTapNode) => sum + countChars(c), 0);
   }
   return 0;
 }
 
 /** Extracts text preserving line structure with \n between block elements. */
-function extractStructuredText(node: any): string {
+function extractStructuredText(node: TipTapNode): string {
   if (!node) return '';
   if (node.type === 'encryptedBlock') return '';
   if (node.type === 'text') return node.text || '';
@@ -84,26 +91,26 @@ function extractStructuredText(node: any): string {
 
   // Code block: preserve internal newlines as-is
   if (node.type === 'codeBlock') {
-    return children.map((c: any) => c.text || '').join('');
+    return children.map((c: TipTapNode) => c.text || '').join('');
   }
 
   // Table row: cells on one line separated by tab
   if (node.type === 'tableRow') {
     return children
-      .map((cell: any) => extractStructuredText(cell).replace(/\n/g, ' '))
+      .map((cell: TipTapNode) => extractStructuredText(cell).replace(/\n/g, ' '))
       .filter(Boolean)
       .join('\t');
   }
 
   // Paragraph, heading: inline children joined (one line)
   if (node.type === 'paragraph' || node.type === 'heading') {
-    return children.map((c: any) => extractStructuredText(c)).join('');
+    return children.map((c: TipTapNode) => extractStructuredText(c)).join('');
   }
 
   // Everything else (doc, table, lists, listItem, blockquote, tableCell, etc.):
   // join child outputs with newline
   return children
-    .map((c: any) => extractStructuredText(c))
+    .map((c: TipTapNode) => extractStructuredText(c))
     .filter(Boolean)
     .join('\n');
 }

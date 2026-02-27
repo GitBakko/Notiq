@@ -78,8 +78,9 @@ export default async function aiRoutes(fastify: FastifyInstance) {
         },
         targetLanguage
       );
-    } catch (error: any) {
-      sendEvent('error', error.message || 'Unknown error');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      sendEvent('error', msg);
       reply.raw.end();
     }
   });

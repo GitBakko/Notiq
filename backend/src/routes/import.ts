@@ -25,8 +25,9 @@ export default async function importRoutes(fastify: FastifyInstance) {
         isVault === 'true'
       );
       return result;
-    } catch (error: any) {
-      return reply.status(400).send({ message: error.message || 'Import failed' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Import failed';
+      return reply.status(400).send({ message: msg });
     }
   });
 
@@ -50,9 +51,10 @@ export default async function importRoutes(fastify: FastifyInstance) {
         isVault === 'true'
       );
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       request.log.error(error, 'OneNote import failed');
-      return reply.status(400).send({ message: error.message || 'Import failed' });
+      const msg = error instanceof Error ? error.message : 'Import failed';
+      return reply.status(400).send({ message: msg });
     }
   });
 }

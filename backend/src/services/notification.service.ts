@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../plugins/prisma';
 import { sendPushNotification } from './push.service';
 import logger from '../utils/logger';
@@ -9,7 +10,7 @@ export const createNotification = async (
   type: 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'SYSTEM' | 'REMINDER' | 'CHAT_MESSAGE' | 'GROUP_INVITE' | 'GROUP_REMOVE' | 'TASK_ITEM_ADDED' | 'TASK_ITEM_CHECKED' | 'TASK_ITEM_REMOVED' | 'TASK_LIST_SHARED' | 'KANBAN_BOARD_SHARED' | 'KANBAN_CARD_ASSIGNED' | 'KANBAN_COMMENT_ADDED' | 'KANBAN_CARD_MOVED' | 'KANBAN_COMMENT_DELETED',
   title: string,
   message: string,
-  data?: any
+  data?: Prisma.InputJsonObject
 ) => {
   const notification = await prisma.notification.create({
     data: {
