@@ -968,6 +968,7 @@
       "confirmLink": "Collega e Condividi"
     },
     "filters": {
+      "title": "Filtri",
       "searchPlaceholder": "Cerca card...",
       "assignee": "Assegnatario",
       "noAssignees": "Nessun assegnatario",

@@ -884,6 +884,7 @@
       "confirmLink": "Link & Share"
     },
     "filters": {
+      "title": "Filters",
       "searchPlaceholder": "Search cards...",
       "assignee": "Assignee",
       "noAssignees": "No assignees yet",
