@@ -279,7 +279,8 @@
       "passwordRequired": "Password is required",
       "passwordTooShort": "Password must be at least 6 characters",
       "userExists": "User already exists with this email",
-      "unverified": "Account not verified. Please check your email."
+      "unverified": "Account not verified. Please check your email.",
+      "nameRequired": "Name is required"
     },
     "invitationCode": "Invitation Code",
     "registrationSuccess": "Registration Successful!",
