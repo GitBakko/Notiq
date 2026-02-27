@@ -3,9 +3,9 @@ import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 import { formatDistanceToNow, isToday, isPast, startOfDay } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { GripVertical, MessageSquare, FileText, Calendar } from 'lucide-react';
+import { GripVertical, MessageSquare, FileText, Calendar, Flag } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { KanbanCard as KanbanCardType } from '../types';
+import type { KanbanCard as KanbanCardType, KanbanCardPriority } from '../types';
 
 interface KanbanCardProps {
   card: KanbanCardType;
@@ -13,6 +13,14 @@ interface KanbanCardProps {
   readOnly?: boolean;
   isHighlighted?: boolean;
 }
+
+const PRIORITY_CONFIG: Record<KanbanCardPriority, { color: string; darkColor: string }> = {
+  STANDBY: { color: 'text-gray-400', darkColor: 'dark:text-gray-500' },
+  LOW: { color: 'text-blue-500', darkColor: 'dark:text-blue-400' },
+  MEDIUM: { color: 'text-yellow-500', darkColor: 'dark:text-yellow-400' },
+  HIGH: { color: 'text-orange-500', darkColor: 'dark:text-orange-400' },
+  CRITICAL: { color: 'text-red-500', darkColor: 'dark:text-red-400' },
+};
 
 function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
   const due = startOfDay(new Date(dueDate));
@@ -64,6 +72,16 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
           >
             <GripVertical size={16} />
           </div>
+        )}
+
+        {/* Priority flag — left of title */}
+        {card.priority && (
+          <span
+            className={clsx('mt-0.5 flex-shrink-0', PRIORITY_CONFIG[card.priority].color, PRIORITY_CONFIG[card.priority].darkColor)}
+            title={t(`kanban.priority.${card.priority}`)}
+          >
+            <Flag size={14} />
+          </span>
         )}
 
         {/* Card body */}

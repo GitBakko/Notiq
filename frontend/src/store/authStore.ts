@@ -15,6 +15,7 @@ interface User {
   color?: string;
   role?: 'USER' | 'SUPERADMIN';
   invitesAvailable?: number;
+  emailNotificationsEnabled?: boolean;
 }
 
 interface AuthState {

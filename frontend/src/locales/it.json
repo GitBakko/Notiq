@@ -104,6 +104,8 @@
     "notificationSound": "Suono Notifiche",
     "notificationSoundToggle": "Abilita suono notifiche",
     "notificationSoundDescription": "Riproduci un suono quando arrivano nuove notifiche",
+    "emailNotificationsToggle": "Notifiche email",
+    "emailNotificationsDescription": "Ricevi notifiche via email quando sei offline (non riguarda email di verifica e inviti)",
     "whatsNew": "Novita'",
     "import": "Importa Dati",
     "importTitle": "Importa da Evernote",
@@ -813,7 +815,11 @@
     "kanbanCommentAdded": "{{authorName}} ha commentato \"{{cardTitle}}\" nella board \"{{boardTitle}}\"",
     "kanbanCommentAdded_TITLE": "Nuovo Commento",
     "noteSharedViaKanban": "{{sharerName}} ha condiviso la nota \"{{noteTitle}}\" con te tramite la board \"{{boardTitle}}\"",
-    "noteSharedViaKanban_TITLE": "Nota Condivisa tramite Board"
+    "noteSharedViaKanban_TITLE": "Nota Condivisa tramite Board",
+    "kanbanCommentDeleted": "{{authorName}} ha eliminato un commento su \"{{cardTitle}}\" nella board \"{{boardTitle}}\"",
+    "kanbanCommentDeleted_TITLE": "Commento Eliminato",
+    "kanbanCardMoved": "{{actorName}} ha spostato \"{{cardTitle}}\" da {{fromColumn}} a {{toColumn}}",
+    "kanbanCardMoved_TITLE": "Card Spostata"
   },
   "groups": {
     "title": "Gruppi",
@@ -890,7 +896,15 @@
       "noDescription": "Nessuna descrizione",
       "description": "Descrizione",
       "deleteConfirm": "Eliminare questa card?",
-      "deleteCard": "Elimina card"
+      "deleteCard": "Elimina card",
+      "priority": "Priorità"
+    },
+    "priority": {
+      "STANDBY": "In standby",
+      "LOW": "Bassa",
+      "MEDIUM": "Media",
+      "HIGH": "Alta",
+      "CRITICAL": "Altissima"
     },
     "comment": {
       "placeholder": "Scrivi un commento...",

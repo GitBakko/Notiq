@@ -38,6 +38,7 @@ const updateCardSchema = z.object({
   description: z.string().max(5000).nullable().optional(),
   assigneeId: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  priority: z.enum(['STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).nullable().optional(),
   noteId: z.string().nullable().optional(),
 });
 

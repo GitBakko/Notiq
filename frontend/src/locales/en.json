@@ -113,6 +113,8 @@
     "notificationSound": "Notification Sound",
     "notificationSoundToggle": "Enable notification sound",
     "notificationSoundDescription": "Play a sound when new notifications arrive",
+    "emailNotificationsToggle": "Email notifications",
+    "emailNotificationsDescription": "Receive email notifications when you are offline (does not affect verification and invitation emails)",
     "whatsNew": "What's New"
   },
   "import": {
@@ -722,7 +724,11 @@
     "kanbanCommentAdded": "{{authorName}} commented on \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
     "kanbanCommentAdded_TITLE": "New Comment",
     "noteSharedViaKanban": "{{sharerName}} shared note \"{{noteTitle}}\" with you via board \"{{boardTitle}}\"",
-    "noteSharedViaKanban_TITLE": "Note Shared via Board"
+    "noteSharedViaKanban_TITLE": "Note Shared via Board",
+    "kanbanCommentDeleted": "{{authorName}} deleted a comment on \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
+    "kanbanCommentDeleted_TITLE": "Comment Deleted",
+    "kanbanCardMoved": "{{actorName}} moved \"{{cardTitle}}\" from {{fromColumn}} to {{toColumn}}",
+    "kanbanCardMoved_TITLE": "Card Moved"
   },
   "groups": {
     "title": "Groups",
@@ -799,7 +805,15 @@
       "noDescription": "No description",
       "description": "Description",
       "deleteConfirm": "Delete this card permanently?",
-      "deleteCard": "Delete card"
+      "deleteCard": "Delete card",
+      "priority": "Priority"
+    },
+    "priority": {
+      "STANDBY": "Standby",
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "CRITICAL": "Critical"
     },
     "comment": {
       "placeholder": "Write a comment...",

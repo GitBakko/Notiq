@@ -54,13 +54,36 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 };
 
-type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'REGISTRATION_INVITATION' | 'SHARE_RESPONSE' | 'VERIFY_EMAIL' | 'INVITE_APPROVED' | 'INVITE_REJECTED' | 'GROUP_MEMBER_ADDED' | 'GROUP_MEMBER_REMOVED' | 'GROUP_INVITE_REGISTER' | 'GROUP_MEMBER_JOINED';
+type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'REGISTRATION_INVITATION' | 'SHARE_RESPONSE' | 'VERIFY_EMAIL' | 'INVITE_APPROVED' | 'INVITE_REJECTED' | 'GROUP_MEMBER_ADDED' | 'GROUP_MEMBER_REMOVED' | 'GROUP_INVITE_REGISTER' | 'GROUP_MEMBER_JOINED' | 'KANBAN_COMMENT' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED';
+
+// Transactional emails that are always sent regardless of user email preferences
+const TRANSACTIONAL_EMAIL_TYPES: Set<string> = new Set([
+  'VERIFY_EMAIL', 'REGISTRATION_INVITATION', 'INVITE_APPROVED', 'INVITE_REJECTED',
+  'WELCOME', 'RESET_PASSWORD', 'GROUP_INVITE_REGISTER',
+]);
 
 export const sendNotificationEmail = async (
   to: string,
   type: EmailTemplateType,
   data: any
 ) => {
+  // Check user email preference (skip for transactional emails)
+  if (!TRANSACTIONAL_EMAIL_TYPES.has(type)) {
+    try {
+      const prisma = (await import('../plugins/prisma')).default;
+      const user = await prisma.user.findUnique({
+        where: { email: to },
+        select: { emailNotificationsEnabled: true },
+      });
+      if (user && !user.emailNotificationsEnabled) {
+        logger.info('Skipping email to %s — user has email notifications disabled', to);
+        return;
+      }
+    } catch {
+      // If lookup fails, send the email anyway (fail-open)
+    }
+  }
+
   let subject = '';
   let html = '';
 
@@ -367,6 +390,89 @@ export const sendNotificationEmail = async (
         `;
       }
       break;
+
+    case 'KANBAN_COMMENT': {
+      const authorName = escapeHtml(data.authorName || '');
+      const cardTitle = escapeHtml(data.cardTitle || '');
+      const commentContent = escapeHtml(data.commentContent || '');
+      const boardLink = `${FRONTEND_URL}/kanban?boardId=${data.boardId || ''}`;
+      if (isIt) {
+        subject = `Nuovo commento su "${cardTitle}" - Notiq`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Nuovo commento</h2>
+            <p><strong>${authorName}</strong> ha commentato sulla card <strong>"${cardTitle}"</strong>:</p>
+            <blockquote style="border-left: 3px solid #10b981; padding: 8px 12px; margin: 12px 0; color: #555; background: #f9fafb;">${commentContent}</blockquote>
+            <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Apri Board</a></p>
+          </div>
+        `;
+      } else {
+        subject = `New comment on "${cardTitle}" - Notiq`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>New Comment</h2>
+            <p><strong>${authorName}</strong> commented on card <strong>"${cardTitle}"</strong>:</p>
+            <blockquote style="border-left: 3px solid #10b981; padding: 8px 12px; margin: 12px 0; color: #555; background: #f9fafb;">${commentContent}</blockquote>
+            <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Open Board</a></p>
+          </div>
+        `;
+      }
+      break;
+    }
+
+    case 'KANBAN_COMMENT_DELETED': {
+      const authorName = escapeHtml(data.authorName || '');
+      const cardTitle = escapeHtml(data.cardTitle || '');
+      const boardLink = `${FRONTEND_URL}/kanban?boardId=${data.boardId || ''}`;
+      if (isIt) {
+        subject = `Commento eliminato su "${cardTitle}" - Notiq`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Commento eliminato</h2>
+            <p><strong>${authorName}</strong> ha eliminato un commento sulla card <strong>"${cardTitle}"</strong>.</p>
+            <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Apri Board</a></p>
+          </div>
+        `;
+      } else {
+        subject = `Comment deleted on "${cardTitle}" - Notiq`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Comment Deleted</h2>
+            <p><strong>${authorName}</strong> deleted a comment on card <strong>"${cardTitle}"</strong>.</p>
+            <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Open Board</a></p>
+          </div>
+        `;
+      }
+      break;
+    }
+
+    case 'KANBAN_CARD_MOVED': {
+      const actorName = escapeHtml(data.actorName || '');
+      const cardTitle = escapeHtml(data.cardTitle || '');
+      const fromColumn = escapeHtml(data.fromColumn || '');
+      const toColumn = escapeHtml(data.toColumn || '');
+      const boardLink = `${FRONTEND_URL}/kanban?boardId=${data.boardId || ''}`;
+      if (isIt) {
+        subject = `Card spostata: "${cardTitle}" - Notiq`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Card spostata</h2>
+            <p><strong>${actorName}</strong> ha spostato <strong>"${cardTitle}"</strong> da <em>${fromColumn}</em> a <em>${toColumn}</em>.</p>
+            <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Apri Board</a></p>
+          </div>
+        `;
+      } else {
+        subject = `Card moved: "${cardTitle}" - Notiq`;
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Card Moved</h2>
+            <p><strong>${actorName}</strong> moved <strong>"${cardTitle}"</strong> from <em>${fromColumn}</em> to <em>${toColumn}</em>.</p>
+            <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Open Board</a></p>
+          </div>
+        `;
+      }
+      break;
+    }
   }
 
   if (subject && html) {

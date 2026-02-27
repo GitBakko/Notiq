@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { formatDistanceToNow, isPast, startOfDay, isToday, format } from 'date-fns';
+import { isPast, startOfDay, isToday, format } from 'date-fns';
+import { timeAgo } from '../../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink } from 'lucide-react';
+import { Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink, Flag } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import Modal from '../../../components/ui/Modal';
@@ -11,8 +12,18 @@ import { useKanbanComments } from '../hooks/useKanbanComments';
 import { useKanbanMutations } from '../hooks/useKanbanMutations';
 import { useAuthStore } from '../../../store/authStore';
 import * as kanbanService from '../kanbanService';
-import type { KanbanCard, KanbanCardActivity, NoteSearchResult, NoteSharingCheck } from '../types';
+import type { KanbanCard, KanbanCardActivity, KanbanCardPriority, NoteSearchResult, NoteSharingCheck } from '../types';
 import { DEFAULT_COLUMN_KEYS } from '../types';
+
+const PRIORITIES: (KanbanCardPriority | null)[] = [null, 'STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+const PRIORITY_COLORS: Record<KanbanCardPriority, string> = {
+  STANDBY: 'text-gray-400 dark:text-gray-500',
+  LOW: 'text-blue-500 dark:text-blue-400',
+  MEDIUM: 'text-yellow-500 dark:text-yellow-400',
+  HIGH: 'text-orange-500 dark:text-orange-400',
+  CRITICAL: 'text-red-500 dark:text-red-400',
+};
 import NoteLinkPicker from './NoteLinkPicker';
 import SharingGapModal from './SharingGapModal';
 
@@ -119,6 +130,12 @@ export default function CardDetailModal({
   function handleClearAssignee(): void {
     if (!card) return;
     updateCard.mutate({ cardId: card.id, assigneeId: null });
+  }
+
+  function handlePriorityChange(priority: KanbanCardPriority | null): void {
+    if (!card) return;
+    if (priority === card.priority) return;
+    updateCard.mutate({ cardId: card.id, priority });
   }
 
   function handleUnlinkNote(): void {
@@ -354,6 +371,31 @@ export default function CardDetailModal({
             )}
           </div>
 
+          {/* Priority */}
+          <div>
+            <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+              <Flag size={12} />
+              {t('kanban.card.priority')}
+            </label>
+            {readOnly ? (
+              <span className={clsx('text-sm', card.priority ? PRIORITY_COLORS[card.priority] : 'text-gray-400 dark:text-gray-500 italic')}>
+                {card.priority ? t(`kanban.priority.${card.priority}`) : '-'}
+              </span>
+            ) : (
+              <select
+                value={card.priority || ''}
+                onChange={(e) => handlePriorityChange((e.target.value || null) as KanbanCardPriority | null)}
+                className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
+              >
+                {PRIORITIES.map((p) => (
+                  <option key={p ?? 'none'} value={p ?? ''}>
+                    {p ? t(`kanban.priority.${p}`) : '-'}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {/* Linked note */}
           <div className="col-span-2">
             <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
@@ -430,10 +472,7 @@ export default function CardDetailModal({
                         {comment.author.name || comment.author.email}
                       </span>
                       <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                        {formatDistanceToNow(new Date(comment.createdAt), {
-                          addSuffix: true,
-                          locale: dateLocale,
-                        })}
+                        {timeAgo(comment.createdAt, dateLocale)}
                       </span>
                       {currentUser?.id === comment.author.id && (
                         <button
@@ -519,10 +558,7 @@ export default function CardDetailModal({
                       {getActivityText(activity)}
                     </p>
                     <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                      {formatDistanceToNow(new Date(activity.createdAt), {
-                        addSuffix: true,
-                        locale: dateLocale,
-                      })}
+                      {timeAgo(activity.createdAt, dateLocale)}
                     </span>
                   </div>
                 </div>

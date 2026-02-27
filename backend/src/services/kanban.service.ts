@@ -3,16 +3,25 @@ import prisma from '../plugins/prisma';
 import { broadcast, getPresenceUsers } from './kanbanSSE';
 import logger from '../utils/logger';
 
-// ─── Board chat email debounce (max 1 per user/board every 30 min) ──
+// ─── Email debounce (max 1 per user/board every 30 min for chat, 30s for card actions) ──
 const BOARD_CHAT_EMAIL_DEBOUNCE_MS = 30 * 60 * 1000;
+const CARD_ACTION_EMAIL_DEBOUNCE_MS = 30 * 1000;
 const boardChatEmailDebounce = new Map<string, number>();
+const cardActionEmailDebounce = new Map<string, number>();
 
-// ─── Notification helper ────────────────────────────────────
+// ─── Notification helpers ────────────────────────────────────
 
+type KanbanNotificationType =
+  | 'KANBAN_CARD_ASSIGNED'
+  | 'KANBAN_COMMENT_ADDED'
+  | 'KANBAN_COMMENT_DELETED'
+  | 'KANBAN_CARD_MOVED';
+
+/** Simple notification to a specific user (no tiering, no email). Used for card assignment. */
 async function notifyBoardUsers(
   actorId: string,
   boardId: string,
-  type: 'KANBAN_CARD_ASSIGNED' | 'KANBAN_COMMENT_ADDED',
+  type: KanbanNotificationType,
   title: string,
   message: string,
   data: Record<string, unknown>,
@@ -45,6 +54,85 @@ async function notifyBoardUsers(
       await createNotification(uid, type, title, message, data);
     } catch {
       // Silently continue — push failure should not block the operation
+    }
+  }
+}
+
+/**
+ * Tiered notification for board participants:
+ * 1. User on board (SSE) → skip
+ * 2. User online in app (lastActiveAt < 5min) → DB notification only
+ * 3. User offline → DB notification + email (debounced, respecting emailNotificationsEnabled)
+ */
+async function notifyBoardUsersTiered(
+  actorId: string,
+  boardId: string,
+  type: KanbanNotificationType,
+  title: string,
+  message: string,
+  data: Record<string, unknown>,
+  emailTemplate: { type: string; data: (recipientEmail: string, recipientLocale: string) => Record<string, unknown> },
+  debounceMs: number = CARD_ACTION_EMAIL_DEBOUNCE_MS
+): Promise<void> {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: {
+      title: true,
+      ownerId: true,
+      shares: { where: { status: 'ACCEPTED' }, select: { userId: true } },
+    },
+  });
+  if (!board) return;
+
+  const recipientIds = new Set<string>();
+  recipientIds.add(board.ownerId);
+  for (const s of board.shares) recipientIds.add(s.userId);
+  recipientIds.delete(actorId);
+
+  if (recipientIds.size === 0) return;
+
+  // Users currently connected to this board via SSE
+  const activeOnBoard = new Set(getPresenceUsers(boardId).map((u) => u.id));
+
+  const { createNotification } = await import('./notification.service');
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+  for (const uid of recipientIds) {
+    // Tier 1: User is viewing board → skip
+    if (activeOnBoard.has(uid)) continue;
+
+    try {
+      const recipient = await prisma.user.findUnique({
+        where: { id: uid },
+        select: { lastActiveAt: true, email: true, locale: true, emailNotificationsEnabled: true },
+      });
+      if (!recipient) continue;
+
+      const isOnlineInApp = recipient.lastActiveAt && recipient.lastActiveAt > fiveMinutesAgo;
+
+      // Always create DB notification (Tier 2 & 3)
+      await createNotification(uid, type, title, message, data);
+
+      // Tier 3: Offline → also send email (debounced)
+      if (!isOnlineInApp && recipient.emailNotificationsEnabled) {
+        const debounceKey = `card:${type}:${uid}:${boardId}`;
+        const lastSent = cardActionEmailDebounce.get(debounceKey) || 0;
+        if (Date.now() - lastSent >= debounceMs) {
+          try {
+            const emailService = await import('./email.service');
+            await emailService.sendNotificationEmail(
+              recipient.email,
+              emailTemplate.type as any,
+              emailTemplate.data(recipient.email, recipient.locale)
+            );
+            cardActionEmailDebounce.set(debounceKey, Date.now());
+          } catch {
+            // Email send failure is non-critical
+          }
+        }
+      }
+    } catch {
+      // Silently continue
     }
   }
 }
@@ -91,6 +179,7 @@ const cardWithAssigneeSelect = {
   columnId: true,
   assigneeId: true,
   dueDate: true,
+  priority: true,
   noteId: true,
   noteLinkedById: true,
   createdAt: true,
@@ -99,6 +188,12 @@ const cardWithAssigneeSelect = {
   note: { select: { id: true, title: true, userId: true } },
   _count: { select: { comments: true } },
 } as const;
+
+/** Transform Prisma _count.comments → commentCount for frontend */
+function transformCard(card: { _count: { comments: number }; [key: string]: any }) {
+  const { _count, ...rest } = card;
+  return { ...rest, commentCount: _count.comments };
+}
 
 // ─── Board CRUD ─────────────────────────────────────────────
 
@@ -294,7 +389,14 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
     }
   }
 
-  return board;
+  // Transform _count.comments → commentCount for frontend compatibility
+  return {
+    ...board,
+    columns: board.columns.map(col => ({
+      ...col,
+      cards: col.cards.map(transformCard),
+    })),
+  };
 }
 
 export async function updateBoard(
@@ -410,7 +512,7 @@ export async function createCard(
     await logCardActivity(card.id, actorId, 'CREATED', { toColumnTitle: column.title });
   }
 
-  return card;
+  return transformCard(card);
 }
 
 export async function updateCard(
@@ -420,6 +522,7 @@ export async function updateCard(
     description?: string | null;
     assigneeId?: string | null;
     dueDate?: string | null;
+    priority?: string | null;
     noteId?: string | null;
   },
   actorId: string
@@ -436,15 +539,17 @@ export async function updateCard(
   if (data.description !== undefined) updateData.description = data.description;
   if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
   if (data.noteId !== undefined) updateData.noteId = data.noteId;
+  if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.dueDate !== undefined) {
     updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
   }
 
-  const card = await prisma.kanbanCard.update({
+  const rawCard = await prisma.kanbanCard.update({
     where: { id: cardId },
     data: updateData,
     select: cardWithAssigneeSelect,
   });
+  const card = transformCard(rawCard);
 
   const boardId = currentCard.column.boardId;
 
@@ -546,7 +651,7 @@ export async function moveCard(
 ) {
   const card = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
-    select: { columnId: true, position: true, column: { select: { boardId: true, title: true } } },
+    select: { title: true, columnId: true, position: true, column: { select: { boardId: true, title: true } } },
   });
   if (!card) throw new Error('Card not found');
 
@@ -609,6 +714,47 @@ export async function moveCard(
       fromColumnTitle: card.column.title,
       toColumnTitle: targetColumn.title,
     });
+
+    // Notify all board participants about cross-column move (tiered)
+    const actor = await prisma.user.findUnique({
+      where: { id: actorId },
+      select: { name: true, email: true },
+    });
+    const actorName = actor?.name || actor?.email || 'Someone';
+
+    await notifyBoardUsersTiered(
+      actorId,
+      boardId,
+      'KANBAN_CARD_MOVED',
+      'Card Moved',
+      `${actorName} moved "${card.title}" from "${card.column.title}" to "${targetColumn.title}"`,
+      {
+        boardId,
+        cardId,
+        cardTitle: card.title,
+        actorName,
+        fromColumn: card.column.title,
+        toColumn: targetColumn.title,
+        localizationKey: 'notifications.kanbanCardMoved',
+        localizationArgs: {
+          actorName,
+          cardTitle: card.title,
+          fromColumn: card.column.title,
+          toColumn: targetColumn.title,
+        },
+      },
+      {
+        type: 'KANBAN_CARD_MOVED',
+        data: (_email, locale) => ({
+          actorName,
+          cardTitle: card.title,
+          fromColumn: card.column.title,
+          toColumn: targetColumn.title,
+          boardId,
+          locale,
+        }),
+      }
+    );
 
     // Auto-complete reminders when card moves to the last column (done)
     const maxPositionCol = await prisma.kanbanColumn.findFirst({
@@ -715,33 +861,34 @@ export async function createComment(
     comment,
   });
 
-  // Notify card assignee if different from the comment author
-  if (card.assigneeId && card.assigneeId !== authorId) {
-    const board = await prisma.kanbanBoard.findUnique({
-      where: { id: boardId },
-      select: { title: true },
-    });
-    const commenterName = comment.author.name || comment.author.email;
-    const boardTitle = board?.title || '';
+  // Notify ALL board participants (tiered: SSE → in-app → email)
+  const commenterName = comment.author.name || comment.author.email;
 
-    await notifyBoardUsers(
-      authorId,
+  await notifyBoardUsersTiered(
+    authorId,
+    boardId,
+    'KANBAN_COMMENT_ADDED',
+    'New Comment',
+    `${commenterName} commented on "${card.title}"`,
+    {
       boardId,
-      'KANBAN_COMMENT_ADDED',
-      'New Comment',
-      `${commenterName} commented on "${card.title}"`,
-      {
-        boardId,
-        boardTitle,
-        cardId,
+      cardId,
+      cardTitle: card.title,
+      commenterName,
+      localizationKey: 'notifications.kanbanCommentAdded',
+      localizationArgs: { commenterName, cardTitle: card.title },
+    },
+    {
+      type: 'KANBAN_COMMENT',
+      data: (_email, locale) => ({
+        authorName: commenterName,
         cardTitle: card.title,
-        commenterName,
-        localizationKey: 'notifications.kanbanCommentAdded',
-        localizationArgs: { commenterName, cardTitle: card.title, boardTitle },
-      },
-      card.assigneeId
-    );
-  }
+        commentContent: content.substring(0, 200),
+        boardId,
+        locale,
+      }),
+    }
+  );
 
   return comment;
 }
@@ -749,12 +896,54 @@ export async function createComment(
 export async function deleteComment(commentId: string, userId: string) {
   const comment = await prisma.kanbanComment.findUnique({
     where: { id: commentId },
-    select: { authorId: true },
+    select: {
+      authorId: true,
+      content: true,
+      card: { select: { id: true, title: true, column: { select: { boardId: true } } } },
+      author: { select: { name: true, email: true } },
+    },
   });
   if (!comment) throw new Error('Comment not found');
   if (comment.authorId !== userId) throw new Error('Not your comment');
 
   await prisma.kanbanComment.delete({ where: { id: commentId } });
+
+  // Broadcast deletion for real-time UI update
+  const boardId = comment.card.column.boardId;
+  broadcast(boardId, {
+    type: 'comment:deleted',
+    boardId,
+    cardId: comment.card.id,
+    commentId,
+  });
+
+  // Notify all board participants (tiered)
+  const deleterName = comment.author.name || comment.author.email;
+
+  await notifyBoardUsersTiered(
+    userId,
+    boardId,
+    'KANBAN_COMMENT_DELETED',
+    'Comment Deleted',
+    `${deleterName} deleted a comment on "${comment.card.title}"`,
+    {
+      boardId,
+      cardId: comment.card.id,
+      cardTitle: comment.card.title,
+      deleterName,
+      localizationKey: 'notifications.kanbanCommentDeleted',
+      localizationArgs: { deleterName, cardTitle: comment.card.title },
+    },
+    {
+      type: 'KANBAN_COMMENT_DELETED',
+      data: (_email, locale) => ({
+        authorName: deleterName,
+        cardTitle: comment.card.title,
+        boardId,
+        locale,
+      }),
+    }
+  );
 }
 
 // ─── Board Chat ────────────────────────────────────────────────
@@ -825,46 +1014,30 @@ export async function createBoardChatMessage(
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
       const recipient = await prisma.user.findUnique({
         where: { id: uid },
-        select: { lastActiveAt: true, email: true, locale: true },
+        select: { lastActiveAt: true, email: true, locale: true, emailNotificationsEnabled: true },
       });
       if (!recipient) continue;
 
       const isOnlineInApp = recipient.lastActiveAt && recipient.lastActiveAt > fiveMinutesAgo;
 
-      // Tier 3: Online in app but not on board → DB notification
-      if (isOnlineInApp) {
-        const { createNotification } = await import('./notification.service');
-        await createNotification(
-          uid,
-          'KANBAN_COMMENT_ADDED',
-          'Board Chat',
-          `${authorName}: ${content.substring(0, 100)}`,
-          {
-            boardId,
-            boardTitle: board.title,
-            authorName,
-            localizationKey: 'notifications.kanbanBoardChat',
-            localizationArgs: { authorName, boardTitle: board.title },
-          }
-        );
-      } else {
-        // Tier 4: Offline → DB notification + email (debounced)
-        const { createNotification } = await import('./notification.service');
-        await createNotification(
-          uid,
-          'KANBAN_COMMENT_ADDED',
-          'Board Chat',
-          `${authorName}: ${content.substring(0, 100)}`,
-          {
-            boardId,
-            boardTitle: board.title,
-            authorName,
-            localizationKey: 'notifications.kanbanBoardChat',
-            localizationArgs: { authorName, boardTitle: board.title },
-          }
-        );
+      // Always create DB notification (Tier 2 & 3)
+      const { createNotification } = await import('./notification.service');
+      await createNotification(
+        uid,
+        'KANBAN_COMMENT_ADDED',
+        'Board Chat',
+        `${authorName}: ${content.substring(0, 100)}`,
+        {
+          boardId,
+          boardTitle: board.title,
+          authorName,
+          localizationKey: 'notifications.kanbanBoardChat',
+          localizationArgs: { authorName, boardTitle: board.title },
+        }
+      );
 
-        // Email with debounce (max 1 per user/board every 30 min)
+      // Tier 3: Offline → also send email (debounced, respecting email preferences)
+      if (!isOnlineInApp && recipient.emailNotificationsEnabled) {
         const debounceKey = `kanban:${uid}:${boardId}`;
         const lastSent = boardChatEmailDebounce.get(debounceKey) || 0;
         if (Date.now() - lastSent >= BOARD_CHAT_EMAIL_DEBOUNCE_MS) {
@@ -1079,15 +1252,17 @@ export async function linkNoteToCard(
   });
 
   // Broadcast update
-  const updatedCard = await prisma.kanbanCard.findUnique({
+  const rawUpdatedCard = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
     select: cardWithAssigneeSelect,
   });
-  if (updatedCard) {
+  if (rawUpdatedCard) {
+    const updatedCard = transformCard(rawUpdatedCard);
     broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard });
+    return updatedCard;
   }
 
-  return updatedCard;
+  return rawUpdatedCard;
 }
 
 /**
@@ -1120,15 +1295,17 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
     metadata: { noteTitle },
   });
 
-  const updatedCard = await prisma.kanbanCard.findUnique({
+  const rawUpdatedCard = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
     select: cardWithAssigneeSelect,
   });
-  if (updatedCard) {
+  if (rawUpdatedCard) {
+    const updatedCard = transformCard(rawUpdatedCard);
     broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard });
+    return updatedCard;
   }
 
-  return updatedCard;
+  return rawUpdatedCard;
 }
 
 /**

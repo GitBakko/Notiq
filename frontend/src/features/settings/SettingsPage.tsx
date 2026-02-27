@@ -14,7 +14,7 @@ import { useImport } from '../../hooks/useImport';
 export default function SettingsPage() {
   const { t } = useTranslation();
   const { theme, setTheme, toggleSidebar, notificationSoundEnabled, setNotificationSoundEnabled } = useUIStore();
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateUser } = useAuthStore();
 
   const isMobile = useIsMobile();
   const { isSubscribed, subscribe, unsubscribe, isSupported } = usePushNotifications();
@@ -139,6 +139,29 @@ export default function SettingsPage() {
                 </div>
               </>
             )}
+
+            {/* Email Notifications Toggle */}
+            <div className="border-t border-gray-200 dark:border-gray-700" />
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-gray-900 dark:text-white">{t('settings.emailNotificationsToggle')}</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t('settings.emailNotificationsDescription')}</p>
+              </div>
+              <button
+                onClick={() => updateUser({ emailNotificationsEnabled: !(user?.emailNotificationsEnabled ?? true) })}
+                className={clsx(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2",
+                  (user?.emailNotificationsEnabled ?? true) ? "bg-emerald-600" : "bg-gray-200 dark:bg-gray-700"
+                )}
+              >
+                <span
+                  className={clsx(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    (user?.emailNotificationsEnabled ?? true) ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
+            </div>
           </Card>
         </section>
 
