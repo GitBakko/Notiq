@@ -41,6 +41,7 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import { useAuthStore } from '../../store/authStore';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useVisualViewport } from '../../hooks/useVisualViewport';
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -154,6 +155,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const isMobile = useIsMobile();
+  const { isKeyboardOpen, keyboardHeight } = useVisualViewport();
   const [users, setUsers] = useState<any[]>([]);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -254,7 +256,15 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const Separator = () => <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />;
 
   return (
-    <div className="border-b border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 sticky top-0 z-10 relative">
+    <div
+      className={clsx(
+        "border-b border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 z-10 relative",
+        isMobile && isKeyboardOpen
+          ? "fixed left-0 right-0 shadow-lg"
+          : "sticky top-0"
+      )}
+      style={isMobile && isKeyboardOpen ? { bottom: `${keyboardHeight}px` } : undefined}
+    >
       {/* Online Users — always visible */}
       {users.length > 0 && (
         <div className="flex -space-x-2 px-2 pt-2 border-b border-gray-100 dark:border-gray-800 pb-2">
