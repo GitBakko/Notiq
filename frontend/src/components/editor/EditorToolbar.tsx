@@ -66,7 +66,7 @@ const ToolbarButton = ({
     disabled={disabled}
     title={title}
     className={clsx(
-      "p-2 sm:p-1.5 rounded transition-colors flex items-center justify-center min-w-[36px] min-h-[36px]",
+      "p-2 sm:p-1.5 rounded transition-colors flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-[36px] md:min-h-[36px]",
       isActive
         ? "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white"
         : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200",
