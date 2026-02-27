@@ -6,5 +6,6 @@ export function useKanbanBoard(boardId: string | undefined) {
     queryKey: ['kanban-board', boardId],
     queryFn: () => getBoard(boardId!),
     enabled: !!boardId,
+    retry: false, // Don't retry 404s (deleted boards)
   });
 }

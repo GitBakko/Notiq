@@ -95,7 +95,7 @@ const cardWithAssigneeSelect = {
   noteLinkedById: true,
   createdAt: true,
   updatedAt: true,
-  assignee: { select: { id: true, name: true, email: true, color: true } },
+  assignee: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
   note: { select: { id: true, title: true, userId: true } },
   _count: { select: { comments: true } },
 } as const;
@@ -115,9 +115,17 @@ export async function listBoards(userId: string) {
         ownerId: true,
         createdAt: true,
         updatedAt: true,
-        _count: { select: { columns: true } },
+        _count: { select: { columns: true, shares: { where: { status: 'ACCEPTED' } } } },
         columns: {
           select: { _count: { select: { cards: true } } },
+        },
+        shares: {
+          where: { status: 'ACCEPTED' },
+          select: {
+            userId: true,
+            permission: true,
+            user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          },
         },
       },
       orderBy: { updatedAt: 'desc' },
@@ -137,9 +145,17 @@ export async function listBoards(userId: string) {
             createdAt: true,
             updatedAt: true,
             owner: { select: { id: true, name: true, email: true } },
-            _count: { select: { columns: true } },
+            _count: { select: { columns: true, shares: { where: { status: 'ACCEPTED' } } } },
             columns: {
               select: { _count: { select: { cards: true } } },
+            },
+            shares: {
+              where: { status: 'ACCEPTED' },
+              select: {
+                userId: true,
+                permission: true,
+                user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+              },
             },
           },
         },
@@ -158,6 +174,8 @@ export async function listBoards(userId: string) {
     updatedAt: b.updatedAt,
     columnCount: b._count.columns,
     cardCount: b.columns.reduce((sum, col) => sum + col._count.cards, 0),
+    shareCount: b._count.shares,
+    shares: b.shares.map((s) => ({ userId: s.userId, permission: s.permission, user: s.user })),
     ownership: 'owned' as const,
   }));
 
@@ -173,6 +191,8 @@ export async function listBoards(userId: string) {
     updatedAt: s.board.updatedAt,
     columnCount: s.board._count.columns,
     cardCount: s.board.columns.reduce((sum, col) => sum + col._count.cards, 0),
+    shareCount: s.board._count.shares,
+    shares: s.board.shares.map((sh) => ({ userId: sh.userId, permission: sh.permission, user: sh.user })),
     ownership: 'shared' as const,
     permission: s.permission,
   }));
@@ -222,10 +242,10 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
       },
       shares: {
         include: {
-          user: { select: { id: true, name: true, email: true, color: true } },
+          user: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
         },
       },
-      owner: { select: { id: true, name: true, email: true, color: true } },
+      owner: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
       note: { select: { id: true, title: true, userId: true } },
     },
   });
@@ -659,7 +679,7 @@ export async function getComments(
     skip: (page - 1) * limit,
     take: limit,
     include: {
-      author: { select: { id: true, name: true, email: true, color: true } },
+      author: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
     },
   });
 }
@@ -682,7 +702,7 @@ export async function createComment(
   const comment = await prisma.kanbanComment.create({
     data: { cardId, authorId, content },
     include: {
-      author: { select: { id: true, name: true, email: true, color: true } },
+      author: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
     },
   });
 

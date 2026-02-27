@@ -17,6 +17,9 @@ import { CURRENT_VERSION } from '../../data/changelog';
 import { usePinnedNotes } from '../../hooks/usePinnedNotes';
 import { useImport } from '../../hooks/useImport';
 import NotebookSharingModal from '../sharing/NotebookSharingModal';
+import SharedUsersModal from '../sharing/SharedUsersModal';
+import type { SharedUserInfo } from '../sharing/SharedUsersModal';
+import { useNotebookShareCounts } from '../../hooks/useNotebookShareCounts';
 import toast from 'react-hot-toast';
 import NotificationDropdown from '../../features/notifications/NotificationDropdown';
 
@@ -34,6 +37,7 @@ export default function Sidebar() {
   const [isTagsOpen, setIsTagsOpen] = useState(true);
   const [isNewTagOpen, setIsNewTagOpen] = useState(false);
   const [sharingNotebookId, setSharingNotebookId] = useState<string | null>(null);
+  const [viewSharesNotebookId, setViewSharesNotebookId] = useState<string | null>(null);
 
   const [deleteNotebookId, setDeleteNotebookId] = useState<string | null>(null);
   const [deleteNotebookName, setDeleteNotebookName] = useState('');
@@ -44,6 +48,7 @@ export default function Sidebar() {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { notebooks } = useNotebooks();
+  const { data: notebookShareCounts } = useNotebookShareCounts();
   const pinnedNotes = usePinnedNotes();
   const { isUploading, importFile, hiddenInput, notebookPickerModal } = useImport();
   const { isUploading: isUploadingOneNote, importFile: importFileOneNote, hiddenInput: hiddenInputOneNote, notebookPickerModal: notebookPickerModalOneNote } = useImport({ source: 'onenote' });
@@ -223,6 +228,24 @@ export default function Sidebar() {
         notebookName={notebooks?.find(n => n.id === sharingNotebookId)?.name || ''}
       />
 
+      <SharedUsersModal
+        isOpen={!!viewSharesNotebookId}
+        onClose={() => setViewSharesNotebookId(null)}
+        users={
+          viewSharesNotebookId && notebookShareCounts?.[viewSharesNotebookId]
+            ? notebookShareCounts[viewSharesNotebookId].users.map((s): SharedUserInfo => ({
+                id: s.user.id,
+                name: s.user.name,
+                email: s.user.email,
+                avatarUrl: s.user.avatarUrl,
+                permission: s.permission,
+              }))
+            : []
+        }
+        currentUserId={user?.id}
+        owner={user ? { id: user.id, name: user.name || null, email: user.email, avatarUrl: user.avatarUrl } : null}
+      />
+
       <div className="flex h-full w-64 flex-col bg-gray-50 border-r border-gray-200 text-gray-700 dark:bg-gray-900 dark:border-gray-800 dark:text-gray-300">
         {/* User Profile */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
@@ -262,43 +285,57 @@ export default function Sidebar() {
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6">
           <div className="space-y-1">
-            {navItems.map((item) => (
-              <div key={item.path} className="group/nav flex items-center">
-                <Link
-                  to={item.path}
-                  data-testid={`sidebar-item-${item.path === '/' ? 'home' : item.path.substring(1)}`}
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path || (item.path === '/notes' && location.pathname === '/');
+              const hasOverlay = item.path === '/trash' && trashCount > 0;
+              return (
+                <div
+                  key={item.path}
                   className={clsx(
-                    'flex-1 flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                    (location.pathname === item.path || (item.path === '/notes' && location.pathname === '/'))
+                    'group/nav relative overflow-hidden flex items-center rounded-md transition-colors',
+                    isActive
                       ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white'
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
                   )}
                 >
-                  <item.icon size={18} />
-                  <span className="flex-1">{item.label}</span>
-                  {(item as any).count > 0 && (
-                    <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                      {(item as any).count}
-                    </span>
-                  )}
-                </Link>
-                {item.path === '/trash' && trashCount > 0 && (
-                  <button
-                    onClick={() => setIsEmptyTrashConfirmOpen(true)}
-                    className="opacity-0 group-hover/nav:opacity-100 p-1 mr-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-all"
-                    title={t('trash.emptyTrash')}
+                  <Link
+                    to={item.path}
+                    data-testid={`sidebar-item-${item.path === '/' ? 'home' : item.path.substring(1)}`}
+                    className="flex-1 flex items-center gap-3 px-3 py-2 text-sm font-medium"
                   >
-                    <XCircle size={16} />
-                  </button>
-                )}
-              </div>
-            ))}
+                    <item.icon size={18} className="flex-shrink-0" />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {(item as any).count > 0 && (
+                      <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                        {(item as any).count}
+                      </span>
+                    )}
+                  </Link>
+                  {hasOverlay && (
+                    <div className={clsx(
+                      "absolute right-0 top-0 bottom-0 z-10 flex items-center pl-6 pr-2 opacity-0 group-hover/nav:opacity-100 transition-opacity",
+                      isActive
+                        ? "bg-gradient-to-l from-gray-200 via-gray-200 to-transparent dark:from-gray-800 dark:via-gray-800 dark:to-transparent"
+                        : "bg-gradient-to-l from-gray-100 via-gray-100 to-transparent dark:from-gray-800 dark:via-gray-800 dark:to-transparent"
+                    )}>
+                      <button
+                        onClick={() => setIsEmptyTrashConfirmOpen(true)}
+                        className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                        title={t('trash.emptyTrash')}
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             <button
               onClick={openSearch}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white transition-colors"
             >
-              <Search size={18} />
+              <Search size={18} className="flex-shrink-0" />
               {t('sidebar.search')}
             </button>
           </div>
@@ -347,7 +384,7 @@ export default function Sidebar() {
                   <div
                     key={notebook.id}
                     className={clsx(
-                      'group flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors',
+                      'group relative flex items-center px-3 py-2 rounded-md text-sm transition-colors overflow-hidden',
                       searchParams.get('notebookId') === notebook.id
                         ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
@@ -369,78 +406,93 @@ export default function Sidebar() {
                         />
                       </div>
                     ) : (
-                      <Link
-                        to={`/notes?notebookId=${notebook.id}`}
-                        className="flex items-center gap-3 flex-1 min-w-0"
-                        onDoubleClick={(e) => {
-                          if (notebook.userId === user?.id) {
-                            e.preventDefault();
-                            startRename(notebook.id, notebook.name);
-                          }
-                        }}
-                        onTouchStart={() => {
-                          if (notebook.userId !== user?.id) return;
-                          longPressTimerRef.current = setTimeout(() => {
-                            startRename(notebook.id, notebook.name);
-                          }, 600);
-                        }}
-                        onTouchEnd={() => {
-                          if (longPressTimerRef.current) {
-                            clearTimeout(longPressTimerRef.current);
-                            longPressTimerRef.current = null;
-                          }
-                        }}
-                        onTouchMove={() => {
-                          if (longPressTimerRef.current) {
-                            clearTimeout(longPressTimerRef.current);
-                            longPressTimerRef.current = null;
-                          }
-                        }}
-                      >
-                        <Book size={16} className="flex-shrink-0" />
-                        <span className="truncate">{notebook.name}</span>
-                        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                          {(notebook as any).count || 0}
-                        </span>
-                      </Link>
-                    )}
-                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      {notebook.userId === user?.id && (
-                        <>
-                          <button
-                            onClick={(e) => {
+                      <>
+                        <Link
+                          to={`/notes?notebookId=${notebook.id}`}
+                          className="flex items-center gap-3 flex-1 min-w-0"
+                          onDoubleClick={(e) => {
+                            if (notebook.userId === user?.id) {
                               e.preventDefault();
                               startRename(notebook.id, notebook.name);
-                            }}
-                            className="p-1 hover:text-emerald-600 transition-colors"
-                            title={t('common.rename')}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setSharingNotebookId(notebook.id);
-                            }}
-                            className="p-1 hover:text-emerald-600 transition-colors"
-                            title={t('sharing.share')}
-                          >
-                            <Share2 size={14} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setDeleteNotebookId(notebook.id);
-                              setDeleteNotebookName(notebook.name);
-                            }}
-                            className="p-1 hover:text-red-600 transition-colors"
-                            title={t('common.delete')}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
+                            }
+                          }}
+                          onTouchStart={() => {
+                            if (notebook.userId !== user?.id) return;
+                            longPressTimerRef.current = setTimeout(() => {
+                              startRename(notebook.id, notebook.name);
+                            }, 600);
+                          }}
+                          onTouchEnd={() => {
+                            if (longPressTimerRef.current) {
+                              clearTimeout(longPressTimerRef.current);
+                              longPressTimerRef.current = null;
+                            }
+                          }}
+                          onTouchMove={() => {
+                            if (longPressTimerRef.current) {
+                              clearTimeout(longPressTimerRef.current);
+                              longPressTimerRef.current = null;
+                            }
+                          }}
+                        >
+                          <Book size={16} className="flex-shrink-0" />
+                          <span className="truncate">{notebook.name}</span>
+                          <span className="ml-auto flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                            {(notebook as any).count || 0}
+                          </span>
+                          {notebookShareCounts && notebookShareCounts[notebook.id] && (
+                            <button
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setViewSharesNotebookId(notebook.id); }}
+                              className="flex-shrink-0 flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                              title={t('sharing.sharedWithCount', { count: notebookShareCounts[notebook.id].count })}
+                            >
+                              <Users size={12} />
+                              <span className="text-[10px] font-medium">{notebookShareCounts[notebook.id].count}</span>
+                            </button>
+                          )}
+                        </Link>
+                        {notebook.userId === user?.id && (
+                          <div className={clsx(
+                            'absolute right-0 top-0 bottom-0 z-10 flex items-center gap-0.5 pl-6 pr-2 opacity-0 group-hover:opacity-100 transition-opacity',
+                            searchParams.get('notebookId') === notebook.id
+                              ? 'bg-gradient-to-l from-gray-200 via-gray-200 to-transparent dark:from-gray-800 dark:via-gray-800 dark:to-transparent'
+                              : 'bg-gradient-to-l from-gray-100 via-gray-100 to-transparent dark:from-gray-800 dark:via-gray-800 dark:to-transparent'
+                          )}>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                startRename(notebook.id, notebook.name);
+                              }}
+                              className="p-1 text-gray-400 hover:text-emerald-600 dark:text-gray-500 dark:hover:text-emerald-400 transition-colors"
+                              title={t('common.rename')}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setSharingNotebookId(notebook.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-emerald-600 dark:text-gray-500 dark:hover:text-emerald-400 transition-colors"
+                              title={t('sharing.share')}
+                            >
+                              <Share2 size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setDeleteNotebookId(notebook.id);
+                                setDeleteNotebookName(notebook.name);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                              title={t('common.delete')}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 ))}
               </div>

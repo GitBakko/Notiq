@@ -12,6 +12,8 @@ import { useUIStore } from '../../store/uiStore';
 import { Button } from '../../components/ui/Button';
 import SortDropdown from '../../components/ui/SortDropdown';
 import NoteEditor from './NoteEditor';
+import SharedUsersModal from '../../components/sharing/SharedUsersModal';
+import type { SharedUserInfo, SharedOwnerInfo } from '../../components/sharing/SharedUsersModal';
 import { useImport } from '../../hooks/useImport';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +32,7 @@ export default function NotesPage() {
   const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed } = useUIStore();
   const user = useAuthStore((state) => state.user);
   const [showNotebookPicker, setShowNotebookPicker] = useState(false);
+  const [sharingNoteId, setSharingNoteId] = useState<string | null>(null);
 
   const allNotebooks = useLiveQuery(async () => {
     if (!user?.id) return [];
@@ -213,6 +216,7 @@ export default function NotesPage() {
               notes={notes || []}
               selectedNoteId={selectedNoteId}
               onSelectNote={setSelectedNoteId}
+              onShareClick={setSharingNoteId}
             />
           )}
         </div>
@@ -278,11 +282,37 @@ export default function NotesPage() {
     </div>
   ) : null;
 
+  const sharingNoteData = sharingNoteId ? notes?.find(n => n.id === sharingNoteId) : null;
+  const sharingUsers: SharedUserInfo[] = sharingNoteData?.sharedWith
+    ?.filter(s => s.status === 'ACCEPTED')
+    .map(s => ({
+      id: s.user.id,
+      name: s.user.name,
+      email: s.user.email,
+      permission: s.permission,
+    })) || [];
+  const sharingNoteOwner: SharedOwnerInfo | null = sharingNoteData
+    ? (sharingNoteData.ownership === 'shared' && sharingNoteData.sharedByUser
+        ? { id: sharingNoteData.sharedByUser.id, name: sharingNoteData.sharedByUser.name, email: sharingNoteData.sharedByUser.email }
+        : user ? { id: user.id, name: user.name || null, email: user.email } : null)
+    : null;
+
+  const sharingModal = sharingNoteId ? (
+    <SharedUsersModal
+      isOpen={!!sharingNoteId}
+      onClose={() => setSharingNoteId(null)}
+      users={sharingUsers}
+      currentUserId={user?.id}
+      owner={sharingNoteOwner}
+    />
+  ) : null;
+
   if (isMobile) {
     return (
       <div className="flex h-full bg-white w-full dark:bg-gray-900">
         {selectedNoteId ? renderEditor() : renderNoteList()}
         {notebookPickerForCreate}
+        {sharingModal}
       </div>
     );
   }
@@ -304,6 +334,7 @@ export default function NotesPage() {
       )}
       {renderEditor()}
       {notebookPickerForCreate}
+      {sharingModal}
     </div>
   );
 }

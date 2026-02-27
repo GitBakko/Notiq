@@ -123,21 +123,22 @@ export default function BoardChatSidebar({
                 className={clsx('flex flex-col', isMe ? 'items-end' : 'items-start')}
               >
                 <div className="flex items-center gap-1 mb-1">
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white overflow-hidden relative"
-                    style={{ backgroundColor: msgColor }}
-                  >
-                    {msg.author.avatarUrl && (
-                      <img
-                        src={msg.author.avatarUrl}
-                        alt=""
-                        className="w-full h-full object-cover absolute inset-0"
-                      />
-                    )}
-                    <span className="relative z-10" style={{ textShadow: '0 0 3px rgba(0,0,0,0.6)' }}>
+                  {(isMe ? currentUser.avatarUrl : msg.author.avatarUrl) ? (
+                    <img
+                      src={(isMe ? currentUser.avatarUrl! : msg.author.avatarUrl!).replace(/^https?:\/\/localhost:\d+/, '')}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover flex-shrink-0"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
+                      style={{ backgroundColor: msgColor }}
+                    >
                       {initial}
-                    </span>
-                  </div>
+                    </div>
+                  )}
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     {isMe ? t('kanban.chat.you') : (msg.author.name || msg.author.email)}
                   </span>

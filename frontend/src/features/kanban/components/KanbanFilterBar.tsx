@@ -82,6 +82,7 @@ interface Assignee {
   name: string | null;
   email: string;
   color: string | null;
+  avatarUrl?: string | null;
 }
 
 interface KanbanFilterBarProps {
@@ -221,12 +222,16 @@ export default function KanbanFilterBar({
                       >
                         {filters.assigneeIds.includes(a.id) && '✓'}
                       </span>
-                      <span
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                        style={{ backgroundColor: a.color || '#6b7280' }}
-                      >
-                        {(a.name || a.email).charAt(0).toUpperCase()}
-                      </span>
+                      {a.avatarUrl ? (
+                        <img src={a.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
+                      ) : (
+                        <span
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                          style={{ backgroundColor: a.color || '#6b7280' }}
+                        >
+                          {(a.name || a.email).charAt(0).toUpperCase()}
+                        </span>
+                      )}
                       <span className="text-gray-700 dark:text-gray-300 truncate">
                         {a.name || a.email.split('@')[0]}
                       </span>

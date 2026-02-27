@@ -484,6 +484,9 @@
     "userNotFound": "Utente non trovato",
     "sharedWith": "Condiviso con",
     "noOne": "Non condiviso con nessuno",
+    "noOtherUsers": "Nessun altro utente condiviso",
+    "you": "Tu",
+    "owner": "Proprietario",
     "revoke": "Rimuovi accesso",
     "revoked": "Accesso rimosso",
     "revokeFailed": "Impossibile rimuovere l'accesso",
@@ -744,6 +747,10 @@
       "collapsibleNoteList": "Lista Note Comprimibile — Comprimi il pannello lista note/vault per un editor piu' ampio",
       "notebookMoveFix": "Corretto il selettore taccuino nell'editor — la nota viene ora spostata immediatamente",
       "removedHomeItem": "Navigazione semplificata — Rimossa la voce di menu Home ridondante",
+      "sharingIndicators": "Indicatori Condivisione — Badge verde con conteggio utenti su tutti gli elementi condivisi (note, task list, board kanban, taccuini)",
+      "sharedUsersModal": "Modale Utenti Condivisi — Clicca qualsiasi badge condivisione per vedere la lista utenti con avatar e permessi",
+      "groupMemberVisibility": "Visibilita' Membri Gruppo — Visualizza i membri dei gruppi a cui appartieni (espandibile, sola lettura)",
+      "sidebarStyleAlignment": "Allineamento Stili Sidebar — Icone, colori, effetti hover e pulsanti overlay coerenti su tutte le voci della sidebar",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

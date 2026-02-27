@@ -11,6 +11,16 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.6.7',
+    date: '2026-02-26',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.sharingIndicators' },
+      { type: 'feature', titleKey: 'whatsNew.entries.sharedUsersModal' },
+      { type: 'feature', titleKey: 'whatsNew.entries.groupMemberVisibility' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.sidebarStyleAlignment' },
+    ],
+  },
+  {
     version: '1.6.6',
     date: '2026-02-26',
     entries: [

@@ -123,7 +123,7 @@ export const getSharedTaskLists = async (userId: string) => {
           items: {
             orderBy: { position: 'asc' },
             include: {
-              checkedByUser: { select: { id: true, name: true, email: true, color: true } },
+              checkedByUser: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
             },
           },
           user: {

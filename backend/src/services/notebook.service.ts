@@ -27,7 +27,18 @@ export const getNotebooks = async (userId: string) => {
         select: {
           notes: {
             where: { isVault: false }
+          },
+          sharedWith: {
+            where: { status: 'ACCEPTED' }
           }
+        }
+      },
+      sharedWith: {
+        where: { status: 'ACCEPTED' },
+        select: {
+          userId: true,
+          permission: true,
+          user: { select: { id: true, name: true, email: true, avatarUrl: true } }
         }
       }
     }

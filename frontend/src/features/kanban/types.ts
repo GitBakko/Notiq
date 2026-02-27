@@ -8,11 +8,17 @@ export interface KanbanBoard {
   noteLinkedById: string | null;
   note: { id: string; title: string; userId: string } | null;
   ownerId: string;
-  owner?: { id: string; name: string | null; email: string; color: string | null };
+  owner?: { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null };
   columns: KanbanColumn[];
   shares?: SharedKanbanBoard[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface KanbanBoardShareUser {
+  userId: string;
+  permission: 'READ' | 'WRITE';
+  user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
 }
 
 export interface KanbanBoardListItem {
@@ -25,6 +31,8 @@ export interface KanbanBoardListItem {
   owner?: { id: string; name: string | null; email: string };
   columnCount: number;
   cardCount: number;
+  shareCount?: number;
+  shares?: KanbanBoardShareUser[];
   ownership: 'owned' | 'shared';
   permission?: 'READ' | 'WRITE';
   createdAt: string;
@@ -46,7 +54,7 @@ export interface KanbanCard {
   position: number;
   columnId: string;
   assigneeId: string | null;
-  assignee: { id: string; name: string | null; email: string; color: string | null } | null;
+  assignee: { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null } | null;
   dueDate: string | null;
   noteId: string | null;
   noteLinkedById: string | null;
@@ -61,7 +69,7 @@ export interface KanbanComment {
   content: string;
   cardId: string;
   authorId: string;
-  author: { id: string; name: string | null; email: string; color: string | null };
+  author: { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null };
   createdAt: string;
 }
 
@@ -92,7 +100,7 @@ export interface KanbanCardActivity {
 export interface SharedKanbanBoard {
   id: string;
   userId: string;
-  user: { id: string; name: string | null; email: string };
+  user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   permission: 'READ' | 'WRITE';
   status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
 }

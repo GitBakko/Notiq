@@ -157,12 +157,16 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
           className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"
           title={item.checkedByUser.name || item.checkedByUser.email}
         >
-          <span
-            className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-            style={{ backgroundColor: item.checkedByUser.color || '#6b7280' }}
-          >
-            {(item.checkedByUser.name || item.checkedByUser.email).charAt(0).toUpperCase()}
-          </span>
+          {item.checkedByUser.avatarUrl ? (
+            <img src={item.checkedByUser.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
+          ) : (
+            <span
+              className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+              style={{ backgroundColor: item.checkedByUser.color || '#6b7280' }}
+            >
+              {(item.checkedByUser.name || item.checkedByUser.email).charAt(0).toUpperCase()}
+            </span>
+          )}
           <span className="hidden sm:inline truncate max-w-[80px]">
             {item.checkedByUser.name || item.checkedByUser.email.split('@')[0]}
           </span>

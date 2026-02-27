@@ -7,19 +7,37 @@ import { useUIStore } from '../../store/uiStore';
 import TaskListCard from './TaskListCard';
 import NewTaskListModal from './NewTaskListModal';
 import TaskListSharingModal from './TaskListSharingModal';
+import SharedUsersModal from '../../components/sharing/SharedUsersModal';
+import type { SharedUserInfo, SharedOwnerInfo } from '../../components/sharing/SharedUsersModal';
 import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
+import { useAuthStore } from '../../store/authStore';
 
 export default function TaskListsPage() {
   const { t } = useTranslation();
   const taskLists = useTaskLists();
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
+  const user = useAuthStore((s) => s.user);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [sharingTaskListId, setSharingTaskListId] = useState<string | null>(null);
+  const [viewSharesTaskListId, setViewSharesTaskListId] = useState<string | null>(null);
 
   // Find the task list being shared for the modal
   const sharingTaskList = sharingTaskListId
     ? taskLists?.find(tl => tl.id === sharingTaskListId)
+    : null;
+
+  // Find the task list for viewing shares (read-only modal)
+  const viewSharesTaskList = viewSharesTaskListId
+    ? taskLists?.find(tl => tl.id === viewSharesTaskListId)
+    : null;
+  const viewSharesUsers: SharedUserInfo[] = viewSharesTaskList?.sharedWith
+    ?.filter(s => s.status === 'ACCEPTED')
+    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, permission: s.permission })) || [];
+  const viewSharesOwner: SharedOwnerInfo | null = viewSharesTaskList
+    ? (viewSharesTaskList.sharedByUser
+        ? { id: viewSharesTaskList.sharedByUser.id, name: viewSharesTaskList.sharedByUser.name, email: viewSharesTaskList.sharedByUser.email }
+        : user ? { id: user.id, name: user.name || null, email: user.email } : null)
     : null;
 
   return (
@@ -84,6 +102,7 @@ export default function TaskListsPage() {
               taskList={tl as LocalTaskList & { items: LocalTaskItem[] }}
               readOnly={tl.ownership === 'shared' && tl.sharedPermission === 'READ'}
               onShareClick={(id) => setSharingTaskListId(id)}
+              onViewShares={(id) => setViewSharesTaskListId(id)}
             />
           ))
         )}
@@ -111,6 +130,13 @@ export default function TaskListsPage() {
           }
         />
       )}
+      <SharedUsersModal
+        isOpen={!!viewSharesTaskListId}
+        onClose={() => setViewSharesTaskListId(null)}
+        users={viewSharesUsers}
+        currentUserId={user?.id}
+        owner={viewSharesOwner}
+      />
     </div>
   );
 }

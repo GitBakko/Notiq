@@ -396,6 +396,9 @@
     "userNotFound": "User not found",
     "sharedWith": "Shared with",
     "noOne": "Not shared with anyone yet",
+    "noOtherUsers": "No other shared users",
+    "you": "You",
+    "owner": "Owner",
     "revoke": "Revoke access",
     "revoked": "Access revoked",
     "revokeFailed": "Failed to revoke access",
@@ -1023,6 +1026,10 @@
       "collapsibleNoteList": "Collapsible Note List — Collapse the notes/vault list panel for a wider editor view",
       "notebookMoveFix": "Fixed notebook picker in editor — selecting a notebook now moves the note immediately",
       "removedHomeItem": "Streamlined navigation — Removed redundant Home menu item",
+      "sharingIndicators": "Sharing Indicators — Green badge with user count on all shared items (notes, task lists, kanban boards, notebooks)",
+      "sharedUsersModal": "Shared Users Modal — Click any sharing badge to see a read-only list of shared users with avatars and permissions",
+      "groupMemberVisibility": "Group Member Visibility — View member lists of groups you belong to (expandable, read-only)",
+      "sidebarStyleAlignment": "Sidebar Style Alignment — Consistent icons, colors, hover effects and overlay buttons across all sidebar items",
       "initialRelease": "Initial release with full feature set"
     }
   },

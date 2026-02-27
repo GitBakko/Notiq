@@ -16,6 +16,7 @@ export default function GroupsPage() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
 
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [expandedMemberGroupId, setExpandedMemberGroupId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDescription, setNewGroupDescription] = useState('');
@@ -268,9 +269,19 @@ export default function GroupsPage() {
                   {group.members.map((member) => (
                     <div key={member.userId} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xs font-medium flex-shrink-0">
-                          {(member.user.name || member.user.email).charAt(0).toUpperCase()}
-                        </div>
+                        {member.user.avatarUrl ? (
+                          <img
+                            src={member.user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')}
+                            alt=""
+                            className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                            {(member.user.name || member.user.email).charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <p className="text-sm text-gray-900 dark:text-white truncate">{member.user.name || member.user.email}</p>
                           {member.user.name && <p className="text-xs text-gray-500 truncate">{member.user.email}</p>}
@@ -317,34 +328,79 @@ export default function GroupsPage() {
     );
   };
 
-  const renderMemberOfGroup = (group: Group) => (
-    <div key={group.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
-            {group.avatarUrl ? (
-              <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
-                {group.name[0]?.toUpperCase()}
-              </span>
-            )}
+  const renderMemberOfGroup = (group: Group) => {
+    const isExpanded = expandedMemberGroupId === group.id;
+
+    return (
+      <div key={group.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        {/* Header */}
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t-lg"
+          onClick={() => setExpandedMemberGroupId(isExpanded ? null : group.id)}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            {isExpanded ? <ChevronDown size={18} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />}
+            <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+              {group.avatarUrl ? (
+                <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
+                  {group.name[0]?.toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{group.name}</h3>
+              {group.owner && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {t('groups.owner')}: {group.owner.name || group.owner.email}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{group.name}</h3>
-            {group.owner && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t('groups.owner')}: {group.owner.name || group.owner.email}
-              </p>
-            )}
-          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full flex-shrink-0">
+            {t('groups.memberCount', { count: group.members.length })}
+          </span>
         </div>
-        <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full flex-shrink-0">
-          {t('groups.memberCount', { count: group.members.length })}
-        </span>
+
+        {/* Expanded content — read-only member list */}
+        {isExpanded && (
+          <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+            <h4 className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">{t('groups.members')}</h4>
+            {group.members.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">{t('groups.noMembers')}</p>
+            ) : (
+              <div className="space-y-1">
+                {group.members.map((member) => (
+                  <div key={member.userId} className="flex items-center px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {member.user.avatarUrl ? (
+                        <img
+                          src={member.user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')}
+                          alt=""
+                          className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                          {(member.user.name || member.user.email).charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-900 dark:text-white truncate">{member.user.name || member.user.email}</p>
+                        {member.user.name && <p className="text-xs text-gray-500 truncate">{member.user.email}</p>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">

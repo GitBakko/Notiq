@@ -85,12 +85,16 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
                   className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
                   title={card.assignee.name || card.assignee.email}
                 >
-                  <span
-                    className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                    style={{ backgroundColor: card.assignee.color || '#6b7280' }}
-                  >
-                    {(card.assignee.name || card.assignee.email).charAt(0).toUpperCase()}
-                  </span>
+                  {card.assignee.avatarUrl ? (
+                    <img src={card.assignee.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
+                  ) : (
+                    <span
+                      className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                      style={{ backgroundColor: card.assignee.color || '#6b7280' }}
+                    >
+                      {(card.assignee.name || card.assignee.email).charAt(0).toUpperCase()}
+                    </span>
+                  )}
                   <span className="truncate max-w-[80px]">
                     {card.assignee.name || card.assignee.email.split('@')[0]}
                   </span>

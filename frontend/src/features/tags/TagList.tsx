@@ -82,7 +82,7 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
       )}
 
       {isCreating && (
-        <form onSubmit={handleCreate} className="px-4 mb-2">
+        <form onSubmit={handleCreate} className="px-3 mb-2">
           <input
             type="text"
             value={newTagName}
@@ -114,27 +114,45 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
       )}
 
       <ul>
-        {tags?.map((tag) => (
-          <li key={tag.id} className="group flex items-center justify-between px-4 py-1 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">
-            <div
-              className={clsx("flex items-center flex-1 truncate", selectedTagId === tag.id && "font-semibold text-green-700 dark:text-green-400")}
-              onClick={() => onSelectTag(selectedTagId === tag.id ? undefined : tag.id)}
+        {tags?.map((tag) => {
+          const isSelected = selectedTagId === tag.id;
+          return (
+            <li
+              key={tag.id}
+              className={clsx(
+                "group relative overflow-hidden flex items-center px-3 py-1.5 rounded-md cursor-pointer transition-colors",
+                isSelected
+                  ? "bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-800"
+              )}
             >
-              <TagIcon size={14} className="mr-2 text-gray-400" />
-              <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{tag.name}</span>
-              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                {tag._count?.notes || 0}
-              </span>
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(tag.id); }}
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"
-              title={t('common.delete')}
-            >
-              <Trash2 size={12} />
-            </button>
-          </li>
-        ))}
+              <div
+                className={clsx("flex items-center flex-1 min-w-0", isSelected && "font-semibold text-green-700 dark:text-green-400")}
+                onClick={() => onSelectTag(isSelected ? undefined : tag.id)}
+              >
+                <TagIcon size={14} className="mr-2 flex-shrink-0 text-gray-400" />
+                <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{tag.name}</span>
+                <span className="ml-2 flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                  {tag._count?.notes || 0}
+                </span>
+              </div>
+              <div className={clsx(
+                "absolute right-0 top-0 bottom-0 z-10 flex items-center pl-6 pr-2 opacity-0 group-hover:opacity-100 transition-opacity",
+                isSelected
+                  ? "bg-gradient-to-l from-gray-200 via-gray-200 to-transparent dark:from-gray-800 dark:via-gray-800 dark:to-transparent"
+                  : "bg-gradient-to-l from-gray-100 via-gray-100 to-transparent dark:from-gray-800 dark:via-gray-800 dark:to-transparent"
+              )}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(tag.id); }}
+                  className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                  title={t('common.delete')}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

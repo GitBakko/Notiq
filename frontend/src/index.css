@@ -88,6 +88,17 @@ body {
   background: #9ca3af;
 }
 
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: #374151;
+  /* gray-700 */
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+  /* gray-600 */
+}
+
 /* Collaboration Styles */
 .collaboration-cursor__caret {
   border-left: 1px solid #0d0d0d;

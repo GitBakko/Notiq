@@ -18,7 +18,7 @@ export const createGroup = async (
   return prisma.group.create({
     data: { name: data.name, description: data.description, ownerId },
     include: {
-      members: { include: { user: { select: { id: true, email: true, name: true } } } },
+      members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
       pendingInvites: { select: { id: true, email: true, createdAt: true } },
     },
   });
@@ -29,7 +29,7 @@ export const getMyGroups = async (userId: string) => {
     prisma.group.findMany({
       where: { ownerId: userId },
       include: {
-        members: { include: { user: { select: { id: true, email: true, name: true } } } },
+        members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
         pendingInvites: { select: { id: true, email: true, createdAt: true } },
         _count: { select: { members: true } },
       },
@@ -42,7 +42,7 @@ export const getMyGroups = async (userId: string) => {
       },
       include: {
         owner: { select: { id: true, email: true, name: true } },
-        members: { include: { user: { select: { id: true, email: true, name: true } } } },
+        members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
         _count: { select: { members: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -56,7 +56,7 @@ export const getGroup = async (groupId: string, requesterId: string) => {
     where: { id: groupId },
     include: {
       owner: { select: { id: true, email: true, name: true } },
-      members: { include: { user: { select: { id: true, email: true, name: true } } } },
+      members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
       pendingInvites: { select: { id: true, email: true, createdAt: true } },
     },
   });
@@ -77,7 +77,7 @@ export const updateGroup = async (
     where: { id: groupId },
     data: { name: data.name, description: data.description },
     include: {
-      members: { include: { user: { select: { id: true, email: true, name: true } } } },
+      members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
       pendingInvites: { select: { id: true, email: true, createdAt: true } },
     },
   });
@@ -125,7 +125,7 @@ export const uploadGroupAvatar = async (
     where: { id: groupId },
     data: { avatarUrl },
     include: {
-      members: { include: { user: { select: { id: true, email: true, name: true } } } },
+      members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
       pendingInvites: { select: { id: true, email: true, createdAt: true } },
     },
   });
@@ -319,7 +319,7 @@ export const getGroupsForSharing = async (userId: string) => {
       ],
     },
     include: {
-      members: { include: { user: { select: { id: true, email: true, name: true } } } },
+      members: { include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } } },
       _count: { select: { members: true } },
     },
     orderBy: { name: 'asc' },

@@ -6,7 +6,7 @@ import * as notificationService from './notification.service';
 const ITEMS_INCLUDE = {
   orderBy: { position: 'asc' as const },
   include: {
-    checkedByUser: { select: { id: true, name: true, email: true, color: true } },
+    checkedByUser: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
   },
 };
 
@@ -254,7 +254,7 @@ export const updateTaskItem = async (
     where: { id: itemId },
     data: updateData,
     include: {
-      checkedByUser: { select: { id: true, name: true, email: true, color: true } },
+      checkedByUser: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
     },
   });
 

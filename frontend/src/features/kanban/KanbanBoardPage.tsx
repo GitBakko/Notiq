@@ -54,11 +54,18 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const { toggleSidebar } = useUIStore();
   const user = useAuthStore((s) => s.user);
 
-  const { data: board, isLoading } = useKanbanBoard(boardId);
+  const { data: board, isLoading, isError } = useKanbanBoard(boardId);
   const mutations = useKanbanMutations(boardId);
 
-  // Subscribe to SSE real-time updates + presence
-  const { presenceUsers, highlightedCardIds: realtimeHighlights } = useKanbanRealtime(boardId);
+  // Navigate back to list if board was deleted or doesn't exist
+  useEffect(() => {
+    if (!isLoading && (isError || !board)) {
+      navigate('/kanban', { replace: true });
+    }
+  }, [isLoading, isError, board, navigate]);
+
+  // Subscribe to SSE real-time updates + presence (only after board is confirmed to exist)
+  const { presenceUsers, highlightedCardIds: realtimeHighlights } = useKanbanRealtime(board ? boardId : undefined);
 
   // Parse ?highlightCards=id1,id2 from URL (used when navigating from NoteEditor)
   const [searchParams, setSearchParams] = useSearchParams();
@@ -489,7 +496,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   // Unique assignees from all cards for the filter dropdown
   const allAssignees = useMemo(() => {
     if (!board) return [];
-    const map = new Map<string, { id: string; name: string | null; email: string; color: string | null }>();
+    const map = new Map<string, { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null }>();
     for (const col of board.columns) {
       for (const card of col.cards) {
         if (card.assignee && !map.has(card.assignee.id)) {
@@ -518,9 +525,10 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   if (!board) {
+    // useEffect above will navigate back to /kanban
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <p className="text-gray-500 dark:text-gray-400">{t('kanban.noBoards')}</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
       </div>
     );
   }

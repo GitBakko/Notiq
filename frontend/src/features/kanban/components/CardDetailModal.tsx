@@ -285,12 +285,16 @@ export default function CardDetailModal({
             </label>
             {card.assignee ? (
               <div className="flex items-center gap-2">
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: card.assignee.color || '#6b7280' }}
-                >
-                  {(card.assignee.name || card.assignee.email).charAt(0).toUpperCase()}
-                </span>
+                {card.assignee.avatarUrl ? (
+                  <img src={card.assignee.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
+                ) : (
+                  <span
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                    style={{ backgroundColor: card.assignee.color || '#6b7280' }}
+                  >
+                    {(card.assignee.name || card.assignee.email).charAt(0).toUpperCase()}
+                  </span>
+                )}
                 <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
                   {card.assignee.name || card.assignee.email}
                 </span>
@@ -410,12 +414,16 @@ export default function CardDetailModal({
             <div className="space-y-3 mb-3">
               {comments.map((comment) => (
                 <div key={comment.id} className="flex gap-2">
-                  <span
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
-                    style={{ backgroundColor: comment.author.color || '#6b7280' }}
-                  >
-                    {(comment.author.name || comment.author.email).charAt(0).toUpperCase()}
-                  </span>
+                  {comment.author.avatarUrl ? (
+                    <img src={comment.author.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-0.5" loading="lazy" decoding="async" />
+                  ) : (
+                    <span
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: comment.author.color || '#6b7280' }}
+                    >
+                      {(comment.author.name || comment.author.email).charAt(0).toUpperCase()}
+                    </span>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-900 dark:text-white truncate">

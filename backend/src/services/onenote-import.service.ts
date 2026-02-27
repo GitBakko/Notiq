@@ -171,6 +171,8 @@ function parseMht(raw: string): { htmlPart: string; resources: Map<string, Buffe
       const partCT = (partHeaders.match(/Content-Type:\s*([^\r\n;]+)/i)?.[1] || '').trim().toLowerCase();
       const partEncoding = (partHeaders.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i)?.[1] || '').trim().toLowerCase();
       const partLocation = (partHeaders.match(/Content-Location:\s*([^\r\n]+)/i)?.[1] || '').trim();
+      const partContentId = (partHeaders.match(/Content-ID:\s*<?([^>\r\n]+)>?/i)?.[1] || '').trim();
+      const partDisposition = (partHeaders.match(/Content-Disposition:.*?filename="?([^";\r\n]+)"?/i)?.[1] || '').trim();
 
       if (partCT.startsWith('text/html')) {
         htmlContent = partEncoding === 'quoted-printable'
@@ -181,11 +183,25 @@ function parseMht(raw: string): { htmlPart: string; resources: Map<string, Buffe
         const buffer = partEncoding === 'base64'
           ? Buffer.from(partBody.replace(/[\r\n\s]/g, ''), 'base64')
           : Buffer.from(partBody);
+        // Store by Content-Location
         if (partLocation) {
           resources.set(partLocation, buffer);
-          // Also store just the filename for matching
           const filename = partLocation.split('/').pop() || '';
           if (filename) resources.set(filename, buffer);
+        }
+        // Store by Content-ID (for cid: URI references)
+        if (partContentId) {
+          resources.set(`cid:${partContentId}`, buffer);
+          resources.set(partContentId, buffer);
+        }
+        // Store by Content-Disposition filename
+        if (partDisposition) {
+          resources.set(partDisposition, buffer);
+        }
+        // Fallback: store by Content-Type name param (e.g. Content-Type: image/png; name="file.png")
+        if (!partLocation && !partContentId && !partDisposition) {
+          const nameParam = (partHeaders.match(/Content-Type:.*?name="?([^";\r\n]+)"?/i)?.[1] || '').trim();
+          if (nameParam) resources.set(nameParam, buffer);
         }
       }
     }
@@ -366,9 +382,19 @@ async function processOneNoteHtml(
           const filename = src.split('/').pop() || '';
           imageBuffer = zipEntries.get(filename);
         }
+        // For cid: URIs, also try the content-id without the cid: prefix
+        if (!imageBuffer && src.startsWith('cid:')) {
+          const cidRef = src.slice(4); // remove "cid:" prefix
+          imageBuffer = zipEntries.get(cidRef);
+        }
         if (!imageBuffer) return match;
 
-        const ext = path.extname(src).slice(1) || 'png';
+        // Extract extension: for cid: URIs, strip @... suffix before getting ext
+        let extSource = src;
+        if (src.startsWith('cid:')) {
+          extSource = src.slice(4).split('@')[0]; // e.g. "image001.png" from "cid:image001.png@01D..."
+        }
+        const ext = path.extname(extSource).slice(1) || 'png';
         const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
         const filename = `${uuidv4()}.${ext}`;
         const filePath = path.join(uploadDir, filename);

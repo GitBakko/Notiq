@@ -3,7 +3,7 @@ import api from '../../lib/api';
 export interface GroupMember {
   userId: string;
   joinedAt: string;
-  user: { id: string; email: string; name: string | null };
+  user: { id: string; email: string; name: string | null; avatarUrl?: string | null };
 }
 
 export interface PendingInvite {

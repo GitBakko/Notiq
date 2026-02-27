@@ -118,9 +118,13 @@ export default function ShareBoardModal({
                 className="flex items-center justify-between rounded-lg bg-gray-50 p-2 dark:bg-gray-700"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                    {(share.user.name || share.user.email).charAt(0).toUpperCase()}
-                  </div>
+                  {share.user.avatarUrl ? (
+                    <img src={share.user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="h-8 w-8 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      {(share.user.name || share.user.email).charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm font-medium text-gray-900 dark:text-white">
                       {share.user.name || share.user.email}

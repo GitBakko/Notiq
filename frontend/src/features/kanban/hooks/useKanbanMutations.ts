@@ -19,20 +19,23 @@ export function useKanbanMutations(boardId?: string) {
 
   const deleteBoard = useMutation({
     mutationFn: kanbanService.deleteBoard,
-    onMutate: async (boardId) => {
+    onMutate: async (deletedId) => {
       await queryClient.cancelQueries({ queryKey: ['kanban-boards'] });
       const previousBoards = queryClient.getQueryData<KanbanBoardListItem[]>(['kanban-boards']);
       queryClient.setQueryData<KanbanBoardListItem[]>(['kanban-boards'], (old) =>
-        old ? old.filter((b) => b.id !== boardId) : [],
+        old ? old.filter((b) => b.id !== deletedId) : [],
       );
       return { previousBoards };
     },
-    onError: (_err, _boardId, context) => {
+    onError: (_err, _deletedId, context) => {
       if (context?.previousBoards) {
         queryClient.setQueryData(['kanban-boards'], context.previousBoards);
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, deletedId) => {
+      // Remove stale individual board queries to prevent 404 refetches
+      queryClient.removeQueries({ queryKey: ['kanban-board', deletedId] });
+      queryClient.removeQueries({ queryKey: ['kanban-board-chat', deletedId] });
       queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
     },
   });

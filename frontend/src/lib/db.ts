@@ -88,7 +88,7 @@ export interface LocalTaskItem {
   taskListId: string;
   text: string;
   isChecked: boolean;
-  checkedByUser?: { id: string; name: string | null; email: string; color: string | null } | null;
+  checkedByUser?: { id: string; name: string | null; email: string; color: string | null; avatarUrl?: string | null } | null;
   priority: 'LOW' | 'MEDIUM' | 'HIGH';
   dueDate?: string | null;
   position: number;

@@ -10,8 +10,8 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Encrypted Vault** — AES-encrypted notes and credentials behind PIN protection
 - **Task Lists** — Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking
 - **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, note linking with smart sharing, activity history, board chat, cover images, column reordering, and real-time SSE updates
-- **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, resend/cancel, and smart merge duplicate detection
-- **Groups** — User groups with avatar, invitation management, and shared notebooks
+- **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, resend/cancel, smart merge duplicate detection, and clickable sharing badges with read-only user viewer
+- **Groups** — User groups with avatar, invitation management, shared notebooks, and expandable member visibility for all groups
 - **Reminders** — Date-based reminders with notification support
 - **AI Chat** — Per-note AI assistant powered by AWS Bedrock with dynamic titles and notification badges
 - **Import** — Evernote (.enex) and OneNote (.mht, .html, .zip) import with attachment support

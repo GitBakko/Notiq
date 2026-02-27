@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban } from 'lucide-react';
+import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -12,9 +12,10 @@ interface BoardCardProps {
   onSelect: (boardId: string) => void;
   onShare: (boardId: string) => void;
   onDelete: (boardId: string) => void;
+  onViewShares?: (boardId: string) => void;
 }
 
-export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardCardProps) {
+export default function BoardCard({ board, onSelect, onShare, onDelete, onViewShares }: BoardCardProps) {
   const { t, i18n } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -160,6 +161,16 @@ export default function BoardCard({ board, onSelect, onShare, onDelete }: BoardC
             <CreditCard size={12} />
             {t('kanban.stats.cards', { count: board.cardCount })}
           </span>
+          {board.shareCount != null && board.shareCount > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onViewShares?.(board.id); }}
+              className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+              title={t('sharing.sharedWithCount', { count: board.shareCount })}
+            >
+              <Users size={12} />
+              <span className="text-[10px] font-medium">{board.shareCount}</span>
+            </button>
+          )}
           <span className="ml-auto">
             {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true, locale: dateLocale })}
           </span>

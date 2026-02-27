@@ -9,9 +9,10 @@ interface NoteListProps {
   notes: Note[];
   selectedNoteId: string | null;
   onSelectNote: (id: string) => void;
+  onShareClick?: (noteId: string) => void;
 }
 
-export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteListProps) {
+export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareClick }: NoteListProps) {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language.startsWith('it') ? it : enUS;
 
@@ -101,11 +102,15 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote }: NoteLi
               {note.isPublic && (
                 <Globe size={12} className="text-emerald-500" />
               )}
-              {note.sharedWith && note.sharedWith.length > 0 && (
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400" title={`${note.sharedWith.length} users`}>
+              {note.sharedWith && note.sharedWith.filter(s => s.status === 'ACCEPTED').length > 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onShareClick?.(note.id); }}
+                  className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                  title={t('sharing.sharedWithCount', { count: note.sharedWith.filter(s => s.status === 'ACCEPTED').length })}
+                >
                   <Users size={12} />
-                  <span className="text-[10px] font-medium">{note.sharedWith.length}</span>
-                </span>
+                  <span className="text-[10px] font-medium">{note.sharedWith.filter(s => s.status === 'ACCEPTED').length}</span>
+                </button>
               )}
               {note.attachments && note.attachments.length > 0 && (
                 <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 dark:bg-gray-800 dark:text-gray-400">

@@ -27,9 +27,10 @@ interface TaskListCardProps {
   taskList: LocalTaskList & { items: LocalTaskItem[] };
   readOnly?: boolean;
   onShareClick?: (taskListId: string) => void;
+  onViewShares?: (taskListId: string) => void;
 }
 
-export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskListCardProps) {
+export default function TaskListCard({ taskList, readOnly, onShareClick, onViewShares }: TaskListCardProps) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -163,13 +164,14 @@ export default function TaskListCard({ taskList, readOnly, onShareClick }: TaskL
 
         {/* Active collaborators badge (for own lists) */}
         {taskList.ownership !== 'shared' && taskList.sharedWith && taskList.sharedWith.filter(s => s.status === 'ACCEPTED').length > 0 && (
-          <span
-            className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full"
+          <button
+            onClick={() => onViewShares?.(taskList.id)}
+            className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
             title={taskList.sharedWith.filter(s => s.status === 'ACCEPTED').map(s => s.user.name || s.user.email).join(', ')}
           >
             <Users size={12} />
             {taskList.sharedWith.filter(s => s.status === 'ACCEPTED').length}
-          </span>
+          </button>
         )}
 
         {/* Progress */}

@@ -9,8 +9,11 @@ import { useUIStore } from '../../store/uiStore';
 import BoardCard from './components/BoardCard';
 import CreateBoardModal from './components/CreateBoardModal';
 import ShareBoardModal from './components/ShareBoardModal';
+import SharedUsersModal from '../../components/sharing/SharedUsersModal';
+import type { SharedUserInfo, SharedOwnerInfo } from '../../components/sharing/SharedUsersModal';
 import KanbanBoardPage from './KanbanBoardPage';
 import type { KanbanBoardListItem } from './types';
+import { useAuthStore } from '../../store/authStore';
 
 export default function KanbanPage() {
   const { t } = useTranslation();
@@ -22,8 +25,10 @@ export default function KanbanPage() {
   const { deleteBoard } = useKanbanMutations();
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
+  const user = useAuthStore((s) => s.user);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [sharingBoardId, setSharingBoardId] = useState<string | null>(null);
+  const [viewSharesBoardId, setViewSharesBoardId] = useState<string | null>(null);
 
   // If a boardId is selected, render the board view
   if (boardId) {
@@ -32,6 +37,22 @@ export default function KanbanPage() {
 
   const sharingBoard = sharingBoardId
     ? boards?.find((b) => b.id === sharingBoardId)
+    : null;
+
+  const viewSharesBoard = viewSharesBoardId
+    ? boards?.find((b) => b.id === viewSharesBoardId)
+    : null;
+  const viewSharesUsers: SharedUserInfo[] = viewSharesBoard?.shares?.map(s => ({
+    id: s.user.id,
+    name: s.user.name,
+    email: s.user.email,
+    avatarUrl: s.user.avatarUrl,
+    permission: s.permission,
+  })) || [];
+  const viewSharesOwner: SharedOwnerInfo | null = viewSharesBoard
+    ? (viewSharesBoard.owner
+        ? { id: viewSharesBoard.owner.id, name: viewSharesBoard.owner.name, email: viewSharesBoard.owner.email }
+        : user ? { id: user.id, name: user.name || null, email: user.email } : null)
     : null;
 
   function handleSelectBoard(id: string): void {
@@ -100,6 +121,7 @@ export default function KanbanPage() {
                 onSelect={handleSelectBoard}
                 onShare={(id) => setSharingBoardId(id)}
                 onDelete={handleDeleteBoard}
+                onViewShares={(id) => setViewSharesBoardId(id)}
               />
             ))}
           </div>
@@ -119,6 +141,13 @@ export default function KanbanPage() {
           boardTitle={sharingBoard.title}
         />
       )}
+      <SharedUsersModal
+        isOpen={!!viewSharesBoardId}
+        onClose={() => setViewSharesBoardId(null)}
+        users={viewSharesUsers}
+        currentUserId={user?.id}
+        owner={viewSharesOwner}
+      />
     </div>
   );
 }
