@@ -1095,8 +1095,8 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
         ownerId: userId,
         columns: {
           create: [
-            { title: 'Da fare', position: 0 },
-            { title: 'Completato', position: 1 },
+            { title: 'TODO', position: 0 },
+            { title: 'DONE', position: 1 },
           ],
         },
       },
