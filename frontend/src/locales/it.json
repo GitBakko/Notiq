@@ -787,6 +787,8 @@
       "kanbanColumnI18n": "Localizzazione Colonne Kanban — I nomi delle colonne predefinite ora appaiono nella tua lingua",
       "avatarPropagation": "Fix Avatar — Gli avatar utente ora vengono mostrati correttamente in tutte le finestre di condivisione",
       "dbIndexes": "Performance Database — Aggiunti indici per query piu' veloci su gruppi, chat kanban e audit",
+      "kanbanCardDetailUX": "Dettaglio Task — Layout piu' ampio, metadati su una riga, posizione scrollbar migliorata",
+      "priorityIcons": "Icone Priorita' — Icone distinte per livello (chevron, pausa) al posto delle bandierine su card Kanban, dettaglio modale e task list",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

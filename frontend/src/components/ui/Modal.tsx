@@ -9,6 +9,7 @@ const SIZE_CLASSES = {
   md: 'max-w-md',
   lg: 'max-w-lg',
   xl: 'max-w-xl',
+  '2xl': 'max-w-2xl',
 } as const;
 
 interface ModalProps {
@@ -16,10 +17,11 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   size?: keyof typeof SIZE_CLASSES;
+  noPadding?: boolean;
   children: React.ReactNode;
 }
 
-export default function Modal({ isOpen, onClose, title, size = 'md', children }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, size = 'md', noPadding = false, children }: ModalProps) {
   const { t } = useTranslation();
   const modalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(modalRef, isOpen);
@@ -53,7 +55,7 @@ export default function Modal({ isOpen, onClose, title, size = 'md', children }:
             <X size={20} />
           </button>
         </div>
-        <div className="p-6">
+        <div className={noPadding ? '' : 'p-6'}>
           {children}
         </div>
       </div>

@@ -24,6 +24,8 @@ export const changelog: VersionEntry[] = [
       { type: 'improvement', titleKey: 'whatsNew.entries.dbIndexes' },
       { type: 'fix', titleKey: 'whatsNew.entries.kanbanColumnI18n' },
       { type: 'fix', titleKey: 'whatsNew.entries.avatarPropagation' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanCardDetailUX' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.priorityIcons' },
     ],
   },
   {

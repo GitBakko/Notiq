@@ -1079,6 +1079,8 @@
       "kanbanColumnI18n": "Kanban Column Localization — Default column names now display in your language",
       "avatarPropagation": "Avatar Fix — User avatars now display correctly in all sharing modals",
       "dbIndexes": "Database Performance — Added indexes for faster group, kanban chat, and audit queries",
+      "kanbanCardDetailUX": "Task Detail Modal — Wider layout, metadata on one row, improved scrollbar positioning",
+      "priorityIcons": "Priority Icons — Distinct per-level icons (chevrons, pause) replace flags on Kanban cards, detail modal, and task lists",
       "initialRelease": "Initial release with full feature set"
     }
   },

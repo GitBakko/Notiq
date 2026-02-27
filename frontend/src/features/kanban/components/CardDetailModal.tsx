@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { isPast, startOfDay, isToday, format } from 'date-fns';
 import { timeAgo } from '../../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink, Flag } from 'lucide-react';
+import { Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import Modal from '../../../components/ui/Modal';
@@ -15,16 +15,10 @@ import * as kanbanService from '../kanbanService';
 import type { KanbanCard, KanbanCardActivity, KanbanCardPriority, NoteSearchResult, NoteSharingCheck } from '../types';
 import { DEFAULT_COLUMN_KEYS } from '../types';
 
-const PRIORITIES: (KanbanCardPriority | null)[] = [null, 'STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-
-const PRIORITY_COLORS: Record<KanbanCardPriority, string> = {
-  STANDBY: 'text-gray-400 dark:text-gray-500',
-  LOW: 'text-blue-500 dark:text-blue-400',
-  MEDIUM: 'text-yellow-500 dark:text-yellow-400',
-  HIGH: 'text-orange-500 dark:text-orange-400',
-  CRITICAL: 'text-red-500 dark:text-red-400',
-};
+import { PRIORITY_CONFIG } from '../../../utils/priorityConfig';
 import NoteLinkPicker from './NoteLinkPicker';
+
+const PRIORITIES: (KanbanCardPriority | null)[] = [null, 'STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 import SharingGapModal from './SharingGapModal';
 
 interface CardDetailModalProps {
@@ -74,8 +68,10 @@ export default function CardDetailModal({
   const [pendingNote, setPendingNote] = useState<NoteSearchResult | null>(null);
   const [isSharingGapOpen, setIsSharingGapOpen] = useState(false);
   const [showDeleteCardConfirm, setShowDeleteCardConfirm] = useState(false);
+  const [priorityOpen, setPriorityOpen] = useState(false);
 
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const priorityRef = useRef<HTMLDivElement>(null);
 
   // Sync local state when card changes
   useEffect(() => {
@@ -93,6 +89,18 @@ export default function CardDetailModal({
       textarea.style.height = `${textarea.scrollHeight}px`;
     }
   }, [editDescription]);
+
+  // Close priority dropdown on click outside
+  useEffect(() => {
+    if (!priorityOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (priorityRef.current && !priorityRef.current.contains(e.target as Node)) {
+        setPriorityOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [priorityOpen]);
 
   if (!card) return null;
 
@@ -248,9 +256,10 @@ export default function CardDetailModal({
       isOpen={isOpen}
       onClose={onClose}
       title={card.title || t('kanban.card.untitled')}
-      size="lg"
+      size="2xl"
+      noPadding
     >
-      <div className="max-h-[70vh] overflow-y-auto space-y-6">
+      <div className="max-h-[70vh] overflow-y-auto px-6 pb-6 space-y-6">
         {/* Title */}
         <div>
           {readOnly ? (
@@ -293,7 +302,7 @@ export default function CardDetailModal({
         </div>
 
         {/* Metadata grid */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Assignee */}
           <div>
             <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
@@ -374,30 +383,67 @@ export default function CardDetailModal({
           {/* Priority */}
           <div>
             <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
-              <Flag size={12} />
               {t('kanban.card.priority')}
             </label>
             {readOnly ? (
-              <span className={clsx('text-sm', card.priority ? PRIORITY_COLORS[card.priority] : 'text-gray-400 dark:text-gray-500 italic')}>
+              <span className={clsx('flex items-center gap-1.5 text-sm', card.priority ? PRIORITY_CONFIG[card.priority].color : 'text-gray-400 dark:text-gray-500 italic')}>
+                {card.priority && (() => { const Icon = PRIORITY_CONFIG[card.priority].icon; return <Icon size={14} />; })()}
                 {card.priority ? t(`kanban.priority.${card.priority}`) : '-'}
               </span>
             ) : (
-              <select
-                value={card.priority || ''}
-                onChange={(e) => handlePriorityChange((e.target.value || null) as KanbanCardPriority | null)}
-                className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p ?? 'none'} value={p ?? ''}>
-                    {p ? t(`kanban.priority.${p}`) : '-'}
-                  </option>
-                ))}
-              </select>
+              <div ref={priorityRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setPriorityOpen(!priorityOpen)}
+                  className="w-full flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
+                >
+                  {card.priority ? (
+                    (() => { const Icon = PRIORITY_CONFIG[card.priority].icon; return <Icon size={14} className={PRIORITY_CONFIG[card.priority].color} />; })()
+                  ) : (
+                    <span className="w-3.5" />
+                  )}
+                  <span className={clsx('flex-1 text-left', card.priority ? PRIORITY_CONFIG[card.priority].color : 'text-gray-400 dark:text-gray-500')}>
+                    {card.priority ? t(`kanban.priority.${card.priority}`) : '-'}
+                  </span>
+                </button>
+                {priorityOpen && (
+                  <div className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                    {PRIORITIES.map((p) => {
+                      const PIcon = p ? PRIORITY_CONFIG[p].icon : null;
+                      const pColor = p ? PRIORITY_CONFIG[p].color : 'text-gray-400 dark:text-gray-500';
+                      return (
+                        <button
+                          key={p ?? 'none'}
+                          type="button"
+                          onClick={() => {
+                            handlePriorityChange(p);
+                            setPriorityOpen(false);
+                          }}
+                          className={clsx(
+                            'w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left transition-colors',
+                            'hover:bg-gray-100 dark:hover:bg-gray-700',
+                            card.priority === p && 'bg-gray-50 dark:bg-gray-700/50'
+                          )}
+                        >
+                          {PIcon ? (
+                            <PIcon size={14} className={pColor} />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                          <span className={pColor}>
+                            {p ? t(`kanban.priority.${p}`) : '-'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
           {/* Linked note */}
-          <div className="col-span-2">
+          <div className="col-span-full">
             <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
               <FileText size={12} />
               {t('kanban.card.linkedNote')}
@@ -441,7 +487,8 @@ export default function CardDetailModal({
 
         {/* Comments section */}
         <div>
-          <h5 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+          <h5 className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+            <MessageSquare size={12} />
             {t('kanban.comment.comments')}
             {comments && comments.length > 0 && (
               <span className="ml-1 text-gray-400 dark:text-gray-500">({comments.length})</span>
@@ -524,6 +571,9 @@ export default function CardDetailModal({
           <h5 className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
             <Activity size={12} />
             {t('kanban.activity.title')}
+            {activities && activities.length > 0 && (
+              <span className="ml-1 text-gray-400 dark:text-gray-500">({activities.length})</span>
+            )}
           </h5>
 
           {activitiesLoading ? (

@@ -7,9 +7,9 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Rich Text Editor** — TipTap v2 with tables, code blocks, task lists, images, audio recording, live status bar, and list-to-Kanban/TaskList transform via context menu
 - **Real-time Collaboration** — Yjs + Hocuspocus WebSocket server with persistent user colors and avatar presence
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
-- **Encrypted Vault** — AES-encrypted notes and credentials behind PIN protection
+- **Encrypted Vault** — PBKDF2-derived AES-encrypted notes and credentials behind PIN protection
 - **Task Lists** — Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking
-- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, card priority (5 levels), note linking with smart sharing, activity history, board chat, cover images, column reordering, tiered notifications (SSE/push/email), and real-time SSE updates
+- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, card priority (5 levels with per-level icons), note linking with smart sharing, activity history, board chat, cover images, column reordering, tiered notifications (SSE/push/email), offline sync via IndexedDB, group sharing, and real-time SSE updates
 - **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, resend/cancel, smart merge duplicate detection, and clickable sharing badges with read-only user viewer
 - **Groups** — User groups with avatar, invitation management, shared notebooks, and expandable member visibility for all groups
 - **Reminders** — Date-based reminders with notification support
@@ -136,7 +136,7 @@ notiq/
 - JWT authentication with token expiration and version-based invalidation
 - Zod input validation on all API routes
 - CORS whitelist (configurable per environment)
-- Rate limiting on authentication endpoints
+- Per-route rate limiting on sensitive endpoints (auth, password reset)
 - XSS sanitization on user-generated content
 - IDOR protection on all resource endpoints
 - Structured logging (no sensitive data in logs)
