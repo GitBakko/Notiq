@@ -93,7 +93,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post('/verify-email', async (request, reply) => {
+  fastify.post('/verify-email', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     try {
       const { token } = verifyEmailSchema.parse(request.body);
       await verifyEmail(token);
@@ -109,7 +109,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     return { message: 'If the email exists, a reset link has been sent.' };
   });
 
-  fastify.post('/reset-password', async (request, reply) => {
+  fastify.post('/reset-password', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const { token, newPassword } = resetPasswordSchema.parse(request.body);
     try {
       await resetPassword(token, newPassword);
