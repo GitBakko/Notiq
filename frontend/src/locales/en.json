@@ -12,6 +12,7 @@
     "error": "Error",
     "success": "Success",
     "actions": "Actions",
+    "more": "More",
     "create": "Create",
     "user": "User",
     "synced": "Synced",
@@ -86,7 +87,10 @@
     "importEvernote": "Evernote (.enex)",
     "importOneNote": "OneNote (.mht)",
     "groups": "Groups",
-    "kanban": "Kanban"
+    "kanban": "Kanban",
+    "collapseSidebar": "Collapse Sidebar",
+    "expandSidebar": "Expand Sidebar",
+    "collapseAll": "Collapse All"
   },
   "settings": {
     "appearance": "Appearance",
@@ -1038,6 +1042,13 @@
       "sharedUsersModal": "Shared Users Modal — Click any sharing badge to see a read-only list of shared users with avatars and permissions",
       "groupMemberVisibility": "Group Member Visibility — View member lists of groups you belong to (expandable, read-only)",
       "sidebarStyleAlignment": "Sidebar Style Alignment — Consistent icons, colors, hover effects and overlay buttons across all sidebar items",
+      "sidebarCollapse": "Collapsible Sidebar — Desktop sidebar collapses to a slim icon rail for maximum workspace (Ctrl+B)",
+      "collapseAll": "Collapse All — One-click button to collapse both sidebar and note list simultaneously",
+      "responsiveToolbar": "Responsive Editor Toolbar — Toolbar adapts to screen width with overflow menu on smaller screens",
+      "editorOverflowFix": "Fixed editor overflow — Long unwrapped text no longer hides header buttons or toolbar",
+      "lineHeightValidation": "Fixed line-height validation to prevent text overlap on auto-wrapped lines",
+      "mobileCloseButton": "Improved mobile sidebar close button — Integrated into user profile area",
+      "settingsImportAlignment": "Settings import section now shows both Evernote and OneNote import options",
       "initialRelease": "Initial release with full feature set"
     }
   },

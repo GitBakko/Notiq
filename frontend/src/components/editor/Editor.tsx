@@ -548,9 +548,9 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
-      <div className="flex-1 overflow-auto min-w-0" onContextMenu={handleEditorContextMenu}>
+      <div className="flex-1 overflow-auto min-w-0 min-h-0" onContextMenu={handleEditorContextMenu}>
         <EditorContent editor={editor} />
       </div>
       {editable && (

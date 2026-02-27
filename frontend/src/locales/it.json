@@ -12,6 +12,7 @@
     "error": "Errore",
     "success": "Successo",
     "actions": "Azioni",
+    "more": "Altro",
     "create": "Crea",
     "user": "Utente",
     "synced": "Sincronizzato",
@@ -86,7 +87,10 @@
     "importEvernote": "Evernote (.enex)",
     "importOneNote": "OneNote (.mht)",
     "groups": "Gruppi",
-    "kanban": "Kanban"
+    "kanban": "Kanban",
+    "collapseSidebar": "Comprimi Sidebar",
+    "expandSidebar": "Espandi Sidebar",
+    "collapseAll": "Comprimi Tutto"
   },
   "settings": {
     "appearance": "Aspetto",
@@ -758,6 +762,13 @@
       "sharedUsersModal": "Modale Utenti Condivisi — Clicca qualsiasi badge condivisione per vedere la lista utenti con avatar e permessi",
       "groupMemberVisibility": "Visibilita' Membri Gruppo — Visualizza i membri dei gruppi a cui appartieni (espandibile, sola lettura)",
       "sidebarStyleAlignment": "Allineamento Stili Sidebar — Icone, colori, effetti hover e pulsanti overlay coerenti su tutte le voci della sidebar",
+      "sidebarCollapse": "Sidebar Comprimibile — La sidebar desktop si riduce a una barra di icone per massimizzare lo spazio di lavoro (Ctrl+B)",
+      "collapseAll": "Comprimi Tutto — Un solo click per comprimere sidebar e lista note contemporaneamente",
+      "responsiveToolbar": "Toolbar Editor Responsiva — La toolbar si adatta alla larghezza dello schermo con menu overflow",
+      "editorOverflowFix": "Corretto overflow editor — Il testo lungo non nasconde più i pulsanti dell'intestazione o la toolbar",
+      "lineHeightValidation": "Corretta validazione line-height per evitare sovrapposizione testo su righe con a capo automatico",
+      "mobileCloseButton": "Pulsante chiusura sidebar mobile migliorato — Integrato nell'area profilo utente",
+      "settingsImportAlignment": "La sezione importazione nelle impostazioni ora mostra sia Evernote che OneNote",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

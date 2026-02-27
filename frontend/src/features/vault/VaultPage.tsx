@@ -6,7 +6,7 @@ import VaultUnlock from './VaultUnlock';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, Plus, Lock, KeyRound, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, Menu, Plus, Lock, KeyRound, PanelLeftClose, PanelLeftOpen, ChevronsLeft } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
@@ -35,7 +35,7 @@ export default function VaultPage() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const isMobile = useIsMobile();
-  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed } = useUIStore();
+  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed, collapseAll } = useUIStore();
   const queryClient = useQueryClient();
   const { notebooks } = useNotebooks();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -190,13 +190,14 @@ export default function VaultPage() {
 
   const renderNoteList = () => (
     <div className={clsx("flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800", isMobile ? "w-full" : "w-80")}>
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between min-h-[48px]">
         <div className="flex items-center gap-3">
           {isMobile && (
             <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
               <Menu size={24} />
             </button>
           )}
+          <Lock size={20} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('vault.title')}</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -233,13 +234,23 @@ export default function VaultPage() {
             <Lock size={16} />
           </Button>
           {!isMobile && (
-            <button
-              onClick={toggleListCollapsed}
-              className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-              title={t('common.collapseList')}
-            >
-              <PanelLeftClose size={18} />
-            </button>
+            <>
+              <button
+                onClick={collapseAll}
+                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                title={t('sidebar.collapseAll')}
+                aria-label={t('sidebar.collapseAll')}
+              >
+                <ChevronsLeft size={18} />
+              </button>
+              <button
+                onClick={toggleListCollapsed}
+                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                title={t('common.collapseList')}
+              >
+                <PanelLeftClose size={18} />
+              </button>
+            </>
           )}
         </div>
       </div>

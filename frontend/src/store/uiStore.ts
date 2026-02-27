@@ -21,6 +21,9 @@ interface UIState {
   setNotificationSoundEnabled: (enabled: boolean) => void;
   isListCollapsed: boolean;
   toggleListCollapsed: () => void;
+  isSidebarCollapsed: boolean;
+  toggleSidebarCollapsed: () => void;
+  collapseAll: () => void;
 }
 
 const loadSort = (): { field: SortField; order: SortOrder } => {
@@ -75,6 +78,17 @@ export const useUIStore = create<UIState>((set) => ({
     const next = !state.isListCollapsed;
     localStorage.setItem('listCollapsed', String(next));
     return { isListCollapsed: next };
+  }),
+  isSidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
+  toggleSidebarCollapsed: () => set((state) => {
+    const next = !state.isSidebarCollapsed;
+    localStorage.setItem('sidebarCollapsed', String(next));
+    return { isSidebarCollapsed: next };
+  }),
+  collapseAll: () => set(() => {
+    localStorage.setItem('sidebarCollapsed', 'true');
+    localStorage.setItem('listCollapsed', 'true');
+    return { isSidebarCollapsed: true, isListCollapsed: true };
   }),
 }));
 

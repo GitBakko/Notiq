@@ -22,14 +22,14 @@ import {
   Table as TableIcon,
   Type,
   ChevronDown,
-  ChevronUp,
   ALargeSmall,
   Mic,
   MicOff,
   AudioLines,
   Lock,
   ArrowUpDown,
-  Keyboard
+  Keyboard,
+  MoreVertical
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -259,7 +259,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   return (
     <div
       className={clsx(
-        "border-b border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 z-10 relative",
+        "border-b border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 z-10 relative flex-shrink-0",
         isMobile && isKeyboardOpen
           ? "fixed left-0 right-0 shadow-lg"
           : "sticky top-0"
@@ -291,9 +291,12 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         </div>
       )}
 
-      {/* Primary toolbar row — always visible */}
-      <div className="flex gap-1 p-2 items-center flex-wrap overflow-visible">
-        {/* Bold, Italic, Underline */}
+      {/* ══ Primary toolbar row ══ */}
+      <div className={clsx(
+        "flex gap-1 p-2 items-center",
+        isMobile ? "flex-nowrap" : "flex-wrap overflow-visible"
+      )}>
+        {/* Bold, Italic, Underline — always visible */}
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive('bold')}
@@ -316,48 +319,50 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           <Underline size={18} />
         </ToolbarButton>
 
+        {/* Desktop-only: Lists, Link, Unlink inline */}
+        {!isMobile && (
+          <>
+            <Separator />
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+              isActive={editor.isActive('bulletList')}
+              title={t('editor.bulletList')}
+            >
+              <List size={18} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+              isActive={editor.isActive('orderedList')}
+              title={t('editor.orderedList')}
+            >
+              <ListOrdered size={18} />
+            </ToolbarButton>
+
+            <Separator />
+
+            <ToolbarButton
+              onClick={() => {
+                setLinkUrl(editor.getAttributes('link').href || '');
+                setShowLinkInput(true);
+              }}
+              isActive={editor.isActive('link')}
+              title={t('editor.link')}
+            >
+              <LinkIcon size={18} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => (editor.chain().focus() as any).unsetLink().run()}
+              disabled={!editor.isActive('link')}
+              title={t('editor.unlink')}
+            >
+              <Unlink size={18} />
+            </ToolbarButton>
+          </>
+        )}
+
         <Separator />
 
-        {/* BulletList, OrderedList */}
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          isActive={editor.isActive('bulletList')}
-          title={t('editor.bulletList')}
-        >
-          <List size={18} />
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          isActive={editor.isActive('orderedList')}
-          title={t('editor.orderedList')}
-        >
-          <ListOrdered size={18} />
-        </ToolbarButton>
-
-        <Separator />
-
-        {/* Link, Unlink */}
-        <ToolbarButton
-          onClick={() => {
-            setLinkUrl(editor.getAttributes('link').href || '');
-            setShowLinkInput(true);
-          }}
-          isActive={editor.isActive('link')}
-          title={t('editor.link')}
-        >
-          <LinkIcon size={18} />
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={() => (editor.chain().focus() as any).unsetLink().run()}
-          disabled={!editor.isActive('link')}
-          title={t('editor.unlink')}
-        >
-          <Unlink size={18} />
-        </ToolbarButton>
-
-        <Separator />
-
-        {/* Undo, Redo */}
+        {/* Undo, Redo — always visible */}
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}
@@ -373,14 +378,18 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           <Redo size={18} />
         </ToolbarButton>
 
-        {/* Mobile expand/collapse button */}
+        {/* Mobile: More toggle button — pushed to right edge */}
         {isMobile && (
-          <ToolbarButton
-            onClick={() => setIsToolbarExpanded(!isToolbarExpanded)}
-            title={isToolbarExpanded ? t('editor.collapseToolbar') : t('editor.expandToolbar')}
-          >
-            {isToolbarExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </ToolbarButton>
+          <>
+            <div className="flex-1" />
+            <ToolbarButton
+              onClick={() => setIsToolbarExpanded(!isToolbarExpanded)}
+              title={isToolbarExpanded ? t('editor.collapseToolbar') : t('editor.expandToolbar')}
+              isActive={isToolbarExpanded}
+            >
+              <MoreVertical size={18} />
+            </ToolbarButton>
+          </>
         )}
       </div>
 
@@ -436,119 +445,49 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         </div>
       )}
 
-      {/* Secondary toolbar row — expandable on mobile, always visible on desktop */}
+      {/* ══ Expanded panel (mobile) / Secondary row (desktop) ══ */}
       {(!isMobile || isToolbarExpanded) && (
         <div className={clsx(
           "flex gap-1 px-2 pb-2 items-center",
-          isMobile ? "overflow-x-auto flex-nowrap" : "flex-wrap overflow-visible"
+          isMobile ? "flex-wrap overflow-visible" : "flex-wrap overflow-visible"
         )}>
-          {/* Speech to Text */}
-          {browserSupportsSpeechRecognition && (
-            <ToolbarButton
-              onClick={toggleListening}
-              isActive={listening}
-              title={listening ? t('editor.stopDictation') : t('editor.startDictation')}
-            >
-              {listening ? <MicOff size={18} className="text-red-500" /> : <Mic size={18} />}
-            </ToolbarButton>
+          {/* Mobile-only: Lists + Link/Unlink (moved from primary row) */}
+          {isMobile && (
+            <>
+              <ToolbarButton
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                isActive={editor.isActive('bulletList')}
+                title={t('editor.bulletList')}
+              >
+                <List size={18} />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                isActive={editor.isActive('orderedList')}
+                title={t('editor.orderedList')}
+              >
+                <ListOrdered size={18} />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => {
+                  setLinkUrl(editor.getAttributes('link').href || '');
+                  setShowLinkInput(true);
+                }}
+                isActive={editor.isActive('link')}
+                title={t('editor.link')}
+              >
+                <LinkIcon size={18} />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => (editor.chain().focus() as any).unsetLink().run()}
+                disabled={!editor.isActive('link')}
+                title={t('editor.unlink')}
+              >
+                <Unlink size={18} />
+              </ToolbarButton>
+              <Separator />
+            </>
           )}
-
-          {/* Voice Memo */}
-          {onVoiceMemo && (
-            <ToolbarButton
-              onClick={onVoiceMemo}
-              title={t('editor.voiceMemo')}
-            >
-              <AudioLines size={18} />
-            </ToolbarButton>
-          )}
-
-          {/* Encrypted Block */}
-          <ToolbarButton
-            onClick={() => editor.chain().focus().insertContent({ type: 'encryptedBlock', attrs: { createdBy: user?.id } }).run()}
-            title={t('editor.insertEncryptedBlock')}
-          >
-            <Lock size={18} />
-          </ToolbarButton>
-
-          {/* Emoji Picker */}
-          <div className="relative">
-            <ToolbarButton
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              title={t('editor.insertEmoji')}
-              isActive={showEmojiPicker}
-            >
-              <Smile size={18} />
-            </ToolbarButton>
-            {showEmojiPicker && (
-              <div className="absolute top-full left-0 mt-2 z-50">
-                <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)}></div>
-                <div className="relative z-50">
-                  <EmojiPicker
-                    onEmojiClick={(data) => {
-                      editor.chain().focus().insertContent(data.emoji).run();
-                    }}
-                    theme={isDark ? Theme.DARK : Theme.LIGHT}
-                    width={300}
-                    height={400}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Font Family Dropdown */}
-          <ToolbarDropdown
-            options={fontFamilies}
-            value={currentFontFamily}
-            onChange={(value) => {
-              if (value) {
-                editor.chain().focus().setFontFamily(value).run();
-              } else {
-                editor.chain().focus().unsetFontFamily().run();
-              }
-            }}
-            placeholder={t('editor.fontFamily')}
-            title={t('editor.fontFamily')}
-            icon={<Type size={14} />}
-          />
-
-          {/* Font Size Dropdown */}
-          <ToolbarDropdown
-            options={FONT_SIZES}
-            value={currentFontSize}
-            onChange={(value) => {
-              if (value) {
-                editor.chain().focus().setFontSize(value).run();
-              } else {
-                editor.chain().focus().unsetFontSize().run();
-              }
-            }}
-            placeholder={t('editor.fontSize')}
-            title={t('editor.fontSize')}
-            icon={<ALargeSmall size={14} />}
-          />
-
-          {/* Line Height Dropdown */}
-          <ToolbarDropdown
-            options={[
-              { label: '1.0', value: '1.0' },
-              { label: '1.15', value: '1.15' },
-              { label: '1.5', value: '1.5' },
-              { label: '2.0', value: '2.0' },
-              { label: '2.5', value: '2.5' },
-              { label: '3.0', value: '3.0' },
-            ]}
-            value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '0.5'}
-            onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
-            placeholder={t('editor.lineHeight')}
-            title={t('editor.lineHeight')}
-            icon={<ArrowUpDown size={14} />}
-          />
-
-          <Separator />
 
           {/* Strikethrough, Code */}
           <ToolbarButton
@@ -609,9 +548,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
             <Quote size={18} />
           </ToolbarButton>
 
-          <Separator />
-
-          {/* Table — click-toggle instead of hover-only */}
+          {/* Table */}
           <div className="relative">
             <ToolbarButton
               onClick={() => setShowTableSelector(!showTableSelector)}
@@ -622,7 +559,10 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
             {showTableSelector && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowTableSelector(false)} />
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 w-max p-2">
+                <div className={clsx(
+                  "absolute top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 w-max p-2",
+                  isMobile ? "right-0" : "left-1/2 -translate-x-1/2"
+                )}>
                   <TableSelector
                     onSelect={(rows, cols) => {
                       editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
@@ -634,40 +574,151 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
             )}
           </div>
 
-          <Separator />
+          {/* Encrypted Block */}
+          <ToolbarButton
+            onClick={() => editor.chain().focus().insertContent({ type: 'encryptedBlock', attrs: { createdBy: user?.id } }).run()}
+            title={t('editor.insertEncryptedBlock')}
+          >
+            <Lock size={18} />
+          </ToolbarButton>
 
-          {/* Keyboard Shortcuts Info — click-toggle instead of hover-only */}
+          {/* Emoji Picker */}
           <div className="relative">
             <ToolbarButton
-              onClick={() => setShowKeyboardShortcuts(!showKeyboardShortcuts)}
-              title={t('editor.shortcuts.title')}
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              title={t('editor.insertEmoji')}
+              isActive={showEmojiPicker}
             >
-              <Keyboard size={18} />
+              <Smile size={18} />
             </ToolbarButton>
-            {showKeyboardShortcuts && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowKeyboardShortcuts(false)} />
-                <div className="absolute top-full right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-3 w-64">
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('editor.shortcuts.title')}</p>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600 dark:text-gray-400">{t('editor.pasteAsPlainText')}</span>
-                      <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toKanban')}</span>
-                      <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toTaskList')}</span>
-                      <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+            {showEmojiPicker && (
+              <div className={clsx("absolute top-full mt-2 z-50", isMobile ? "right-0" : "left-0")}>
+                <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)}></div>
+                <div className="relative z-50">
+                  <EmojiPicker
+                    onEmojiClick={(data) => {
+                      editor.chain().focus().insertContent(data.emoji).run();
+                    }}
+                    theme={isDark ? Theme.DARK : Theme.LIGHT}
+                    width={isMobile ? 280 : 300}
+                    height={isMobile ? 350 : 400}
+                  />
                 </div>
-              </>
+              </div>
             )}
           </div>
+
+          <Separator />
+
+          {/* Speech to Text */}
+          {browserSupportsSpeechRecognition && (
+            <ToolbarButton
+              onClick={toggleListening}
+              isActive={listening}
+              title={listening ? t('editor.stopDictation') : t('editor.startDictation')}
+            >
+              {listening ? <MicOff size={18} className="text-red-500" /> : <Mic size={18} />}
+            </ToolbarButton>
+          )}
+
+          {/* Voice Memo */}
+          {onVoiceMemo && (
+            <ToolbarButton
+              onClick={onVoiceMemo}
+              title={t('editor.voiceMemo')}
+            >
+              <AudioLines size={18} />
+            </ToolbarButton>
+          )}
+
+          <Separator />
+
+          {/* Font Family Dropdown */}
+          <ToolbarDropdown
+            options={fontFamilies}
+            value={currentFontFamily}
+            onChange={(value) => {
+              if (value) {
+                editor.chain().focus().setFontFamily(value).run();
+              } else {
+                editor.chain().focus().unsetFontFamily().run();
+              }
+            }}
+            placeholder={t('editor.fontFamily')}
+            title={t('editor.fontFamily')}
+            icon={<Type size={14} />}
+          />
+
+          {/* Font Size Dropdown */}
+          <ToolbarDropdown
+            options={FONT_SIZES}
+            value={currentFontSize}
+            onChange={(value) => {
+              if (value) {
+                editor.chain().focus().setFontSize(value).run();
+              } else {
+                editor.chain().focus().unsetFontSize().run();
+              }
+            }}
+            placeholder={t('editor.fontSize')}
+            title={t('editor.fontSize')}
+            icon={<ALargeSmall size={14} />}
+          />
+
+          {/* Line Height Dropdown */}
+          <ToolbarDropdown
+            options={[
+              { label: '1.0', value: '1.0' },
+              { label: '1.15', value: '1.15' },
+              { label: '1.5', value: '1.5' },
+              { label: '2.0', value: '2.0' },
+              { label: '2.5', value: '2.5' },
+              { label: '3.0', value: '3.0' },
+            ]}
+            value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || ''}
+            onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
+            placeholder={t('editor.lineHeight')}
+            title={t('editor.lineHeight')}
+            icon={<ArrowUpDown size={14} />}
+          />
+
+          {/* Keyboard Shortcuts Info (desktop only) */}
+          {!isMobile && (
+            <>
+              <Separator />
+              <div className="relative">
+                <ToolbarButton
+                  onClick={() => setShowKeyboardShortcuts(!showKeyboardShortcuts)}
+                  title={t('editor.shortcuts.title')}
+                >
+                  <Keyboard size={18} />
+                </ToolbarButton>
+                {showKeyboardShortcuts && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowKeyboardShortcuts(false)} />
+                    <div className="absolute top-full right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-3 w-64">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('editor.shortcuts.title')}</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-600 dark:text-gray-400">{t('editor.pasteAsPlainText')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toKanban')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toTaskList')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

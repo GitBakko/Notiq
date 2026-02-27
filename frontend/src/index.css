@@ -171,6 +171,8 @@ body {
 /* Override Tailwind Typography prose max-width (65ch) */
 .ProseMirror {
   max-width: none !important;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* Table Styles */
