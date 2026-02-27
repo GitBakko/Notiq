@@ -129,13 +129,16 @@ export const approveInvitationRequest = async (requestId: string, adminId: strin
     data: { status: 'APPROVED' }
   });
 
+  // Resolve locale: check if requester already exists as user, otherwise default to 'en'
+  const existingUser = await prisma.user.findUnique({ where: { email: req.email }, select: { locale: true } });
+  const locale = existingUser?.locale || 'en';
+
   // Send Email
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const emailService = require('./email.service');
   await emailService.sendNotificationEmail(req.email, 'INVITE_APPROVED', {
     code,
-    locale: 'it' // Default or guess? No locale in request. Check if we can infer or default to IT given user language.
-    // TODO: Add locale to Request model? For now default IT as per user preference likely.
+    locale,
   });
 };
 
@@ -148,10 +151,14 @@ export const rejectInvitationRequest = async (requestId: string) => {
     data: { status: 'REJECTED' }
   });
 
+  // Resolve locale: check if requester already exists as user, otherwise default to 'en'
+  const existingUser = await prisma.user.findUnique({ where: { email: req.email }, select: { locale: true } });
+  const locale = existingUser?.locale || 'en';
+
   // Send Email
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const emailService = require('./email.service');
   await emailService.sendNotificationEmail(req.email, 'INVITE_REJECTED', {
-    locale: 'it'
+    locale,
   });
 };

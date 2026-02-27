@@ -14,7 +14,10 @@ const escapeHtml = (str: string): string => {
 
 const FRONTEND_URL = process.env.FRONTEND_URL;
 if (!FRONTEND_URL) {
-  console.warn('FRONTEND_URL is not defined in .env! Email links will be broken.');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FRONTEND_URL must be defined in .env for production. Email links will be broken without it.');
+  }
+  logger.warn('FRONTEND_URL is not defined in .env! Email links will be broken.');
 }
 
 const smtpHost = process.env.SMTP_HOST;

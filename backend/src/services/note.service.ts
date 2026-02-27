@@ -122,12 +122,12 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
       sharedWith: {
         include: {
           user: {
-            select: { id: true, name: true, email: true }
+            select: { id: true, name: true, email: true, avatarUrl: true }
           }
         }
       },
       user: {
-        select: { id: true, name: true, email: true }
+        select: { id: true, name: true, email: true, avatarUrl: true }
       },
       _count: { select: { attachments: true } }
     }

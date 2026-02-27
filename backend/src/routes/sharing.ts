@@ -387,7 +387,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
             title: true,
             description: true,
             ownerId: true,
-            owner: { select: { id: true, name: true, email: true } },
+            owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
         },
       },

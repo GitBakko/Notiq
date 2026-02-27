@@ -295,7 +295,7 @@ model AuditLog {
   details   Json?
   createdAt DateTime @default(now())
 
-  @@index([userId])
+  @@index([userId, createdAt])
 }
 
 enum RequestStatus {
@@ -347,6 +347,7 @@ model GroupMember {
   joinedAt DateTime @default(now())
 
   @@id([groupId, userId])
+  @@index([userId])
 }
 
 model PendingGroupInvite {
@@ -502,7 +503,8 @@ model KanbanBoardChat {
   content   String
   createdAt DateTime    @default(now())
 
-  @@index([boardId])
+  @@index([boardId, createdAt])
+  @@index([authorId])
 }
 
 enum KanbanCardPriority {

@@ -211,9 +211,9 @@ export const getAcceptedSharedNotes = async (userId: string) => {
             select: { id: true, filename: true, mimeType: true, size: true }
           },
           sharedWith: {
-            include: { user: { select: { id: true, name: true, email: true } } }
+            include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } }
           },
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         }
       }
     }
@@ -519,7 +519,7 @@ export const shareKanbanBoard = async (
     where: { boardId_userId: { boardId, userId: targetUser.id } },
     update: { permission, status: 'PENDING' },
     create: { boardId, userId: targetUser.id, permission, status: 'PENDING' },
-    include: { user: { select: { id: true, name: true, email: true } } },
+    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
 
   const sharer = await prisma.user.findUnique({
@@ -595,7 +595,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedNote.findMany({
       where: { note: { userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         note: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -603,7 +603,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedNotebook.findMany({
       where: { notebook: { userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         notebook: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -611,7 +611,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedTaskList.findMany({
       where: { taskList: { userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         taskList: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -619,7 +619,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedKanbanBoard.findMany({
       where: { board: { ownerId: userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         board: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },

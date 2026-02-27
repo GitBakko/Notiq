@@ -34,11 +34,11 @@ export interface LocalNote {
     userId: string;
     permission: 'READ' | 'WRITE';
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
-    user: { id: string; name: string | null; email: string };
+    user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
-  sharedByUser?: { id: string; name: string | null; email: string } | null;
+  sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   syncStatus: 'synced' | 'created' | 'updated';
 }
 
@@ -77,7 +77,7 @@ export interface LocalTaskList {
     userId: string;
     permission: 'READ' | 'WRITE';
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
-    user: { id: string; name: string | null; email: string };
+    user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
   items?: LocalTaskItem[];
   syncStatus: 'synced' | 'created' | 'updated';
