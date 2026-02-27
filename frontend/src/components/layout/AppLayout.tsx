@@ -39,7 +39,7 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900 overflow-hidden">
+    <div className="flex h-screen bg-white dark:bg-gray-900 overflow-hidden safe-area-top safe-area-bottom">
       <CommandMenu />
       {/* Mobile Sidebar Overlay */}
       {isMobile && isSidebarOpen && (
@@ -59,7 +59,7 @@ export default function AppLayout() {
           {isMobile && (
             <button
               onClick={closeSidebar}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 safe-area-top"
             >
               <X size={20} />
             </button>
