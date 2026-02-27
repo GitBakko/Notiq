@@ -68,6 +68,7 @@ const ToolbarButton = ({
     onClick={onClick}
     disabled={disabled}
     title={title}
+    aria-label={title}
     className={clsx(
       "p-2 sm:p-1.5 rounded transition-colors flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-[36px] md:min-h-[36px]",
       isActive

@@ -93,7 +93,7 @@ export default function BottomSheet({ isOpen, onClose, title, children, size = '
         ref={sheetRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title || 'Dialog'}
         className={clsx(
           'absolute bottom-0 left-0 right-0',
           'bg-white dark:bg-gray-900',
