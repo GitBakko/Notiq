@@ -9,7 +9,7 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
 - **Encrypted Vault** — AES-encrypted notes and credentials behind PIN protection
 - **Task Lists** — Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking
-- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, note linking with smart sharing, activity history, board chat, cover images, column reordering, and real-time SSE updates
+- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, card priority (5 levels), note linking with smart sharing, activity history, board chat, cover images, column reordering, tiered notifications (SSE/push/email), and real-time SSE updates
 - **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, resend/cancel, smart merge duplicate detection, and clickable sharing badges with read-only user viewer
 - **Groups** — User groups with avatar, invitation management, shared notebooks, and expandable member visibility for all groups
 - **Reminders** — Date-based reminders with notification support
@@ -17,7 +17,7 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Import** — Evernote (.enex) and OneNote (.mht, .html, .zip) import with attachment support
 - **Multi-language** — English and Italian (i18next)
 - **PWA** — Installable, push notifications via Web Push API
-- **Collapsible Panels** — Collapse the note/vault list for a wider editor view, with persistent state
+- **Collapsible Panels** — Sidebar icon rail + collapsible note/vault list for maximum workspace, with persistent state
 - **Admin Panel** — User management, audit logs, invitation system, configurable invitation expiry
 
 ## Tech Stack

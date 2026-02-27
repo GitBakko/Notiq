@@ -11,6 +11,18 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.6.9',
+    date: '2026-02-27',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanPriority' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanCommentNotifications' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanMoveNotifications' },
+      { type: 'feature', titleKey: 'whatsNew.entries.emailNotificationPreference' },
+      { type: 'fix', titleKey: 'whatsNew.entries.italianTimeAgoFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanCommentCountFix' },
+    ],
+  },
+  {
     version: '1.6.8',
     date: '2026-02-27',
     entries: [

@@ -1063,6 +1063,12 @@
       "lineHeightValidation": "Fixed line-height validation to prevent text overlap on auto-wrapped lines",
       "mobileCloseButton": "Improved mobile sidebar close button — Integrated into user profile area",
       "settingsImportAlignment": "Settings import section now shows both Evernote and OneNote import options",
+      "kanbanPriority": "Card Priority — Set priority levels (Standby, Low, Medium, High, Critical) on Kanban cards with color-coded flags",
+      "kanbanCommentNotifications": "Comment Notifications — Get notified when comments are added or deleted on Kanban cards",
+      "kanbanMoveNotifications": "Card Move Notifications — Get notified when cards are moved between columns",
+      "emailNotificationPreference": "Email Notification Preference — Toggle email notifications on/off in Settings",
+      "italianTimeAgoFix": "Fixed Italian timestamps showing future tense instead of past tense",
+      "kanbanCommentCountFix": "Fixed comment count not showing on Kanban cards",
       "initialRelease": "Initial release with full feature set"
     }
   },

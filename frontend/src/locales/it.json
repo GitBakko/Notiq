@@ -771,6 +771,12 @@
       "lineHeightValidation": "Corretta validazione line-height per evitare sovrapposizione testo su righe con a capo automatico",
       "mobileCloseButton": "Pulsante chiusura sidebar mobile migliorato — Integrato nell'area profilo utente",
       "settingsImportAlignment": "La sezione importazione nelle impostazioni ora mostra sia Evernote che OneNote",
+      "kanbanPriority": "Priorità Card — Imposta livelli di priorità (In standby, Bassa, Media, Alta, Altissima) sulle card Kanban con bandierine colorate",
+      "kanbanCommentNotifications": "Notifiche Commenti — Ricevi notifiche quando vengono aggiunti o eliminati commenti sulle card Kanban",
+      "kanbanMoveNotifications": "Notifiche Spostamento Card — Ricevi notifiche quando le card vengono spostate tra le colonne",
+      "emailNotificationPreference": "Preferenza Notifiche Email — Attiva/disattiva le notifiche email nelle Impostazioni",
+      "italianTimeAgoFix": "Corretto il formato delle date in italiano che mostrava il tempo futuro invece del passato",
+      "kanbanCommentCountFix": "Corretto il conteggio dei commenti non visibile sulle card Kanban",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
