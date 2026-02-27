@@ -17,6 +17,7 @@ export interface KanbanFilters {
   hasComments: 'all' | 'yes' | 'no';
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const defaultKanbanFilters: KanbanFilters = {
   search: '',
   assigneeIds: [],
@@ -25,6 +26,7 @@ export const defaultKanbanFilters: KanbanFilters = {
   hasComments: 'all',
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function isFiltersActive(filters: KanbanFilters): boolean {
   return (
     filters.search.trim() !== '' ||
@@ -35,6 +37,7 @@ export function isFiltersActive(filters: KanbanFilters): boolean {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function cardMatchesFilters(card: KanbanCard, filters: KanbanFilters): boolean {
   // Search
   if (filters.search.trim()) {

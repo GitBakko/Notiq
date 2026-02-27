@@ -6,7 +6,7 @@ export interface Notification {
   type: 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'SYSTEM' | 'REMINDER' | 'CHAT_MESSAGE' | 'GROUP_INVITE' | 'GROUP_REMOVE' | 'TASK_ITEM_ADDED' | 'TASK_ITEM_CHECKED' | 'TASK_ITEM_REMOVED' | 'TASK_LIST_SHARED' | 'KANBAN_BOARD_SHARED' | 'KANBAN_CARD_ASSIGNED' | 'KANBAN_COMMENT_ADDED' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED';
   title: string;
   message: string;
-  data?: any;
+  data?: Record<string, unknown>;
   isRead: boolean;
   createdAt: string;
 }

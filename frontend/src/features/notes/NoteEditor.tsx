@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical } from 'lucide-react';
-import Editor from '../../components/editor/Editor';
+import Editor, { type EditorHandle } from '../../components/editor/Editor';
 import { revokeShare, updateNoteLocalOnly, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
@@ -71,7 +71,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const mobileMoreRef = useRef<HTMLDivElement>(null);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
-    const [collaborators, setCollaborators] = useState<any[]>([]);
+    const [collaborators, setCollaborators] = useState<{ name?: string; color?: string; avatarUrl?: string | null; clientId?: number }[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -159,7 +159,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         const updateCollaborators = () => {
             const states = provider.awareness?.getStates();
             if (states) {
-                const activeUsers = Array.from(states.entries()).map(([clientId, s]: [number, any]) => ({ ...s.user, clientId })).filter((u: any) => u && u.name);
+                const activeUsers = Array.from(states.entries()).map(([clientId, s]: [number, Record<string, unknown>]) => ({ ...(s.user as { name?: string; color?: string; avatarUrl?: string | null } || {}), clientId })).filter((u) => u && u.name);
                 setCollaborators(activeUsers);
             }
         };
@@ -225,8 +225,9 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             try {
                 await uploadAttachment(note.id, file);
                 toast.success(t('notes.uploaded', { name: file.name }));
-            } catch (error: any) {
-                if (error?.response?.data?.message === 'QUOTA_EXCEEDED' || error.message === 'QUOTA_EXCEEDED') {
+            } catch (error: unknown) {
+                const axiosErr = error as { response?: { data?: { message?: string } }; message?: string };
+                if (axiosErr.response?.data?.message === 'QUOTA_EXCEEDED' || axiosErr.message === 'QUOTA_EXCEEDED') {
                     toast.error(t('actions.quotaExceeded'));
                 } else {
                     toast.error(t('notes.uploadFailed', { name: file.name }));
@@ -270,7 +271,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             if (editor && attachmentToDelete.url) {
                 const { doc, tr } = editor.state;
                 const nodesToRemove: { pos: number; size: number }[] = [];
-                doc.descendants((node: any, pos: number) => {
+                doc.descendants((node: { type: { name: string }; attrs: { src?: string }; nodeSize: number }, pos: number) => {
                     if (node.type.name === 'image' && node.attrs.src === attachmentToDelete.url) {
                         nodesToRemove.push({ pos, size: node.nodeSize });
                     }
@@ -287,11 +288,11 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             }
 
             // Update cached note data without re-fetching (avoids stale content overwriting editor)
-            queryClient.setQueryData(['note', note.id], (oldData: any) => {
+            queryClient.setQueryData(['note', note.id], (oldData: Record<string, unknown> | undefined) => {
                 if (!oldData) return oldData;
                 return {
                     ...oldData,
-                    attachments: oldData.attachments?.filter((a: any) => a.id !== attachmentToDelete.id)
+                    attachments: (oldData.attachments as { id: string }[] | undefined)?.filter((a) => a.id !== attachmentToDelete.id)
                 };
             });
             queryClient.invalidateQueries({ queryKey: ['notes'] });
@@ -314,7 +315,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
 
     // Focus Handler
-    const editorRef = useRef<any>(null);
+    const editorRef = useRef<EditorHandle | null>(null);
 
     const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Tab') {
@@ -397,7 +398,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                 selectedNotebookId={note.notebookId}
                                 onSelect={(notebookId) => {
                                     saveNote({ notebookId });
-                                    queryClient.setQueryData(['note', note.id], (old: any) =>
+                                    queryClient.setQueryData(['note', note.id], (old: Record<string, unknown> | undefined) =>
                                         old ? { ...old, notebookId } : old
                                     );
                                     queryClient.invalidateQueries({ queryKey: ['notes'] });
@@ -682,7 +683,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
             <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
 
-            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); if (note.isVault) { await permanentlyDeleteNote(note.id); } else { await deleteNote(note.id); } toast.success(t(note.isVault ? 'vault.deletedPermanently' : 'notes.deleted')); onBack ? onBack() : window.history.back(); }} title={t(note.isVault ? 'vault.deletePermanently' : 'notes.moveToTrash')} message={t(note.isVault ? 'vault.deletePermanentlyConfirm' : 'notes.moveToTrashConfirm')} confirmText={t(note.isVault ? 'common.deleteForever' : 'notes.moveToTrashAction')} variant="danger" />
+            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); if (note.isVault) { await permanentlyDeleteNote(note.id); } else { await deleteNote(note.id); } toast.success(t(note.isVault ? 'vault.deletedPermanently' : 'notes.deleted')); if (onBack) { onBack(); } else { window.history.back(); } }} title={t(note.isVault ? 'vault.deletePermanently' : 'notes.moveToTrash')} message={t(note.isVault ? 'vault.deletePermanentlyConfirm' : 'notes.moveToTrashConfirm')} confirmText={t(note.isVault ? 'common.deleteForever' : 'notes.moveToTrashAction')} variant="danger" />
 
             {isAttachmentSidebarOpen && <AttachmentSidebar noteId={note.id} attachments={note.attachments || []} onClose={() => setIsAttachmentSidebarOpen(false)} onDelete={handleAttachmentDeleteRequest} onAdd={() => fileInputRef.current?.click()} />}
 

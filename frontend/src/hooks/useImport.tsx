@@ -12,7 +12,7 @@ import { X, FileDown } from 'lucide-react';
 interface UseImportOptions {
   source?: 'evernote' | 'onenote';
   onSuccess?: (count: number) => void;
-  onError?: (error: any) => void;
+  onError?: (error: unknown) => void;
 }
 
 export const useImport = (options?: UseImportOptions) => {

@@ -60,9 +60,10 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
       toast.success(t('sharing.inviteSuccess'));
       setEmail('');
       queryClient.invalidateQueries({ queryKey: ['note', noteId] });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Share failed', error);
-      if (error.response?.status === 404) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr.response?.status === 404) {
         toast.error(t('sharing.userNotFound'));
       } else {
         toast.error(t('sharing.failed'));

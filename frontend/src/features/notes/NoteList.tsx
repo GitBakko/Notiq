@@ -23,7 +23,7 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
       const json = JSON.parse(content);
       if (typeof json === 'object' && json !== null) {
         // Recursive function to extract text
-        const getText = (node: any): string => {
+        const getText = (node: { type?: string; text?: string; content?: unknown[] }): string => {
           if (node.type === 'text' && node.text) {
             return node.text;
           }
@@ -34,7 +34,7 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
         };
         return getText(json);
       }
-    } catch (e) {
+    } catch {
       // Not JSON, treat as HTML string
       return content.replace(/<[^>]*>?/gm, '');
     }

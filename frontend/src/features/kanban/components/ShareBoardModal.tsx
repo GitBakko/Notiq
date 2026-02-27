@@ -60,8 +60,9 @@ export default function ShareBoardModal({
       setEmail('');
       toast.success(t('kanban.share.shareSuccess'));
       queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
-    } catch (error: any) {
-      if (error.response?.status === 404) {
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr.response?.status === 404) {
         toast.error(t('kanban.share.userNotFound'));
       } else {
         toast.error(t('kanban.share.shareFailed'));

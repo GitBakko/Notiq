@@ -40,9 +40,10 @@ export const uploadAttachment = async (noteId: string, file: File) => {
 export const deleteAttachment = async (noteId: string, attachmentId: string) => {
     try {
         await api.delete(`/attachments/${attachmentId}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
         // If 404, the attachment is already gone from the server — clean up locally anyway
-        if (error?.response?.status !== 404) {
+        const axiosErr = error as { response?: { status?: number } };
+        if (axiosErr.response?.status !== 404) {
             throw error;
         }
     }

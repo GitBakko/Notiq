@@ -63,7 +63,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
       onUpdate();
       setSearch('');
       setIsOpen(false); // Close after adding
-    } catch (error) {
+    } catch {
       toast.error(t('tags.addFailed'));
     }
   };
@@ -88,7 +88,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
     try {
       await removeTagFromNote(noteId, tagId);
       onUpdate();
-    } catch (error) {
+    } catch {
       toast.error(t('tags.removeFailed'));
     }
   };

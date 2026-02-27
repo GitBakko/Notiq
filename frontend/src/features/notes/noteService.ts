@@ -71,7 +71,7 @@ export const revokeShare = async (id: string, userId: string) => {
 };
 
 export const getSharedNotes = async () => {
-  const res = await api.get<any[]>('/share/notes'); // Returns SharedNote[] which includes note data
+  const res = await api.get<Record<string, unknown>[]>('/share/notes'); // Returns SharedNote[] which includes note data
   return res.data;
 };
 

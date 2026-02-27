@@ -85,7 +85,7 @@ export default function RegisterPage() {
       }
       if (!msg.includes(' ')) return t(msg);
       return t(msg);
-    } catch (e) {
+    } catch {
       return t(msg);
     }
   };

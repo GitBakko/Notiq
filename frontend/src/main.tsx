@@ -50,7 +50,7 @@ if (window.location.pathname.startsWith('/uploads/') || window.location.pathname
   // Attempt to unregister Service Workers which might be serving this page via cache
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function (registrations) {
-      for (let registration of registrations) {
+      for (const registration of registrations) {
         registration.unregister();
       }
       // Reload the page to retry without Service Worker

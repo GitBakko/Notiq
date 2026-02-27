@@ -59,9 +59,10 @@ export default function TaskListSharingModal({ isOpen, onClose, taskListId, shar
       toast.success(t('sharing.inviteSuccess'));
       setEmail('');
       queryClient.invalidateQueries({ queryKey: ['taskList', taskListId] });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Share failed', error);
-      if (error.response?.status === 404) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr.response?.status === 404) {
         toast.error(t('sharing.userNotFound'));
       } else {
         toast.error(t('sharing.failed'));

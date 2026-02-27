@@ -52,9 +52,10 @@ export default function NotebookSharingModal({ isOpen, onClose, notebookId, note
       toast.success(t('sharing.inviteSuccess'));
       setEmail('');
       // Optimistic update or refetch would go here
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Share failed', error);
-      if (error.response?.status === 404) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr.response?.status === 404) {
         toast.error(t('sharing.userNotFound'));
       } else {
         toast.error(t('sharing.failed'));

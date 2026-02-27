@@ -119,9 +119,9 @@ export default function TrashPage() {
                       // Attempt to parse as JSON first
                       const jsonContent = JSON.parse(note.content);
                       // Simple text extraction from Tiptap JSON
-                      const text = jsonContent.content?.map((p: any) => p.content?.map((c: any) => c.text).join('')).join(' ') || '';
+                      const text = jsonContent.content?.map((p: { content?: { text?: string }[] }) => p.content?.map((c) => c.text).join('')).join(' ') || '';
                       return text || t('notes.noContent');
-                    } catch (e) {
+                    } catch {
                       // Fallback to plain text / HTML strip (legacy)
                       return note.content.replace(/<[^>]*>?/gm, '') || t('notes.noContent');
                     }

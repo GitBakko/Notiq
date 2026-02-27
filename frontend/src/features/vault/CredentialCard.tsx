@@ -93,9 +93,9 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
           )}
           {note.tags && note.tags.length > 0 && (
             <div className="flex gap-1 mt-1 flex-wrap">
-              {note.tags.map((t: any) => (
-                <span key={t.tag?.id || t.tagId} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                  {t.tag?.name || ''}
+              {note.tags.map((tagEntry: { tag?: { id: string; name: string }; tagId?: string }) => (
+                <span key={tagEntry.tag?.id || tagEntry.tagId} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                  {tagEntry.tag?.name || ''}
                 </span>
               ))}
             </div>

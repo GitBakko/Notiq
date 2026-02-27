@@ -4,6 +4,7 @@ declare module 'react-speech-recognition' {
     clearTranscriptOnListen?: boolean;
     commands?: {
       command: string | string[] | RegExp;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       callback: (...args: any[]) => void;
       isFuzzyMatch?: boolean;
       matchInterim?: boolean;
@@ -18,6 +19,7 @@ declare module 'react-speech-recognition' {
     stopListening(): Promise<void>;
     abortListening(): Promise<void>;
     browserSupportsSpeechRecognition(): boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     applyPolyfill(speechRecognitionPolyfill: any): void;
   }
 

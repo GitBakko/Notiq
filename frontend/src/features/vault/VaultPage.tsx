@@ -115,7 +115,7 @@ export default function VaultPage() {
       })
       .filter(note => {
         if (!selectedTagId) return true;
-        return note.tags?.some((t: any) => t.tag?.id === selectedTagId);
+        return note.tags?.some((tagEntry: { tag?: { id: string } }) => tagEntry.tag?.id === selectedTagId);
       })
       .filter(note => {
         if (!searchQuery) return true;

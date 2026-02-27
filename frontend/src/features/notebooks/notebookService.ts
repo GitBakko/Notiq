@@ -90,6 +90,6 @@ export const revokeNotebookShare = async (id: string, userId: string) => {
 };
 
 export const getSharedNotebooks = async () => {
-  const res = await api.get<any[]>('/share/notebooks');
+  const res = await api.get<Record<string, unknown>[]>('/share/notebooks');
   return res.data;
 };

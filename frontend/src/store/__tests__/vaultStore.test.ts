@@ -170,6 +170,7 @@ describe('vaultStore', () => {
           lockVault: () => {},
           resetVault: () => {},
         };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub doesn't implement full store interface
         const persisted = options.partialize(fullState as any);
         expect(persisted).toEqual({ isSetup: true, pinHash: 'some-hash' });
         expect(persisted).not.toHaveProperty('isUnlocked');

@@ -160,6 +160,7 @@ export const syncPull = async () => {
 
     // --- Task Lists Pull ---
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const taskListsRes = await api.get<any[]>('/tasklists');
       const serverTaskLists = taskListsRes.data;
 
@@ -168,14 +169,14 @@ export const syncPull = async () => {
         const dirtyIds = new Set(dirtyTaskLists.map(tl => tl.id));
 
         const taskListsToPut: LocalTaskList[] = serverTaskLists
-          .filter((tl: any) => !dirtyIds.has(tl.id))
-          .map((tl: any) => ({
+          .filter((tl: { id: string }) => !dirtyIds.has(tl.id))
+          .map((tl: Record<string, unknown>) => ({
             ...tl,
             ownership: 'owned' as const,
             syncStatus: 'synced' as const,
           }));
 
-        const serverIds = new Set(serverTaskLists.map((tl: any) => tl.id));
+        const serverIds = new Set(serverTaskLists.map((tl: { id: string }) => tl.id));
         const allLocalSynced = await db.taskLists.where('syncStatus').equals('synced')
           .filter(tl => tl.ownership !== 'shared').toArray();
         const toDeleteIds = allLocalSynced
@@ -193,7 +194,7 @@ export const syncPull = async () => {
         // Sync items for each task list
         for (const tl of taskListsToPut) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: any) => ({
+            const itemsToPut = tl.items.map((item: Record<string, unknown>) => ({
               ...item,
               syncStatus: 'synced' as const,
             }));
@@ -207,11 +208,12 @@ export const syncPull = async () => {
 
     // --- Shared Task Lists Pull ---
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sharedRes = await api.get<any[]>('/share/tasklists/accepted');
       const sharedTaskLists = sharedRes.data;
 
       await db.transaction('rw', db.taskLists, db.taskItems, async () => {
-        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: any) => ({
+        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: Record<string, unknown> & { _sharedPermission?: string }) => ({
           ...tl,
           ownership: 'shared' as const,
           sharedPermission: tl._sharedPermission,
@@ -233,7 +235,7 @@ export const syncPull = async () => {
 
         for (const tl of sharedMapped) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: any) => ({
+            const itemsToPut = tl.items.map((item: Record<string, unknown>) => ({
               ...item,
               syncStatus: 'synced' as const,
             }));
@@ -441,13 +443,13 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'TASK_ITEM') {
           if (item.type === 'CREATE') {
-            const taskListId = (item.data as any)?.taskListId;
+            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
             await api.post(`/tasklists/${taskListId}/items`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
-            const taskListId = (item.data as any)?.taskListId;
+            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
             await api.put(`/tasklists/${taskListId}/items/${item.entityId}`, item.data);
           } else if (item.type === 'DELETE') {
-            const taskListId = (item.data as any)?.taskListId;
+            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
             await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
           }
         } else if (item.entity === 'KANBAN_BOARD') {
@@ -466,7 +468,7 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'KANBAN_COLUMN') {
           if (item.type === 'CREATE') {
-            const boardId = (item.data as any)?.boardId;
+            const boardId = (item.data as Record<string, unknown> | undefined)?.boardId as string | undefined;
             await api.post(`/kanban/boards/${boardId}/columns`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
             await api.put(`/kanban/columns/${item.entityId}`, item.data);
@@ -475,7 +477,7 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'KANBAN_CARD') {
           if (item.type === 'CREATE') {
-            const columnId = (item.data as any)?.columnId;
+            const columnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
             await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
             await api.put(`/kanban/cards/${item.entityId}`, item.data);
@@ -557,8 +559,8 @@ export const syncPush = async () => {
           }
         }
 
-      } catch (error: any) {
-        const status = error?.response?.status;
+      } catch (error: unknown) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
         if (status === 404 || status === 410) {
           // Resource no longer exists on server — remove from queue to stop infinite retries
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);

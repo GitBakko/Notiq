@@ -22,9 +22,10 @@ export default function VerifyEmailPage() {
       try {
         await api.post('/auth/verify-email', { token });
         setStatus('success');
-      } catch (err: any) {
+      } catch (err: unknown) {
         setStatus('error');
-        setErrorMsg(err.response?.data?.message || 'Verification failed');
+        const axiosErr = err as { response?: { data?: { message?: string } } };
+        setErrorMsg(axiosErr.response?.data?.message || 'Verification failed');
       }
     };
 

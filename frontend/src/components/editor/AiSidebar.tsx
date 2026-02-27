@@ -91,7 +91,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
       const match = content.match(/\[.*?\]/s);
       if (match) {
         try {
-          return JSON.parse(match[0]).filter((t: any) => typeof t === 'string');
+          return JSON.parse(match[0]).filter((t: unknown) => typeof t === 'string');
         } catch { /* ignore */ }
       }
     }

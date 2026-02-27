@@ -157,7 +157,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const { user } = useAuthStore();
   const isMobile = useIsMobile();
   const { isKeyboardOpen, keyboardHeight } = useVisualViewport();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<{ user?: { name?: string; color?: string; avatarUrl?: string | null } }[]>([]);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
@@ -206,12 +206,12 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         const currentClientId = currentProvider.awareness.clientID;
 
         const activeUsers = Array.from(states.entries())
-          .filter(([clientId, state]: [number, any]) =>
+          .filter(([clientId, state]: [number, Record<string, unknown>]) =>
             clientId !== currentClientId &&
             state.user &&
-            state.user.name
+            (state.user as { name?: string }).name
           )
-          .map(([_, state]) => state);
+          .map(([, state]) => state as { user?: { name?: string; color?: string; avatarUrl?: string | null } });
 
         setUsers(activeUsers);
       }
@@ -312,6 +312,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           <Italic size={18} />
         </ToolbarButton>
         <ToolbarButton
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
           isActive={editor.isActive('underline')}
           title={t('editor.underline')}
@@ -351,6 +352,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
               <LinkIcon size={18} />
             </ToolbarButton>
             <ToolbarButton
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={() => (editor.chain().focus() as any).unsetLink().run()}
               disabled={!editor.isActive('link')}
               title={t('editor.unlink')}
@@ -405,8 +407,10 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
               if (e.key === 'Enter') {
                 e.preventDefault();
                 if (linkUrl.trim()) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: linkUrl.trim() }).run();
                 } else {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
                 }
                 setShowLinkInput(false);
@@ -425,8 +429,10 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           <button
             onClick={() => {
               if (linkUrl.trim()) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: linkUrl.trim() }).run();
               } else {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
               }
               setShowLinkInput(false);
@@ -479,6 +485,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
                 <LinkIcon size={18} />
               </ToolbarButton>
               <ToolbarButton
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 onClick={() => (editor.chain().focus() as any).unsetLink().run()}
                 disabled={!editor.isActive('link')}
                 title={t('editor.unlink')}

@@ -444,7 +444,7 @@ function createAllCardsSheet(
   workbook: ExcelJS.Workbook,
   allCards: CardData[],
   t: (key: string, opts?: Record<string, unknown>) => string,
-  _locale: Locale,
+  _locale: Locale, // eslint-disable-line @typescript-eslint/no-unused-vars
 ): void {
   const ws = workbook.addWorksheet(t('kanban.export.sheetAllCards'), {
     properties: { tabColor: { argb: COLORS.blue600 } },

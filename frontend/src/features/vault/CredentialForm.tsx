@@ -268,7 +268,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   const handleDelete = async () => {
     await permanentlyDeleteNote(note.id);
     toast.success(t('vault.credential.deleted'));
-    onDelete ? onDelete() : onBack();
+    if (onDelete) { onDelete(); } else { onBack(); }
   };
 
   // Flush pending save and abort fetches on unmount

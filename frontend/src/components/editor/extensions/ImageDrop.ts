@@ -21,7 +21,7 @@ export const ImageDrop = Image.extend({
       width: {
         default: null,
         parseHTML: (element: HTMLElement) => element.style.width || element.getAttribute('width') || null,
-        renderHTML: (attributes: Record<string, any>) => {
+        renderHTML: (attributes: Record<string, unknown>) => {
           if (!attributes.width) return {};
           return { style: `width: ${attributes.width}` };
         },
@@ -34,9 +34,10 @@ export const ImageDrop = Image.extend({
   },
 
   addProseMirrorPlugins() {
-    const uploadFn = (this.options as any).uploadFn as ((file: File) => Promise<string>) | null;
-    const onUploaded = (this.options as any).onUploaded as (() => void) | null;
-    const onRemoved = (this.options as any).onRemoved as ((src: string) => void) | null;
+    const opts = this.options as unknown as { uploadFn?: (file: File) => Promise<string>; onUploaded?: () => void; onRemoved?: (src: string) => void };
+    const uploadFn = opts.uploadFn ?? null;
+    const onUploaded = opts.onUploaded ?? null;
+    const onRemoved = opts.onRemoved ?? null;
 
     return [
       ...(this.parent?.() || []),

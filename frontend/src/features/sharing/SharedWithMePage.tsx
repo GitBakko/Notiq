@@ -213,7 +213,7 @@ export default function SharedWithMePage() {
     }
   };
 
-  const filterItems = (items: any[]) => {
+  const filterItems = (items: { status: string }[]) => {
     const pending = items.filter(i => i.status === 'PENDING');
     const accepted = items.filter(i => i.status === 'ACCEPTED');
     return { pending, accepted };
@@ -340,7 +340,7 @@ export default function SharedWithMePage() {
                   }
 
                   // Helper to get display data from any shared item type
-                  function getItemData(item: any): { title: string; sharerName: string; id: string } {
+                  function getItemData(item: SharedNote | SharedNotebook | SharedTaskList | SharedKanbanBoard): { title: string; sharerName: string; id: string } {
                     if (activeTab === 'kanbanBoards') {
                       const kb = item as SharedKanbanBoard;
                       return {
@@ -353,7 +353,7 @@ export default function SharedWithMePage() {
                       : activeTab === 'notebooks' ? (item as SharedNotebook).notebook
                       : (item as SharedTaskList).taskList;
                     return {
-                      title: (data as any).title || (data as any).name || t('notes.untitled'),
+                      title: ('title' in data ? data.title : 'name' in data ? data.name : '') as string || t('notes.untitled'),
                       sharerName: data.user.name || data.user.email,
                       id: data.id,
                     };
@@ -600,7 +600,7 @@ function SentItemsGrid({ sentData, activeTab, onResend, onCancelOrRevoke }: Sent
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {sentItems.map((item: any) => {
+      {sentItems.map((item) => {
         const entityName = getSentEntityName(item, activeTab);
         const entityId = getSentEntityId(item, activeTab);
         const statusKey = `sharing.status${item.status.charAt(0) + item.status.slice(1).toLowerCase()}`;

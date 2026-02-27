@@ -75,6 +75,7 @@ const TYPE_TO_KEY: Record<string, string> = {
 };
 
 /** Normalize localization args — handles old notifications with mismatched field names */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildArgs(data: Record<string, any>): Record<string, string> {
   const args: Record<string, string> = {};
   const src = { ...(data.localizationArgs || {}), ...data };
