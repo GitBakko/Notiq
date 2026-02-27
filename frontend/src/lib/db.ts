@@ -71,7 +71,7 @@ export interface LocalTaskList {
   isTrashed: boolean;
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
-  sharedByUser?: { id: string; name: string | null; email: string } | null;
+  sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   sharedWith?: {
     id: string;
     userId: string;

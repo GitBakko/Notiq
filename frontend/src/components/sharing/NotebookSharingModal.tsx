@@ -11,6 +11,7 @@ interface SharedUser {
   id: string;
   name: string | null;
   email: string;
+  avatarUrl?: string | null;
   permission: 'READ' | 'WRITE';
 }
 
@@ -171,9 +172,13 @@ export default function NotebookSharingModal({ isOpen, onClose, notebookId, note
               {localSharedWith.map(user => (
                 <li key={user.id} className="flex items-center justify-between rounded-lg bg-gray-50 p-2 dark:bg-gray-800">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                      {user.name?.[0] || user.email[0].toUpperCase()}
-                    </div>
+                    {user.avatarUrl ? (
+                      <img src={user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="h-8 w-8 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                        {user.name?.[0] || user.email[0].toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <div className="text-sm font-medium text-gray-900 dark:text-white">{user.name || user.email}</div>
                       <div className="text-xs text-gray-500">{user.permission}</div>

@@ -24,15 +24,15 @@ export interface Note {
   noteType?: 'NOTE' | 'CREDENTIAL';
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
-  sharedByUser?: { id: string; name: string | null; email: string } | null;
+  sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   sharedWith?: {
     id: string;
     userId: string;
     permission: 'READ' | 'WRITE';
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
-    user: { id: string; name: string | null; email: string };
+    user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
-  user?: { id: string; name: string | null; email: string };
+  user?: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   notebook?: { id: string; name: string };
 }
 
