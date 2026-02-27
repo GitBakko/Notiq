@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X } from 'lucide-react';
+import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical } from 'lucide-react';
 import Editor from '../../components/editor/Editor';
 import { revokeShare, updateNoteLocalOnly, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -67,6 +67,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
     const [attachmentToDelete, setAttachmentToDelete] = useState<{ id: string; url: string } | null>(null);
+    const [showMobileMore, setShowMobileMore] = useState(false);
+    const mobileMoreRef = useRef<HTMLDivElement>(null);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
     const [collaborators, setCollaborators] = useState<any[]>([]);
@@ -324,6 +326,18 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         }
     };
 
+    // Close mobile "more" menu on click outside
+    useEffect(() => {
+        if (!showMobileMore) return;
+        const handler = (e: MouseEvent) => {
+            if (mobileMoreRef.current && !mobileMoreRef.current.contains(e.target as Node)) {
+                setShowMobileMore(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showMobileMore]);
+
     return (
         <div
             className="flex flex-col h-full bg-white dark:bg-gray-900 relative"
@@ -332,10 +346,10 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
         >
             {/* Header */}
-            <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 z-10">
-                <div className="flex items-center gap-3 flex-1">
+            <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 z-20 relative">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                     {onBack && (
-                        <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+                        <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0" aria-label={t('common.back')}>
                             <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                         </button>
                     )}
@@ -347,11 +361,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         onKeyDown={handleTitleKeyDown}
                         readOnly={isReadOnly}
                         placeholder={t('notes.titlePlaceholder')}
-                        className={clsx("text-xl font-semibold bg-transparent border-none focus:outline-none text-gray-900 dark:text-white flex-1", isReadOnly && "cursor-default")}
+                        className={clsx("text-xl font-semibold bg-transparent border-none focus:outline-none text-gray-900 dark:text-white flex-1 min-w-0", isReadOnly && "cursor-default")}
                     />
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* ── Desktop actions — full button bar ── */}
+                <div className="hidden md:flex items-center gap-2 flex-shrink-0">
                     {/* Collaborators UI */}
                     <div className="flex items-center -space-x-2 mr-4">
                         {collaborators.map((c, i) => {
@@ -376,7 +391,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     </div>
 
                     {!isSharedNote && (
-                        <div className="hidden md:flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                             <NotebookSelector
                                 notebooks={notebooks || []}
                                 selectedNotebookId={note.notebookId}
@@ -407,8 +422,6 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
                     <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
-                    {/* Actions */}
-                    {/* Only show chat if there are active collaborators OR accepted shared users OR this is a shared-with-me note */}
                     {(collaborators.length > 1 || isSharedNote || (note.sharedWith?.some(s => s.status === 'ACCEPTED'))) && (
                         <button onClick={() => { setIsChatOpen(!isChatOpen); if (!isChatOpen) setIsAiOpen(false); }} title={t('notes.chat')} className={clsx("p-2 rounded-full transition-colors relative", isChatOpen ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 dark:hover:bg-gray-800")}>
                             <MessageSquare className="w-5 h-5" />
@@ -435,7 +448,6 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             const currentSize = (note.attachments || []).reduce((acc, curr) => acc + curr.size, 0);
                             const percentage = (currentSize / (QUOTA_MB * 1024 * 1024)) * 100;
                             const isWarning = percentage > 75;
-
                             return <Paperclip className={clsx("w-5 h-5", isWarning ? "text-red-500" : "")} />;
                         })()}
                         {note.attachments && note.attachments.length > 0 && (
@@ -490,6 +502,101 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
                             <button onClick={() => setIsDeleteConfirmOpen(true)} title={t('common.delete')} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
                         </>
+                    )}
+                </div>
+
+                {/* ── Mobile actions — compact with "more" dropdown ── */}
+                <div className="flex md:hidden items-center gap-1 flex-shrink-0">
+                    {/* Chat button (always visible if applicable, has badge) */}
+                    {(collaborators.length > 1 || isSharedNote || (note.sharedWith?.some(s => s.status === 'ACCEPTED'))) && (
+                        <button onClick={() => { setIsChatOpen(!isChatOpen); if (!isChatOpen) setIsAiOpen(false); }} aria-label={t('notes.chat')} className={clsx("p-2 rounded-full transition-colors relative", isChatOpen ? "bg-emerald-100 text-emerald-600" : "text-gray-400")}>
+                            <MessageSquare className="w-5 h-5" />
+                            {unreadCount > 0 && <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                        </button>
+                    )}
+
+                    {/* Attachments button (always visible, has badge) */}
+                    <button onClick={() => setIsAttachmentSidebarOpen(!isAttachmentSidebarOpen)} aria-label={t('notes.attachments')} className={clsx("p-2 rounded-full transition-colors relative", isAttachmentSidebarOpen ? "bg-emerald-100 text-emerald-600" : "text-gray-400")}>
+                        <Paperclip className="w-5 h-5" />
+                        {note.attachments && note.attachments.length > 0 && (
+                            <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-white ring-2 ring-white">
+                                {note.attachments.length > 9 ? '9+' : note.attachments.length}
+                            </span>
+                        )}
+                    </button>
+
+                    {/* More menu */}
+                    <div className="relative" ref={mobileMoreRef}>
+                        <button
+                            onClick={() => setShowMobileMore(!showMobileMore)}
+                            aria-label={t('common.more')}
+                            className={clsx("p-2 rounded-full transition-colors", showMobileMore ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white" : "text-gray-400")}
+                        >
+                            <MoreVertical className="w-5 h-5" />
+                        </button>
+                        {showMobileMore && (
+                            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 min-w-[200px] py-1 overflow-hidden">
+                                {!note.isVault && !isSharedNote && (
+                                    <button onClick={() => { setIsSharingModalOpen(true); setShowMobileMore(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                        <Share2 className="w-4 h-4 flex-shrink-0" />
+                                        <span>{t('notes.share')}</span>
+                                        {note.sharedWith?.some(s => s.status === 'ACCEPTED') && <span className="ml-auto w-2 h-2 rounded-full bg-emerald-500" />}
+                                    </button>
+                                )}
+                                {isAiEnabled && !note.isEncrypted && (
+                                    <button onClick={() => { setIsAiOpen(!isAiOpen); if (!isAiOpen) setIsChatOpen(false); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", isAiOpen ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800")}>
+                                        <Sparkles className="w-4 h-4 flex-shrink-0" />
+                                        <span>{t('ai.title')}</span>
+                                    </button>
+                                )}
+                                {!isSharedNote && (
+                                    <button onClick={() => { handlePinToggle(); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", note.isPinned ? "text-amber-500" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800")}>
+                                        <Star className={clsx("w-4 h-4 flex-shrink-0", note.isPinned && "fill-current")} />
+                                        <span>{note.isPinned ? t('notes.unpin') : t('notes.pin')}</span>
+                                    </button>
+                                )}
+                                {!isSharedNote && (
+                                    <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", note.isVault ? "text-emerald-500" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800")}>
+                                        <Lock className={clsx("w-4 h-4 flex-shrink-0", note.isVault && "fill-current")} />
+                                        <span>{note.isVault ? t('notes.removeFromVault') : t('notes.addToVault')}</span>
+                                    </button>
+                                )}
+                                {!isSharedNote && !note.isTrashed && (
+                                    <button onClick={() => { reminderInputRef.current?.showPicker(); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", note.reminderDate ? "text-amber-500" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800")}>
+                                        <Bell className={clsx("w-4 h-4 flex-shrink-0", note.reminderDate && "fill-current")} />
+                                        <span>{note.reminderDate ? t('notes.editReminder') : t('notes.addReminder')}</span>
+                                    </button>
+                                )}
+                                <button onClick={() => { setIsSizeModalOpen(true); setShowMobileMore(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                    <HardDrive className="w-4 h-4 flex-shrink-0" />
+                                    <span>{t('notes.size.title')}</span>
+                                </button>
+                                {!isSharedNote && (
+                                    <>
+                                        <div className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
+                                        <button onClick={() => { setIsDeleteConfirmOpen(true); setShowMobileMore(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                            <Trash2 className="w-4 h-4 flex-shrink-0" />
+                                            <span>{t('common.delete')}</span>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Hidden reminder input (needed for date picker) */}
+                    {!isSharedNote && !note.isTrashed && (
+                        <input
+                            ref={reminderInputRef}
+                            type="datetime-local"
+                            value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
+                            onChange={(e) => {
+                                if (e.target.value) {
+                                    saveNote({ reminderDate: new Date(e.target.value).toISOString(), isReminderDone: false });
+                                }
+                            }}
+                            className="absolute opacity-0 w-0 h-0 overflow-hidden"
+                        />
                     )}
                 </div>
             </header>

@@ -171,6 +171,8 @@ body {
 /* Override Tailwind Typography prose max-width (65ch) */
 .ProseMirror {
   max-width: none !important;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* Table Styles */
@@ -295,4 +297,18 @@ body {
 }
 .animate-bounce-subtle {
   animation: bounceSubtle 2s ease-in-out infinite;
+}
+
+/* Safe Area Utilities for PWA (notch, Dynamic Island, gesture bar) */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-area-left {
+  padding-left: env(safe-area-inset-left);
+}
+.safe-area-right {
+  padding-right: env(safe-area-inset-right);
 }

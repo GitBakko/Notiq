@@ -11,6 +11,19 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.6.8',
+    date: '2026-02-27',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.sidebarCollapse' },
+      { type: 'feature', titleKey: 'whatsNew.entries.collapseAll' },
+      { type: 'feature', titleKey: 'whatsNew.entries.responsiveToolbar' },
+      { type: 'fix', titleKey: 'whatsNew.entries.editorOverflowFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.lineHeightValidation' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.mobileCloseButton' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.settingsImportAlignment' },
+    ],
+  },
+  {
     version: '1.6.7',
     date: '2026-02-26',
     entries: [

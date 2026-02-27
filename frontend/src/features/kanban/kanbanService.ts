@@ -5,6 +5,7 @@ import type {
   KanbanBoardChatMessage,
   KanbanCard,
   KanbanCardActivity,
+  KanbanCardPriority,
   KanbanColumn,
   KanbanComment,
   NoteSharingCheck,
@@ -83,6 +84,7 @@ export async function updateCard(
     description?: string | null;
     assigneeId?: string | null;
     dueDate?: string | null;
+    priority?: KanbanCardPriority | null;
   },
 ): Promise<KanbanCard> {
   const res = await api.put<KanbanCard>(`/kanban/cards/${cardId}`, data);

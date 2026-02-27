@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as kanbanService from '../kanbanService';
-import type { KanbanBoardListItem } from '../types';
+import type { KanbanBoardListItem, KanbanCardPriority } from '../types';
 
 export function useKanbanMutations(boardId?: string) {
   const queryClient = useQueryClient();
@@ -85,6 +85,7 @@ export function useKanbanMutations(boardId?: string) {
       description?: string | null;
       assigneeId?: string | null;
       dueDate?: string | null;
+      priority?: KanbanCardPriority | null;
     }) => kanbanService.updateCard(cardId, data),
     onSuccess: invalidateBoard,
   });

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
+import clsx from 'clsx';
 import api from '../../lib/api';
 import { Alert } from '../../components/ui/Alert';
 
@@ -13,6 +14,7 @@ export default function RegisterPage() {
   const [name, setName] = useState('');
   const [invitationCode, setInvitationCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [invitationEnabled, setInvitationEnabled] = useState(false); // Default false until loaded
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -25,7 +27,7 @@ export default function RegisterPage() {
       } catch (err) {
         console.error('Failed to load auth config', err);
         // Default to true or false? Safe to assume enabled if error?
-        // Or false to avoid blocking? 
+        // Or false to avoid blocking?
         // Let's assume false if failed to be safe, or retry.
         setInvitationEnabled(true);
       } finally {
@@ -35,9 +37,21 @@ export default function RegisterPage() {
     fetchConfig();
   }, []);
 
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!name.trim()) errors.name = t('auth.errors.nameRequired');
+    if (!email.trim()) errors.email = t('auth.errors.emailRequired');
+    if (!password) errors.password = t('auth.errors.passwordRequired');
+    if (invitationEnabled && !invitationCode.trim()) errors.invitationCode = t('auth.errors.invitationCodeRequired');
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
+    if (!validate()) return;
     try {
       await api.post('/auth/register', {
         email,
@@ -74,6 +88,10 @@ export default function RegisterPage() {
     } catch (e) {
       return t(msg);
     }
+  };
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
   };
 
   if (isSuccess) {
@@ -113,30 +131,46 @@ export default function RegisterPage() {
               <div>
                 <input
                   type="text"
-                  className="relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500"
+                  className={clsx(
+                    'relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                    fieldErrors.name
+                      ? 'ring-red-500 dark:ring-red-500'
+                      : 'ring-gray-300 dark:ring-gray-700'
+                  )}
                   placeholder={t('auth.namePlaceholder')}
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => { setName(e.target.value); clearFieldError('name'); }}
                 />
               </div>
               <div>
                 <input
                   type="email"
                   required
-                  className="relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500"
+                  className={clsx(
+                    'relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                    fieldErrors.email
+                      ? 'ring-red-500 dark:ring-red-500'
+                      : 'ring-gray-300 dark:ring-gray-700'
+                  )}
                   placeholder={t('auth.emailPlaceholder')}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); clearFieldError('email'); }}
                 />
               </div>
               <div>
                 <input
                   type="password"
                   required
-                  className={`relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 ${!invitationEnabled ? 'rounded-b-md' : ''}`}
+                  className={clsx(
+                    'relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                    !invitationEnabled ? 'rounded-b-md' : '',
+                    fieldErrors.password
+                      ? 'ring-red-500 dark:ring-red-500'
+                      : 'ring-gray-300 dark:ring-gray-700'
+                  )}
                   placeholder={t('auth.passwordPlaceholder')}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
                 />
               </div>
               {invitationEnabled && (
@@ -144,14 +178,28 @@ export default function RegisterPage() {
                   <input
                     type="text"
                     required
-                    className="relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500"
+                    className={clsx(
+                      'relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                      fieldErrors.invitationCode
+                        ? 'ring-red-500 dark:ring-red-500'
+                        : 'ring-gray-300 dark:ring-gray-700'
+                    )}
                     placeholder={t('auth.invitationCode')}
                     value={invitationCode}
-                    onChange={(e) => setInvitationCode(e.target.value)}
+                    onChange={(e) => { setInvitationCode(e.target.value); clearFieldError('invitationCode'); }}
                   />
                 </div>
               )}
             </div>
+
+            {(fieldErrors.name || fieldErrors.email || fieldErrors.password || fieldErrors.invitationCode) && (
+              <div className="mt-2 space-y-1">
+                {fieldErrors.name && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.name}</p>}
+                {fieldErrors.email && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.email}</p>}
+                {fieldErrors.password && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.password}</p>}
+                {fieldErrors.invitationCode && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.invitationCode}</p>}
+              </div>
+            )}
 
             {error && (
               <Alert variant="danger" title={t('common.error')}>
@@ -178,4 +226,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

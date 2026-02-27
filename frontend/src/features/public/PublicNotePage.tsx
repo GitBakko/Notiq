@@ -4,7 +4,7 @@ import { getPublicNote, type Note } from '../notes/noteService';
 import Editor from '../../components/editor/Editor';
 import AttachmentList from '../../components/editor/AttachmentList';
 import { useTranslation } from 'react-i18next';
-import { formatDistanceToNow } from 'date-fns';
+import { timeAgo } from '../../utils/format';
 
 export default function PublicNotePage() {
   const { t } = useTranslation();
@@ -31,7 +31,7 @@ export default function PublicNotePage() {
         <div className="p-8 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-3xl font-bold text-gray-900 mb-2 dark:text-white">{note.title}</h1>
           <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <span>{t('common.lastEdited')} {formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+            <span>{t('common.lastEdited')} {timeAgo(note.updatedAt)}</span>
             {note.tags && note.tags.length > 0 && (
               <div className="flex gap-1">
                 {note.tags.map(t => (

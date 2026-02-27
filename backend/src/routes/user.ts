@@ -10,6 +10,7 @@ const updateProfileSchema = z.object({
   placeOfBirth: z.string().optional(),
   mobile: z.string().optional(),
   avatarUrl: z.string().optional(),
+  emailNotificationsEnabled: z.boolean().optional(),
 });
 
 const changePasswordSchema = z.object({

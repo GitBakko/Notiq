@@ -20,6 +20,7 @@ export const updateUser = async (userId: string, data: {
   placeOfBirth?: string;
   mobile?: string;
   avatarUrl?: string;
+  emailNotificationsEnabled?: boolean;
 }) => {
   let dob: Date | undefined | null = undefined;
   if (data.dateOfBirth) {
@@ -41,6 +42,7 @@ export const updateUser = async (userId: string, data: {
       placeOfBirth: data.placeOfBirth,
       mobile: data.mobile,
       avatarUrl: data.avatarUrl,
+      ...(data.emailNotificationsEnabled !== undefined && { emailNotificationsEnabled: data.emailNotificationsEnabled }),
     },
   });
 };
@@ -77,6 +79,7 @@ export const getUser = async (userId: string) => {
       mobile: true,
       avatarUrl: true,
       color: true,
+      emailNotificationsEnabled: true,
       createdAt: true,
     },
   });

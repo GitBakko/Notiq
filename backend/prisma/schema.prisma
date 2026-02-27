@@ -24,6 +24,7 @@ model User {
   resetToken String?
   resetTokenExpiry DateTime?
   locale    String   @default("en")
+  emailNotificationsEnabled Boolean @default(true)
   createdAt DateTime @default(now())
   lastActiveAt DateTime @default(now())
   
@@ -254,6 +255,8 @@ enum NotificationType {
   KANBAN_BOARD_SHARED
   KANBAN_CARD_ASSIGNED
   KANBAN_COMMENT_ADDED
+  KANBAN_CARD_MOVED
+  KANBAN_COMMENT_DELETED
 }
 
 model PushSubscription {
@@ -448,6 +451,7 @@ model KanbanCard {
   assigneeId  String?
   assignee    User?           @relation("KanbanAssignee", fields: [assigneeId], references: [id])
   dueDate     DateTime?
+  priority    KanbanCardPriority?
   noteId          String?
   note            Note?           @relation(fields: [noteId], references: [id])
   noteLinkedById  String?
@@ -499,6 +503,14 @@ model KanbanBoardChat {
   createdAt DateTime    @default(now())
 
   @@index([boardId])
+}
+
+enum KanbanCardPriority {
+  STANDBY
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
 }
 
 enum KanbanCardAction {

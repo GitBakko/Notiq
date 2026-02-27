@@ -1,4 +1,4 @@
-import { formatDistanceToNow } from 'date-fns';
+import { timeAgo } from '../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
 import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare, ListChecks, Kanban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -37,6 +37,8 @@ function getNotificationUrl(notification: Notification): string | null {
       return data.boardId ? `/shared?tab=kanbanBoards&highlight=${data.boardId}` : '/shared?tab=kanbanBoards';
     case 'KANBAN_CARD_ASSIGNED':
     case 'KANBAN_COMMENT_ADDED':
+    case 'KANBAN_COMMENT_DELETED':
+    case 'KANBAN_CARD_MOVED':
       return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';
     case 'SYSTEM': {
       // Share responses
@@ -68,6 +70,8 @@ const TYPE_TO_KEY: Record<string, string> = {
   KANBAN_BOARD_SHARED: 'notifications.kanbanBoardShared',
   KANBAN_CARD_ASSIGNED: 'notifications.kanbanCardAssigned',
   KANBAN_COMMENT_ADDED: 'notifications.kanbanCommentAdded',
+  KANBAN_COMMENT_DELETED: 'notifications.kanbanCommentDeleted',
+  KANBAN_CARD_MOVED: 'notifications.kanbanCardMoved',
 };
 
 /** Normalize localization args — handles old notifications with mismatched field names */
@@ -107,11 +111,14 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   // memberEmail — used by groupMemberJoined
   if (src.memberEmail) args.memberEmail = src.memberEmail;
 
-  // Kanban — assignerName, cardTitle, boardTitle, authorName
+  // Kanban — assignerName, cardTitle, boardTitle, authorName, actorName, fromColumn, toColumn
   if (src.assignerName) args.assignerName = src.assignerName;
   if (src.cardTitle) args.cardTitle = src.cardTitle;
   if (src.boardTitle) args.boardTitle = src.boardTitle;
   if (src.authorName) args.authorName = src.authorName;
+  if (src.actorName) args.actorName = src.actorName;
+  if (src.fromColumn) args.fromColumn = src.fromColumn;
+  if (src.toColumn) args.toColumn = src.toColumn;
 
   return args;
 }
@@ -149,6 +156,8 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
       case 'KANBAN_BOARD_SHARED':
       case 'KANBAN_CARD_ASSIGNED':
       case 'KANBAN_COMMENT_ADDED':
+      case 'KANBAN_COMMENT_DELETED':
+      case 'KANBAN_CARD_MOVED':
         return <Kanban size={16} className="text-purple-500" />;
       case 'SYSTEM':
       default:
@@ -200,7 +209,7 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
             {message}
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true, locale: dateLocale })}
+            {timeAgo(notification.createdAt, dateLocale)}
           </p>
         </div>
         <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

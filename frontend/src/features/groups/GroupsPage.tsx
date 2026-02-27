@@ -8,6 +8,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import toast from 'react-hot-toast';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import Skeleton from '../../components/ui/Skeleton';
 
 export default function GroupsPage() {
   const { t } = useTranslation();
@@ -501,9 +502,7 @@ export default function GroupsPage() {
         )}
 
         {isLoading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
-          </div>
+          <Skeleton.List count={3} />
         ) : (
           <>
             {/* My Groups (owned) */}

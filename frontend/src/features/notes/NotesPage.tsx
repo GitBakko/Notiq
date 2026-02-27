@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Menu, FileDown, X, Book, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, Menu, FileDown, X, Book, FileText, PanelLeftClose, PanelLeftOpen, ChevronsLeft } from 'lucide-react';
 import NoteList from './NoteList';
 import { createNote, getNote } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useAuthStore } from '../../store/authStore';
+import Skeleton from '../../components/ui/Skeleton';
 
 export default function NotesPage() {
   const { t } = useTranslation();
@@ -29,7 +30,7 @@ export default function NotesPage() {
   const selectedTagId = searchParams.get('tagId') || undefined;
 
   const isMobile = useIsMobile();
-  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed } = useUIStore();
+  const { toggleSidebar, notesSortField, notesSortOrder, setNotesSort, isListCollapsed, toggleListCollapsed, collapseAll } = useUIStore();
   const user = useAuthStore((state) => state.user);
   const [showNotebookPicker, setShowNotebookPicker] = useState(false);
   const [sharingNoteId, setSharingNoteId] = useState<string | null>(null);
@@ -147,12 +148,13 @@ export default function NotesPage() {
     return (
       <div className={clsx("flex flex-col bg-white h-full dark:bg-gray-900", isMobile ? "w-full" : "w-80 border-r border-gray-200 dark:border-gray-800")}>
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-4 min-h-[48px]">
             {isMobile && (
               <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
                 <Menu size={24} />
               </button>
             )}
+            <FileText size={20} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white">{t('sidebar.notes')}</h2>
             <div className="ml-auto flex items-center gap-1">
               {selectedNotebookId && (
@@ -166,13 +168,23 @@ export default function NotesPage() {
                 </button>
               )}
               {!isMobile && (
-                <button
-                  onClick={toggleListCollapsed}
-                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-                  title={t('common.collapseList')}
-                >
-                  <PanelLeftClose size={18} />
-                </button>
+                <>
+                  <button
+                    onClick={collapseAll}
+                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                    title={t('sidebar.collapseAll')}
+                    aria-label={t('sidebar.collapseAll')}
+                  >
+                    <ChevronsLeft size={18} />
+                  </button>
+                  <button
+                    onClick={toggleListCollapsed}
+                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                    title={t('common.collapseList')}
+                  >
+                    <PanelLeftClose size={18} />
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -210,7 +222,9 @@ export default function NotesPage() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">{t('common.loading')}</div>
+            <div className="p-4">
+              <Skeleton.List count={5} />
+            </div>
           ) : (
             <NoteList
               notes={notes || []}

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { formatDistanceToNow } from 'date-fns';
+import { timeAgo } from '../../utils/format';
 import { it, enUS } from 'date-fns/locale';
 import { type Note } from './noteService';
 import clsx from 'clsx';
@@ -86,7 +86,7 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
           </p>
           <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
             <div className="flex items-center gap-2">
-              <span>{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true, locale: dateLocale })}</span>
+              <span>{timeAgo(note.updatedAt, dateLocale)}</span>
               {note.ownership === 'shared' && note.sharedByUser && (
                 <span className="text-[10px] text-blue-500 dark:text-blue-400 truncate max-w-[120px]">
                   {t('notes.sharedBy', { name: note.sharedByUser.name || note.sharedByUser.email })}

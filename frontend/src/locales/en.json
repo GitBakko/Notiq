@@ -12,6 +12,7 @@
     "error": "Error",
     "success": "Success",
     "actions": "Actions",
+    "more": "More",
     "create": "Create",
     "user": "User",
     "synced": "Synced",
@@ -86,7 +87,10 @@
     "importEvernote": "Evernote (.enex)",
     "importOneNote": "OneNote (.mht)",
     "groups": "Groups",
-    "kanban": "Kanban"
+    "kanban": "Kanban",
+    "collapseSidebar": "Collapse Sidebar",
+    "expandSidebar": "Expand Sidebar",
+    "collapseAll": "Collapse All"
   },
   "settings": {
     "appearance": "Appearance",
@@ -109,6 +113,8 @@
     "notificationSound": "Notification Sound",
     "notificationSoundToggle": "Enable notification sound",
     "notificationSoundDescription": "Play a sound when new notifications arrive",
+    "emailNotificationsToggle": "Email notifications",
+    "emailNotificationsDescription": "Receive email notifications when you are offline (does not affect verification and invitation emails)",
     "whatsNew": "What's New"
   },
   "import": {
@@ -279,7 +285,9 @@
       "passwordRequired": "Password is required",
       "passwordTooShort": "Password must be at least 6 characters",
       "userExists": "User already exists with this email",
-      "unverified": "Account not verified. Please check your email."
+      "unverified": "Account not verified. Please check your email.",
+      "nameRequired": "Name is required",
+      "invitationCodeRequired": "Invitation code is required"
     },
     "invitationCode": "Invitation Code",
     "registrationSuccess": "Registration Successful!",
@@ -634,6 +642,11 @@
     "column": "Col",
     "vault": "Vault",
     "insertEmoji": "Insert Emoji",
+    "expandToolbar": "Show more formatting options",
+    "collapseToolbar": "Hide formatting options",
+    "linkUrl": "Enter URL...",
+    "linkConfirm": "Apply",
+    "linkCancel": "Cancel",
     "dragToResize": "Drag to resize",
     "transform": {
       "toKanban": "Transform to Kanban Board",
@@ -711,7 +724,11 @@
     "kanbanCommentAdded": "{{authorName}} commented on \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
     "kanbanCommentAdded_TITLE": "New Comment",
     "noteSharedViaKanban": "{{sharerName}} shared note \"{{noteTitle}}\" with you via board \"{{boardTitle}}\"",
-    "noteSharedViaKanban_TITLE": "Note Shared via Board"
+    "noteSharedViaKanban_TITLE": "Note Shared via Board",
+    "kanbanCommentDeleted": "{{authorName}} deleted a comment on \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
+    "kanbanCommentDeleted_TITLE": "Comment Deleted",
+    "kanbanCardMoved": "{{actorName}} moved \"{{cardTitle}}\" from {{fromColumn}} to {{toColumn}}",
+    "kanbanCardMoved_TITLE": "Card Moved"
   },
   "groups": {
     "title": "Groups",
@@ -788,7 +805,15 @@
       "noDescription": "No description",
       "description": "Description",
       "deleteConfirm": "Delete this card permanently?",
-      "deleteCard": "Delete card"
+      "deleteCard": "Delete card",
+      "priority": "Priority"
+    },
+    "priority": {
+      "STANDBY": "Standby",
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "CRITICAL": "Critical"
     },
     "comment": {
       "placeholder": "Write a comment...",
@@ -879,6 +904,7 @@
       "confirmLink": "Link & Share"
     },
     "filters": {
+      "title": "Filters",
       "searchPlaceholder": "Search cards...",
       "assignee": "Assignee",
       "noAssignees": "No assignees yet",
@@ -1030,6 +1056,13 @@
       "sharedUsersModal": "Shared Users Modal — Click any sharing badge to see a read-only list of shared users with avatars and permissions",
       "groupMemberVisibility": "Group Member Visibility — View member lists of groups you belong to (expandable, read-only)",
       "sidebarStyleAlignment": "Sidebar Style Alignment — Consistent icons, colors, hover effects and overlay buttons across all sidebar items",
+      "sidebarCollapse": "Collapsible Sidebar — Desktop sidebar collapses to a slim icon rail for maximum workspace (Ctrl+B)",
+      "collapseAll": "Collapse All — One-click button to collapse both sidebar and note list simultaneously",
+      "responsiveToolbar": "Responsive Editor Toolbar — Toolbar adapts to screen width with overflow menu on smaller screens",
+      "editorOverflowFix": "Fixed editor overflow — Long unwrapped text no longer hides header buttons or toolbar",
+      "lineHeightValidation": "Fixed line-height validation to prevent text overlap on auto-wrapped lines",
+      "mobileCloseButton": "Improved mobile sidebar close button — Integrated into user profile area",
+      "settingsImportAlignment": "Settings import section now shows both Evernote and OneNote import options",
       "initialRelease": "Initial release with full feature set"
     }
   },

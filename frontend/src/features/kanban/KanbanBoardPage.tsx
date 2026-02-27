@@ -116,6 +116,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [isBoardSharingGapOpen, setIsBoardSharingGapOpen] = useState(false);
   const [showDeleteBoardConfirm, setShowDeleteBoardConfirm] = useState(false);
   const filtersActive = isFiltersActive(filters);
+  const [mobileActiveColumnIndex, setMobileActiveColumnIndex] = useState(0);
 
   // ── DnD multi-container state ──────────────────────────────────
   // Local copy of columns that can be mutated during drag for smooth cross-column moves
@@ -516,6 +517,13 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     }));
   }, [sortedColumns, filtersActive, filters]);
 
+  // Clamp mobile active column index when columns change
+  useEffect(() => {
+    if (mobileActiveColumnIndex >= displayColumns.length && displayColumns.length > 0) {
+      setMobileActiveColumnIndex(displayColumns.length - 1);
+    }
+  }, [displayColumns.length, mobileActiveColumnIndex]);
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -813,97 +821,151 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           onExport={handleExportGantt}
         />
 
-        {/* Board content — horizontal scroll */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={kanbanCollisionDetection}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="flex gap-4 p-4 h-full items-start">
-              <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
-                {displayColumns.map((column) => (
-                  <KanbanColumn
-                    key={column.id}
-                    column={column}
-                    boardId={boardId}
-                    onCardSelect={(cardId) => setSelectedCardId(cardId)}
-                    onRenameColumn={handleRenameColumn}
-                    onDeleteColumn={handleDeleteColumn}
-                    onAddCard={handleAddCard}
-                    readOnly={readOnly || filtersActive}
-                    highlightedCardIds={highlightedCardIds}
-                  />
-                ))}
-              </SortableContext>
-
-              {/* Add Column button / inline input */}
-              {!readOnly && (
-                <div className="min-w-[280px] w-[280px] flex-shrink-0">
-                  {isAddingColumn ? (
-                    <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl p-3 space-y-2">
-                      <input
-                        autoFocus
-                        value={newColumnTitle}
-                        onChange={(e) => setNewColumnTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleAddColumn();
-                          if (e.key === 'Escape') {
-                            setIsAddingColumn(false);
-                            setNewColumnTitle('');
-                          }
-                        }}
-                        onBlur={() => {
-                          if (!newColumnTitle.trim()) {
-                            setIsAddingColumn(false);
-                            setNewColumnTitle('');
-                          }
-                        }}
-                        placeholder={t('kanban.column.columnTitle')}
-                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setIsAddingColumn(true)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-600 dark:hover:text-emerald-400 transition-colors text-sm font-medium"
-                    >
-                      <Plus size={16} />
-                      {t('kanban.column.addColumn')}
-                    </button>
+        {/* Mobile column tabs */}
+        {isMobile && displayColumns.length > 0 && (
+          <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <div className="flex">
+              {displayColumns.map((col, index) => (
+                <button
+                  key={col.id}
+                  onClick={() => setMobileActiveColumnIndex(index)}
+                  className={clsx(
+                    'flex-shrink-0 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap',
+                    index === mobileActiveColumnIndex
+                      ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                   )}
-                </div>
-              )}
+                >
+                  {col.title} ({col.cards.length})
+                </button>
+              ))}
             </div>
+          </div>
+        )}
 
-            {/* Drag overlay */}
-            <DragOverlay>
-              {activeCard ? (
-                <div className="opacity-90">
-                  <KanbanCard
-                    card={activeCard}
-                    onSelect={() => {}}
-                    readOnly
-                  />
-                </div>
-              ) : activeColumn ? (
-                <div className="opacity-90">
-                  <KanbanColumn
-                    column={activeColumn}
-                    boardId={boardId}
-                    onCardSelect={() => {}}
-                    onRenameColumn={() => {}}
-                    onDeleteColumn={() => {}}
-                    onAddCard={() => {}}
-                    readOnly
-                  />
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        </div>
+        {/* Board content */}
+        {isMobile ? (
+          // Mobile: single column, full width
+          <div className="flex-1 overflow-y-auto p-4">
+            {displayColumns[mobileActiveColumnIndex] ? (
+              <div className="w-full [&>div]:!w-full [&>div]:!min-w-0">
+                <KanbanColumn
+                  key={displayColumns[mobileActiveColumnIndex].id}
+                  column={displayColumns[mobileActiveColumnIndex]}
+                  boardId={boardId}
+                  onCardSelect={(cardId) => setSelectedCardId(cardId)}
+                  onRenameColumn={handleRenameColumn}
+                  onDeleteColumn={handleDeleteColumn}
+                  onAddCard={handleAddCard}
+                  readOnly={readOnly || filtersActive}
+                  highlightedCardIds={highlightedCardIds}
+                />
+              </div>
+            ) : !readOnly ? (
+              <div className="flex items-center justify-center p-8">
+                <button
+                  onClick={() => setIsAddingColumn(true)}
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-emerald-400 hover:text-emerald-600 transition-colors text-sm font-medium"
+                >
+                  <Plus size={16} />
+                  {t('kanban.column.addColumn')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          // Desktop: multi-column layout with DnD
+          <div className="flex-1 overflow-x-auto overflow-y-hidden">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={kanbanCollisionDetection}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex gap-4 p-4 h-full items-start">
+                <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+                  {displayColumns.map((column) => (
+                    <KanbanColumn
+                      key={column.id}
+                      column={column}
+                      boardId={boardId}
+                      onCardSelect={(cardId) => setSelectedCardId(cardId)}
+                      onRenameColumn={handleRenameColumn}
+                      onDeleteColumn={handleDeleteColumn}
+                      onAddCard={handleAddCard}
+                      readOnly={readOnly || filtersActive}
+                      highlightedCardIds={highlightedCardIds}
+                    />
+                  ))}
+                </SortableContext>
+
+                {/* Add Column button / inline input */}
+                {!readOnly && (
+                  <div className="min-w-[280px] w-[280px] flex-shrink-0">
+                    {isAddingColumn ? (
+                      <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl p-3 space-y-2">
+                        <input
+                          autoFocus
+                          value={newColumnTitle}
+                          onChange={(e) => setNewColumnTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddColumn();
+                            if (e.key === 'Escape') {
+                              setIsAddingColumn(false);
+                              setNewColumnTitle('');
+                            }
+                          }}
+                          onBlur={() => {
+                            if (!newColumnTitle.trim()) {
+                              setIsAddingColumn(false);
+                              setNewColumnTitle('');
+                            }
+                          }}
+                          placeholder={t('kanban.column.columnTitle')}
+                          className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setIsAddingColumn(true)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-600 dark:hover:text-emerald-400 transition-colors text-sm font-medium"
+                      >
+                        <Plus size={16} />
+                        {t('kanban.column.addColumn')}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Drag overlay */}
+              <DragOverlay>
+                {activeCard ? (
+                  <div className="opacity-90">
+                    <KanbanCard
+                      card={activeCard}
+                      onSelect={() => {}}
+                      readOnly
+                    />
+                  </div>
+                ) : activeColumn ? (
+                  <div className="opacity-90">
+                    <KanbanColumn
+                      column={activeColumn}
+                      boardId={boardId}
+                      onCardSelect={() => {}}
+                      onRenameColumn={() => {}}
+                      onDeleteColumn={() => {}}
+                      onAddCard={() => {}}
+                      readOnly
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
+        )}
 
         {/* Hidden cover image input */}
         <input

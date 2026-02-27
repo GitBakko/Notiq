@@ -47,6 +47,8 @@ export interface KanbanColumn {
   cards: KanbanCard[];
 }
 
+export type KanbanCardPriority = 'STANDBY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
 export interface KanbanCard {
   id: string;
   title: string;
@@ -56,6 +58,7 @@ export interface KanbanCard {
   assigneeId: string | null;
   assignee: { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null } | null;
   dueDate: string | null;
+  priority: KanbanCardPriority | null;
   noteId: string | null;
   noteLinkedById: string | null;
   note: { id: string; title: string; userId: string } | null;
@@ -155,5 +158,6 @@ export type KanbanSSEEvent =
   | { type: 'column:deleted'; boardId: string; columnId: string }
   | { type: 'columns:reordered'; boardId: string; columns: { id: string; position: number }[] }
   | { type: 'comment:added'; boardId: string; cardId: string; comment: KanbanComment }
+  | { type: 'comment:deleted'; boardId: string; cardId: string; commentId: string }
   | { type: 'chat:message'; boardId: string; message: KanbanBoardChatMessage }
   | { type: 'presence:update'; boardId: string; users: BoardPresenceUser[] };

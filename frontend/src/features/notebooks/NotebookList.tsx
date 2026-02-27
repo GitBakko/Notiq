@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { timeAgo } from '../../utils/format';
 import { Book, Edit2, Trash2 } from 'lucide-react';
 import type { Notebook } from './notebookService';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -93,7 +93,7 @@ export default function NotebookList({ notebooks, onRename, onDelete }: Notebook
           )}
           
           <div className="mt-4 flex justify-between items-end text-xs text-gray-500">
-            <span>{t('common.updated')} {formatDistanceToNow(new Date(notebook.updatedAt), { addSuffix: true, locale: dateLocale })}</span>
+            <span>{t('common.updated')} {timeAgo(notebook.updatedAt, dateLocale)}</span>
             {/* <span>{notebook._count?.notes || 0} notes</span> */}
           </div>
         </div>

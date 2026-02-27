@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
+import clsx from 'clsx';
 import api from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 
@@ -10,12 +11,23 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
+
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!email.trim()) errors.email = t('auth.errors.emailRequired');
+    if (!password) errors.password = t('auth.errors.passwordRequired');
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
+    if (!validate()) return;
     try {
       const res = await api.post('/auth/login', { email, password });
       setAuth(res.data.user, res.data.token);
@@ -43,25 +55,46 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
-                className="relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500"
+                className={clsx(
+                  'relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                  fieldErrors.email
+                    ? 'ring-red-500 dark:ring-red-500'
+                    : 'ring-gray-300 dark:ring-gray-700'
+                )}
                 placeholder={t('auth.emailPlaceholder')}
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setFieldErrors(prev => { const next = { ...prev }; delete next.email; return next; });
+                }}
               />
             </div>
             <div>
               <input
                 type="password"
                 required
-                className="relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500"
+                className={clsx(
+                  'relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                  fieldErrors.password
+                    ? 'ring-red-500 dark:ring-red-500'
+                    : 'ring-gray-300 dark:ring-gray-700'
+                )}
                 placeholder={t('auth.passwordPlaceholder')}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setFieldErrors(prev => { const next = { ...prev }; delete next.password; return next; });
+                }}
               />
             </div>
           </div>
 
-
+          {(fieldErrors.email || fieldErrors.password) && (
+            <div className="mt-2 space-y-1">
+              {fieldErrors.email && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.email}</p>}
+              {fieldErrors.password && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.password}</p>}
+            </div>
+          )}
 
           {error && <div className="text-red-500 text-sm text-center">{error}</div>}
 

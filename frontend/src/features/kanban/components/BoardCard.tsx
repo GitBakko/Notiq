@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { timeAgo } from '../../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
 import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -172,7 +172,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
             </button>
           )}
           <span className="ml-auto">
-            {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true, locale: dateLocale })}
+            {timeAgo(board.updatedAt, dateLocale)}
           </span>
         </div>
       </div>
