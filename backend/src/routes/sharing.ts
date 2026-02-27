@@ -338,6 +338,35 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     return { success: true };
   });
 
+  // Share Kanban Board with Group
+  fastify.post('/kanbans/:id/group', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { groupId, permission } = z.object({
+      groupId: z.string(),
+      permission: z.nativeEnum(Permission).optional().default('READ'),
+    }).parse(request.body);
+
+    try {
+      const group = await groupService.getGroup(groupId, request.user.id);
+      const results = [];
+      const errors = [];
+      for (const member of group.members) {
+        if (member.userId === request.user.id) continue;
+        try {
+          const r = await sharingService.shareKanbanBoard(request.user.id, id, member.user.email, permission);
+          results.push(r);
+        } catch (e: any) {
+          errors.push({ userId: member.userId, error: e.message });
+        }
+      }
+      return { shared: results.length, errors };
+    } catch (error: any) {
+      if (error.message === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
+      if (error.message === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
+      return reply.status(500).send({ message: 'An internal error occurred' });
+    }
+  });
+
   // Get Shared Kanban Boards (all statuses)
   fastify.get('/kanbans', async (request) => {
     const shares = await prisma.sharedKanbanBoard.findMany({

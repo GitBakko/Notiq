@@ -94,3 +94,8 @@ export const shareTaskListWithGroup = async (taskListId: string, groupId: string
   const res = await api.post(`/share/tasklists/${taskListId}/group`, { groupId, permission });
   return res.data;
 };
+
+export const shareKanbanBoardWithGroup = async (boardId: string, groupId: string, permission: 'READ' | 'WRITE' = 'READ') => {
+  const res = await api.post(`/share/kanbans/${boardId}/group`, { groupId, permission });
+  return res.data;
+};
