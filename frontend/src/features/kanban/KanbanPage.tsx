@@ -14,6 +14,7 @@ import type { SharedUserInfo, SharedOwnerInfo } from '../../components/sharing/S
 import KanbanBoardPage from './KanbanBoardPage';
 import type { KanbanBoardListItem } from './types';
 import { useAuthStore } from '../../store/authStore';
+import Skeleton from '../../components/ui/Skeleton';
 
 export default function KanbanPage() {
   const { t } = useTranslation();
@@ -95,9 +96,7 @@ export default function KanbanPage() {
       {/* Content */}
       <div className="max-w-5xl mx-auto px-6 py-6">
         {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
-          </div>
+          <Skeleton.Grid count={3} />
         ) : !boards || boards.length === 0 ? (
           <div className="text-center py-20">
             <Kanban className="mx-auto text-gray-300 dark:text-gray-600 mb-4" size={48} />

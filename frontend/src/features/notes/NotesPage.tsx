@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useAuthStore } from '../../store/authStore';
+import Skeleton from '../../components/ui/Skeleton';
 
 export default function NotesPage() {
   const { t } = useTranslation();
@@ -210,7 +211,9 @@ export default function NotesPage() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">{t('common.loading')}</div>
+            <div className="p-4">
+              <Skeleton.List count={5} />
+            </div>
           ) : (
             <NoteList
               notes={notes || []}

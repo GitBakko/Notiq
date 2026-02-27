@@ -11,6 +11,7 @@ import SharedUsersModal from '../../components/sharing/SharedUsersModal';
 import type { SharedUserInfo, SharedOwnerInfo } from '../../components/sharing/SharedUsersModal';
 import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
 import { useAuthStore } from '../../store/authStore';
+import Skeleton from '../../components/ui/Skeleton';
 
 export default function TaskListsPage() {
   const { t } = useTranslation();
@@ -73,9 +74,7 @@ export default function TaskListsPage() {
       <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
         {!taskLists ? (
           // Loading state
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
-          </div>
+          <Skeleton.Grid count={3} />
         ) : taskLists.length === 0 ? (
           // Empty state
           <div className="text-center py-20">
