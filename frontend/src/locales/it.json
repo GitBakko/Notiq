@@ -368,7 +368,8 @@
       "passwordTooShort": "La password deve essere di almeno 6 caratteri",
       "userExists": "Utente già registrato con questa email",
       "unverified": "Account non verificato. Controlla la tua email.",
-      "nameRequired": "Nome obbligatorio"
+      "nameRequired": "Nome obbligatorio",
+      "invitationCodeRequired": "Il codice di invito è obbligatorio"
     },
     "invitationCode": "Codice Invito",
     "registrationSuccess": "Registrazione Completata!",
