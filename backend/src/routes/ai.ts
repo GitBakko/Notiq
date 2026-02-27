@@ -23,6 +23,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
   // POST /api/ai/chat — SSE streaming endpoint
   fastify.post('/chat', {
     onRequest: [fastify.authenticate],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { noteId, message, operation, targetLanguage } = request.body as {
       noteId?: string;

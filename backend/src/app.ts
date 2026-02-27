@@ -31,7 +31,8 @@ import kanbanRoutes from './routes/kanban';
 import './types';
 
 const server = fastify({
-  logger: true
+  logger: true,
+  trustProxy: true, // IIS ARR reverse proxy — read X-Forwarded-For for real client IP
 });
 
 // Plugins
@@ -50,7 +51,10 @@ if (!JWT_SECRET) {
 server.register(jwt, { secret: JWT_SECRET });
 
 server.register(rateLimit, {
-  global: false,
+  global: true,
+  max: 100,           // 100 requests per window per IP
+  timeWindow: '1 minute',
+  allowList: ['127.0.0.1', '::1'], // localhost exempt (health checks, internal)
 });
 
 import path from 'path';

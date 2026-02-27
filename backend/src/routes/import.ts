@@ -8,7 +8,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
 
   fastify.post<{
     Querystring: { notebookId?: string; isVault?: string }
-  }>('/evernote', async (request, reply) => {
+  }>('/evernote', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ message: 'No file uploaded' });
@@ -33,7 +33,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
 
   fastify.post<{
     Querystring: { notebookId?: string; isVault?: string }
-  }>('/onenote', async (request, reply) => {
+  }>('/onenote', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ message: 'No file uploaded' });
