@@ -3,7 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 import { formatDistanceToNow, isToday, isPast, startOfDay } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { GripVertical, MessageSquare, FileText, Calendar, Flag } from 'lucide-react';
+import { MessageSquare, FileText, Calendar, Flag } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { KanbanCard as KanbanCardType, KanbanCardPriority } from '../types';
 
@@ -61,23 +61,21 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
         isHighlighted && 'ring-2 ring-emerald-400 dark:ring-emerald-500 animate-pulse shadow-md shadow-emerald-100 dark:shadow-emerald-900/30'
       )}
     >
-      <div className="flex items-start gap-2">
-        {/* Drag handle */}
+      <div className="flex gap-2">
+        {/* Drag handle — full card height bar */}
         {!readOnly && (
           <div
             data-dnd-handle
             {...attributes}
             {...listeners}
-            className="mt-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 touch-none"
-          >
-            <GripVertical size={16} />
-          </div>
+            className="flex-shrink-0 self-stretch w-1 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-500 active:bg-gray-500 dark:active:bg-gray-400 cursor-grab active:cursor-grabbing touch-none transition-colors"
+          />
         )}
 
         {/* Priority flag — left of title */}
         {card.priority && (
           <span
-            className={clsx('mt-0.5 flex-shrink-0', PRIORITY_CONFIG[card.priority].color, PRIORITY_CONFIG[card.priority].darkColor)}
+            className={clsx('mt-0.5 self-start flex-shrink-0', PRIORITY_CONFIG[card.priority].color, PRIORITY_CONFIG[card.priority].darkColor)}
             title={t(`kanban.priority.${card.priority}`)}
           >
             <Flag size={14} />
