@@ -307,7 +307,7 @@ export default function Sidebar() {
                     aria-label={item.label}
                   >
                     <item.icon size={18} />
-                    {item.count > 0 && (
+                    {(item.count ?? 0) > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full px-1">
                         {item.count}
                       </span>
@@ -448,7 +448,7 @@ export default function Sidebar() {
                       >
                         <item.icon size={18} className="flex-shrink-0" />
                         <span className="flex-1 truncate">{item.label}</span>
-                        {item.count > 0 && (
+                        {(item.count ?? 0) > 0 && (
                           <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
                             {item.count}
                           </span>

@@ -48,7 +48,7 @@ export default function ProfilePage() {
   const [sendInviteData, setSendInviteData] = useState({ code: '', email: '', name: '' });
 
   const [invitationEnabled, setInvitationEnabled] = useState(false);
-  const [invites, setInvites] = useState<{ code: string; status: string; email?: string; createdAt: string; usedBy?: { email: string; name: string } }[]>([]);
+  const [invites, setInvites] = useState<{ id: string; code: string; status: string; email?: string; createdAt: string; usedBy?: { email: string; name: string; isVerified?: boolean } }[]>([]);
 
   const fetchInvites = async () => {
     try {

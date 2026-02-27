@@ -374,7 +374,6 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           if (!isPassedContentEmpty) {
             // Check if Yjs actually has content (provider.document is the Y.Doc)
             // Tiptap syncs Y.XmlFragment 'default'
-            // @ts-expect-error provider.document may not have getXmlFragment in TS types
             const yXmlFragment = provider.document.getXmlFragment('default');
             const yDocHasContent = yXmlFragment.length > 0;
 

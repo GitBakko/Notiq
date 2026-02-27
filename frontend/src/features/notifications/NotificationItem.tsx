@@ -15,7 +15,7 @@ interface NotificationItemProps {
 
 /** Resolve a contextual URL for the notification, or null if no navigation target */
 function getNotificationUrl(notification: Notification): string | null {
-  const data = notification.data || {};
+  const data = (notification.data || {}) as Record<string, string>;
 
   switch (notification.type) {
     case 'SHARE_NOTE':
@@ -167,8 +167,9 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
   };
 
   // Resolve localization key: prefer explicit, fall back to type-based mapping
-  const data = notification.data || {};
-  const locKey = data.localizationKey || TYPE_TO_KEY[notification.type];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (notification.data || {}) as Record<string, any>;
+  const locKey: string | undefined = data.localizationKey || TYPE_TO_KEY[notification.type];
   const args = locKey ? buildArgs(data) : {};
 
   // Try localized title/message, fall back to raw DB values

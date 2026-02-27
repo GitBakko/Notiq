@@ -213,7 +213,7 @@ export default function SharedWithMePage() {
     }
   };
 
-  const filterItems = (items: { status: string }[]) => {
+  const filterItems = <T extends { status: string }>(items: T[]) => {
     const pending = items.filter(i => i.status === 'PENDING');
     const accepted = items.filter(i => i.status === 'ACCEPTED');
     return { pending, accepted };
@@ -322,12 +322,12 @@ export default function SharedWithMePage() {
               <div className="space-y-8">
                 {/* PENDING SECTION */}
                 {(() => {
-                  const { pending, accepted } = filterItems(
+                  const items: (SharedNote | SharedNotebook | SharedTaskList | SharedKanbanBoard)[] =
                     activeTab === 'notes' ? sharedNotes
                     : activeTab === 'notebooks' ? sharedNotebooks
                     : activeTab === 'taskLists' ? sharedTaskLists
-                    : sharedKanbanBoards
-                  );
+                    : sharedKanbanBoards;
+                  const { pending, accepted } = filterItems(items);
                   if (pending.length === 0 && accepted.length === 0) {
                     return (
                       <div className="text-center text-gray-500 py-12">

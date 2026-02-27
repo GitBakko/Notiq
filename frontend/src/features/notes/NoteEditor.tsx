@@ -631,8 +631,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     />
                     {provider && collaborators.length > 1 && editorRef.current?.getEditor() && (
                         <ScrollToEditButton
-                            editor={editorRef.current.getEditor()}
-                            collaborators={collaborators}
+                            editor={editorRef.current.getEditor()!}
+                            collaborators={collaborators as { name: string; color: string; clientId: number }[]}
                         />
                     )}
                 </div>

@@ -3,7 +3,7 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
-import type { LocalTaskList, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard } from '../../lib/db';
+import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard } from '../../lib/db';
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 
 export const syncPull = async () => {
@@ -170,7 +170,7 @@ export const syncPull = async () => {
 
         const taskListsToPut: LocalTaskList[] = serverTaskLists
           .filter((tl: { id: string }) => !dirtyIds.has(tl.id))
-          .map((tl: Record<string, unknown>) => ({
+          .map((tl: Omit<LocalTaskList, 'ownership' | 'syncStatus'>) => ({
             ...tl,
             ownership: 'owned' as const,
             syncStatus: 'synced' as const,
@@ -194,7 +194,7 @@ export const syncPull = async () => {
         // Sync items for each task list
         for (const tl of taskListsToPut) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: Record<string, unknown>) => ({
+            const itemsToPut = tl.items.map((item: Omit<LocalTaskItem, 'syncStatus'>) => ({
               ...item,
               syncStatus: 'synced' as const,
             }));
@@ -213,10 +213,10 @@ export const syncPull = async () => {
       const sharedTaskLists = sharedRes.data;
 
       await db.transaction('rw', db.taskLists, db.taskItems, async () => {
-        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: Record<string, unknown> & { _sharedPermission?: string }) => ({
+        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: Omit<LocalTaskList, 'ownership' | 'syncStatus'> & { _sharedPermission?: string }) => ({
           ...tl,
           ownership: 'shared' as const,
-          sharedPermission: tl._sharedPermission,
+          sharedPermission: tl._sharedPermission as 'READ' | 'WRITE' | undefined,
           syncStatus: 'synced' as const,
         }));
 
@@ -235,7 +235,7 @@ export const syncPull = async () => {
 
         for (const tl of sharedMapped) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: Record<string, unknown>) => ({
+            const itemsToPut = tl.items.map((item: Omit<LocalTaskItem, 'syncStatus'>) => ({
               ...item,
               syncStatus: 'synced' as const,
             }));

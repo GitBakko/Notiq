@@ -23,7 +23,8 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
       const json = JSON.parse(content);
       if (typeof json === 'object' && json !== null) {
         // Recursive function to extract text
-        const getText = (node: { type?: string; text?: string; content?: unknown[] }): string => {
+        type ContentNode = { type?: string; text?: string; content?: ContentNode[] };
+        const getText = (node: ContentNode): string => {
           if (node.type === 'text' && node.text) {
             return node.text;
           }

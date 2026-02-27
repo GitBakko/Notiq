@@ -104,7 +104,7 @@ export interface LocalKanbanBoard {
   coverImage: string | null;
   avatarUrl: string | null;
   ownerId: string;
-  owner?: { id: string; name: string | null; email: string };
+  owner?: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   columnCount: number;
   cardCount: number;
   shareCount?: number;

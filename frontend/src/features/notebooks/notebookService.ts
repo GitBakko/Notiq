@@ -90,6 +90,7 @@ export const revokeNotebookShare = async (id: string, userId: string) => {
 };
 
 export const getSharedNotebooks = async () => {
-  const res = await api.get<Record<string, unknown>[]>('/share/notebooks');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await api.get<any[]>('/share/notebooks'); // Returns SharedNotebook[] — typed at call site
   return res.data;
 };

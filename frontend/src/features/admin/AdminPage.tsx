@@ -458,7 +458,7 @@ export default function AdminPage() {
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value: string | number) => formatBytes(Number(value))} />
+                      <Tooltip formatter={(value) => formatBytes(Number(value ?? 0))} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
