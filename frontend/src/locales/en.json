@@ -1069,6 +1069,16 @@
       "emailNotificationPreference": "Email Notification Preference — Toggle email notifications on/off in Settings",
       "italianTimeAgoFix": "Fixed Italian timestamps showing future tense instead of past tense",
       "kanbanCommentCountFix": "Fixed comment count not showing on Kanban cards",
+      "kanbanOfflineSync": "Kanban Offline Sync — Boards, columns, and cards now work offline via IndexedDB",
+      "kanbanGroupSharing": "Kanban Group Sharing — Share boards with entire groups, not just individual emails",
+      "backendTypeSafety": "Backend Type Safety — Eliminated ~124 unsafe types across production code",
+      "vaultPBKDF2": "Vault Security Upgrade — Encryption now uses PBKDF2 key derivation (100k iterations) for stronger protection",
+      "perRouteRateLimiting": "Per-Route Rate Limiting — Targeted rate limits on sensitive endpoints (auth, password reset)",
+      "frontendLintCleanup": "Code Quality — Fixed 130 lint errors across the frontend codebase",
+      "backendUnitTests": "Backend Testing — 70 new unit tests covering auth, notes, sharing, task lists, and notifications",
+      "kanbanColumnI18n": "Kanban Column Localization — Default column names now display in your language",
+      "avatarPropagation": "Avatar Fix — User avatars now display correctly in all sharing modals",
+      "dbIndexes": "Database Performance — Added indexes for faster group, kanban chat, and audit queries",
       "initialRelease": "Initial release with full feature set"
     }
   },

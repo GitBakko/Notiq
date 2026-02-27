@@ -777,6 +777,16 @@
       "emailNotificationPreference": "Preferenza Notifiche Email — Attiva/disattiva le notifiche email nelle Impostazioni",
       "italianTimeAgoFix": "Corretto il formato delle date in italiano che mostrava il tempo futuro invece del passato",
       "kanbanCommentCountFix": "Corretto il conteggio dei commenti non visibile sulle card Kanban",
+      "kanbanOfflineSync": "Kanban Offline — Board, colonne e card ora funzionano offline tramite IndexedDB",
+      "kanbanGroupSharing": "Condivisione Kanban con Gruppi — Condividi board con interi gruppi, non solo singole email",
+      "backendTypeSafety": "Sicurezza Tipi Backend — Eliminati ~124 tipi non sicuri nel codice di produzione",
+      "vaultPBKDF2": "Sicurezza Vault Migliorata — La crittografia ora usa derivazione chiave PBKDF2 (100k iterazioni)",
+      "perRouteRateLimiting": "Rate Limiting per Endpoint — Limiti mirati sugli endpoint sensibili (auth, reset password)",
+      "frontendLintCleanup": "Qualita' Codice — Corretti 130 errori lint nel frontend",
+      "backendUnitTests": "Test Backend — 70 nuovi unit test su auth, note, condivisione, task list e notifiche",
+      "kanbanColumnI18n": "Localizzazione Colonne Kanban — I nomi delle colonne predefinite ora appaiono nella tua lingua",
+      "avatarPropagation": "Fix Avatar — Gli avatar utente ora vengono mostrati correttamente in tutte le finestre di condivisione",
+      "dbIndexes": "Performance Database — Aggiunti indici per query piu' veloci su gruppi, chat kanban e audit",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

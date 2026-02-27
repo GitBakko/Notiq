@@ -11,6 +11,22 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.7.0',
+    date: '2026-02-27',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanOfflineSync' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanGroupSharing' },
+      { type: 'feature', titleKey: 'whatsNew.entries.vaultPBKDF2' },
+      { type: 'feature', titleKey: 'whatsNew.entries.backendUnitTests' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.backendTypeSafety' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.perRouteRateLimiting' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.frontendLintCleanup' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.dbIndexes' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanColumnI18n' },
+      { type: 'fix', titleKey: 'whatsNew.entries.avatarPropagation' },
+    ],
+  },
+  {
     version: '1.6.9',
     date: '2026-02-27',
     entries: [
