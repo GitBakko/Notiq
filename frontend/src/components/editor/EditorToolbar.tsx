@@ -22,6 +22,7 @@ import {
   Table as TableIcon,
   Type,
   ChevronDown,
+  ChevronUp,
   ALargeSmall,
   Mic,
   MicOff,
@@ -39,6 +40,7 @@ import 'regenerator-runtime/runtime';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useAuthStore } from '../../store/authStore';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -151,11 +153,18 @@ const ToolbarDropdown = ({ options, value, onChange, placeholder, title, icon }:
 export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorToolbarProps) {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+  const isMobile = useIsMobile();
   const [users, setUsers] = useState<any[]>([]);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
+  const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const linkInputRef = useRef<HTMLInputElement>(null);
+  const [showTableSelector, setShowTableSelector] = useState(false);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
 
   const {
     transcript,
@@ -217,6 +226,13 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
     };
   }, [provider]);
 
+  // Auto-focus link input when shown
+  useEffect(() => {
+    if (showLinkInput && linkInputRef.current) {
+      linkInputRef.current.focus();
+    }
+  }, [showLinkInput]);
+
   if (!editor) {
     return null;
   }
@@ -234,11 +250,14 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const currentFontFamily = editor.getAttributes('textStyle').fontFamily || '';
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
 
+  // Separator component for readability
+  const Separator = () => <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />;
+
   return (
-    <div className="flex gap-1 p-2 border-b border-gray-200 bg-white flex-wrap overflow-visible sticky top-0 z-10 dark:bg-gray-900 dark:border-gray-800 items-center">
-      {/* Online Users */}
+    <div className="border-b border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 sticky top-0 z-10 relative">
+      {/* Online Users — always visible */}
       {users.length > 0 && (
-        <div className="flex -space-x-2 mr-4 border-r pr-4 border-gray-200 dark:border-gray-700">
+        <div className="flex -space-x-2 px-2 pt-2 border-b border-gray-100 dark:border-gray-800 pb-2">
           {users.map((u, i) => {
             const initial = u.user?.name?.[0]?.toUpperCase() || '?';
             const avatarUrl = u.user?.avatarUrl;
@@ -261,304 +280,385 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
         </div>
       )}
 
-      {/* Speech to Text */}
-      {browserSupportsSpeechRecognition && (
-        <>
+      {/* Primary toolbar row — always visible */}
+      <div className="flex gap-1 p-2 items-center flex-wrap overflow-visible">
+        {/* Bold, Italic, Underline */}
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          isActive={editor.isActive('bold')}
+          title={t('editor.bold')}
+        >
+          <Bold size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          isActive={editor.isActive('italic')}
+          title={t('editor.italic')}
+        >
+          <Italic size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
+          isActive={editor.isActive('underline')}
+          title={t('editor.underline')}
+        >
+          <Underline size={18} />
+        </ToolbarButton>
+
+        <Separator />
+
+        {/* BulletList, OrderedList */}
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          isActive={editor.isActive('bulletList')}
+          title={t('editor.bulletList')}
+        >
+          <List size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          isActive={editor.isActive('orderedList')}
+          title={t('editor.orderedList')}
+        >
+          <ListOrdered size={18} />
+        </ToolbarButton>
+
+        <Separator />
+
+        {/* Link, Unlink */}
+        <ToolbarButton
+          onClick={() => {
+            setLinkUrl(editor.getAttributes('link').href || '');
+            setShowLinkInput(true);
+          }}
+          isActive={editor.isActive('link')}
+          title={t('editor.link')}
+        >
+          <LinkIcon size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => (editor.chain().focus() as any).unsetLink().run()}
+          disabled={!editor.isActive('link')}
+          title={t('editor.unlink')}
+        >
+          <Unlink size={18} />
+        </ToolbarButton>
+
+        <Separator />
+
+        {/* Undo, Redo */}
+        <ToolbarButton
+          onClick={() => editor.chain().focus().undo().run()}
+          disabled={!editor.can().undo()}
+          title={t('editor.undo')}
+        >
+          <Undo size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().redo().run()}
+          disabled={!editor.can().redo()}
+          title={t('editor.redo')}
+        >
+          <Redo size={18} />
+        </ToolbarButton>
+
+        {/* Mobile expand/collapse button */}
+        {isMobile && (
           <ToolbarButton
-            onClick={toggleListening}
-            isActive={listening}
-            title={listening ? t('editor.stopDictation') : t('editor.startDictation')}
+            onClick={() => setIsToolbarExpanded(!isToolbarExpanded)}
+            title={isToolbarExpanded ? t('editor.collapseToolbar') : t('editor.expandToolbar')}
           >
-            {listening ? <MicOff size={18} className="text-red-500" /> : <Mic size={18} />}
+            {isToolbarExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </ToolbarButton>
-        </>
-      )}
-
-      {/* Voice Memo */}
-      {onVoiceMemo && (
-        <ToolbarButton
-          onClick={onVoiceMemo}
-          title={t('editor.voiceMemo')}
-        >
-          <AudioLines size={18} />
-        </ToolbarButton>
-      )}
-
-      <ToolbarButton
-        onClick={() => editor.chain().focus().insertContent({ type: 'encryptedBlock', attrs: { createdBy: user?.id } }).run()}
-        title={t('editor.insertEncryptedBlock')}
-      >
-        <Lock size={18} />
-      </ToolbarButton>
-
-      {/* Emoji Picker */}
-      <div className="relative">
-        <ToolbarButton
-          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-          title={t('editor.insertEmoji')}
-          isActive={showEmojiPicker}
-        >
-          <Smile size={18} />
-        </ToolbarButton>
-        {showEmojiPicker && (
-          <div className="absolute top-full left-0 mt-2 z-50">
-            <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)}></div>
-            <div className="relative z-50">
-              <EmojiPicker
-                onEmojiClick={(data) => {
-                  editor.chain().focus().insertContent(data.emoji).run();
-                  // Keep open for multiple? Or close. Let's close.
-                  // setShowEmojiPicker(false);
-                }}
-                theme={isDark ? Theme.DARK : Theme.LIGHT}
-                width={300}
-                height={400}
-              />
-            </div>
-          </div>
         )}
       </div>
 
-      <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
-
-      {/* Font Family Dropdown */}
-      <ToolbarDropdown
-        options={fontFamilies}
-        value={currentFontFamily}
-        onChange={(value) => {
-          if (value) {
-            editor.chain().focus().setFontFamily(value).run();
-          } else {
-            editor.chain().focus().unsetFontFamily().run();
-          }
-        }}
-        placeholder={t('editor.fontFamily')}
-        title={t('editor.fontFamily')}
-        icon={<Type size={14} />}
-      />
-
-      {/* Font Size Dropdown */}
-      <ToolbarDropdown
-        options={FONT_SIZES}
-        value={currentFontSize}
-        onChange={(value) => {
-          if (value) {
-            editor.chain().focus().setFontSize(value).run();
-          } else {
-            editor.chain().focus().unsetFontSize().run();
-          }
-        }}
-        placeholder={t('editor.fontSize')}
-        title={t('editor.fontSize')}
-        icon={<ALargeSmall size={14} />}
-      />
-
-      <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
-
-      {/* Line Height Dropdown */}
-      <ToolbarDropdown
-        options={[
-          { label: '1.0', value: '1.0' },
-          { label: '1.15', value: '1.15' },
-          { label: '1.5', value: '1.5' },
-          { label: '2.0', value: '2.0' },
-          { label: '2.5', value: '2.5' },
-          { label: '3.0', value: '3.0' },
-        ]}
-        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '0.5'}
-        onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
-        placeholder={t('editor.lineHeight')}
-        title={t('editor.lineHeight')}
-        icon={<ArrowUpDown size={14} />}
-      />
-
-      <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />
-
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        isActive={editor.isActive('bold')}
-        title={t('editor.bold')}
-      >
-        <Bold size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        isActive={editor.isActive('italic')}
-        title={t('editor.italic')}
-      >
-        <Italic size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
-        isActive={editor.isActive('underline')}
-        title={t('editor.underline')}
-      >
-        <Underline size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-        isActive={editor.isActive('strike')}
-        title={t('editor.strikethrough')}
-      >
-        <Strikethrough size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleCode().run()}
-        isActive={editor.isActive('code')}
-        title={t('editor.code')}
-      >
-        <Code size={18} />
-      </ToolbarButton>
-
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
-
-
-
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('left').run()}
-        isActive={editor.isActive({ textAlign: 'left' })}
-        title={t('editor.alignLeft')}
-      >
-        <AlignLeft size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('center').run()}
-        isActive={editor.isActive({ textAlign: 'center' })}
-        title={t('editor.alignCenter')}
-      >
-        <AlignCenter size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('right').run()}
-        isActive={editor.isActive({ textAlign: 'right' })}
-        title={t('editor.alignRight')}
-      >
-        <AlignRight size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-        isActive={editor.isActive({ textAlign: 'justify' })}
-        title={t('editor.alignJustify')}
-      >
-        <AlignJustify size={18} />
-      </ToolbarButton>
-
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
-
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={editor.isActive('bulletList')}
-        title={t('editor.bulletList')}
-      >
-        <List size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        isActive={editor.isActive('orderedList')}
-        title={t('editor.orderedList')}
-      >
-        <ListOrdered size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        isActive={editor.isActive('blockquote')}
-        title={t('editor.blockquote')}
-      >
-        <Quote size={18} />
-      </ToolbarButton>
-
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
-
-      <ToolbarButton
-        onClick={() => {
-          const previousUrl = editor.getAttributes('link').href;
-          const url = window.prompt('URL', previousUrl);
-          if (url === null) return;
-          if (url === '') {
-            (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
-            return;
-          }
-          (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: url }).run();
-        }}
-        isActive={editor.isActive('link')}
-        title={t('editor.link')}
-      >
-        <LinkIcon size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => (editor.chain().focus() as any).unsetLink().run()}
-        disabled={!editor.isActive('link')}
-        title={t('editor.unlink')}
-      >
-        <Unlink size={18} />
-      </ToolbarButton>
-
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
-
-      <div className="relative group">
-        <ToolbarButton
-          onClick={() => { }} // No-op, handled by hover/dropdown
-          title={t('editor.insertTable')}
-        >
-          <TableIcon size={18} />
-        </ToolbarButton>
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 w-max p-2">
-          <TableSelector
-            onSelect={(rows, cols) => {
-              editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+      {/* Inline link URL input popover */}
+      {showLinkInput && (
+        <div className="absolute left-0 right-0 top-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-2 mx-2 z-20 flex items-center gap-2">
+          <input
+            ref={linkInputRef}
+            type="url"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (linkUrl.trim()) {
+                  (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: linkUrl.trim() }).run();
+                } else {
+                  (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
+                }
+                setShowLinkInput(false);
+                setLinkUrl('');
+              }
+              if (e.key === 'Escape') {
+                setShowLinkInput(false);
+                setLinkUrl('');
+                editor.commands.focus();
+              }
             }}
+            placeholder={t('editor.linkUrl')}
+            className="flex-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-emerald-500"
+            autoFocus
           />
+          <button
+            onClick={() => {
+              if (linkUrl.trim()) {
+                (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: linkUrl.trim() }).run();
+              } else {
+                (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
+              }
+              setShowLinkInput(false);
+              setLinkUrl('');
+            }}
+            className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700 transition-colors flex-shrink-0"
+          >
+            {t('editor.linkConfirm')}
+          </button>
+          <button
+            onClick={() => { setShowLinkInput(false); setLinkUrl(''); editor.commands.focus(); }}
+            className="px-2 py-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm flex-shrink-0"
+          >
+            {t('editor.linkCancel')}
+          </button>
         </div>
-      </div>
+      )}
 
+      {/* Secondary toolbar row — expandable on mobile, always visible on desktop */}
+      {(!isMobile || isToolbarExpanded) && (
+        <div className={clsx(
+          "flex gap-1 px-2 pb-2 items-center",
+          isMobile ? "overflow-x-auto flex-nowrap" : "flex-wrap overflow-visible"
+        )}>
+          {/* Speech to Text */}
+          {browserSupportsSpeechRecognition && (
+            <ToolbarButton
+              onClick={toggleListening}
+              isActive={listening}
+              title={listening ? t('editor.stopDictation') : t('editor.startDictation')}
+            >
+              {listening ? <MicOff size={18} className="text-red-500" /> : <Mic size={18} />}
+            </ToolbarButton>
+          )}
 
+          {/* Voice Memo */}
+          {onVoiceMemo && (
+            <ToolbarButton
+              onClick={onVoiceMemo}
+              title={t('editor.voiceMemo')}
+            >
+              <AudioLines size={18} />
+            </ToolbarButton>
+          )}
 
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
+          {/* Encrypted Block */}
+          <ToolbarButton
+            onClick={() => editor.chain().focus().insertContent({ type: 'encryptedBlock', attrs: { createdBy: user?.id } }).run()}
+            title={t('editor.insertEncryptedBlock')}
+          >
+            <Lock size={18} />
+          </ToolbarButton>
 
-      <ToolbarButton
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-        title={t('editor.undo')}
-      >
-        <Undo size={18} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-        title={t('editor.redo')}
-      >
-        <Redo size={18} />
-      </ToolbarButton>
-
-      <div className="w-px bg-gray-200 mx-2 dark:bg-gray-700" />
-
-      {/* Keyboard Shortcuts Info */}
-      <div className="relative group">
-        <ToolbarButton
-          onClick={() => {}}
-          title={t('editor.shortcuts.title')}
-        >
-          <Keyboard size={18} />
-        </ToolbarButton>
-        <div className="absolute top-full right-0 mt-1 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-3 w-64">
-          <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('editor.shortcuts.title')}</p>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600 dark:text-gray-400">{t('editor.pasteAsPlainText')}</span>
-              <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toKanban')}</span>
-              <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toTaskList')}</span>
-              <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
-            </div>
+          {/* Emoji Picker */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              title={t('editor.insertEmoji')}
+              isActive={showEmojiPicker}
+            >
+              <Smile size={18} />
+            </ToolbarButton>
+            {showEmojiPicker && (
+              <div className="absolute top-full left-0 mt-2 z-50">
+                <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)}></div>
+                <div className="relative z-50">
+                  <EmojiPicker
+                    onEmojiClick={(data) => {
+                      editor.chain().focus().insertContent(data.emoji).run();
+                    }}
+                    theme={isDark ? Theme.DARK : Theme.LIGHT}
+                    width={300}
+                    height={400}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+
+          <Separator />
+
+          {/* Font Family Dropdown */}
+          <ToolbarDropdown
+            options={fontFamilies}
+            value={currentFontFamily}
+            onChange={(value) => {
+              if (value) {
+                editor.chain().focus().setFontFamily(value).run();
+              } else {
+                editor.chain().focus().unsetFontFamily().run();
+              }
+            }}
+            placeholder={t('editor.fontFamily')}
+            title={t('editor.fontFamily')}
+            icon={<Type size={14} />}
+          />
+
+          {/* Font Size Dropdown */}
+          <ToolbarDropdown
+            options={FONT_SIZES}
+            value={currentFontSize}
+            onChange={(value) => {
+              if (value) {
+                editor.chain().focus().setFontSize(value).run();
+              } else {
+                editor.chain().focus().unsetFontSize().run();
+              }
+            }}
+            placeholder={t('editor.fontSize')}
+            title={t('editor.fontSize')}
+            icon={<ALargeSmall size={14} />}
+          />
+
+          {/* Line Height Dropdown */}
+          <ToolbarDropdown
+            options={[
+              { label: '1.0', value: '1.0' },
+              { label: '1.15', value: '1.15' },
+              { label: '1.5', value: '1.5' },
+              { label: '2.0', value: '2.0' },
+              { label: '2.5', value: '2.5' },
+              { label: '3.0', value: '3.0' },
+            ]}
+            value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || '0.5'}
+            onChange={(value) => editor.chain().focus().setLineHeight(value).run()}
+            placeholder={t('editor.lineHeight')}
+            title={t('editor.lineHeight')}
+            icon={<ArrowUpDown size={14} />}
+          />
+
+          <Separator />
+
+          {/* Strikethrough, Code */}
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+            isActive={editor.isActive('strike')}
+            title={t('editor.strikethrough')}
+          >
+            <Strikethrough size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleCode().run()}
+            isActive={editor.isActive('code')}
+            title={t('editor.code')}
+          >
+            <Code size={18} />
+          </ToolbarButton>
+
+          <Separator />
+
+          {/* 4x Alignment */}
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign('left').run()}
+            isActive={editor.isActive({ textAlign: 'left' })}
+            title={t('editor.alignLeft')}
+          >
+            <AlignLeft size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign('center').run()}
+            isActive={editor.isActive({ textAlign: 'center' })}
+            title={t('editor.alignCenter')}
+          >
+            <AlignCenter size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign('right').run()}
+            isActive={editor.isActive({ textAlign: 'right' })}
+            title={t('editor.alignRight')}
+          >
+            <AlignRight size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+            isActive={editor.isActive({ textAlign: 'justify' })}
+            title={t('editor.alignJustify')}
+          >
+            <AlignJustify size={18} />
+          </ToolbarButton>
+
+          <Separator />
+
+          {/* Blockquote */}
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleBlockquote().run()}
+            isActive={editor.isActive('blockquote')}
+            title={t('editor.blockquote')}
+          >
+            <Quote size={18} />
+          </ToolbarButton>
+
+          <Separator />
+
+          {/* Table — click-toggle instead of hover-only */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => setShowTableSelector(!showTableSelector)}
+              title={t('editor.insertTable')}
+            >
+              <TableIcon size={18} />
+            </ToolbarButton>
+            {showTableSelector && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowTableSelector(false)} />
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 w-max p-2">
+                  <TableSelector
+                    onSelect={(rows, cols) => {
+                      editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+                      setShowTableSelector(false);
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Keyboard Shortcuts Info — click-toggle instead of hover-only */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => setShowKeyboardShortcuts(!showKeyboardShortcuts)}
+              title={t('editor.shortcuts.title')}
+            >
+              <Keyboard size={18} />
+            </ToolbarButton>
+            {showKeyboardShortcuts && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowKeyboardShortcuts(false)} />
+                <div className="absolute top-full right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-3 w-64">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('editor.shortcuts.title')}</p>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600 dark:text-gray-400">{t('editor.pasteAsPlainText')}</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toKanban')}</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toTaskList')}</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

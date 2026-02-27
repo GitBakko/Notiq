@@ -634,6 +634,11 @@
     "column": "Col",
     "vault": "Vault",
     "insertEmoji": "Insert Emoji",
+    "expandToolbar": "Show more formatting options",
+    "collapseToolbar": "Hide formatting options",
+    "linkUrl": "Enter URL...",
+    "linkConfirm": "Apply",
+    "linkCancel": "Cancel",
     "dragToResize": "Drag to resize",
     "transform": {
       "toKanban": "Transform to Kanban Board",
