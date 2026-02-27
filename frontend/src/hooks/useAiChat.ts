@@ -130,8 +130,8 @@ export function useAiChat(noteId: string | undefined) {
           }
         }
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== 'AbortError') {
         setError(err.message || 'Failed to get AI response');
         setMessages(prev => prev.filter(m => !m.isStreaming));
       }

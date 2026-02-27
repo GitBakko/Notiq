@@ -48,7 +48,7 @@ export const shareTaskList = async (
     },
     include: {
       user: {
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, avatarUrl: true },
       },
     },
   });
@@ -127,7 +127,7 @@ export const getSharedTaskLists = async (userId: string) => {
             },
           },
           user: {
-            select: { id: true, name: true, email: true },
+            select: { id: true, name: true, email: true, avatarUrl: true },
           },
         },
       },

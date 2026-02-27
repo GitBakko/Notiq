@@ -83,14 +83,14 @@ interface AuditLog {
   event: string;
   createdAt: string;
   user: { email: string };
-  details: any;
+  details: Record<string, unknown>;
 }
 
 // --- Components ---
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-const StatCard = ({ title, value, icon: Icon, subValue, color }: any) => (
+const StatCard = ({ title, value, icon: Icon, subValue, color }: { title: string; value: string | number; icon: React.ComponentType<{ className?: string }>; subValue?: string; color: string }) => (
   <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
     <div className="flex items-center justify-between">
       <div>
@@ -137,7 +137,7 @@ export default function AdminPage() {
   const [logPage, setLogPage] = useState(1);
 
   // Requests Tab State
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<{ id: string; email: string; createdAt: string; status: string }[]>([]);
 
   useEffect(() => {
     fetchInitialData();
@@ -268,7 +268,7 @@ export default function AdminPage() {
       await api.post(`/admin/requests/${id}/${action}`);
       toast.success(`Request ${action}d`);
       fetchRequests();
-    } catch (e) {
+    } catch {
       toast.error(`Failed to ${action} request`);
     }
   };
@@ -458,7 +458,7 @@ export default function AdminPage() {
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value: any) => formatBytes(Number(value))} />
+                      <Tooltip formatter={(value: string | number) => formatBytes(Number(value))} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>

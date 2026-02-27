@@ -56,15 +56,14 @@ export const createMessage = async (userId: string, noteId: string, content: str
   const activeUserIds = new Set<string>();
 
   try {
-    const server = hocuspocus as any;
+    const server = hocuspocus as { documents?: Map<string, { getConnections(): Array<{ context?: { user?: { id: string } } }> }> };
     const document = server.documents?.get(noteId);
 
     if (document) {
-      document.getConnections().forEach((conn: any) => {
+      document.getConnections().forEach((conn) => {
         // The user ID is attached to the connection context in onAuthenticate
-        const context = conn.context as any;
-        if (context?.user?.id) {
-          activeUserIds.add(context.user.id);
+        if (conn.context?.user?.id) {
+          activeUserIds.add(conn.context.user.id);
         }
       });
     }
@@ -168,7 +167,7 @@ export const createMessage = async (userId: string, noteId: string, content: str
         await emailService.sendNotificationEmail(
           freshRecipient!.email,
           'CHAT_MESSAGE',
-          { noteId, noteTitle: note.title, senderName, messageContent: content, locale: freshRecipient?.locale }
+          { noteId, noteTitle: note.title, senderName, messageContent: content, locale: freshRecipient?.locale || 'en' }
         );
         lastEmailSent.set(debounceKey, Date.now());
       }

@@ -110,7 +110,7 @@ export default function Sidebar() {
       if (location.search.includes(deleteNotebookId)) {
         navigate('/notes');
       }
-    } catch (error) {
+    } catch {
       toast.error(t('notebooks.deleteFailed'));
     }
   };
@@ -133,8 +133,8 @@ export default function Sidebar() {
     try {
       await updateNotebook(renamingNotebookId, trimmed);
       toast.success(t('notebooks.renamed'));
-    } catch (error: any) {
-      toast.error(error.message || t('notebooks.renameFailed'));
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : t('notebooks.renameFailed'));
     }
     setRenamingNotebookId(null);
   }, [renamingNotebookId, renameText, notebooks, t]);
@@ -158,7 +158,7 @@ export default function Sidebar() {
         await permanentlyDeleteNote(note.id);
       }
       toast.success(t('trash.emptied', 'Trash emptied'));
-    } catch (error) {
+    } catch {
       toast.error(t('trash.emptyFailed', 'Failed to empty trash'));
     }
     setIsEmptyTrashConfirmOpen(false);
@@ -168,7 +168,7 @@ export default function Sidebar() {
   const trashedNotes = useNotes(undefined, undefined, undefined, true);
   const trashCount = trashedNotes?.length || 0;
 
-  const navItems = [
+  const navItems: { icon: typeof FileText; label: string; path: string; count?: number }[] = [
     { icon: FileText, label: t('sidebar.notes'), path: '/notes' },
     { icon: Bell, label: t('sidebar.reminders'), path: '/reminders' },
     { icon: ListChecks, label: t('sidebar.taskLists'), path: '/tasks' },
@@ -194,8 +194,8 @@ export default function Sidebar() {
             try {
               await createNotebook(name);
               toast.success(t('notebooks.created'));
-            } catch (error: any) {
-              toast.error(error.message || t('notebooks.createFailed'));
+            } catch (error: unknown) {
+              toast.error(error instanceof Error ? error.message : t('notebooks.createFailed'));
             }
           }
         }}
@@ -307,9 +307,9 @@ export default function Sidebar() {
                     aria-label={item.label}
                   >
                     <item.icon size={18} />
-                    {(item as any).count > 0 && (
+                    {item.count > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full px-1">
-                        {(item as any).count}
+                        {item.count}
                       </span>
                     )}
                   </Link>
@@ -448,9 +448,9 @@ export default function Sidebar() {
                       >
                         <item.icon size={18} className="flex-shrink-0" />
                         <span className="flex-1 truncate">{item.label}</span>
-                        {(item as any).count > 0 && (
+                        {item.count > 0 && (
                           <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                            {(item as any).count}
+                            {item.count}
                           </span>
                         )}
                       </Link>
@@ -583,7 +583,7 @@ export default function Sidebar() {
                               <Book size={16} className="flex-shrink-0" />
                               <span className="truncate">{notebook.name}</span>
                               <span className="ml-auto flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                                {(notebook as any).count || 0}
+                                {'count' in notebook ? (notebook as { count: number }).count : 0}
                               </span>
                               {notebookShareCounts && notebookShareCounts[notebook.id] && (
                                 <button

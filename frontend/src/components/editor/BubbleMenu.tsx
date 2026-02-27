@@ -6,8 +6,8 @@ export interface BubbleMenuProps extends Omit<BubbleMenuPluginProps, 'pluginKey'
   editor: Editor;
   className?: string;
   children: React.ReactNode;
-  pluginKey?: string | any;
-  tippyOptions?: any;
+  pluginKey?: BubbleMenuPluginProps['pluginKey'];
+  tippyOptions?: BubbleMenuPluginProps['tippyOptions'];
   updateDelay?: number;
 }
 
@@ -31,7 +31,7 @@ export const BubbleMenu = (props: BubbleMenuProps) => {
       tippyOptions,
       shouldShow,
       updateDelay,
-    } as any);
+    } as unknown as Parameters<typeof BubbleMenuPlugin>[0]);
 
     editor.registerPlugin(plugin);
 

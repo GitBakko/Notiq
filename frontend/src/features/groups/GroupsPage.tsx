@@ -87,8 +87,9 @@ export default function GroupsPage() {
       }
       setAddEmailMap((prev) => ({ ...prev, [groupId]: '' }));
     },
-    onError: (error: any) => {
-      const msg = error.response?.data?.message || '';
+    onError: (error: unknown) => {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const msg = axiosErr.response?.data?.message || '';
       if (msg === 'User is already a member') {
         toast.error(t('groups.alreadyMember'));
       } else if (msg === 'Cannot add yourself to a group') {

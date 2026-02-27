@@ -269,6 +269,11 @@ model PushSubscription {
   updatedAt DateTime @updatedAt
 }
 
+// Note-level chat. Intentionally separate from KanbanBoardChat despite
+// similar structure: different parent entity (Note vs Board), different
+// notification logic (Hocuspocus presence vs SSE), different access patterns.
+// Unifying would require nullable FKs or polymorphic pattern, losing
+// referential integrity for no practical benefit.
 model ChatMessage {
   id        String   @id @default(uuid())
   noteId    String
@@ -295,7 +300,7 @@ model AuditLog {
   details   Json?
   createdAt DateTime @default(now())
 
-  @@index([userId])
+  @@index([userId, createdAt])
 }
 
 enum RequestStatus {
@@ -347,6 +352,7 @@ model GroupMember {
   joinedAt DateTime @default(now())
 
   @@id([groupId, userId])
+  @@index([userId])
 }
 
 model PendingGroupInvite {
@@ -493,6 +499,7 @@ model SharedKanbanBoard {
   @@index([userId, status])
 }
 
+// Board-level chat. See ChatMessage comment for why these are separate.
 model KanbanBoardChat {
   id        String      @id @default(uuid())
   boardId   String
@@ -502,7 +509,8 @@ model KanbanBoardChat {
   content   String
   createdAt DateTime    @default(now())
 
-  @@index([boardId])
+  @@index([boardId, createdAt])
+  @@index([authorId])
 }
 
 enum KanbanCardPriority {

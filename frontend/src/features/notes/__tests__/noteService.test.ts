@@ -46,7 +46,9 @@ import {
   restoreNote, permanentlyDeleteNote,
 } from '../noteService';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock overrides
 const apiMock = api as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock overrides
 const dbMock = db as any;
 
 beforeEach(() => {

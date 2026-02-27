@@ -48,13 +48,13 @@ export default function ProfilePage() {
   const [sendInviteData, setSendInviteData] = useState({ code: '', email: '', name: '' });
 
   const [invitationEnabled, setInvitationEnabled] = useState(false);
-  const [invites, setInvites] = useState<any[]>([]); // Define proper type if possible or stick to any for speed
+  const [invites, setInvites] = useState<{ code: string; status: string; email?: string; createdAt: string; usedBy?: { email: string; name: string } }[]>([]);
 
   const fetchInvites = async () => {
     try {
       const res = await api.get('/invites');
       setInvites(res.data);
-    } catch (e) {
+    } catch {
       console.error('Failed to fetch invites');
     }
   };
@@ -80,7 +80,7 @@ export default function ProfilePage() {
     try {
       await updateUser(formData);
       toast.success(t('profile.updated'));
-    } catch (error) {
+    } catch {
       toast.error(t('profile.updateFailed'));
     } finally {
       setIsLoading(false);
@@ -99,7 +99,7 @@ export default function ProfilePage() {
       toast.success(t('profile.passwordUpdated'));
       setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
       setIsChangePasswordModalOpen(false);
-    } catch (error) {
+    } catch {
       toast.error(t('profile.passwordUpdateFailed'));
     } finally {
       setIsPasswordLoading(false);
@@ -120,7 +120,7 @@ export default function ProfilePage() {
       toast.success(t('profile.inviteSent', 'Invitation sent successfully!'));
       setIsSendInviteModalOpen(false);
       setSendInviteData({ code: '', email: '', name: '' });
-    } catch (e) {
+    } catch {
       toast.error(t('profile.inviteSendFailed', 'Failed to send invitation'));
     } finally {
       setIsSendingInvite(false);
@@ -134,7 +134,7 @@ export default function ProfilePage() {
     try {
       await uploadAvatar(file);
       toast.success(t('profile.avatarUpdated'));
-    } catch (error) {
+    } catch {
       toast.error(t('profile.avatarUpdateFailed'));
     }
   };
@@ -320,7 +320,7 @@ export default function ProfilePage() {
                       // Refresh user to get updated invite count (not implemented yet, but good to have)
                       // window.location.reload(); // Too aggressive. 
                       // updateUser({...user, invitesAvailable: user.invitesAvailable - 1}); // Optimistic update if simple
-                    } catch (e) {
+                    } catch {
                       toast.error(t('profile.generateFailed'));
                     }
                   }}
@@ -379,7 +379,7 @@ export default function ProfilePage() {
                                   try {
                                     await api.post(`/invites/${invite.code}/resend`);
                                     toast.success(t('profile.verificationResent'));
-                                  } catch (e) {
+                                  } catch {
                                     toast.error(t('profile.resendFailed'));
                                   }
                                 }}

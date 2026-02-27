@@ -1,6 +1,6 @@
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-export const updateProfile = async (token: string, data: any) => {
+export const updateProfile = async (token: string, data: Record<string, unknown>) => {
   const response = await fetch(`${API_URL}/user/me`, {
     method: 'PUT',
     headers: {
@@ -17,7 +17,7 @@ export const updateProfile = async (token: string, data: any) => {
   return response.json();
 };
 
-export const changePassword = async (token: string, data: any) => {
+export const changePassword = async (token: string, data: Record<string, unknown>) => {
   const response = await fetch(`${API_URL}/user/change-password`, {
     method: 'POST',
     headers: {

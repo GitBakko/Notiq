@@ -303,12 +303,13 @@ export default function NotesPage() {
       id: s.user.id,
       name: s.user.name,
       email: s.user.email,
+      avatarUrl: s.user.avatarUrl,
       permission: s.permission,
     })) || [];
   const sharingNoteOwner: SharedOwnerInfo | null = sharingNoteData
     ? (sharingNoteData.ownership === 'shared' && sharingNoteData.sharedByUser
-        ? { id: sharingNoteData.sharedByUser.id, name: sharingNoteData.sharedByUser.name, email: sharingNoteData.sharedByUser.email }
-        : user ? { id: user.id, name: user.name || null, email: user.email } : null)
+        ? { id: sharingNoteData.sharedByUser.id, name: sharingNoteData.sharedByUser.name, email: sharingNoteData.sharedByUser.email, avatarUrl: sharingNoteData.sharedByUser.avatarUrl }
+        : user ? { id: user.id, name: user.name || null, email: user.email, avatarUrl: user.avatarUrl } : null)
     : null;
 
   const sharingModal = sharingNoteId ? (

@@ -37,8 +37,9 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
     try {
       const invite = await inviteService.generateInvite(request.user.id);
       return invite;
-    } catch (error: any) {
-      return reply.status(400).send({ message: error.message || 'Failed to generate invite' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to generate invite';
+      return reply.status(400).send({ message: msg });
     }
   });
 
@@ -50,8 +51,9 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
     try {
       await inviteService.sendInviteEmail(code, request.user.id, email, name, locale);
       return { success: true };
-    } catch (error: any) {
-      return reply.status(400).send({ message: error.message || 'Failed to send email' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to send email';
+      return reply.status(400).send({ message: msg });
     }
   });
 
@@ -61,8 +63,9 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
     try {
       const result = await (await import('../services/auth.service')).resendVerificationForInvite(code, request.user.id);
       return result;
-    } catch (error: any) {
-      return reply.status(400).send({ message: error.message || 'Failed to resend email' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to resend email';
+      return reply.status(400).send({ message: msg });
     }
   });
 }
@@ -88,7 +91,7 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
     try {
       await inviteService.createInvitationRequest(email, request.ip);
       return { success: true };
-    } catch (error: any) {
+    } catch (_error: unknown) {
       // Don't leak if email exists
       return { success: true };
     }
@@ -110,8 +113,9 @@ export async function adminInviteRoutes(fastify: FastifyInstance) {
     try {
       await inviteService.approveInvitationRequest(id, request.user.id);
       return { success: true };
-    } catch (e: any) {
-      return reply.status(400).send({ message: e.message });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      return reply.status(400).send({ message: msg });
     }
   });
 
@@ -121,8 +125,9 @@ export async function adminInviteRoutes(fastify: FastifyInstance) {
     try {
       await inviteService.rejectInvitationRequest(id);
       return { success: true };
-    } catch (e: any) {
-      return reply.status(400).send({ message: e.message });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      return reply.status(400).send({ message: msg });
     }
   });
 }

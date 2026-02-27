@@ -21,8 +21,8 @@ export default async function tagRoutes(fastify: FastifyInstance) {
     try {
       const tag = await tagService.createTag(request.user.id, name, isVault, id);
       return tag;
-    } catch (e: any) {
-      if (e.code === 'P2002') {
+    } catch (e: unknown) {
+      if (e instanceof Object && 'code' in e && e.code === 'P2002') {
         return reply.status(409).send({ message: 'Tag already exists' });
       }
       throw e;

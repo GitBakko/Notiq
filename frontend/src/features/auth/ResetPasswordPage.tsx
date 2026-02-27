@@ -47,8 +47,9 @@ export default function ResetPasswordPage() {
 
       toast.success(t('auth.resetSuccess'));
       navigate('/login');
-    } catch (error: any) {
-      const message = error.response?.data?.message || error.message || t('auth.resetFailed');
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } }; message?: string };
+      const message = axiosErr.response?.data?.message || axiosErr.message || t('auth.resetFailed');
       toast.error(message);
     } finally {
       setIsLoading(false);

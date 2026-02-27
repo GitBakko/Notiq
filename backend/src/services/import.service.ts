@@ -13,15 +13,16 @@ import logger from '../utils/logger';
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
   const dom = new JSDOM('');
-  const origWindow = (globalThis as any).window;
-  (globalThis as any).window = dom.window;
+  const g = globalThis as Record<string, unknown>;
+  const origWindow = g.window;
+  g.window = dom.window;
   try {
     return fn();
   } finally {
     if (origWindow === undefined) {
-      delete (globalThis as any).window;
+      delete g.window;
     } else {
-      (globalThis as any).window = origWindow;
+      g.window = origWindow;
     }
   }
 }
@@ -131,7 +132,7 @@ const processEnexNote = async (enexNote: EnexNote, userId: string, targetNoteboo
   // ============================================================
   // 2. PROCESS RESOURCES + build hash→attachment map
   // ============================================================
-  const createdAttachments: any[] = [];
+  const createdAttachments: { filename: string; url: string; mimeType: string; size: number }[] = [];
   const resourceMap = new Map<string, { url: string; mime: string; filename: string }>();
 
   const resources = enexNote.resource

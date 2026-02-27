@@ -73,8 +73,9 @@ export default async function (fastify: FastifyInstance) {
     const data = updateNoteSchema.parse(request.body);
     try {
       await noteService.updateNote(request.user.id, id, data);
-    } catch (err: any) {
-      if (err.message === 'Note not found') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg === 'Note not found') {
         return reply.status(404).send({ message: 'Note not found' });
       }
       throw err;
@@ -86,8 +87,9 @@ export default async function (fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     try {
       await noteService.deleteNote(request.user.id, id);
-    } catch (err: any) {
-      if (err.message === 'Note not found') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg === 'Note not found') {
         return reply.status(404).send({ message: 'Note not found' });
       }
       throw err;
@@ -105,8 +107,9 @@ export default async function (fastify: FastifyInstance) {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     try {
       return await noteService.getNoteSizeBreakdown(request.user.id, id);
-    } catch (err: any) {
-      if (err.message === 'Note not found') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg === 'Note not found') {
         return reply.status(404).send({ message: 'Note not found' });
       }
       throw err;

@@ -22,13 +22,14 @@ export default function RequestInvitePage() {
     try {
       await api.post('/auth/request', { email, honeypot }); // Public endpoint
       setIsSuccess(true);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Even if it fails (e.g. rate limit), we might want to show success or a generic message to avoid enumeration,
       // but for UX we'll show a friendly error if it's a specific "limit reached" one, otherwise generic.
       // For security, usually better to say "If valid, we sent it", but here it's a request to *admin*.
       // So we just say "Request received".
       // But if API throws 429, we should tell them.
-      if (e.response?.status === 429) {
+      const axiosErr = e as { response?: { status?: number } };
+      if (axiosErr.response?.status === 429) {
         setError(t('auth.rateLimitExceeded', 'Too many requests. Please try again later.'));
       } else {
         // Assume success for all other errors to prevent email enumeration or leakage

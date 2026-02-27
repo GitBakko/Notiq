@@ -34,11 +34,11 @@ export interface LocalNote {
     userId: string;
     permission: 'READ' | 'WRITE';
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
-    user: { id: string; name: string | null; email: string };
+    user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
-  sharedByUser?: { id: string; name: string | null; email: string } | null;
+  sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   syncStatus: 'synced' | 'created' | 'updated';
 }
 
@@ -71,13 +71,13 @@ export interface LocalTaskList {
   isTrashed: boolean;
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
-  sharedByUser?: { id: string; name: string | null; email: string } | null;
+  sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   sharedWith?: {
     id: string;
     userId: string;
     permission: 'READ' | 'WRITE';
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
-    user: { id: string; name: string | null; email: string };
+    user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
   items?: LocalTaskItem[];
   syncStatus: 'synced' | 'created' | 'updated';
@@ -97,10 +97,57 @@ export interface LocalTaskItem {
   syncStatus: 'synced' | 'created' | 'updated';
 }
 
+export interface LocalKanbanBoard {
+  id: string;
+  title: string;
+  description: string | null;
+  coverImage: string | null;
+  avatarUrl: string | null;
+  ownerId: string;
+  owner?: { id: string; name: string | null; email: string };
+  columnCount: number;
+  cardCount: number;
+  shareCount?: number;
+  shares?: { userId: string; permission: 'READ' | 'WRITE'; user: { id: string; name: string | null; email: string; avatarUrl?: string | null } }[];
+  ownership: 'owned' | 'shared';
+  permission?: 'READ' | 'WRITE';
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: 'synced' | 'created' | 'updated';
+}
+
+export interface LocalKanbanColumn {
+  id: string;
+  title: string;
+  position: number;
+  boardId: string;
+  syncStatus: 'synced' | 'created' | 'updated';
+}
+
+export interface LocalKanbanCard {
+  id: string;
+  title: string;
+  description: string | null;
+  position: number;
+  columnId: string;
+  boardId: string; // denormalized for efficient queries
+  assigneeId: string | null;
+  assignee: { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null } | null;
+  dueDate: string | null;
+  priority: 'STANDBY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null;
+  noteId: string | null;
+  noteLinkedById: string | null;
+  note: { id: string; title: string; userId: string } | null;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: 'synced' | 'created' | 'updated';
+}
+
 export interface SyncQueueItem {
   id?: number; // Auto-increment
   type: 'CREATE' | 'UPDATE' | 'DELETE';
-  entity: 'NOTE' | 'NOTEBOOK' | 'TAG' | 'TASK_LIST' | 'TASK_ITEM';
+  entity: 'NOTE' | 'NOTEBOOK' | 'TAG' | 'TASK_LIST' | 'TASK_ITEM' | 'KANBAN_BOARD' | 'KANBAN_COLUMN' | 'KANBAN_CARD';
   entityId: string;
   userId: string; // Added for data isolation
   data?: Record<string, unknown>;
@@ -113,6 +160,9 @@ class AppDatabase extends Dexie {
   tags!: Table<LocalTag>;
   taskLists!: Table<LocalTaskList>;
   taskItems!: Table<LocalTaskItem>;
+  kanbanBoards!: Table<LocalKanbanBoard>;
+  kanbanColumns!: Table<LocalKanbanColumn>;
+  kanbanCards!: Table<LocalKanbanCard>;
   syncQueue!: Table<SyncQueueItem>;
 
   constructor() {
@@ -187,6 +237,13 @@ class AppDatabase extends Dexie {
     this.version(13).stores({
       taskLists: 'id, userId, updatedAt, syncStatus, isTrashed',
       taskItems: 'id, taskListId, updatedAt, syncStatus, position',
+    });
+
+    // v14: Add kanbanBoards, kanbanColumns, kanbanCards tables for kanban offline sync
+    this.version(14).stores({
+      kanbanBoards: 'id, ownerId, updatedAt, syncStatus, ownership',
+      kanbanColumns: 'id, boardId, position, syncStatus',
+      kanbanCards: 'id, columnId, boardId, position, updatedAt, syncStatus',
     });
   }
 }

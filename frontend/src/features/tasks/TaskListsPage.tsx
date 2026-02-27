@@ -34,11 +34,11 @@ export default function TaskListsPage() {
     : null;
   const viewSharesUsers: SharedUserInfo[] = viewSharesTaskList?.sharedWith
     ?.filter(s => s.status === 'ACCEPTED')
-    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, permission: s.permission })) || [];
+    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission })) || [];
   const viewSharesOwner: SharedOwnerInfo | null = viewSharesTaskList
     ? (viewSharesTaskList.sharedByUser
-        ? { id: viewSharesTaskList.sharedByUser.id, name: viewSharesTaskList.sharedByUser.name, email: viewSharesTaskList.sharedByUser.email }
-        : user ? { id: user.id, name: user.name || null, email: user.email } : null)
+        ? { id: viewSharesTaskList.sharedByUser.id, name: viewSharesTaskList.sharedByUser.name, email: viewSharesTaskList.sharedByUser.email, avatarUrl: viewSharesTaskList.sharedByUser.avatarUrl }
+        : user ? { id: user.id, name: user.name || null, email: user.email, avatarUrl: user.avatarUrl } : null)
     : null;
 
   return (
@@ -124,6 +124,7 @@ export default function TaskListsPage() {
                 id: s.userId,
                 name: s.user.name,
                 email: s.user.email,
+                avatarUrl: s.user.avatarUrl,
                 permission: s.permission,
               })) || []
           }

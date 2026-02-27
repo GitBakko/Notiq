@@ -3,7 +3,8 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
-import type { LocalTaskList } from '../../lib/db';
+import type { LocalTaskList, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard } from '../../lib/db';
+import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 
 export const syncPull = async () => {
   try {
@@ -159,6 +160,7 @@ export const syncPull = async () => {
 
     // --- Task Lists Pull ---
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const taskListsRes = await api.get<any[]>('/tasklists');
       const serverTaskLists = taskListsRes.data;
 
@@ -167,14 +169,14 @@ export const syncPull = async () => {
         const dirtyIds = new Set(dirtyTaskLists.map(tl => tl.id));
 
         const taskListsToPut: LocalTaskList[] = serverTaskLists
-          .filter((tl: any) => !dirtyIds.has(tl.id))
-          .map((tl: any) => ({
+          .filter((tl: { id: string }) => !dirtyIds.has(tl.id))
+          .map((tl: Record<string, unknown>) => ({
             ...tl,
             ownership: 'owned' as const,
             syncStatus: 'synced' as const,
           }));
 
-        const serverIds = new Set(serverTaskLists.map((tl: any) => tl.id));
+        const serverIds = new Set(serverTaskLists.map((tl: { id: string }) => tl.id));
         const allLocalSynced = await db.taskLists.where('syncStatus').equals('synced')
           .filter(tl => tl.ownership !== 'shared').toArray();
         const toDeleteIds = allLocalSynced
@@ -192,7 +194,7 @@ export const syncPull = async () => {
         // Sync items for each task list
         for (const tl of taskListsToPut) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: any) => ({
+            const itemsToPut = tl.items.map((item: Record<string, unknown>) => ({
               ...item,
               syncStatus: 'synced' as const,
             }));
@@ -206,11 +208,12 @@ export const syncPull = async () => {
 
     // --- Shared Task Lists Pull ---
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sharedRes = await api.get<any[]>('/share/tasklists/accepted');
       const sharedTaskLists = sharedRes.data;
 
       await db.transaction('rw', db.taskLists, db.taskItems, async () => {
-        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: any) => ({
+        const sharedMapped: LocalTaskList[] = sharedTaskLists.map((tl: Record<string, unknown> & { _sharedPermission?: string }) => ({
           ...tl,
           ownership: 'shared' as const,
           sharedPermission: tl._sharedPermission,
@@ -232,7 +235,7 @@ export const syncPull = async () => {
 
         for (const tl of sharedMapped) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: any) => ({
+            const itemsToPut = tl.items.map((item: Record<string, unknown>) => ({
               ...item,
               syncStatus: 'synced' as const,
             }));
@@ -242,6 +245,133 @@ export const syncPull = async () => {
       });
     } catch (e) {
       console.error('syncPull shared taskLists failed', e);
+    }
+
+    // --- Kanban Boards Pull ---
+    try {
+      const boardsRes = await api.get<KanbanBoardListItem[]>('/kanban/boards');
+      const serverBoards = boardsRes.data;
+
+      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
+        const dirtyBoards = await db.kanbanBoards.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyBoards.map(b => b.id));
+
+        // Zombie prevention: check for pending board deletes
+        const pendingBoardDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_BOARD')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingBoardDeleteIds = new Set(pendingBoardDeletes.map(i => i.entityId));
+
+        const boardsToPut: LocalKanbanBoard[] = serverBoards
+          .filter(b => !dirtyIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
+          .map(b => ({
+            ...b,
+            syncStatus: 'synced' as const,
+          }));
+
+        // Remove boards no longer on server (owned only — shared handled below)
+        const allLocalSyncedBoards = await db.kanbanBoards.where('syncStatus').equals('synced')
+          .filter(b => b.ownership !== 'shared').toArray();
+        const serverIds = new Set(serverBoards.map(b => b.id));
+        const toDeleteIds = allLocalSyncedBoards
+          .filter(b => !serverIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
+          .map(b => b.id);
+
+        if (toDeleteIds.length > 0) {
+          await db.kanbanBoards.bulkDelete(toDeleteIds);
+          // Cascade: remove columns and cards of deleted boards
+          for (const boardId of toDeleteIds) {
+            const cols = await db.kanbanColumns.where('boardId').equals(boardId).toArray();
+            if (cols.length > 0) {
+              await db.kanbanColumns.where('boardId').equals(boardId).delete();
+            }
+            await db.kanbanCards.where('boardId').equals(boardId).delete();
+          }
+        }
+
+        if (boardsToPut.length > 0) await db.kanbanBoards.bulkPut(boardsToPut);
+      });
+
+      // Pull full board details (columns + cards) for each board
+      for (const board of serverBoards) {
+        try {
+          const boardRes = await api.get<KanbanBoard>(`/kanban/boards/${board.id}`);
+          const fullBoard = boardRes.data;
+
+          await db.transaction('rw', db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
+            // Zombie prevention for columns and cards
+            const pendingColDeletes = await db.syncQueue
+              .where('entity').equals('KANBAN_COLUMN')
+              .and(item => item.type === 'DELETE')
+              .toArray();
+            const pendingColDeleteIds = new Set(pendingColDeletes.map(i => i.entityId));
+
+            const pendingCardDeletes = await db.syncQueue
+              .where('entity').equals('KANBAN_CARD')
+              .and(item => item.type === 'DELETE')
+              .toArray();
+            const pendingCardDeleteIds = new Set(pendingCardDeletes.map(i => i.entityId));
+
+            // Dirty columns/cards (local edits)
+            const dirtyColumns = await db.kanbanColumns.where('syncStatus').notEqual('synced')
+              .and(c => c.boardId === fullBoard.id).toArray();
+            const dirtyColumnIds = new Set(dirtyColumns.map(c => c.id));
+
+            const dirtyCards = await db.kanbanCards.where('syncStatus').notEqual('synced')
+              .and(c => c.boardId === fullBoard.id).toArray();
+            const dirtyCardIds = new Set(dirtyCards.map(c => c.id));
+
+            // Prepare columns
+            const serverColumns: LocalKanbanColumn[] = fullBoard.columns
+              .filter(col => !dirtyColumnIds.has(col.id) && !pendingColDeleteIds.has(col.id))
+              .map(col => ({
+                id: col.id,
+                title: col.title,
+                position: col.position,
+                boardId: fullBoard.id,
+                syncStatus: 'synced' as const,
+              }));
+
+            // Remove columns no longer on server for this board
+            const localSyncedCols = await db.kanbanColumns.where('boardId').equals(fullBoard.id)
+              .filter(c => c.syncStatus === 'synced').toArray();
+            const serverColIds = new Set(fullBoard.columns.map(c => c.id));
+            const colsToDelete = localSyncedCols
+              .filter(c => !serverColIds.has(c.id) && !pendingColDeleteIds.has(c.id))
+              .map(c => c.id);
+            if (colsToDelete.length > 0) await db.kanbanColumns.bulkDelete(colsToDelete);
+
+            if (serverColumns.length > 0) await db.kanbanColumns.bulkPut(serverColumns);
+
+            // Prepare cards (flatten from all columns)
+            const allServerCards: LocalKanbanCard[] = fullBoard.columns.flatMap(col =>
+              col.cards
+                .filter(card => !dirtyCardIds.has(card.id) && !pendingCardDeleteIds.has(card.id))
+                .map(card => ({
+                  ...card,
+                  boardId: fullBoard.id,
+                  syncStatus: 'synced' as const,
+                }))
+            );
+
+            // Remove cards no longer on server for this board
+            const localSyncedCards = await db.kanbanCards.where('boardId').equals(fullBoard.id)
+              .filter(c => c.syncStatus === 'synced').toArray();
+            const serverCardIds = new Set(allServerCards.map(c => c.id));
+            const cardsToDelete = localSyncedCards
+              .filter(c => !serverCardIds.has(c.id) && !pendingCardDeleteIds.has(c.id))
+              .map(c => c.id);
+            if (cardsToDelete.length > 0) await db.kanbanCards.bulkDelete(cardsToDelete);
+
+            if (allServerCards.length > 0) await db.kanbanCards.bulkPut(allServerCards);
+          });
+        } catch (e) {
+          console.error(`syncPull kanban board ${board.id} details failed`, e);
+        }
+      }
+    } catch (e) {
+      console.error('syncPull kanban boards failed', e);
     }
 
   } catch (error) {
@@ -313,14 +443,46 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'TASK_ITEM') {
           if (item.type === 'CREATE') {
-            const taskListId = (item.data as any)?.taskListId;
+            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
             await api.post(`/tasklists/${taskListId}/items`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
-            const taskListId = (item.data as any)?.taskListId;
+            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
             await api.put(`/tasklists/${taskListId}/items/${item.entityId}`, item.data);
           } else if (item.type === 'DELETE') {
-            const taskListId = (item.data as any)?.taskListId;
+            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
             await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
+          }
+        } else if (item.entity === 'KANBAN_BOARD') {
+          // Safety: never push shared boards to REST API
+          const localBoard = await db.kanbanBoards.get(item.entityId);
+          if (localBoard?.ownership === 'shared') {
+            if (item.id) await db.syncQueue.delete(item.id);
+            continue;
+          }
+          if (item.type === 'CREATE') {
+            await api.post('/kanban/boards', { ...item.data, id: item.entityId });
+          } else if (item.type === 'UPDATE') {
+            await api.put(`/kanban/boards/${item.entityId}`, item.data);
+          } else if (item.type === 'DELETE') {
+            await api.delete(`/kanban/boards/${item.entityId}`);
+          }
+        } else if (item.entity === 'KANBAN_COLUMN') {
+          if (item.type === 'CREATE') {
+            const boardId = (item.data as Record<string, unknown> | undefined)?.boardId as string | undefined;
+            await api.post(`/kanban/boards/${boardId}/columns`, { ...item.data, id: item.entityId });
+          } else if (item.type === 'UPDATE') {
+            await api.put(`/kanban/columns/${item.entityId}`, item.data);
+          } else if (item.type === 'DELETE') {
+            await api.delete(`/kanban/columns/${item.entityId}`);
+          }
+        } else if (item.entity === 'KANBAN_CARD') {
+          if (item.type === 'CREATE') {
+            const columnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
+            await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
+          } else if (item.type === 'UPDATE') {
+            await api.put(`/kanban/cards/${item.entityId}`, item.data);
+          } else if (item.type === 'DELETE') {
+            await api.delete(`/kanban/cards/${item.entityId}`);
           }
         }
 
@@ -380,12 +542,25 @@ export const syncPush = async () => {
               if (currentTaskItem && new Date(currentTaskItem.updatedAt).getTime() <= item.createdAt) {
                 await db.taskItems.update(item.entityId, { syncStatus: 'synced' });
               }
+            } else if (item.entity === 'KANBAN_BOARD') {
+              const currentBoard = await db.kanbanBoards.get(item.entityId);
+              if (currentBoard && new Date(currentBoard.updatedAt).getTime() <= item.createdAt) {
+                await db.kanbanBoards.update(item.entityId, { syncStatus: 'synced' });
+              }
+            } else if (item.entity === 'KANBAN_COLUMN') {
+              // Columns don't have updatedAt, just mark as synced
+              await db.kanbanColumns.update(item.entityId, { syncStatus: 'synced' });
+            } else if (item.entity === 'KANBAN_CARD') {
+              const currentCard = await db.kanbanCards.get(item.entityId);
+              if (currentCard && new Date(currentCard.updatedAt).getTime() <= item.createdAt) {
+                await db.kanbanCards.update(item.entityId, { syncStatus: 'synced' });
+              }
             }
           }
         }
 
-      } catch (error: any) {
-        const status = error?.response?.status;
+      } catch (error: unknown) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
         if (status === 404 || status === 410) {
           // Resource no longer exists on server — remove from queue to stop infinite retries
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);

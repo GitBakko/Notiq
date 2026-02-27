@@ -52,8 +52,8 @@ export default function KanbanPage() {
   })) || [];
   const viewSharesOwner: SharedOwnerInfo | null = viewSharesBoard
     ? (viewSharesBoard.owner
-        ? { id: viewSharesBoard.owner.id, name: viewSharesBoard.owner.name, email: viewSharesBoard.owner.email }
-        : user ? { id: user.id, name: user.name || null, email: user.email } : null)
+        ? { id: viewSharesBoard.owner.id, name: viewSharesBoard.owner.name, email: viewSharesBoard.owner.email, avatarUrl: viewSharesBoard.owner.avatarUrl }
+        : user ? { id: user.id, name: user.name || null, email: user.email, avatarUrl: user.avatarUrl } : null)
     : null;
 
   function handleSelectBoard(id: string): void {

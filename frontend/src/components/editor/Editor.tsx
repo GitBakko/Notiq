@@ -57,7 +57,7 @@ interface EditorProps {
 
 export interface EditorHandle {
   focus: () => void;
-  getEditor: () => any;
+  getEditor: () => ReturnType<typeof useEditor>;
 }
 
 export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, onChange, editable = true, noteId, onImageUploaded, onImageRemoved, onVoiceMemo, scrollable = true, notebookName, isVault, collaboration, provider }, ref) {
@@ -100,7 +100,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
                 if (w === 'free') return 'free';
                 return null; // default AUTO
               },
-              renderHTML: (attributes: Record<string, any>) => {
+              renderHTML: (attributes: Record<string, unknown>) => {
                 if (attributes.tableWidth === 'free') {
                   return { 'data-table-width': 'free' };
                 }
@@ -153,7 +153,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
                 const h = element.style.height;
                 return (h && h !== 'auto') ? h : null;
               },
-              renderHTML: (attributes: Record<string, any>) => {
+              renderHTML: (attributes: Record<string, unknown>) => {
                 if (!attributes.rowHeight) return {};
                 return { style: `height: ${attributes.rowHeight}` };
               },
@@ -168,7 +168,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             borderStyle: {
               default: null,
               parseHTML: (element: HTMLElement) => element.style.borderStyle,
-              renderHTML: (attributes: Record<string, any>) => {
+              renderHTML: (attributes: Record<string, unknown>) => {
                 if (!attributes.borderStyle) return {};
                 return { style: `border-style: ${attributes.borderStyle}` };
               },
@@ -176,7 +176,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             borderColor: {
               default: null,
               parseHTML: (element: HTMLElement) => element.style.borderColor,
-              renderHTML: (attributes: Record<string, any>) => {
+              renderHTML: (attributes: Record<string, unknown>) => {
                 if (!attributes.borderColor) return {};
                 return { style: `border-color: ${attributes.borderColor}` };
               },
@@ -191,7 +191,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             borderStyle: {
               default: null,
               parseHTML: (element: HTMLElement) => element.style.borderStyle,
-              renderHTML: (attributes: Record<string, any>) => {
+              renderHTML: (attributes: Record<string, unknown>) => {
                 if (!attributes.borderStyle) return {};
                 return { style: `border-style: ${attributes.borderStyle}` };
               },
@@ -199,7 +199,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             borderColor: {
               default: null,
               parseHTML: (element: HTMLElement) => element.style.borderColor,
-              renderHTML: (attributes: Record<string, any>) => {
+              renderHTML: (attributes: Record<string, unknown>) => {
                 if (!attributes.borderColor) return {};
                 return { style: `border-color: ${attributes.borderColor}` };
               },
@@ -229,6 +229,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           : undefined,
         onUploaded: () => onImageUploadedRef.current?.(),
         onRemoved: (src: string) => onImageRemovedRef.current?.(src),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
     ];
 
@@ -251,6 +252,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           CollaborationCursor.configure({
             provider: provider,
             user: collaboration.user,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           }) as any
         );
       }
@@ -270,7 +272,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     try {
       const json = JSON.parse(content);
       if (typeof json === 'object' && json !== null) return json;
-    } catch (e) { /* not JSON, treat as HTML */ }
+    } catch { /* not JSON, treat as HTML */ }
     return content;
   }, []); // Only compute once on mount — sync effect handles updates
 
@@ -322,14 +324,14 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   // Sync content updates from parent
   useEffect(() => {
     if (editor && content && !isUpdating.current) {
-      let parsedContent: any = content;
+      let parsedContent: string | Record<string, unknown> = content;
       try {
         // Try to parse as JSON, if fails, treat as HTML string
         const json = JSON.parse(content);
         if (typeof json === 'object' && json !== null) {
           parsedContent = json;
         }
-      } catch (e) {
+      } catch {
         // Not JSON, assume HTML
       }
 
@@ -372,18 +374,18 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           if (!isPassedContentEmpty) {
             // Check if Yjs actually has content (provider.document is the Y.Doc)
             // Tiptap syncs Y.XmlFragment 'default'
-            // @ts-ignore
+            // @ts-expect-error provider.document may not have getXmlFragment in TS types
             const yXmlFragment = provider.document.getXmlFragment('default');
             const yDocHasContent = yXmlFragment.length > 0;
 
             if (!yDocHasContent) {
-              let contentToSet: any = currentContent;
+              let contentToSet: string | Record<string, unknown> = currentContent;
               try {
                 const json = JSON.parse(currentContent);
                 if (typeof json === 'object' && json !== null) {
                   contentToSet = json;
                 }
-              } catch (e) { }
+              } catch { /* not JSON, use as-is */ }
 
               try {
                 editor.commands.setContent(contentToSet);

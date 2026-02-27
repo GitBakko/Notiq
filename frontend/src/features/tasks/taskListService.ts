@@ -206,6 +206,6 @@ export const revokeTaskListShare = async (taskListId: string, userId: string) =>
 };
 
 export const getSharedTaskLists = async () => {
-  const res = await api.get<any[]>('/share/tasklists');
+  const res = await api.get<Record<string, unknown>[]>('/share/tasklists');
   return res.data;
 };

@@ -48,17 +48,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
         message: 'Registration successful. Please check your email to verify your account.',
         userId: user.id
       });
-    } catch (error: any) {
-      if (error && error.message) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg) {
         // Handle specific service errors
-        if (error.message === 'auth.errors.userExists' || error.message.startsWith('auth.errors')) {
-          return reply.status(400).send({ message: error.message });
+        if (msg === 'auth.errors.userExists' || msg.startsWith('auth.errors')) {
+          return reply.status(400).send({ message: msg });
         }
-        if (error.message === 'Invalid invitation code' || error.message === 'Invitation code already used') {
+        if (msg === 'Invalid invitation code' || msg === 'Invitation code already used') {
           return reply.status(400).send({ message: 'auth.errors.invalidInvite' });
         }
       }
-      return reply.status(400).send({ message: error instanceof Error ? error.message : 'Registration failed' });
+      return reply.status(400).send({ message: msg || 'Registration failed' });
     }
   });
 
@@ -86,17 +87,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
           createdAt: user.createdAt
         }
       };
-    } catch (error: any) {
-      return reply.status(401).send({ message: error.message || 'Invalid credentials' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Invalid credentials';
+      return reply.status(401).send({ message: msg });
     }
   });
 
-  fastify.post('/verify-email', async (request, reply) => {
+  fastify.post('/verify-email', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     try {
       const { token } = verifyEmailSchema.parse(request.body);
       await verifyEmail(token);
       return { message: 'Email verified successfully' };
-    } catch (error: any) {
+    } catch (_error: unknown) {
       return reply.status(400).send({ message: 'Invalid or expired token' });
     }
   });
@@ -107,7 +109,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     return { message: 'If the email exists, a reset link has been sent.' };
   });
 
-  fastify.post('/reset-password', async (request, reply) => {
+  fastify.post('/reset-password', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const { token, newPassword } = resetPasswordSchema.parse(request.body);
     try {
       await resetPassword(token, newPassword);

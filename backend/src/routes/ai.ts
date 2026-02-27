@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import {
   streamAiResponse,
   getConversationHistory,
@@ -9,6 +10,13 @@ import {
 import { checkNoteAccess } from '../services/note.service';
 
 const VALID_OPERATIONS: AiOperation[] = ['ask', 'summarize', 'continue', 'improve', 'tags', 'translate'];
+
+const chatSchema = z.object({
+  noteId: z.string().uuid(),
+  message: z.string().min(1).max(10000),
+  operation: z.enum(['ask', 'summarize', 'continue', 'improve', 'tags', 'translate']),
+  targetLanguage: z.string().max(50).optional(),
+});
 
 export default async function aiRoutes(fastify: FastifyInstance) {
 
@@ -23,24 +31,16 @@ export default async function aiRoutes(fastify: FastifyInstance) {
   // POST /api/ai/chat — SSE streaming endpoint
   fastify.post('/chat', {
     onRequest: [fastify.authenticate],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (request, reply) => {
-    const { noteId, message, operation, targetLanguage } = request.body as {
-      noteId?: string;
-      message?: string;
-      operation?: string;
-      targetLanguage?: string;
-    };
-
-    if (!noteId || !message || !operation) {
-      return reply.status(400).send({ message: 'noteId, message, and operation are required' });
+    const parsed = chatSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ message: parsed.error.issues[0]?.message || 'Invalid request' });
     }
+    const { noteId, message, operation, targetLanguage } = parsed.data;
 
     const access = await checkNoteAccess(request.user.id, noteId);
     if (!access) return reply.code(403).send({ message: 'Note not found or access denied' });
-
-    if (!VALID_OPERATIONS.includes(operation as AiOperation)) {
-      return reply.status(400).send({ message: `Invalid operation. Must be one of: ${VALID_OPERATIONS.join(', ')}` });
-    }
 
     const enabled = await isAiEnabled();
     if (!enabled) {
@@ -64,7 +64,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
         request.user.id,
         noteId,
         message,
-        operation as AiOperation,
+        operation,
         {
           onToken: (token) => sendEvent('token', token),
           onDone: (fullText) => {
@@ -78,8 +78,9 @@ export default async function aiRoutes(fastify: FastifyInstance) {
         },
         targetLanguage
       );
-    } catch (error: any) {
-      sendEvent('error', error.message || 'Unknown error');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      sendEvent('error', msg);
       reply.raw.end();
     }
   });

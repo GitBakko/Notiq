@@ -18,6 +18,16 @@ import { FontFamily } from '@tiptap/extension-font-family';
 // import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { Node, Extension } from '@tiptap/core';
+import type { SharedNote } from '@prisma/client';
+
+interface JwtPayload {
+  id?: string;
+  userId?: string;
+  email: string;
+  role: string;
+  tokenVersion?: number;
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
@@ -60,7 +70,7 @@ const FontSize = Extension.create({
         attributes: {
           fontSize: {
             default: null,
-            parseHTML: (element: any) => element.style?.fontSize?.replace(/['"]+/g, ''),
+            parseHTML: (element: HTMLElement) => element.style?.fontSize?.replace(/['"]+/g, ''),
             renderHTML: (attributes) => {
               if (!attributes.fontSize) return {};
               return { style: `font-size: ${attributes.fontSize}` };
@@ -78,7 +88,7 @@ const CustomTableHeader = TableHeader.extend({
       ...this.parent?.(),
       borderStyle: {
         default: null,
-        parseHTML: (element: any) => element.style.borderStyle,
+        parseHTML: (element: HTMLElement) => element.style.borderStyle,
         renderHTML: (attributes) => {
           if (!attributes.borderStyle) return {};
           return { style: `border-style: ${attributes.borderStyle}` };
@@ -86,7 +96,7 @@ const CustomTableHeader = TableHeader.extend({
       },
       borderColor: {
         default: null,
-        parseHTML: (element: any) => element.style.borderColor,
+        parseHTML: (element: HTMLElement) => element.style.borderColor,
         renderHTML: (attributes) => {
           if (!attributes.borderColor) return {};
           return { style: `border-color: ${attributes.borderColor}` };
@@ -102,7 +112,7 @@ const CustomTableCell = TableCell.extend({
       ...this.parent?.(),
       borderStyle: {
         default: null,
-        parseHTML: (element: any) => element.style.borderStyle,
+        parseHTML: (element: HTMLElement) => element.style.borderStyle,
         renderHTML: (attributes) => {
           if (!attributes.borderStyle) return {};
           return { style: `border-style: ${attributes.borderStyle}` };
@@ -110,7 +120,7 @@ const CustomTableCell = TableCell.extend({
       },
       borderColor: {
         default: null,
-        parseHTML: (element: any) => element.style.borderColor,
+        parseHTML: (element: HTMLElement) => element.style.borderColor,
         renderHTML: (attributes) => {
           if (!attributes.borderColor) return {};
           return { style: `border-color: ${attributes.borderColor}` };
@@ -139,7 +149,7 @@ const LineHeight = Extension.create({
         attributes: {
           lineHeight: {
             default: this.options.defaultLineHeight,
-            parseHTML: (element: any) => element.style.lineHeight || null,
+            parseHTML: (element: HTMLElement) => element.style.lineHeight || null,
             renderHTML: (attributes) => {
               if (!attributes.lineHeight) {
                 return {};
@@ -178,8 +188,8 @@ export const extensions = [
         ...this.parent?.(),
         width: {
           default: null,
-          parseHTML: (element: any) => element.style?.width || element.getAttribute('width') || null,
-          renderHTML: (attributes: any) => {
+          parseHTML: (element: HTMLElement) => element.style?.width || element.getAttribute('width') || null,
+          renderHTML: (attributes: Record<string, string | null>) => {
             if (!attributes.width) return {};
             return { style: `width: ${attributes.width}` };
           },
@@ -283,7 +293,7 @@ export const hocuspocus = new Server({
     }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
 
       const noteId = data.documentName;
       const userId = decoded.id || decoded.userId;
@@ -298,7 +308,7 @@ export const hocuspocus = new Server({
       }
 
       const isOwner = note.userId === userId;
-      const share = note.sharedWith.find((s: any) => s.userId === userId && s.status === 'ACCEPTED');
+      const share = note.sharedWith.find((s: SharedNote) => s.userId === userId && s.status === 'ACCEPTED');
       const isShared = !!share;
 
       if (!isOwner && !isShared) {

@@ -31,7 +31,8 @@ import kanbanRoutes from './routes/kanban';
 import './types';
 
 const server = fastify({
-  logger: true
+  logger: true,
+  trustProxy: true, // IIS ARR reverse proxy — read X-Forwarded-For for real client IP
 });
 
 // Plugins
@@ -50,7 +51,10 @@ if (!JWT_SECRET) {
 server.register(jwt, { secret: JWT_SECRET });
 
 server.register(rateLimit, {
-  global: false,
+  global: true,
+  max: 100,           // 100 requests per window per IP
+  timeWindow: '1 minute',
+  allowList: ['127.0.0.1', '::1'], // localhost exempt (health checks, internal)
 });
 
 import path from 'path';
@@ -92,7 +96,9 @@ server.addHook('onRequest', async (request: FastifyRequest) => {
       prisma.user.update({
         where: { id: request.user.id },
         data: { lastActiveAt: new Date() }
-      }).catch(() => {}); // fire-and-forget
+      }).catch((err) => {
+        request.log.warn({ err, userId: request.user.id }, 'lastActiveAt update failed');
+      }); // fire-and-forget
     }
   }
 });
@@ -198,6 +204,7 @@ server.get('/health', async (request, reply) => {
 
 
 import { hocuspocus } from './hocuspocus';
+import type { WebSocket } from 'ws';
 
 const start = async () => {
   try {
@@ -208,7 +215,7 @@ const start = async () => {
       server.log.debug('Upgrade request received for: %s', request.url);
       if (request.url === '/ws' || request.url?.startsWith('/ws?')) {
         server.log.debug('Handling upgrade for /ws');
-        hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: any) => {
+        hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
           hocuspocus.webSocketServer.emit('connection', ws, request);
         });
       }

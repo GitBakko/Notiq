@@ -24,7 +24,7 @@ export const RemoteEditTracker = Extension.create({
             if (!ySyncMeta || ySyncMeta.isChangeOrigin) return prev;
 
             let latestPos: number | null = null;
-            tr.steps.forEach((step: any) => {
+            tr.steps.forEach((step: { getMap: () => { forEach: (cb: (oldStart: number, oldEnd: number, newStart: number, newEnd: number) => void) => void } }) => {
               const map = step.getMap();
               map.forEach((_oldStart: number, _oldEnd: number, newStart: number, newEnd: number) => {
                 if (newEnd > newStart) latestPos = newEnd;

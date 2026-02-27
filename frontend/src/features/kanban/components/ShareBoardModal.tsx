@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Trash2, UserPlus } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Trash2, UserPlus, Orbit } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import Modal from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { shareBoard, revokeShare } from '../kanbanService';
+import { getGroupsForSharing, shareKanbanBoardWithGroup } from '../../groups/groupService';
 import type { SharedKanbanBoard } from '../types';
 
 interface ShareBoardModalProps {
@@ -30,6 +31,16 @@ export default function ShareBoardModal({
   const [permission, setPermission] = useState<'READ' | 'WRITE'>('READ');
   const [isLoading, setIsLoading] = useState(false);
   const [localSharedWith, setLocalSharedWith] = useState<SharedKanbanBoard[]>(sharedWith);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [groupPermission, setGroupPermission] = useState<'READ' | 'WRITE'>('READ');
+  const [isGroupSharing, setIsGroupSharing] = useState(false);
+
+  const { data: groups } = useQuery({
+    queryKey: ['groups-for-sharing'],
+    queryFn: getGroupsForSharing,
+    staleTime: 5 * 60 * 1000,
+    enabled: isOpen,
+  });
 
   // Keep localSharedWith in sync when the prop updates (e.g. after query refetch)
   const sharedWithJson = JSON.stringify(sharedWith);
@@ -49,8 +60,9 @@ export default function ShareBoardModal({
       setEmail('');
       toast.success(t('kanban.share.shareSuccess'));
       queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
-    } catch (error: any) {
-      if (error.response?.status === 404) {
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr.response?.status === 404) {
         toast.error(t('kanban.share.userNotFound'));
       } else {
         toast.error(t('kanban.share.shareFailed'));
@@ -76,6 +88,58 @@ export default function ShareBoardModal({
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400 truncate">
         {boardTitle}
       </p>
+
+      {/* Share with Group section */}
+      {groups && groups.length > 0 && (
+        <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+            <Orbit size={14} />
+            {t('sharing.shareWithGroup')}
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            >
+              <option value="">{t('sharing.selectGroup')}</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name} ({g._count?.members || g.members.length})
+                </option>
+              ))}
+            </select>
+            <select
+              value={groupPermission}
+              onChange={(e) => setGroupPermission(e.target.value as 'READ' | 'WRITE')}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            >
+              <option value="READ">{t('kanban.share.permissions.READ')}</option>
+              <option value="WRITE">{t('kanban.share.permissions.WRITE')}</option>
+            </select>
+            <Button
+              type="button"
+              disabled={!selectedGroupId || isGroupSharing}
+              onClick={async () => {
+                if (!selectedGroupId) return;
+                setIsGroupSharing(true);
+                try {
+                  const result = await shareKanbanBoardWithGroup(boardId, selectedGroupId, groupPermission);
+                  toast.success(t('sharing.shareGroupSuccess', { count: result.shared }));
+                  setSelectedGroupId('');
+                  queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+                } catch {
+                  toast.error(t('sharing.shareGroupFailed'));
+                } finally {
+                  setIsGroupSharing(false);
+                }
+              }}
+            >
+              {isGroupSharing ? '...' : <Orbit size={18} />}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Share form */}
       <form onSubmit={handleShare} className="mb-6">

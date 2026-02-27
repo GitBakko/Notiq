@@ -15,7 +15,18 @@ if (publicVapidKey && privateVapidKey) {
   logger.warn('VAPID keys not configured. Push notifications disabled.');
 }
 
-export const subscribeUser = async (userId: string, subscription: any) => {
+interface PushSubscriptionInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+interface PushPayload {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}
+
+export const subscribeUser = async (userId: string, subscription: PushSubscriptionInput) => {
   if (!publicVapidKey || !privateVapidKey) {
     throw new Error('Push notifications are not configured');
   }
@@ -29,22 +40,22 @@ export const subscribeUser = async (userId: string, subscription: any) => {
   });
 };
 
-export const sendPushNotification = async (userId: string, payload: any) => {
+export const sendPushNotification = async (userId: string, payload: PushPayload) => {
   if (!publicVapidKey || !privateVapidKey) return;
 
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId },
   });
 
-  const notifications = subscriptions.map((sub: any) => {
-    const pushSubscription = {
+  const notifications = subscriptions.map((sub) => {
+    const pushSubscription: webpush.PushSubscription = {
       endpoint: sub.endpoint,
-      keys: sub.keys as any,
+      keys: sub.keys as { p256dh: string; auth: string },
     };
 
     return webpush.sendNotification(pushSubscription, JSON.stringify(payload))
-      .catch(async (error) => {
-        if (error.statusCode === 410) {
+      .catch(async (error: unknown) => {
+        if (error instanceof Error && 'statusCode' in error && (error as { statusCode: number }).statusCode === 410) {
           // Subscription is no longer valid, delete it
           await prisma.pushSubscription.delete({
             where: { id: sub.id },

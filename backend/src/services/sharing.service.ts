@@ -211,9 +211,9 @@ export const getAcceptedSharedNotes = async (userId: string) => {
             select: { id: true, filename: true, mimeType: true, size: true }
           },
           sharedWith: {
-            include: { user: { select: { id: true, name: true, email: true } } }
+            include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } }
           },
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         }
       }
     }
@@ -443,19 +443,21 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
 
   // Notify Owner
   if (result) {
-    let owner: any;
+    let owner: { id: string; email: string; name: string | null } | undefined;
     let itemName: string;
-    if (type === 'NOTE') {
-      owner = (result as any).note.user;
-      itemName = (result as any).note.title;
-    } else if (type === 'NOTEBOOK') {
-      owner = (result as any).notebook.user;
-      itemName = (result as any).notebook.name;
+    if (type === 'NOTE' && 'note' in result) {
+      owner = result.note.user;
+      itemName = result.note.title;
+    } else if (type === 'NOTEBOOK' && 'notebook' in result) {
+      owner = result.notebook.user;
+      itemName = result.notebook.name;
+    } else if ('board' in result) {
+      owner = result.board.owner;
+      itemName = result.board.title;
     } else {
-      owner = (result as any).board.owner;
-      itemName = (result as any).board.title;
+      itemName = '';
     }
-    const responder = (result as any).user;
+    const responder = result.user;
 
     if (owner) {
       try {
@@ -517,7 +519,7 @@ export const shareKanbanBoard = async (
     where: { boardId_userId: { boardId, userId: targetUser.id } },
     update: { permission, status: 'PENDING' },
     create: { boardId, userId: targetUser.id, permission, status: 'PENDING' },
-    include: { user: { select: { id: true, name: true, email: true } } },
+    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
 
   const sharer = await prisma.user.findUnique({
@@ -593,7 +595,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedNote.findMany({
       where: { note: { userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         note: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -601,7 +603,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedNotebook.findMany({
       where: { notebook: { userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         notebook: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -609,7 +611,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedTaskList.findMany({
       where: { taskList: { userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         taskList: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -617,7 +619,7 @@ export const getSentShares = async (userId: string) => {
     prisma.sharedKanbanBoard.findMany({
       where: { board: { ownerId: userId } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         board: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },

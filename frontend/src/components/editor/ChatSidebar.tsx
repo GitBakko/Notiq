@@ -127,14 +127,14 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
 
     try {
       await sendMutation.mutateAsync(content);
-    } catch (err) {
+    } catch {
       // Error handled in mutation
     } finally {
       setIsSending(false);
     }
   };
 
-  const onEmojiClick = (emojiData: any) => {
+  const onEmojiClick = (emojiData: { emoji: string }) => {
     setNewMessage(prev => prev + emojiData.emoji);
   };
 

@@ -31,7 +31,7 @@ export const searchNotes = async (
   const countNotebookCond = notebookId ? `AND n."notebookId" = $3` : '';
   const countParams = notebookId ? [userId, query, notebookId] : [userId, query];
 
-  const countRows: any[] = await prisma.$queryRawUnsafe(`
+  const countRows: { total: number }[] = await prisma.$queryRawUnsafe(`
     SELECT COUNT(*)::int as total
     FROM "Note" n
     WHERE n."userId" = $1
