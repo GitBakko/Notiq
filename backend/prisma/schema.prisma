@@ -68,6 +68,7 @@ model User {
   kanbanLinkedCards     KanbanCard[]         @relation("KanbanNoteLinker")
   kanbanLinkedBoards   KanbanBoard[]        @relation("KanbanBoardNoteLinker")
   kanbanReminders      KanbanReminder[]     @relation("KanbanReminderUser")
+  kanbanBoardTaskListLinks KanbanBoard[]    @relation("KanbanBoardTaskListLinker")
 }
 
 enum Role {
@@ -373,6 +374,7 @@ model TaskList {
   user        User             @relation(fields: [userId], references: [id])
   items       TaskItem[]
   sharedWith  SharedTaskList[]
+  kanbanBoard KanbanBoard?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   isTrashed   Boolean          @default(false)
@@ -393,6 +395,7 @@ model TaskItem {
   position        Int           @default(0)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  kanbanCard      KanbanCard?
 
   @@index([taskListId])
 }
@@ -423,6 +426,10 @@ model KanbanBoard {
   note            Note?               @relation("KanbanBoardNote", fields: [noteId], references: [id])
   noteLinkedById  String?
   noteLinkedBy    User?               @relation("KanbanBoardNoteLinker", fields: [noteLinkedById], references: [id])
+  taskListId         String?          @unique
+  taskList           TaskList?        @relation(fields: [taskListId], references: [id])
+  taskListLinkedById String?
+  taskListLinkedBy   User?            @relation("KanbanBoardTaskListLinker", fields: [taskListLinkedById], references: [id])
   ownerId         String
   owner           User                @relation("KanbanOwner", fields: [ownerId], references: [id])
   columns         KanbanColumn[]
@@ -437,12 +444,13 @@ model KanbanBoard {
 }
 
 model KanbanColumn {
-  id       String       @id @default(uuid())
-  title    String
-  position Int
-  boardId  String
-  board    KanbanBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  cards    KanbanCard[]
+  id          String       @id @default(uuid())
+  title       String
+  position    Int
+  isCompleted Boolean      @default(false)
+  boardId     String
+  board       KanbanBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards       KanbanCard[]
 
   @@index([boardId])
 }
@@ -458,6 +466,9 @@ model KanbanCard {
   assignee    User?           @relation("KanbanAssignee", fields: [assigneeId], references: [id])
   dueDate     DateTime?
   priority    KanbanCardPriority?
+  archivedAt  DateTime?
+  taskItemId  String?         @unique
+  taskItem    TaskItem?       @relation(fields: [taskItemId], references: [id], onDelete: SetNull)
   noteId          String?
   note            Note?           @relation(fields: [noteId], references: [id])
   noteLinkedById  String?

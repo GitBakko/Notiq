@@ -3,7 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
 import { formatDistanceToNow, isToday, isPast, startOfDay } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { MessageSquare, FileText, Calendar } from 'lucide-react';
+import { CheckCircle2, MessageSquare, FileText, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { KanbanCard as KanbanCardType } from '../types';
 import { PRIORITY_CONFIG } from '../../../utils/priorityConfig';
@@ -13,6 +13,7 @@ interface KanbanCardProps {
   onSelect: (cardId: string) => void;
   readOnly?: boolean;
   isHighlighted?: boolean;
+  isInCompletedColumn?: boolean;
 }
 
 function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
@@ -22,7 +23,7 @@ function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
   return 'default';
 }
 
-export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: KanbanCardProps) {
+export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, isInCompletedColumn }: KanbanCardProps) {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
 
@@ -118,12 +119,14 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
                 <span
                   className={clsx(
                     'flex items-center gap-1 text-xs px-1.5 py-0.5 rounded',
-                    dueDateStatus === 'overdue' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                    dueDateStatus === 'today' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-                    dueDateStatus === 'default' && 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400'
+                    isInCompletedColumn
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : dueDateStatus === 'overdue' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : dueDateStatus === 'today' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400'
                   )}
                 >
-                  <Calendar size={12} />
+                  {isInCompletedColumn ? <CheckCircle2 size={12} /> : <Calendar size={12} />}
                   {formatDistanceToNow(new Date(card.dueDate), { addSuffix: true, locale: dateLocale })}
                 </span>
               )}

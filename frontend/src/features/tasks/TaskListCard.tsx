@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp, Share2, MoreVertical, Trash2, Users, Kanban } from 'lucide-react';
+import { ChevronDown, ChevronUp, KanbanSquare, Share2, MoreVertical, Trash2, Users, Kanban } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import {
@@ -32,6 +33,7 @@ interface TaskListCardProps {
 
 export default function TaskListCard({ taskList, readOnly, onShareClick, onViewShares }: TaskListCardProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(taskList.title);
@@ -171,6 +173,17 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
           >
             <Users size={12} />
             {taskList.sharedWith.filter(s => s.status === 'ACCEPTED').length}
+          </button>
+        )}
+
+        {/* Linked Kanban board */}
+        {taskList.kanbanBoard && (
+          <button
+            onClick={() => navigate(`/kanban/${taskList.kanbanBoard!.id}`)}
+            className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+            title={taskList.kanbanBoard.title}
+          >
+            <KanbanSquare size={12} />
           </button>
         )}
 

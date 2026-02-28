@@ -7,6 +7,10 @@ export interface KanbanBoard {
   noteId: string | null;
   noteLinkedById: string | null;
   note: { id: string; title: string; userId: string } | null;
+  taskListId: string | null;
+  taskList: { id: string; title: string } | null;
+  taskListLinkedBy: { id: string; displayName: string } | null;
+  archivedCardsCount: number;
   ownerId: string;
   owner?: { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null };
   columns: KanbanColumn[];
@@ -18,6 +22,7 @@ export interface KanbanBoard {
 export interface KanbanBoardShareUser {
   userId: string;
   permission: 'READ' | 'WRITE';
+  status?: 'PENDING' | 'ACCEPTED' | 'DECLINED';
   user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
 }
 
@@ -44,6 +49,7 @@ export interface KanbanColumn {
   title: string;
   position: number;
   boardId: string;
+  isCompleted: boolean;
   cards: KanbanCard[];
 }
 
@@ -138,6 +144,20 @@ export interface NoteSearchResult {
   notebookId: string;
   notebook: { id: string; name: string } | null;
   updatedAt: string;
+}
+
+export interface ArchivedCard {
+  id: string;
+  title: string;
+  columnTitle: string;
+  archivedAt: string;
+}
+
+export interface TaskListSearchResult {
+  id: string;
+  title: string;
+  itemCount: number;
+  linkedBoardId: string | null;
 }
 
 /** Column keys stored in DB mapped to i18n translation keys */

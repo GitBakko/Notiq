@@ -11,6 +11,22 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.7.2',
+    date: '2026-02-28',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanCompletionColumn' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanCardArchiving' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskListKanbanLinking' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskTextOverflowModal' },
+      { type: 'feature', titleKey: 'whatsNew.entries.pendingInvitationsSharing' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanMobileSwipe' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.pwaIconQuality' },
+      { type: 'fix', titleKey: 'whatsNew.entries.completedCardDueDateFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.mobileSharingModalWidth' },
+      { type: 'fix', titleKey: 'whatsNew.entries.mobileEntityButtonsFix' },
+    ],
+  },
+  {
     version: '1.7.1',
     date: '2026-02-28',
     entries: [

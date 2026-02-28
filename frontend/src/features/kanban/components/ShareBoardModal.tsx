@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2, UserPlus, Orbit } from 'lucide-react';
+import { Trash2, UserPlus, Orbit, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import Modal from '../../../components/ui/Modal';
@@ -193,8 +193,14 @@ export default function ShareBoardModal({
                     <div className="text-sm font-medium text-neutral-900 dark:text-white">
                       {share.user.name || share.user.email}
                     </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                      {t(`kanban.share.permissions.${share.permission}`)}
+                    <div className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                      <span>{t(`kanban.share.permissions.${share.permission}`)}</span>
+                      {share.status === 'PENDING' && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                          <Clock size={9} />
+                          {t('sharing.pendingLabel')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

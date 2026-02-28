@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2, GripVertical, Calendar, Circle, CheckCircle2 } from 'lucide-react';
+import { Trash2, GripVertical, Calendar, Circle, CheckCircle2, Maximize2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import TaskPriorityBadge from './TaskPriorityBadge';
+import TaskTextModal from './TaskTextModal';
 import { useAuthStore } from '../../store/authStore';
 import type { LocalTaskItem } from '../../lib/db';
 
@@ -21,8 +22,23 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
+  const [showTextModal, setShowTextModal] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
   const dueDateRef = useRef<HTMLInputElement>(null);
+
+  const checkOverflow = useCallback(() => {
+    if (textRef.current) {
+      setIsOverflowing(textRef.current.scrollWidth > textRef.current.clientWidth);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkOverflow();
+    window.addEventListener('resize', checkOverflow);
+    return () => window.removeEventListener('resize', checkOverflow);
+  }, [checkOverflow, item.text]);
 
   const {
     attributes,
@@ -123,7 +139,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       </button>
 
       {/* Text */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex items-center gap-1">
         {isEditing && !readOnly ? (
           <input
             ref={inputRef}
@@ -137,17 +153,30 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
             className="w-full bg-transparent border-b border-emerald-500 text-sm text-neutral-900 dark:text-white outline-none py-0.5"
           />
         ) : (
-          <span
-            onClick={() => !readOnly && setIsEditing(true)}
-            className={clsx(
-              'text-sm cursor-pointer truncate block',
-              item.isChecked
-                ? 'line-through text-neutral-400 dark:text-neutral-500'
-                : 'text-neutral-900 dark:text-white'
+          <>
+            <span
+              ref={textRef}
+              onClick={() => !readOnly && setIsEditing(true)}
+              className={clsx(
+                'text-sm cursor-pointer truncate block flex-1 min-w-0',
+                item.isChecked
+                  ? 'line-through text-neutral-400 dark:text-neutral-500'
+                  : 'text-neutral-900 dark:text-white'
+              )}
+            >
+              {item.text}
+            </span>
+            {isOverflowing && (
+              <button
+                type="button"
+                onClick={() => setShowTextModal(true)}
+                className="flex-shrink-0 text-neutral-400 hover:text-emerald-600 dark:text-neutral-500 dark:hover:text-emerald-400 transition-colors"
+                aria-label={t('tasks.textModal.title')}
+              >
+                <Maximize2 size={14} />
+              </button>
             )}
-          >
-            {item.text}
-          </span>
+          </>
         )}
       </div>
 
@@ -219,6 +248,13 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
           <Trash2 size={14} />
         </button>
       )}
+
+      {/* Full text modal */}
+      <TaskTextModal
+        text={item.text}
+        isOpen={showTextModal}
+        onClose={() => setShowTextModal(false)}
+      />
     </div>
   );
 }

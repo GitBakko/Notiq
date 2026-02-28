@@ -43,13 +43,16 @@ export default function KanbanPage() {
   const viewSharesBoard = viewSharesBoardId
     ? boards?.find((b) => b.id === viewSharesBoardId)
     : null;
-  const viewSharesUsers: SharedUserInfo[] = viewSharesBoard?.shares?.map(s => ({
-    id: s.user.id,
-    name: s.user.name,
-    email: s.user.email,
-    avatarUrl: s.user.avatarUrl,
-    permission: s.permission,
-  })) || [];
+  const viewSharesUsers: SharedUserInfo[] = viewSharesBoard?.shares
+    ?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
+    .map(s => ({
+      id: s.user.id,
+      name: s.user.name,
+      email: s.user.email,
+      avatarUrl: s.user.avatarUrl,
+      permission: s.permission,
+      status: s.status as 'ACCEPTED' | 'PENDING',
+    })) || [];
   const viewSharesOwner: SharedOwnerInfo | null = viewSharesBoard
     ? (viewSharesBoard.owner
         ? { id: viewSharesBoard.owner.id, name: viewSharesBoard.owner.name, email: viewSharesBoard.owner.email, avatarUrl: viewSharesBoard.owner.avatarUrl }
@@ -88,7 +91,7 @@ export default function KanbanPage() {
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Plus size={16} />
-            {t('kanban.newBoard')}
+            <span className="hidden sm:inline">{t('kanban.newBoard')}</span>
           </button>
         </div>
       </div>

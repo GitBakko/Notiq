@@ -291,7 +291,10 @@
     "today": "Oggi",
     "upcoming": "In arrivo",
     "completed": "Completati",
-    "noTasks": "Nessun promemoria trovato. Aggiungi un promemoria a una nota o imposta una scadenza su una card Kanban."
+    "noTasks": "Nessun promemoria trovato. Aggiungi un promemoria a una nota o imposta una scadenza su una card Kanban.",
+    "textModal": {
+      "title": "Testo completo"
+    }
   },
   "taskLists": {
     "title": "Task List",
@@ -537,7 +540,9 @@
     "statusPending": "In attesa",
     "statusAccepted": "Accettato",
     "statusDeclined": "Rifiutato",
-    "sentTo": "Inviato a"
+    "sentTo": "Inviato a",
+    "pendingSection": "In attesa",
+    "pendingLabel": "Invito in sospeso"
   },
   "profile": {
     "title": "Profilo Utente",
@@ -795,6 +800,16 @@
       "slateDarkMode": "Dark Mode Slate — Tema scuro blu-grigio al posto dei precedenti grigi verdastri",
       "pushNotificationFix": "Corretta la sottoscrizione alle notifiche push che falliva con errore 500",
       "settingsToggleFix": "Interruttori Impostazioni — Piu' grandi e visibili con miglior contrasto su mobile",
+      "kanbanCompletionColumn": "Colonna Completamento Kanban — Segna una colonna come 'completata' per tracciare le card finite con icona spunta",
+      "kanbanCardArchiving": "Auto-Archiviazione — Le card completate si archiviano automaticamente dopo 7 giorni, accessibili nel pannello Archivio",
+      "taskListKanbanLinking": "Collegamento Task List ↔ Kanban — Collega task list a board con aggiunta automatica, trasferimento priorita' e sincronizzazione completamento unidirezionale",
+      "taskTextOverflowModal": "Espansione Testo Task — Clicca per vedere il testo completo dei task lunghi in un modale",
+      "pendingInvitationsSharing": "Inviti in Attesa — I modali di condivisione ora mostrano gli inviti in attesa separatamente",
+      "kanbanMobileSwipe": "Swipe Mobile Fluido — Transizioni fluide tra colonne con animazione touch-follow su Kanban mobile",
+      "pwaIconQuality": "Qualita' Icona PWA — Icone maskable ad alta risoluzione per icone app nitide su tutti i dispositivi",
+      "completedCardDueDateFix": "Corrette le card completate che mostravano lo stile 'scaduto' invece dello stato completato",
+      "mobileSharingModalWidth": "Corretti i modali di condivisione che fuoriuscivano su schermi mobile",
+      "mobileEntityButtonsFix": "I pulsanti di creazione su mobile ora mostrano solo l'icona per evitare il wrapping del testo",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -904,7 +919,9 @@
       "columnTitle": "Titolo colonna",
       "deleteColumn": "Elimina colonna",
       "deleteConfirm": "Eliminare questa colonna?",
-      "hasCards": "Sposta o elimina tutte le card prima di rimuovere questa colonna."
+      "hasCards": "Sposta o elimina tutte le card prima di rimuovere questa colonna.",
+      "markCompleted": "Segna come completata",
+      "removeCompleted": "Rimuovi completamento"
     },
     "card": {
       "addCard": "Aggiungi card",
@@ -1062,6 +1079,23 @@
       "upcomingCards": "Prossime",
       "noDueDate": "Senza Scadenza",
       "columnBreakdown": "Card per Colonna"
+    },
+    "archive": {
+      "title": "Card archiviate",
+      "empty": "Nessuna card archiviata",
+      "unarchive": "Ripristina",
+      "archivedOn": "Archiviata il {{date}}"
+    },
+    "linking": {
+      "linkTaskList": "Collega Task List",
+      "unlinkTaskList": "Scollega Task List",
+      "linkedTo": "Collegata a",
+      "searchTaskLists": "Cerca task list...",
+      "noTaskLists": "Nessuna task list trovata",
+      "alreadyLinked": "Già collegata a una board"
+    },
+    "mobile": {
+      "swipeHint": "Scorri per navigare tra le colonne"
     }
   },
   "encryption": {

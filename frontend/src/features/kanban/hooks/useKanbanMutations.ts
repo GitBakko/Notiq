@@ -53,8 +53,8 @@ export function useKanbanMutations(boardId?: string) {
   });
 
   const updateColumn = useMutation({
-    mutationFn: ({ columnId, title }: { columnId: string; title: string }) =>
-      kanbanService.updateColumn(columnId, title),
+    mutationFn: ({ columnId, ...data }: { columnId: string; title?: string; isCompleted?: boolean }) =>
+      kanbanService.updateColumn(columnId, data),
     onSuccess: invalidateBoard,
   });
 
@@ -145,6 +145,22 @@ export function useKanbanMutations(boardId?: string) {
     onSuccess: invalidateBoard,
   });
 
+  const unarchiveCard = useMutation({
+    mutationFn: kanbanService.unarchiveCard,
+    onSuccess: invalidateBoard,
+  });
+
+  const linkTaskList = useMutation({
+    mutationFn: ({ boardId: bid, taskListId }: { boardId: string; taskListId: string }) =>
+      kanbanService.linkTaskList(bid, taskListId),
+    onSuccess: invalidateBoard,
+  });
+
+  const unlinkTaskList = useMutation({
+    mutationFn: kanbanService.unlinkTaskList,
+    onSuccess: invalidateBoard,
+  });
+
   return {
     createBoard,
     deleteBoard,
@@ -165,5 +181,8 @@ export function useKanbanMutations(boardId?: string) {
     unlinkBoardNote,
     uploadAvatar,
     deleteAvatar,
+    unarchiveCard,
+    linkTaskList,
+    unlinkTaskList,
   };
 }
