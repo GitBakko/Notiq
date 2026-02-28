@@ -79,16 +79,24 @@ function handleKanbanError(error: unknown, reply: FastifyReply) {
     msg === 'Write access required' ||
     msg === 'Not your comment' ||
     msg === 'Only the note owner can link this note' ||
-    msg === 'Only the user who linked the note can unlink it'
+    msg === 'Only the user who linked the note can unlink it' ||
+    msg === 'Only the user who linked the task list can unlink it'
   ) {
     return reply.status(403).send({ message: msg });
+  }
+  if (
+    msg === 'Card is not archived'
+  ) {
+    return reply.status(400).send({ message: msg });
   }
   if (
     msg === 'Column has cards' ||
     msg === 'Board already has a linked note' ||
     msg === 'Board has no linked note' ||
     msg === 'Card already has a linked note' ||
-    msg === 'Card has no linked note'
+    msg === 'Card has no linked note' ||
+    msg === 'Board already has a linked task list' ||
+    msg === 'Board has no linked task list'
   ) {
     return reply.status(409).send({ message: msg });
   }
@@ -499,12 +507,17 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     }
   });
 
+  const updateColumnSchema = z.object({
+    title: z.string().min(1).max(100).optional(),
+    isCompleted: z.boolean().optional(),
+  });
+
   fastify.put('/columns/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       await getColumnWithAccess(id, request.user.id, 'WRITE');
-      const { title } = createColumnSchema.parse(request.body);
-      return await kanbanService.updateColumn(id, title);
+      const data = updateColumnSchema.parse(request.body);
+      return await kanbanService.updateColumn(id, data);
     } catch (error) {
       return handleKanbanError(error, reply);
     }
@@ -684,6 +697,65 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     try {
       const { noteId } = request.params as { noteId: string };
       return await kanbanService.getLinkedBoardsForNote(noteId, request.user.id);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  // ── Archived Cards ────────────────────────────────────────
+
+  fastify.get('/boards/:id/archived', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'READ');
+      return await kanbanService.getArchivedCards(id);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  fastify.post('/cards/:id/unarchive', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await getCardWithAccess(id, request.user.id, 'WRITE');
+      return await kanbanService.unarchiveCard(id);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  // ── Task List Linking ─────────────────────────────────────
+
+  const linkTaskListSchema = z.object({
+    taskListId: z.string().uuid(),
+  });
+
+  fastify.post('/boards/:id/link-tasklist', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'WRITE');
+      const { taskListId } = linkTaskListSchema.parse(request.body);
+      return await kanbanService.linkTaskListToBoard(id, taskListId, request.user.id);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  fastify.delete('/boards/:id/link-tasklist', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await assertBoardAccess(id, request.user.id, 'WRITE');
+      return await kanbanService.unlinkTaskListFromBoard(id, request.user.id);
+    } catch (error) {
+      return handleKanbanError(error, reply);
+    }
+  });
+
+  // Search user's task lists for the task list picker
+  fastify.get('/tasklists/search', async (request, reply) => {
+    try {
+      const { q } = z.object({ q: z.string().optional().default('') }).parse(request.query);
+      return await kanbanService.searchUserTaskLists(request.user.id, q);
     } catch (error) {
       return handleKanbanError(error, reply);
     }

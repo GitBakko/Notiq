@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, UserPlus, Trash2, Orbit } from 'lucide-react';
+import { X, UserPlus, Trash2, Orbit, Clock } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { shareNote, revokeShare } from '../../features/notes/noteService';
 import { getGroupsForSharing, shareNoteWithGroup } from '../../features/groups/groupService';
@@ -13,6 +13,7 @@ interface SharedUser {
   email: string;
   avatarUrl?: string | null;
   permission: 'READ' | 'WRITE';
+  status?: 'ACCEPTED' | 'PENDING';
 }
 
 interface SharingModalProps {
@@ -87,7 +88,7 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-neutral-900 dark:border dark:border-neutral-800/40" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-[calc(100vw-2rem)] sm:max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-neutral-900 dark:border dark:border-neutral-800/40" onClick={e => e.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-neutral-900 dark:text-white">{t('sharing.title')}</h2>
           <button onClick={onClose} className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
@@ -189,7 +190,15 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
                     )}
                     <div>
                       <div className="text-sm font-medium text-neutral-900 dark:text-white">{user.name || user.email}</div>
-                      <div className="text-xs text-neutral-500">{user.permission}</div>
+                      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+                        <span>{user.permission}</span>
+                        {user.status === 'PENDING' && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                            <Clock size={9} />
+                            {t('sharing.pendingLabel')}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <button

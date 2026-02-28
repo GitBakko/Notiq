@@ -182,6 +182,8 @@ const cardWithAssigneeSelect = {
   priority: true,
   noteId: true,
   noteLinkedById: true,
+  archivedAt: true,
+  taskItemId: true,
   createdAt: true,
   updatedAt: true,
   assignee: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
@@ -208,6 +210,7 @@ export async function listBoards(userId: string) {
         coverImage: true,
         avatarUrl: true,
         ownerId: true,
+        taskListId: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { columns: true, shares: { where: { status: 'ACCEPTED' } } } },
@@ -237,6 +240,7 @@ export async function listBoards(userId: string) {
             coverImage: true,
             avatarUrl: true,
             ownerId: true,
+            taskListId: true,
             createdAt: true,
             updatedAt: true,
             owner: { select: { id: true, name: true, email: true } },
@@ -265,6 +269,7 @@ export async function listBoards(userId: string) {
     coverImage: b.coverImage,
     avatarUrl: b.avatarUrl,
     ownerId: b.ownerId,
+    taskListId: b.taskListId,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt,
     columnCount: b._count.columns,
@@ -281,6 +286,7 @@ export async function listBoards(userId: string) {
     coverImage: s.board.coverImage,
     avatarUrl: s.board.avatarUrl,
     ownerId: s.board.ownerId,
+    taskListId: s.board.taskListId,
     owner: s.board.owner,
     createdAt: s.board.createdAt,
     updatedAt: s.board.updatedAt,
@@ -310,7 +316,7 @@ export async function createBoard(
           create: [
             { title: 'TODO', position: 0 },
             { title: 'IN_PROGRESS', position: 1 },
-            { title: 'DONE', position: 2 },
+            { title: 'DONE', position: 2, isCompleted: true },
           ],
         },
       },
@@ -323,6 +329,9 @@ export async function createBoard(
 }
 
 export async function getBoard(boardId: string, requestingUserId?: string) {
+  // Run lazy archive before returning board data
+  await archiveCompletedCards(boardId);
+
   const board = await prisma.kanbanBoard.findUnique({
     where: { id: boardId },
     include: {
@@ -330,6 +339,7 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
         orderBy: { position: 'asc' },
         include: {
           cards: {
+            where: { archivedAt: null },
             orderBy: { position: 'asc' },
             select: cardWithAssigneeSelect,
           },
@@ -342,9 +352,18 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
       },
       owner: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
       note: { select: { id: true, title: true, userId: true } },
+      taskList: { select: { id: true, title: true, userId: true } },
     },
   });
   if (!board) throw new Error('Board not found');
+
+  // Count archived cards
+  const archivedCardsCount = await prisma.kanbanCard.count({
+    where: {
+      column: { boardId },
+      archivedAt: { not: null },
+    },
+  });
 
   // Filter note visibility: only show linked note data if requesting user has access
   if (requestingUserId) {
@@ -392,6 +411,8 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
   // Transform _count.comments → commentCount for frontend compatibility
   return {
     ...board,
+    taskListId: board.taskListId,
+    archivedCardsCount,
     columns: board.columns.map(col => ({
       ...col,
       cards: col.cards.map(transformCard),
@@ -439,10 +460,28 @@ export async function createColumn(boardId: string, title: string) {
   return column;
 }
 
-export async function updateColumn(columnId: string, title: string) {
+export async function updateColumn(columnId: string, data: { title?: string; isCompleted?: boolean }) {
+  // If setting isCompleted to true, first unset any other completed column in the same board
+  if (data.isCompleted === true) {
+    const col = await prisma.kanbanColumn.findUnique({
+      where: { id: columnId },
+      select: { boardId: true },
+    });
+    if (col) {
+      await prisma.kanbanColumn.updateMany({
+        where: { boardId: col.boardId, isCompleted: true, id: { not: columnId } },
+        data: { isCompleted: false },
+      });
+    }
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.isCompleted !== undefined) updateData.isCompleted = data.isCompleted;
+
   const column = await prisma.kanbanColumn.update({
     where: { id: columnId },
-    data: { title },
+    data: updateData,
   });
 
   broadcast(column.boardId, {
@@ -660,13 +699,19 @@ export async function moveCard(
 ) {
   const card = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
-    select: { title: true, columnId: true, position: true, column: { select: { boardId: true, title: true } } },
+    select: {
+      title: true,
+      columnId: true,
+      position: true,
+      taskItemId: true,
+      column: { select: { boardId: true, title: true, isCompleted: true } },
+    },
   });
   if (!card) throw new Error('Card not found');
 
   const targetColumn = await prisma.kanbanColumn.findUnique({
     where: { id: toColumnId },
-    select: { boardId: true, title: true, position: true },
+    select: { boardId: true, title: true, position: true, isCompleted: true },
   });
   if (!targetColumn) throw new Error('Column not found');
 
@@ -724,6 +769,24 @@ export async function moveCard(
       toColumnTitle: targetColumn.title,
     });
 
+    // Sync linked TaskItem checked status based on isCompleted columns
+    if (card.taskItemId) {
+      const movedIntoCompleted = targetColumn.isCompleted && !card.column.isCompleted;
+      const movedOutOfCompleted = !targetColumn.isCompleted && card.column.isCompleted;
+
+      if (movedIntoCompleted) {
+        await prisma.taskItem.update({
+          where: { id: card.taskItemId },
+          data: { isChecked: true, checkedByUserId: actorId },
+        });
+      } else if (movedOutOfCompleted) {
+        await prisma.taskItem.update({
+          where: { id: card.taskItemId },
+          data: { isChecked: false, checkedByUserId: null },
+        });
+      }
+    }
+
     // Notify all board participants about cross-column move (tiered)
     const actor = await prisma.user.findUnique({
       where: { id: actorId },
@@ -765,13 +828,8 @@ export async function moveCard(
       }
     );
 
-    // Auto-complete reminders when card moves to the last column (done)
-    const maxPositionCol = await prisma.kanbanColumn.findFirst({
-      where: { boardId },
-      orderBy: { position: 'desc' },
-      select: { position: true },
-    });
-    if (maxPositionCol && targetColumn.position === maxPositionCol.position) {
+    // Auto-complete reminders when card moves to a completed column
+    if (targetColumn.isCompleted) {
       await prisma.kanbanReminder.updateMany({
         where: { cardId, isDone: false },
         data: { isDone: true },
@@ -1096,16 +1154,33 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
     }
   }
 
+  // Map TaskPriority → KanbanCardPriority (they share the same names for LOW/MEDIUM/HIGH)
+  const mapPriority = (p: string): 'LOW' | 'MEDIUM' | 'HIGH' => {
+    if (p === 'LOW') return 'LOW';
+    if (p === 'HIGH') return 'HIGH';
+    return 'MEDIUM';
+  };
+
+  // Helper: if text is long, use truncated title + full description
+  const splitText = (text: string) => {
+    if (text.length > 100) {
+      return { title: text.substring(0, 100) + '...', description: text };
+    }
+    return { title: text, description: undefined as string | undefined };
+  };
+
   return prisma.$transaction(async (tx) => {
-    // Create board with two columns
+    // Create board with two columns + auto-link to task list
     const board = await tx.kanbanBoard.create({
       data: {
         title: taskList.title,
         ownerId: userId,
+        taskListId: taskListId,
+        taskListLinkedById: userId,
         columns: {
           create: [
             { title: 'TODO', position: 0 },
-            { title: 'DONE', position: 1 },
+            { title: 'DONE', position: 1, isCompleted: true },
           ],
         },
       },
@@ -1121,36 +1196,128 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
     const uncheckedItems = taskList.items.filter((i) => !i.isChecked);
     const checkedItems = taskList.items.filter((i) => i.isChecked);
 
-    // Create cards for unchecked items → "Da fare" column
+    // Create cards for unchecked items → TODO column
     for (let i = 0; i < uncheckedItems.length; i++) {
       const item = uncheckedItems[i];
+      const { title, description } = splitText(item.text);
       await tx.kanbanCard.create({
         data: {
           columnId: todoColumnId,
-          title: item.text,
+          title,
+          description,
           position: i,
           dueDate: item.dueDate,
+          priority: mapPriority(item.priority),
+          taskItemId: item.id,
         },
       });
     }
 
-    // Create cards for checked items → "Completato" column
+    // Create cards for checked items → DONE column
     // Assign the card to whoever checked the task item
     for (let i = 0; i < checkedItems.length; i++) {
       const item = checkedItems[i];
+      const { title, description } = splitText(item.text);
       await tx.kanbanCard.create({
         data: {
           columnId: doneColumnId,
-          title: item.text,
+          title,
+          description,
           position: i,
           dueDate: item.dueDate,
           assigneeId: item.checkedByUserId,
+          priority: mapPriority(item.priority),
+          taskItemId: item.id,
         },
       });
     }
 
     return board;
   });
+}
+
+// ─── Card Archiving ────────────────────────────────────────
+
+const ARCHIVE_AFTER_DAYS = 7;
+
+/**
+ * Lazy archive: find cards in completed columns that haven't been updated
+ * in ≥7 days and set archivedAt = now().
+ */
+export async function archiveCompletedCards(boardId: string): Promise<number> {
+  const cutoffDate = new Date(Date.now() - ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000);
+
+  // Find completed columns for this board
+  const completedColumns = await prisma.kanbanColumn.findMany({
+    where: { boardId, isCompleted: true },
+    select: { id: true },
+  });
+
+  if (completedColumns.length === 0) return 0;
+
+  const completedColumnIds = completedColumns.map((c) => c.id);
+
+  const result = await prisma.kanbanCard.updateMany({
+    where: {
+      columnId: { in: completedColumnIds },
+      archivedAt: null,
+      updatedAt: { lte: cutoffDate },
+    },
+    data: { archivedAt: new Date() },
+  });
+
+  if (result.count > 0) {
+    logger.info({ boardId, count: result.count }, 'Lazy-archived completed cards');
+  }
+
+  return result.count;
+}
+
+/**
+ * Get archived cards for a board.
+ */
+export async function getArchivedCards(boardId: string) {
+  const cards = await prisma.kanbanCard.findMany({
+    where: {
+      column: { boardId },
+      archivedAt: { not: null },
+    },
+    orderBy: { archivedAt: 'desc' },
+    select: {
+      ...cardWithAssigneeSelect,
+      column: { select: { id: true, title: true } },
+    },
+  });
+
+  return cards.map((card) => {
+    const { _count, ...rest } = card;
+    return { ...rest, commentCount: _count.comments };
+  });
+}
+
+/**
+ * Unarchive a card (set archivedAt = null).
+ */
+export async function unarchiveCard(cardId: string) {
+  const card = await prisma.kanbanCard.findUnique({
+    where: { id: cardId },
+    select: { id: true, archivedAt: true, column: { select: { boardId: true } } },
+  });
+  if (!card) throw new Error('Card not found');
+  if (!card.archivedAt) throw new Error('Card is not archived');
+
+  await prisma.kanbanCard.update({
+    where: { id: cardId },
+    data: { archivedAt: null },
+  });
+
+  broadcast(card.column.boardId, {
+    type: 'card:unarchived',
+    boardId: card.column.boardId,
+    cardId,
+  });
+
+  return { success: true };
 }
 
 // ─── Note Linking ──────────────────────────────────────────
@@ -1502,4 +1669,103 @@ export async function getLinkedBoardsForNote(noteId: string, userId: string) {
   }
 
   return Array.from(results.values());
+}
+
+// ─── Task List Linking ─────────────────────────────────────
+
+/**
+ * Link a task list to a board. Error if board already has a linked task list.
+ */
+export async function linkTaskListToBoard(
+  boardId: string,
+  taskListId: string,
+  userId: string
+) {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { taskListId: true },
+  });
+  if (!board) throw new Error('Board not found');
+  if (board.taskListId) throw new Error('Board already has a linked task list');
+
+  const taskList = await prisma.taskList.findUnique({
+    where: { id: taskListId },
+    select: { id: true, title: true, userId: true },
+  });
+  if (!taskList) throw new Error('TaskList not found');
+
+  const updatedBoard = await prisma.kanbanBoard.update({
+    where: { id: boardId },
+    data: { taskListId, taskListLinkedById: userId },
+    select: {
+      taskListId: true,
+      taskListLinkedById: true,
+      taskList: { select: { id: true, title: true, userId: true } },
+    },
+  });
+
+  broadcast(boardId, { type: 'board:updated', boardId });
+
+  return updatedBoard;
+}
+
+/**
+ * Unlink a task list from a board. Only the user who linked it can unlink.
+ */
+export async function unlinkTaskListFromBoard(boardId: string, userId: string) {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { taskListId: true, taskListLinkedById: true },
+  });
+  if (!board) throw new Error('Board not found');
+  if (!board.taskListId) throw new Error('Board has no linked task list');
+  if (board.taskListLinkedById !== userId) throw new Error('Only the user who linked the task list can unlink it');
+
+  await prisma.kanbanBoard.update({
+    where: { id: boardId },
+    data: { taskListId: null, taskListLinkedById: null },
+  });
+
+  broadcast(boardId, { type: 'board:updated', boardId });
+
+  return { success: true };
+}
+
+/**
+ * Search task lists for the picker. Returns task lists the user owns
+ * or has WRITE permission on.
+ */
+export async function searchUserTaskLists(
+  userId: string,
+  query: string,
+  limit: number = 20
+) {
+  const where: Prisma.TaskListWhereInput = {
+    isTrashed: false,
+    OR: [
+      { userId },
+      {
+        sharedWith: {
+          some: { userId, status: 'ACCEPTED', permission: 'WRITE' },
+        },
+      },
+    ],
+  };
+
+  if (query.trim()) {
+    where.title = { contains: query, mode: 'insensitive' };
+  }
+
+  return prisma.taskList.findMany({
+    where,
+    select: {
+      id: true,
+      title: true,
+      userId: true,
+      _count: { select: { items: true } },
+      kanbanBoard: { select: { id: true } },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+  });
 }

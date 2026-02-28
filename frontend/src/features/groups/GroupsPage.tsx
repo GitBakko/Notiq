@@ -425,7 +425,7 @@ export default function GroupsPage() {
             className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg transition-colors"
           >
             <Plus size={16} />
-            {t('groups.create')}
+            <span className="hidden sm:inline">{t('groups.create')}</span>
           </button>
         )}
       </div>

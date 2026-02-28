@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { isPast, startOfDay, isToday, format } from 'date-fns';
 import { timeAgo } from '../../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink, MessageSquare } from 'lucide-react';
+import { CheckCircle2, Send, Trash2, X, Calendar, User, FileText, Activity, Link2, Unlink, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import Modal from '../../../components/ui/Modal';
@@ -12,7 +12,7 @@ import { useKanbanComments } from '../hooks/useKanbanComments';
 import { useKanbanMutations } from '../hooks/useKanbanMutations';
 import { useAuthStore } from '../../../store/authStore';
 import * as kanbanService from '../kanbanService';
-import type { KanbanCard, KanbanCardActivity, KanbanCardPriority, NoteSearchResult, NoteSharingCheck } from '../types';
+import type { KanbanCard, KanbanCardActivity, KanbanCardPriority, KanbanColumn, NoteSearchResult, NoteSharingCheck } from '../types';
 import { DEFAULT_COLUMN_KEYS } from '../types';
 
 import { PRIORITY_CONFIG } from '../../../utils/priorityConfig';
@@ -27,6 +27,7 @@ interface CardDetailModalProps {
   card: KanbanCard | null;
   boardId: string;
   readOnly?: boolean;
+  columns?: KanbanColumn[];
 }
 
 function isDueOverdue(dueDate: string): boolean {
@@ -44,6 +45,7 @@ export default function CardDetailModal({
   card,
   boardId,
   readOnly = false,
+  columns = [],
 }: CardDetailModalProps) {
   const { t, i18n } = useTranslation();
   const currentUser = useAuthStore((s) => s.user);
@@ -248,7 +250,14 @@ export default function CardDetailModal({
     }
   }
 
-  const overdue = card.dueDate ? isDueOverdue(card.dueDate) : false;
+  // Determine if card is in a completed column
+  const isInCompletedColumn = (() => {
+    if (!card) return false;
+    const col = columns.find((c) => c.cards.some((cc) => cc.id === card.id));
+    return col?.isCompleted ?? false;
+  })();
+
+  const overdue = card.dueDate ? isDueOverdue(card.dueDate) && !isInCompletedColumn : false;
 
   return (
     <>
@@ -351,12 +360,19 @@ export default function CardDetailModal({
               <div className="flex items-center gap-2">
                 <span className={clsx(
                   'text-sm',
-                  overdue
-                    ? 'text-red-600 dark:text-red-400 font-medium'
-                    : 'text-neutral-700 dark:text-neutral-300'
+                  isInCompletedColumn
+                    ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                    : overdue
+                      ? 'text-red-600 dark:text-red-400 font-medium'
+                      : 'text-neutral-700 dark:text-neutral-300'
                 )}>
                   {card.dueDate ? formatDueDate(card.dueDate) : '-'}
                 </span>
+                {isInCompletedColumn && card.dueDate && (
+                  <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    <CheckCircle2 size={12} />
+                  </span>
+                )}
                 {overdue && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     {t('kanban.card.overdue')}
@@ -371,6 +387,11 @@ export default function CardDetailModal({
                   onChange={handleDueDateChange}
                   className="text-sm text-neutral-700 dark:text-neutral-300 bg-transparent border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg px-2 py-1 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
                 />
+                {isInCompletedColumn && card.dueDate && (
+                  <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    <CheckCircle2 size={12} />
+                  </span>
+                )}
                 {overdue && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     {t('kanban.card.overdue')}

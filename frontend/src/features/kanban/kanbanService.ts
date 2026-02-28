@@ -11,6 +11,8 @@ import type {
   NoteSharingCheck,
   NoteSearchResult,
   SharedKanbanBoard,
+  ArchivedCard,
+  TaskListSearchResult,
 } from './types';
 
 // ── Boards ──────────────────────────────────────────────────────────────
@@ -54,8 +56,11 @@ export async function createColumn(boardId: string, title: string): Promise<Kanb
   return res.data;
 }
 
-export async function updateColumn(columnId: string, title: string): Promise<KanbanColumn> {
-  const res = await api.put<KanbanColumn>(`/kanban/columns/${columnId}`, { title });
+export async function updateColumn(
+  columnId: string,
+  data: { title?: string; isCompleted?: boolean },
+): Promise<KanbanColumn> {
+  const res = await api.put<KanbanColumn>(`/kanban/columns/${columnId}`, data);
   return res.data;
 }
 
@@ -249,4 +254,30 @@ export async function uploadAvatar(boardId: string, file: File): Promise<{ avata
 
 export async function deleteAvatar(boardId: string): Promise<void> {
   await api.delete(`/kanban/boards/${boardId}/avatar`);
+}
+
+// ── Archived Cards ──────────────────────────────────────────────────────
+
+export async function getArchivedCards(boardId: string): Promise<ArchivedCard[]> {
+  const res = await api.get<ArchivedCard[]>(`/kanban/boards/${boardId}/archived`);
+  return res.data;
+}
+
+export async function unarchiveCard(cardId: string): Promise<void> {
+  await api.post(`/kanban/cards/${cardId}/unarchive`);
+}
+
+// ── Task List Linking ───────────────────────────────────────────────────
+
+export async function linkTaskList(boardId: string, taskListId: string): Promise<void> {
+  await api.post(`/kanban/boards/${boardId}/link-tasklist`, { taskListId });
+}
+
+export async function unlinkTaskList(boardId: string): Promise<void> {
+  await api.delete(`/kanban/boards/${boardId}/link-tasklist`);
+}
+
+export async function searchTaskLists(query: string): Promise<TaskListSearchResult[]> {
+  const res = await api.get<TaskListSearchResult[]>('/kanban/tasklists/search', { params: { q: query } });
+  return res.data;
 }

@@ -4,6 +4,7 @@ import api from '../lib/api';
 interface NotebookShareUser {
   userId: string;
   permission: 'READ' | 'WRITE';
+  status?: 'ACCEPTED' | 'PENDING';
   user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
 }
 

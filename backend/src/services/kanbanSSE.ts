@@ -22,6 +22,7 @@ export type KanbanEvent =
   | { type: 'card:created'; boardId: string; card: Record<string, unknown> }
   | { type: 'card:updated'; boardId: string; card: Record<string, unknown> }
   | { type: 'card:deleted'; boardId: string; cardId: string }
+  | { type: 'card:unarchived'; boardId: string; cardId: string }
   | { type: 'column:created'; boardId: string; column: Record<string, unknown> }
   | { type: 'column:updated'; boardId: string; column: Record<string, unknown> }
   | { type: 'column:deleted'; boardId: string; columnId: string }

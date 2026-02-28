@@ -203,7 +203,10 @@
     "today": "Today",
     "upcoming": "Upcoming",
     "completed": "Completed",
-    "noTasks": "No reminders found. Add a reminder to a note or set a due date on a Kanban card."
+    "noTasks": "No reminders found. Add a reminder to a note or set a due date on a Kanban card.",
+    "textModal": {
+      "title": "Full Text"
+    }
   },
   "taskLists": {
     "title": "Task Lists",
@@ -449,7 +452,9 @@
     "statusPending": "Pending",
     "statusAccepted": "Accepted",
     "statusDeclined": "Declined",
-    "sentTo": "Sent to"
+    "sentTo": "Sent to",
+    "pendingSection": "Pending",
+    "pendingLabel": "Invitation pending"
   },
   "profile": {
     "title": "User Profile",
@@ -789,7 +794,9 @@
       "columnTitle": "Column title",
       "deleteColumn": "Delete column",
       "deleteConfirm": "Delete this column?",
-      "hasCards": "Move or delete all cards before removing this column."
+      "hasCards": "Move or delete all cards before removing this column.",
+      "markCompleted": "Mark as completed",
+      "removeCompleted": "Remove completion"
     },
     "card": {
       "addCard": "Add card",
@@ -947,6 +954,23 @@
       "upcomingCards": "Upcoming",
       "noDueDate": "No Due Date",
       "columnBreakdown": "Cards by Column"
+    },
+    "archive": {
+      "title": "Archived Cards",
+      "empty": "No archived cards",
+      "unarchive": "Unarchive",
+      "archivedOn": "Archived on {{date}}"
+    },
+    "linking": {
+      "linkTaskList": "Link Task List",
+      "unlinkTaskList": "Unlink Task List",
+      "linkedTo": "Linked to",
+      "searchTaskLists": "Search task lists...",
+      "noTaskLists": "No task lists found",
+      "alreadyLinked": "Already linked to a board"
+    },
+    "mobile": {
+      "swipeHint": "Swipe to navigate columns"
     }
   },
   "encryption": {
@@ -1087,6 +1111,16 @@
       "slateDarkMode": "Slate Dark Mode — Cool blue-gray dark theme replacing the previous green-tinted neutrals",
       "pushNotificationFix": "Fixed push notification subscription failing with a 500 error",
       "settingsToggleFix": "Settings Toggles — Larger, more visible switches with better contrast on mobile",
+      "kanbanCompletionColumn": "Kanban Completion Column — Mark a column as 'completed' to track done cards with checkmark icon",
+      "kanbanCardArchiving": "Auto-Archive — Completed cards auto-archive after 7 days, accessible in the Archive panel",
+      "taskListKanbanLinking": "Task List ↔ Kanban Linking — Link task lists to boards with auto-add, priority transfer, and one-way completion sync",
+      "taskTextOverflowModal": "Task Text Expand — Click to view full text of long task items in a modal",
+      "pendingInvitationsSharing": "Pending Invitations — Sharing modals now show pending invitations separately",
+      "kanbanMobileSwipe": "Smooth Mobile Swipe — Fluid column transitions with touch-follow animation on mobile Kanban",
+      "pwaIconQuality": "PWA Icon Quality — High-resolution maskable icons for crisp app icons on all devices",
+      "completedCardDueDateFix": "Fixed completed cards showing overdue styling instead of completed status",
+      "mobileSharingModalWidth": "Fixed sharing modals overflowing on mobile screens",
+      "mobileEntityButtonsFix": "Mobile entity buttons now show icon-only to prevent text wrapping",
       "initialRelease": "Initial release with full feature set"
     }
   },

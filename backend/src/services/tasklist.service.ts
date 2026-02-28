@@ -123,6 +123,7 @@ export const getTaskLists = async (userId: string) => {
           user: { select: { id: true, name: true, email: true } },
         },
       },
+      kanbanBoard: { select: { id: true, title: true } },
     },
     orderBy: { updatedAt: 'desc' },
   });
@@ -219,6 +220,87 @@ export const addTaskItem = async (
   });
 
   await notifyCollaborators(userId, taskListId, 'TASK_ITEM_ADDED', data.text);
+
+  // Auto-add card to linked kanban board (if any)
+  try {
+    const taskList = await prisma.taskList.findUnique({
+      where: { id: taskListId },
+      select: {
+        kanbanBoard: {
+          select: {
+            id: true,
+            columns: {
+              where: { isCompleted: false },
+              orderBy: { position: 'asc' },
+              take: 1,
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (taskList?.kanbanBoard && taskList.kanbanBoard.columns.length > 0) {
+      const targetColumnId = taskList.kanbanBoard.columns[0].id;
+      const boardId = taskList.kanbanBoard.id;
+
+      // Map TaskPriority → KanbanCardPriority
+      const priority = (data.priority || 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH';
+
+      // Handle long text: truncated title + full description
+      const cardTitle = data.text.length > 100 ? data.text.substring(0, 100) + '...' : data.text;
+      const cardDescription = data.text.length > 100 ? data.text : undefined;
+
+      const maxCardPos = await prisma.kanbanCard.aggregate({
+        where: { columnId: targetColumnId },
+        _max: { position: true },
+      });
+      const cardPosition = (maxCardPos._max.position ?? -1) + 1;
+
+      const card = await prisma.kanbanCard.create({
+        data: {
+          columnId: targetColumnId,
+          title: cardTitle,
+          description: cardDescription,
+          position: cardPosition,
+          priority,
+          taskItemId: item.id,
+          dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          position: true,
+          columnId: true,
+          assigneeId: true,
+          dueDate: true,
+          priority: true,
+          noteId: true,
+          noteLinkedById: true,
+          archivedAt: true,
+          taskItemId: true,
+          createdAt: true,
+          updatedAt: true,
+          assignee: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
+          note: { select: { id: true, title: true, userId: true } },
+          _count: { select: { comments: true } },
+        },
+      });
+
+      // Broadcast SSE event for real-time kanban update
+      const { broadcast } = await import('./kanbanSSE');
+      const { _count, ...cardRest } = card;
+      broadcast(boardId, {
+        type: 'card:created',
+        boardId,
+        card: { ...cardRest, commentCount: _count.comments },
+      });
+    }
+  } catch (err) {
+    // Auto-add to kanban is non-critical — don't fail the task item creation
+    logger.error(err, 'Failed to auto-add task item to linked kanban board');
+  }
 
   return item;
 };
@@ -324,6 +406,7 @@ export const getAcceptedSharedTaskLists = async (userId: string) => {
               user: { select: { id: true, name: true, email: true } },
             },
           },
+          kanbanBoard: { select: { id: true, title: true } },
         },
       },
     },

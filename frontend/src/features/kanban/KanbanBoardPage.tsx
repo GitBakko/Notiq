@@ -16,7 +16,7 @@ import {
   DragOverlay,
 } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
-import { ArrowLeft, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
+import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
@@ -41,6 +41,8 @@ import KanbanFilterBar, {
   isFiltersActive,
   cardMatchesFilters,
 } from './components/KanbanFilterBar';
+import ArchivedCardsModal from './components/ArchivedCardsModal';
+import TaskListLinkPicker from './components/TaskListLinkPicker';
 // ganttExport loaded lazily on demand (exceljs ~500KB)
 
 interface KanbanBoardPageProps {
@@ -109,12 +111,20 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Mobile swipe navigation refs
+  const touchStartRef = useRef<number>(0);
+  const touchDeltaRef = useRef<number>(0);
+  const mobileTabBarRef = useRef<HTMLDivElement>(null);
+  const mobileTabRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const [filters, setFilters] = useState<KanbanFilters>(defaultKanbanFilters);
   const [isNoteLinkPickerOpen, setIsNoteLinkPickerOpen] = useState(false);
   const [boardSharingCheck, setBoardSharingCheck] = useState<NoteSharingCheck | null>(null);
   const [pendingBoardNote, setPendingBoardNote] = useState<NoteSearchResult | null>(null);
   const [isBoardSharingGapOpen, setIsBoardSharingGapOpen] = useState(false);
   const [showDeleteBoardConfirm, setShowDeleteBoardConfirm] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isTaskListPickerOpen, setIsTaskListPickerOpen] = useState(false);
   const filtersActive = isFiltersActive(filters);
   const [mobileActiveColumnIndex, setMobileActiveColumnIndex] = useState(0);
 
@@ -405,6 +415,10 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     });
   }
 
+  function handleToggleColumnCompletion(columnId: string, isCompleted: boolean): void {
+    mutations.updateColumn.mutate({ columnId, isCompleted });
+  }
+
   function handleAddCard(columnId: string, title: string): void {
     mutations.createCard.mutate({ columnId, title });
   }
@@ -478,6 +492,15 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     mutations.unlinkBoardNote.mutate(boardId);
   }
 
+  function handleLinkTaskList(taskListId: string): void {
+    setIsTaskListPickerOpen(false);
+    mutations.linkTaskList.mutate({ boardId, taskListId });
+  }
+
+  function handleUnlinkTaskList(): void {
+    mutations.unlinkTaskList.mutate(boardId);
+  }
+
   function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -523,6 +546,50 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       setMobileActiveColumnIndex(displayColumns.length - 1);
     }
   }, [displayColumns.length, mobileActiveColumnIndex]);
+
+  // Auto-scroll active tab into view
+  useEffect(() => {
+    if (!isMobile) return;
+    const tabEl = mobileTabRefs.current.get(mobileActiveColumnIndex);
+    if (tabEl) {
+      tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [mobileActiveColumnIndex, isMobile]);
+
+  // Mobile swipe gesture handlers — smooth animated sliding
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipeTransitioning, setIsSwipeTransitioning] = useState(false);
+  const swipeContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = e.touches[0].clientX;
+    touchDeltaRef.current = 0;
+    setIsSwipeTransitioning(false);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const delta = e.touches[0].clientX - touchStartRef.current;
+    touchDeltaRef.current = delta;
+    // Dampen overscroll at edges
+    const atStart = mobileActiveColumnIndex === 0 && delta > 0;
+    const atEnd = mobileActiveColumnIndex >= displayColumns.length - 1 && delta < 0;
+    setSwipeOffset(atStart || atEnd ? delta * 0.25 : delta);
+  }, [mobileActiveColumnIndex, displayColumns.length]);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsSwipeTransitioning(true);
+    if (Math.abs(touchDeltaRef.current) > 50) {
+      if (touchDeltaRef.current < 0 && mobileActiveColumnIndex < displayColumns.length - 1) {
+        setMobileActiveColumnIndex(prev => prev + 1);
+      } else if (touchDeltaRef.current > 0 && mobileActiveColumnIndex > 0) {
+        setMobileActiveColumnIndex(prev => prev - 1);
+      }
+    }
+    setSwipeOffset(0);
+    touchDeltaRef.current = 0;
+    // Remove transition flag after animation completes
+    setTimeout(() => setIsSwipeTransitioning(false), 300);
+  }, [mobileActiveColumnIndex, displayColumns.length]);
 
   if (isLoading) {
     return (
@@ -732,6 +799,20 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 </button>
               )}
 
+              {/* Archive button */}
+              <button
+                onClick={() => setIsArchiveOpen(true)}
+                className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
+                title={t('kanban.archive.title')}
+              >
+                <Archive size={18} />
+                {board.archivedCardsCount > 0 && (
+                  <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neutral-500 dark:bg-neutral-600 text-[10px] text-white px-1">
+                    {board.archivedCardsCount}
+                  </span>
+                )}
+              </button>
+
               {isOwner && (
                 <button
                   onClick={() => setIsShareOpen(true)}
@@ -753,7 +834,30 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                   {showBoardMenu && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setShowBoardMenu(false)} />
-                      <div className="absolute right-0 top-10 z-20 w-48 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
+                      <div className="absolute right-0 top-10 z-20 w-56 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
+                        {board.taskListId ? (
+                          <button
+                            onClick={() => {
+                              setShowBoardMenu(false);
+                              handleUnlinkTaskList();
+                            }}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                          >
+                            <Unlink size={14} />
+                            {t('kanban.linking.unlinkTaskList')}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setShowBoardMenu(false);
+                              setIsTaskListPickerOpen(true);
+                            }}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                          >
+                            <ListChecks size={14} />
+                            {t('kanban.linking.linkTaskList')}
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setShowBoardMenu(false);
@@ -813,6 +917,31 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           </div>
         )}
 
+        {/* Board-linked task list */}
+        {board.taskList && (
+          <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800/40 px-4 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <ListChecks size={14} className="text-blue-500 flex-shrink-0" />
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">{t('kanban.linking.linkedTo')}:</span>
+              <button
+                onClick={() => navigate('/tasks')}
+                className="text-blue-600 dark:text-blue-400 hover:underline truncate text-sm"
+              >
+                {board.taskList.title}
+              </button>
+              {!readOnly && (
+                <button
+                  onClick={handleUnlinkTaskList}
+                  className="ml-auto flex-shrink-0 p-1 text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                  title={t('kanban.linking.unlinkTaskList')}
+                >
+                  <Unlink size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Filter bar */}
         <KanbanFilterBar
           filters={filters}
@@ -823,20 +952,37 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
         {/* Mobile column tabs */}
         {isMobile && displayColumns.length > 0 && (
-          <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800/40 overflow-x-auto">
+          <div
+            ref={mobileTabBarRef}
+            className="flex-shrink-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 overflow-x-auto scrollbar-none"
+          >
             <div className="flex">
               {displayColumns.map((col, index) => (
                 <button
                   key={col.id}
-                  onClick={() => setMobileActiveColumnIndex(index)}
+                  ref={(el) => {
+                    if (el) mobileTabRefs.current.set(index, el);
+                    else mobileTabRefs.current.delete(index);
+                  }}
+                  onClick={() => { setIsSwipeTransitioning(true); setMobileActiveColumnIndex(index); setTimeout(() => setIsSwipeTransitioning(false), 300); }}
                   className={clsx(
-                    'flex-shrink-0 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap',
+                    'flex-shrink-0 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap min-h-[44px] flex items-center gap-1.5',
                     index === mobileActiveColumnIndex
                       ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                      : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'
+                      : 'border-transparent text-neutral-500 dark:text-neutral-400 active:text-neutral-700 dark:active:text-neutral-300'
                   )}
                 >
-                  {col.title} ({col.cards.length})
+                  {col.title}
+                  <span
+                    className={clsx(
+                      'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold',
+                      index === mobileActiveColumnIndex
+                        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400'
+                    )}
+                  >
+                    {col.cards.length}
+                  </span>
                 </button>
               ))}
             </div>
@@ -845,21 +991,38 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
         {/* Board content */}
         {isMobile ? (
-          // Mobile: single column, full width
-          <div className="flex-1 overflow-y-auto p-4">
-            {displayColumns[mobileActiveColumnIndex] ? (
-              <div className="w-full [&>div]:!w-full [&>div]:!min-w-0">
-                <KanbanColumn
-                  key={displayColumns[mobileActiveColumnIndex].id}
-                  column={displayColumns[mobileActiveColumnIndex]}
-                  boardId={boardId}
-                  onCardSelect={(cardId) => setSelectedCardId(cardId)}
-                  onRenameColumn={handleRenameColumn}
-                  onDeleteColumn={handleDeleteColumn}
-                  onAddCard={handleAddCard}
-                  readOnly={readOnly || filtersActive}
-                  highlightedCardIds={highlightedCardIds}
-                />
+          // Mobile: sliding column carousel with smooth swipe
+          <div
+            className="flex-1 overflow-hidden"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            {displayColumns.length > 0 ? (
+              <div
+                ref={swipeContainerRef}
+                className="flex h-full"
+                style={{
+                  transform: `translateX(calc(-${mobileActiveColumnIndex * 100}% + ${swipeOffset}px))`,
+                  transition: isSwipeTransitioning ? 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
+                  willChange: 'transform',
+                }}
+              >
+                {displayColumns.map((col) => (
+                  <div key={col.id} className="w-full flex-shrink-0 overflow-y-auto p-4 [&>div]:!w-full [&>div]:!min-w-0">
+                    <KanbanColumn
+                      column={col}
+                      boardId={boardId}
+                      onCardSelect={(cardId) => setSelectedCardId(cardId)}
+                      onRenameColumn={handleRenameColumn}
+                      onDeleteColumn={handleDeleteColumn}
+                      onAddCard={handleAddCard}
+                      onToggleCompletion={!readOnly ? handleToggleColumnCompletion : undefined}
+                      readOnly={readOnly || filtersActive}
+                      highlightedCardIds={highlightedCardIds}
+                    />
+                  </div>
+                ))}
               </div>
             ) : !readOnly ? (
               <div className="flex items-center justify-center p-8">
@@ -894,6 +1057,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       onRenameColumn={handleRenameColumn}
                       onDeleteColumn={handleDeleteColumn}
                       onAddCard={handleAddCard}
+                      onToggleCompletion={!readOnly ? handleToggleColumnCompletion : undefined}
                       readOnly={readOnly || filtersActive}
                       highlightedCardIds={highlightedCardIds}
                     />
@@ -1009,6 +1173,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         card={selectedCard}
         boardId={boardId}
         readOnly={readOnly}
+        columns={board.columns}
       />
 
       {/* Share Modal */}
@@ -1050,6 +1215,23 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         message={t('kanban.deleteBoardConfirm')}
         confirmText={t('common.delete')}
         variant="danger"
+      />
+
+      {/* Archived cards modal */}
+      <ArchivedCardsModal
+        isOpen={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
+        boardId={boardId}
+        onUnarchive={() => {
+          // Board data will be refetched via invalidateBoard in the mutation
+        }}
+      />
+
+      {/* Task list link picker */}
+      <TaskListLinkPicker
+        isOpen={isTaskListPickerOpen}
+        onClose={() => setIsTaskListPickerOpen(false)}
+        onSelect={handleLinkTaskList}
       />
     </div>
   );

@@ -241,6 +241,7 @@ export default function Sidebar() {
                 email: s.user.email,
                 avatarUrl: s.user.avatarUrl,
                 permission: s.permission,
+                status: s.status as 'ACCEPTED' | 'PENDING' | undefined,
               }))
             : []
         }

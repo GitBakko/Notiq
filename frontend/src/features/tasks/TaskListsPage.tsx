@@ -33,8 +33,8 @@ export default function TaskListsPage() {
     ? taskLists?.find(tl => tl.id === viewSharesTaskListId)
     : null;
   const viewSharesUsers: SharedUserInfo[] = viewSharesTaskList?.sharedWith
-    ?.filter(s => s.status === 'ACCEPTED')
-    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission })) || [];
+    ?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
+    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status as 'ACCEPTED' | 'PENDING' })) || [];
   const viewSharesOwner: SharedOwnerInfo | null = viewSharesTaskList
     ? (viewSharesTaskList.sharedByUser
         ? { id: viewSharesTaskList.sharedByUser.id, name: viewSharesTaskList.sharedByUser.name, email: viewSharesTaskList.sharedByUser.email, avatarUrl: viewSharesTaskList.sharedByUser.avatarUrl }
@@ -65,7 +65,7 @@ export default function TaskListsPage() {
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Plus size={16} />
-            {t('taskLists.newList')}
+            <span className="hidden sm:inline">{t('taskLists.newList')}</span>
           </button>
         </div>
       </div>
@@ -119,13 +119,14 @@ export default function TaskListsPage() {
           taskListId={sharingTaskListId}
           sharedWith={
             sharingTaskList.sharedWith
-              ?.filter(s => s.status === 'ACCEPTED')
+              ?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
               .map(s => ({
                 id: s.userId,
                 name: s.user.name,
                 email: s.user.email,
                 avatarUrl: s.user.avatarUrl,
                 permission: s.permission,
+                status: s.status as 'ACCEPTED' | 'PENDING',
               })) || []
           }
         />

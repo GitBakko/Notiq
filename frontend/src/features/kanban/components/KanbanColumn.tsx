@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import clsx from 'clsx';
-import { GripVertical, MoreVertical, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, GripVertical, MoreVertical, Plus, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import KanbanCard from './KanbanCard';
@@ -16,6 +16,7 @@ interface KanbanColumnProps {
   onRenameColumn: (columnId: string, title: string) => void;
   onDeleteColumn: (columnId: string) => void;
   onAddCard: (columnId: string, title: string) => void;
+  onToggleCompletion?: (columnId: string, isCompleted: boolean) => void;
   readOnly?: boolean;
   highlightedCardIds?: Set<string>;
 }
@@ -26,6 +27,7 @@ export default function KanbanColumn({
   onRenameColumn,
   onDeleteColumn,
   onAddCard,
+  onToggleCompletion,
   readOnly,
   highlightedCardIds,
 }: KanbanColumnProps) {
@@ -127,6 +129,9 @@ export default function KanbanColumn({
           </button>
         )}
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          {column.isCompleted && (
+            <CheckCircle2 size={16} className="flex-shrink-0 text-emerald-500 dark:text-emerald-400" />
+          )}
           {isEditingTitle && !readOnly ? (
             <input
               ref={titleInputRef}
@@ -173,6 +178,20 @@ export default function KanbanColumn({
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
                 <div className="absolute right-0 top-8 z-20 w-52 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
+                  {onToggleCompletion && (
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onToggleCompletion(column.id, !column.isCompleted);
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    >
+                      <CheckCircle2 size={14} className={column.isCompleted ? 'text-emerald-500' : ''} />
+                      {column.isCompleted
+                        ? t('kanban.column.removeCompleted')
+                        : t('kanban.column.markCompleted')}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowMenu(false);
@@ -217,6 +236,7 @@ export default function KanbanColumn({
               onSelect={onCardSelect}
               readOnly={readOnly}
               isHighlighted={highlightedCardIds?.has(card.id)}
+              isInCompletedColumn={column.isCompleted}
             />
           ))}
         </SortableContext>

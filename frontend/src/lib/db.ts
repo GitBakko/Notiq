@@ -79,6 +79,7 @@ export interface LocalTaskList {
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
     user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
+  kanbanBoard?: { id: string; title: string } | null;
   items?: LocalTaskItem[];
   syncStatus: 'synced' | 'created' | 'updated';
 }

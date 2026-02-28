@@ -298,13 +298,14 @@ export default function NotesPage() {
 
   const sharingNoteData = sharingNoteId ? notes?.find(n => n.id === sharingNoteId) : null;
   const sharingUsers: SharedUserInfo[] = sharingNoteData?.sharedWith
-    ?.filter(s => s.status === 'ACCEPTED')
+    ?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
     .map(s => ({
       id: s.user.id,
       name: s.user.name,
       email: s.user.email,
       avatarUrl: s.user.avatarUrl,
       permission: s.permission,
+      status: s.status as 'ACCEPTED' | 'PENDING',
     })) || [];
   const sharingNoteOwner: SharedOwnerInfo | null = sharingNoteData
     ? (sharingNoteData.ownership === 'shared' && sharingNoteData.sharedByUser
