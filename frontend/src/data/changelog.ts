@@ -24,6 +24,8 @@ export const changelog: VersionEntry[] = [
       { type: 'fix', titleKey: 'whatsNew.entries.completedCardDueDateFix' },
       { type: 'fix', titleKey: 'whatsNew.entries.mobileSharingModalWidth' },
       { type: 'fix', titleKey: 'whatsNew.entries.mobileEntityButtonsFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.taskListKanbanLinkFix' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanBoardCardSize' },
     ],
   },
   {

@@ -1121,6 +1121,8 @@
       "completedCardDueDateFix": "Fixed completed cards showing overdue styling instead of completed status",
       "mobileSharingModalWidth": "Fixed sharing modals overflowing on mobile screens",
       "mobileEntityButtonsFix": "Mobile entity buttons now show icon-only to prevent text wrapping",
+      "taskListKanbanLinkFix": "Fixed task list → kanban board link navigating to notes list instead of kanban",
+      "kanbanBoardCardSize": "Larger Kanban Board Cards — Board cards in the list view are now wider with bigger text and icons",
       "initialRelease": "Initial release with full feature set"
     }
   },

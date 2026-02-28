@@ -71,7 +71,7 @@ export default function KanbanPage() {
     <div className="flex-1 h-full overflow-y-auto bg-neutral-50 dark:bg-neutral-950">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md border-b border-neutral-200/60 dark:border-neutral-800/40 shadow-[0_1px_3px_0_rgb(0,0,0,0.02)] px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {isMobile && (
               <button
@@ -97,7 +97,7 @@ export default function KanbanPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-5xl mx-auto px-6 py-6">
+      <div className="max-w-6xl mx-auto px-6 py-6">
         {isLoading ? (
           <Skeleton.Grid count={3} />
         ) : !boards || boards.length === 0 ? (
@@ -115,7 +115,7 @@ export default function KanbanPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {boards.map((board: KanbanBoardListItem) => (
               <BoardCard
                 key={board.id}

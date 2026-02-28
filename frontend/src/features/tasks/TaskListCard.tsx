@@ -179,7 +179,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
         {/* Linked Kanban board */}
         {taskList.kanbanBoard && (
           <button
-            onClick={() => navigate(`/kanban/${taskList.kanbanBoard!.id}`)}
+            onClick={() => navigate(`/kanban?boardId=${taskList.kanbanBoard!.id}`)}
             className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
             title={taskList.kanbanBoard.title}
           >

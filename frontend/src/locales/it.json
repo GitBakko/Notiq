@@ -810,6 +810,8 @@
       "completedCardDueDateFix": "Corrette le card completate che mostravano lo stile 'scaduto' invece dello stato completato",
       "mobileSharingModalWidth": "Corretti i modali di condivisione che fuoriuscivano su schermi mobile",
       "mobileEntityButtonsFix": "I pulsanti di creazione su mobile ora mostrano solo l'icona per evitare il wrapping del testo",
+      "taskListKanbanLinkFix": "Corretto il link task list → kanban board che navigava alla lista note invece che alla kanban",
+      "kanbanBoardCardSize": "Card Kanban Board Più Grandi — Le card delle board nella lista sono ora più ampie con testo e icone più grandi",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

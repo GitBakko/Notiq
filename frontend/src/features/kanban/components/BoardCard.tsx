@@ -62,7 +62,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
     >
       {/* Cover Image */}
       {board.coverImage && (
-        <div className="h-32 w-full overflow-hidden rounded-t-xl">
+        <div className="h-36 w-full overflow-hidden rounded-t-xl">
           <img
             src={board.coverImage}
             alt=""
@@ -71,7 +71,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
         </div>
       )}
 
-      <div className="p-4">
+      <div className="p-5">
         {/* Context menu button */}
         {isOwned && (
           <div ref={menuRef} className="absolute top-3 right-3 z-10">
@@ -114,25 +114,25 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
             <img
               src={board.avatarUrl}
               alt=""
-              className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
             />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
-              <Kanban size={12} className="text-emerald-600 dark:text-emerald-400" />
+            <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+              <Kanban size={14} className="text-emerald-600 dark:text-emerald-400" />
             </div>
           )}
-          <h3 className="text-sm font-bold text-neutral-900 dark:text-white truncate">
+          <h3 className="text-base font-bold text-neutral-900 dark:text-white truncate">
             {board.title}
           </h3>
         </div>
 
         {/* Description */}
         {board.description ? (
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">
+          <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2">
             {board.description}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-400 italic">
+          <p className="mt-2 text-sm text-neutral-400 dark:text-neutral-400 italic">
             {t('kanban.card.noDescription')}
           </p>
         )}
@@ -152,13 +152,13 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
         )}
 
         {/* Footer stats */}
-        <div className="mt-3 flex items-center gap-3 text-xs text-neutral-400 dark:text-neutral-400">
+        <div className="mt-4 flex items-center gap-3 text-xs text-neutral-400 dark:text-neutral-400">
           <span className="flex items-center gap-1">
-            <Columns3 size={12} />
+            <Columns3 size={14} />
             {t('kanban.stats.columns', { count: board.columnCount })}
           </span>
           <span className="flex items-center gap-1">
-            <CreditCard size={12} />
+            <CreditCard size={14} />
             {t('kanban.stats.cards', { count: board.cardCount })}
           </span>
           {board.shareCount != null && board.shareCount > 0 && (
