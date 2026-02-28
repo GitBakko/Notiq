@@ -93,7 +93,7 @@ export default function BoardChatSidebar({
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
           </div>
         ) : messages.length === 0 ? (
-          <p className="text-center text-xs text-gray-400 dark:text-gray-500 py-8">
+          <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 py-8">
             {t('kanban.chat.empty')}
           </p>
         ) : (
@@ -128,10 +128,10 @@ export default function BoardChatSidebar({
                       {initial}
                     </div>
                   )}
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
                     {isMe ? t('kanban.chat.you') : (msg.author.name || msg.author.email)}
                   </span>
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
                     {new Date(msg.createdAt).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -143,7 +143,7 @@ export default function BoardChatSidebar({
                     'px-3 py-2 rounded-lg text-sm max-w-[85%] break-words',
                     isMe
                       ? 'bg-emerald-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100',
                   )}
                 >
                   {msg.content}
@@ -156,7 +156,7 @@ export default function BoardChatSidebar({
       </div>
 
       {/* Input */}
-      <div className={clsx("px-4 py-3 border-t border-gray-200 dark:border-gray-700", isMobile && "safe-area-bottom")}>
+      <div className={clsx("px-4 py-3 border-t border-neutral-200/60 dark:border-neutral-700/40", isMobile && "safe-area-bottom")}>
         <div className="flex items-center gap-2">
           <input
             value={newMessage}
@@ -168,7 +168,7 @@ export default function BoardChatSidebar({
               }
             }}
             placeholder={t('kanban.chat.placeholder')}
-            className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500"
+            className="flex-1 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500 outline-none focus:border-emerald-500"
           />
           <button
             onClick={handleSend}
@@ -184,17 +184,17 @@ export default function BoardChatSidebar({
 
   if (isMobile) {
     return (
-      <div className="fixed inset-0 z-50 bg-white dark:bg-gray-900 flex flex-col">
+      <div className="fixed inset-0 z-50 bg-white dark:bg-neutral-900 flex flex-col">
         {/* Mobile Header with back button */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 safe-area-top">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-200/60 dark:border-neutral-700/40 flex-shrink-0 safe-area-top">
           <button
             onClick={onClose}
-            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
             aria-label={t('common.back')}
           >
             <ArrowLeft size={20} />
           </button>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
             {chatTitle}
           </h3>
         </div>
@@ -205,15 +205,15 @@ export default function BoardChatSidebar({
 
   // Desktop: existing sidebar layout
   return (
-    <div className="w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col h-full">
+    <div className="w-80 flex-shrink-0 border-l border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-900 flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200/60 dark:border-neutral-700/40">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
           {chatTitle}
         </h3>
         <button
           onClick={onClose}
-          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+          className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 rounded"
         >
           <X size={16} />
         </button>

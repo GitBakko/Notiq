@@ -104,7 +104,7 @@ export default function RemindersPage() {
 
   const isLoading = !noteReminders && !kanbanReminders && !taskReminders;
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500">{t('common.loading')}</div>;
+  if (isLoading) return <div className="p-8 text-center text-neutral-500">{t('common.loading')}</div>;
 
   const overdue = unified.filter((r) => !r.isDone && isPast(new Date(r.dueDate)) && !isToday(new Date(r.dueDate)));
   const today = unified.filter((r) => !r.isDone && isToday(new Date(r.dueDate)));
@@ -132,13 +132,13 @@ export default function RemindersPage() {
   }
 
   const ReminderItem = ({ item }: { item: UnifiedReminder }) => (
-    <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-shadow group dark:bg-gray-800 dark:border-gray-700">
+    <div className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-lg hover:shadow-sm transition-shadow group dark:bg-neutral-800 dark:border-neutral-700">
       <button
         onClick={(e) => {
           e.stopPropagation();
           handleToggle(item);
         }}
-        className="text-gray-400 hover:text-emerald-600 dark:text-gray-500 dark:hover:text-emerald-400"
+        className="text-neutral-400 hover:text-emerald-600 dark:text-neutral-500 dark:hover:text-emerald-400"
       >
         {item.isDone ? (
           <CheckCircle className="text-emerald-600 dark:text-emerald-500" />
@@ -159,15 +159,15 @@ export default function RemindersPage() {
           )}
           <span
             className={clsx(
-              'font-medium truncate dark:text-gray-200',
-              item.isDone && 'line-through text-gray-400 dark:text-gray-500'
+              'font-medium truncate dark:text-neutral-200',
+              item.isDone && 'line-through text-neutral-400 dark:text-neutral-500'
             )}
           >
             {item.title}
           </span>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-gray-500 flex items-center gap-1 dark:text-gray-400">
+          <span className="text-xs text-neutral-500 flex items-center gap-1 dark:text-neutral-400">
             <Calendar size={12} />
             {format(new Date(item.dueDate), item.type === 'task' ? 'PPP' : 'PPP p', { locale: dateLocale })}
           </span>
@@ -187,17 +187,17 @@ export default function RemindersPage() {
   );
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-gray-50 p-8 dark:bg-gray-900">
+    <div className="flex-1 h-full overflow-y-auto bg-neutral-50 p-8 dark:bg-neutral-900">
       <div className="flex items-center gap-3 mb-6">
         {isMobile && (
           <button
             onClick={toggleSidebar}
-            className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
           >
             <Menu size={24} />
           </button>
         )}
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">
           {t('sidebar.reminders')}
         </h1>
       </div>
@@ -231,7 +231,7 @@ export default function RemindersPage() {
 
         {upcoming.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-gray-700 mb-3 dark:text-gray-300">
+            <h2 className="text-lg font-semibold text-neutral-700 mb-3 dark:text-neutral-300">
               {t('tasks.upcoming')}
             </h2>
             <div className="space-y-2">
@@ -244,7 +244,7 @@ export default function RemindersPage() {
 
         {done.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-gray-400 mb-3 dark:text-gray-500">
+            <h2 className="text-lg font-semibold text-neutral-400 mb-3 dark:text-neutral-500">
               {t('tasks.completed')}
             </h2>
             <div className="space-y-2 opacity-75">
@@ -256,7 +256,7 @@ export default function RemindersPage() {
         )}
 
         {unified.length === 0 && (
-          <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+          <div className="text-center py-12 text-neutral-400 dark:text-neutral-500">
             <CheckCircle size={48} className="mx-auto mb-4 opacity-20" />
             <p>{t('tasks.noTasks')}</p>
           </div>

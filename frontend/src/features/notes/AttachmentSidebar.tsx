@@ -17,11 +17,11 @@ export default function AttachmentSidebar({ noteId, attachments, onClose, onDele
   const token = localStorage.getItem('auth-storage') ? JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token : null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-xl border-l border-gray-200 transform transition-transform duration-300 ease-in-out z-40 flex flex-col dark:bg-gray-900 dark:border-gray-800">
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between dark:border-gray-800">
+    <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-xl border-l border-neutral-200/60 transform transition-transform duration-300 ease-in-out z-40 flex flex-col dark:bg-neutral-900 dark:border-neutral-800/40">
+      <div className="p-4 border-b border-neutral-200/60 flex items-center justify-between dark:border-neutral-800/40">
         <div className="flex items-center gap-2">
-          <Paperclip size={20} className="text-gray-500 dark:text-gray-400" />
-          <h2 className="font-semibold text-lg text-gray-900 dark:text-white">{t('notes.attachments')}</h2>
+          <Paperclip size={20} className="text-neutral-500 dark:text-neutral-400" />
+          <h2 className="font-semibold text-lg text-neutral-900 dark:text-white">{t('notes.attachments')}</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose}>
           <X size={20} />
@@ -33,7 +33,7 @@ export default function AttachmentSidebar({ noteId, attachments, onClose, onDele
           {/* Using a direct link styled as button for download */}
           <a
             href={`/api/attachments/download-all/${noteId}?token=${token}`}
-            className="flex items-center justify-center w-full gap-2 px-4 py-2 text-sm font-medium text-white transition-colors bg-emerald-600 rounded-md hover:bg-emerald-700"
+            className="flex items-center justify-center w-full gap-2 px-4 py-2 text-sm font-medium text-white transition-colors bg-emerald-600 rounded-lg hover:bg-emerald-700"
             download
           >
             <Upload className="w-4 h-4 rotate-180" />
@@ -53,11 +53,11 @@ export default function AttachmentSidebar({ noteId, attachments, onClose, onDele
 
           return (
             <div>
-              <div className="flex justify-between text-xs mb-1 text-gray-500 dark:text-gray-400">
+              <div className="flex justify-between text-xs mb-1 text-neutral-500 dark:text-neutral-400">
                 <span>{t('actions.quotaWarning', 'Storage')}</span>
                 <span>{(currentSize / (1024 * 1024)).toFixed(2)}MB / {QUOTA_MB}MB</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700 overflow-hidden">
+              <div className="w-full bg-neutral-200 rounded-full h-1.5 dark:bg-neutral-700 overflow-hidden">
                 <div
                   className={clsx("h-1.5 rounded-full transition-all duration-500", isWarning ? "bg-red-500" : "bg-emerald-500")}
                   style={{ width: `${percentage}%` }}
@@ -70,7 +70,7 @@ export default function AttachmentSidebar({ noteId, attachments, onClose, onDele
 
       <div className="flex-1 overflow-y-auto p-4">
         {attachments.length === 0 ? (
-          <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+          <div className="text-center py-10 text-neutral-500 dark:text-neutral-400">
             <Upload size={48} className="mx-auto mb-3 opacity-50" />
             <p className="mb-4">{t('notes.noAttachments')}</p>
             <Button onClick={onAdd} variant="secondary" size="sm">

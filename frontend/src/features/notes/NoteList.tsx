@@ -52,26 +52,26 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
   };
 
   if (!notes || notes.length === 0) {
-    return <div className="p-4 text-gray-500 text-sm text-center mt-10 dark:text-gray-400">{t('notes.noNotesFound')}</div>;
+    return <div className="p-4 text-neutral-500 text-sm text-center mt-10 dark:text-neutral-400">{t('notes.noNotesFound')}</div>;
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+    <div className="flex-1 overflow-y-auto bg-white dark:bg-neutral-950 animate-stagger-in">
       {notes.map((note) => (
         <div
           key={note.id}
           onClick={() => onSelectNote(note.id)}
           className={clsx(
-            'cursor-pointer border-b border-gray-100 p-4 transition-colors hover:bg-gray-50 group dark:border-gray-800 dark:hover:bg-gray-800',
+            'cursor-pointer border-b border-neutral-100/80 p-4 transition-colors hover:bg-neutral-50 group dark:border-neutral-800/40 dark:hover:bg-neutral-800',
             selectedNoteId === note.id ? 'bg-emerald-50 border-l-4 border-l-emerald-500 dark:bg-emerald-900/20' : 'border-l-4 border-l-transparent pl-5'
           )}
         >
           <div className="flex items-center gap-2 mb-1">
-            <h3 className={clsx('text-sm font-semibold truncate flex-1', selectedNoteId === note.id ? 'text-emerald-900 dark:text-emerald-400' : 'text-gray-900 dark:text-white')}>
+            <h3 className={clsx('text-sm font-semibold truncate flex-1', selectedNoteId === note.id ? 'text-emerald-900 dark:text-emerald-400' : 'text-neutral-900 dark:text-white')}>
               {note.title || t('notes.untitled')}
             </h3>
             {note.notebook && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 whitespace-nowrap">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400 whitespace-nowrap">
                 {note.notebook.name}
               </span>
             )}
@@ -82,10 +82,10 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
               </span>
             )}
           </div>
-          <p className="mb-2 line-clamp-2 text-xs text-gray-500 h-8 dark:text-gray-400">
+          <p className="mb-2 line-clamp-2 text-xs text-neutral-500 h-8 dark:text-neutral-400">
             {note.content ? getPreviewText(note.content) : (note.searchText || t('notes.noContent'))}
           </p>
-          <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex items-center justify-between text-xs text-neutral-400 dark:text-neutral-400">
             <div className="flex items-center gap-2">
               <span>{timeAgo(note.updatedAt, dateLocale)}</span>
               {note.ownership === 'shared' && note.sharedByUser && (
@@ -114,13 +114,13 @@ export default function NoteList({ notes, selectedNoteId, onSelectNote, onShareC
                 </button>
               )}
               {note.attachments && note.attachments.length > 0 && (
-                <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                <span className="flex items-center gap-1 bg-neutral-100 px-1.5 py-0.5 rounded text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                   <Paperclip size={10} />
                   <span className="text-[10px]">{note.attachments.length}</span>
                 </span>
               )}
               {note.tags && note.tags.length > 0 && (
-                <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                <span className="flex items-center gap-1 bg-neutral-100 px-1.5 py-0.5 rounded text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                   <Tag size={10} />
                   <span className="text-[10px]">{note.tags.length}</span>
                 </span>

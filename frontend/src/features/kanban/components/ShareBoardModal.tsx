@@ -85,14 +85,14 @@ export default function ShareBoardModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('kanban.share.title')}>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400 truncate">
+      <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400 truncate">
         {boardTitle}
       </p>
 
       {/* Share with Group section */}
       {groups && groups.length > 0 && (
-        <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+        <div className="mb-4 pb-4 border-b border-neutral-200/60 dark:border-neutral-700/40">
+          <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2 flex items-center gap-1.5">
             <Orbit size={14} />
             {t('sharing.shareWithGroup')}
           </label>
@@ -100,7 +100,7 @@ export default function ShareBoardModal({
             <select
               value={selectedGroupId}
               onChange={(e) => setSelectedGroupId(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
             >
               <option value="">{t('sharing.selectGroup')}</option>
               {groups.map((g) => (
@@ -112,7 +112,7 @@ export default function ShareBoardModal({
             <select
               value={groupPermission}
               onChange={(e) => setGroupPermission(e.target.value as 'READ' | 'WRITE')}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
             >
               <option value="READ">{t('kanban.share.permissions.READ')}</option>
               <option value="WRITE">{t('kanban.share.permissions.WRITE')}</option>
@@ -149,13 +149,13 @@ export default function ShareBoardModal({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t('kanban.share.emailPlaceholder')}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
             required
           />
           <select
             value={permission}
             onChange={(e) => setPermission(e.target.value as 'READ' | 'WRITE')}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
           >
             <option value="READ">{t('kanban.share.permissions.READ')}</option>
             <option value="WRITE">{t('kanban.share.permissions.WRITE')}</option>
@@ -168,18 +168,18 @@ export default function ShareBoardModal({
 
       {/* Shared users list */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
           {t('kanban.share.sharedWith')}
         </h3>
 
         {localSharedWith.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">{t('kanban.share.noOne')}</p>
+          <p className="text-sm text-neutral-500 italic">{t('kanban.share.noOne')}</p>
         ) : (
           <ul className="space-y-2">
             {localSharedWith.map((share) => (
               <li
                 key={share.id}
-                className="flex items-center justify-between rounded-lg bg-gray-50 p-2 dark:bg-gray-700"
+                className="flex items-center justify-between rounded-lg bg-neutral-50 p-2 dark:bg-neutral-800"
               >
                 <div className="flex items-center gap-3">
                   {share.user.avatarUrl ? (
@@ -190,17 +190,17 @@ export default function ShareBoardModal({
                     </div>
                   )}
                   <div>
-                    <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    <div className="text-sm font-medium text-neutral-900 dark:text-white">
                       {share.user.name || share.user.email}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
                       {t(`kanban.share.permissions.${share.permission}`)}
                     </div>
                   </div>
                 </div>
                 <button
                   onClick={() => handleRevoke(share.userId)}
-                  className="text-gray-400 hover:text-red-500 transition-colors"
+                  className="text-neutral-400 hover:text-red-500 transition-colors"
                   title={t('common.delete')}
                 >
                   <Trash2 size={16} />

@@ -26,7 +26,7 @@ export default function KanbanBoardLink({ noteId }: KanbanBoardLinkProps) {
   if (!linkedBoards || linkedBoards.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-2 flex-wrap px-4 py-1.5 border-b border-gray-100 dark:border-gray-800">
+    <div className="flex items-center gap-2 flex-wrap px-4 py-1.5 border-b border-neutral-100 dark:border-neutral-800">
       {linkedBoards.map((entry) => {
         const isBoard = entry.linkedAs === 'board';
         const Icon = isBoard ? LayoutDashboard : SquareKanban;

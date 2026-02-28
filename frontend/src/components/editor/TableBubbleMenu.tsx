@@ -78,27 +78,27 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
       editor={editor}
       tippyOptions={tippyOptions}
       shouldShow={shouldShow}
-      className="flex flex-wrap items-center gap-1 max-w-[420px] bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl border border-gray-200/50 dark:border-gray-700/50 rounded-xl p-1.5 animate-in fade-in zoom-in-95 duration-200"
+      className="flex flex-wrap items-center gap-1 max-w-[420px] bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-xl p-1.5 animate-in fade-in zoom-in-95 duration-200"
     >
       {/* Column Operations */}
-      <div className="flex items-center gap-0.5 border-r border-gray-200 dark:border-gray-700 pr-1.5 mr-0.5">
+      <div className="flex items-center gap-0.5 border-r border-neutral-200 dark:border-neutral-700 pr-1.5 mr-0.5">
         <button
           onClick={() => editor.chain().focus().addColumnBefore().run()}
-          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
           title={t('editor.addColumnBefore', 'Add Column Before')}
         >
           <ArrowLeftToLine size={16} />
         </button>
         <button
           onClick={() => editor.chain().focus().addColumnAfter().run()}
-          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
           title={t('editor.addColumnAfter', 'Add Column After')}
         >
           <ArrowRightToLine size={16} />
         </button>
         <button
           onClick={() => editor.chain().focus().deleteColumn().run()}
-          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-600 dark:text-gray-300 hover:text-red-500 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-600 dark:text-neutral-300 hover:text-red-500 rounded-lg transition-colors"
           title={t('editor.deleteColumn', 'Delete Column')}
         >
           <Eraser size={16} className="rotate-90" />
@@ -106,31 +106,31 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
       </div>
 
       {/* Row Operations */}
-      <div className="flex items-center gap-0.5 border-r border-gray-200 dark:border-gray-700 pr-1.5 mr-0.5">
+      <div className="flex items-center gap-0.5 border-r border-neutral-200 dark:border-neutral-700 pr-1.5 mr-0.5">
         <button
           onClick={() => editor.chain().focus().addRowBefore().run()}
-          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
           title={t('editor.addRowBefore', 'Add Row Before')}
         >
           <ArrowUpToLine size={16} />
         </button>
         <button
           onClick={() => editor.chain().focus().addRowAfter().run()}
-          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
           title={t('editor.addRowAfter', 'Add Row After')}
         >
           <ArrowDownToLine size={16} />
         </button>
         <button
           onClick={() => editor.chain().focus().toggleHeaderRow().run()}
-          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
           title={t('editor.toggleHeaderRow', 'Toggle Header Row')}
         >
           <PanelTop size={16} />
         </button>
         <button
           onClick={() => editor.chain().focus().deleteRow().run()}
-          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-600 dark:text-gray-300 hover:text-red-500 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-600 dark:text-neutral-300 hover:text-red-500 rounded-lg transition-colors"
           title={t('editor.deleteRow', 'Delete Row')}
         >
           <Eraser size={16} />
@@ -138,11 +138,11 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
       </div>
 
       {/* Merge & Split */}
-      <div className="flex items-center gap-0.5 border-r border-gray-200 dark:border-gray-700 pr-1.5 mr-0.5">
+      <div className="flex items-center gap-0.5 border-r border-neutral-200 dark:border-neutral-700 pr-1.5 mr-0.5">
         <button
           onClick={() => editor.chain().focus().mergeCells().run()}
           disabled={!editor.can().mergeCells()}
-          className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+          className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-neutral-600 dark:text-neutral-300 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
           title={t('editor.mergeCells', 'Merge Cells')}
         >
           <Merge size={16} />
@@ -150,7 +150,7 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
         <button
           onClick={() => editor.chain().focus().splitCell().run()}
           disabled={!editor.can().splitCell()}
-          className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+          className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-neutral-600 dark:text-neutral-300 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
           title={t('editor.splitCell', 'Split Cell')}
         >
           <Split size={16} />
@@ -162,7 +162,7 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
         {/* Select Table */}
         <button
           onClick={selectTable}
-          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
+          className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-300 transition-colors"
           title={t('editor.selectTable', 'Select Table')}
         >
           <Table size={16} />
@@ -176,8 +176,8 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
               setShowColorMenu(false);
             }}
             className={clsx(
-              "p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors",
-              showBorderMenu && "bg-gray-100 dark:bg-gray-800 text-blue-600 dark:text-blue-400"
+              "p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-300 transition-colors",
+              showBorderMenu && "bg-neutral-100 dark:bg-neutral-800 text-blue-600 dark:text-blue-400"
             )}
             title={t('editor.borderStyle', 'Border Style')}
           >
@@ -185,11 +185,11 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
           </button>
 
           {showBorderMenu && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700 rounded-lg p-1.5 flex flex-col gap-1 min-w-[120px] animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
-              <button onClick={() => setBorderStyle('solid')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md transition-colors">{t('styles.solid')}</button>
-              <button onClick={() => setBorderStyle('dashed')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md border-dashed border-b border-gray-300 dark:border-gray-600 transition-colors">{t('styles.dashed')}</button>
-              <button onClick={() => setBorderStyle('dotted')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md border-dotted border-b border-gray-300 dark:border-gray-600 transition-colors">{t('styles.dotted')}</button>
-              <button onClick={() => setBorderStyle('none')} className="px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 text-left rounded-md text-gray-400 transition-colors">{t('styles.noBorder')}</button>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg p-1.5 flex flex-col gap-1 min-w-[120px] animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
+              <button onClick={() => setBorderStyle('solid')} className="px-3 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 text-left rounded-md transition-colors">{t('styles.solid')}</button>
+              <button onClick={() => setBorderStyle('dashed')} className="px-3 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 text-left rounded-md border-dashed border-b border-neutral-300 dark:border-neutral-600 transition-colors">{t('styles.dashed')}</button>
+              <button onClick={() => setBorderStyle('dotted')} className="px-3 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 text-left rounded-md border-dotted border-b border-neutral-300 dark:border-neutral-600 transition-colors">{t('styles.dotted')}</button>
+              <button onClick={() => setBorderStyle('none')} className="px-3 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 text-left rounded-md text-neutral-400 transition-colors">{t('styles.noBorder')}</button>
             </div>
           )}
         </div>
@@ -202,8 +202,8 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
               setShowBorderMenu(false);
             }}
             className={clsx(
-              "p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors",
-              showColorMenu && "bg-gray-100 dark:bg-gray-800 text-blue-600 dark:text-blue-400"
+              "p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-300 transition-colors",
+              showColorMenu && "bg-neutral-100 dark:bg-neutral-800 text-blue-600 dark:text-blue-400"
             )}
             title={t('editor.borderColor', 'Border Color')}
           >
@@ -211,12 +211,12 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
           </button>
 
           {showColorMenu && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700 rounded-lg p-1.5 grid grid-cols-4 gap-1 min-w-[140px] animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg p-1.5 grid grid-cols-4 gap-1 min-w-[140px] animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
               {colors.map((color) => (
                 <button
                   key={color.value}
                   onClick={() => setBorderColor(color.value)}
-                  className="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-700 hover:scale-110 transition-transform"
+                  className="w-6 h-6 rounded-full border border-neutral-200 dark:border-neutral-700 hover:scale-110 transition-transform"
                   style={{ backgroundColor: color.value }}
                   title={color.name}
                 />
@@ -225,7 +225,7 @@ export default function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
           )}
         </div>
 
-        <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-1" />
+        <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700 mx-1" />
 
         <button
           onClick={() => editor.chain().focus().deleteTable().run()}

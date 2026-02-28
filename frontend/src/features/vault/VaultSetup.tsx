@@ -35,12 +35,12 @@ export default function VaultSetup() {
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-4">
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg max-w-md w-full text-center border border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-neutral-800 p-8 rounded-xl shadow-lg max-w-md w-full text-center border border-neutral-200/60 dark:border-neutral-700/40">
         <div className="bg-emerald-100 dark:bg-emerald-900/30 p-4 rounded-full inline-flex mb-4">
           <Lock size={32} className="text-emerald-600 dark:text-emerald-400" />
         </div>
-        <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">{t('vault.setupTitle')}</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">{t('vault.setupDescription')}</p>
+        <h2 className="text-2xl font-bold mb-2 text-neutral-900 dark:text-white">{t('vault.setupTitle')}</h2>
+        <p className="text-neutral-500 dark:text-neutral-400 mb-6">{t('vault.setupDescription')}</p>
 
         {/* Warning box */}
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 mb-6 text-left">
@@ -60,7 +60,7 @@ export default function VaultSetup() {
             onChange={(e) => setPin(e.target.value)}
             placeholder={t('vault.enterPin')}
             autoComplete="new-password"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
             autoFocus
           />
           <input
@@ -69,7 +69,7 @@ export default function VaultSetup() {
             onChange={(e) => setConfirmPin(e.target.value)}
             placeholder={t('vault.confirmPin')}
             autoComplete="new-password"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
           />
           
           {/* Acknowledgment checkbox */}
@@ -78,9 +78,9 @@ export default function VaultSetup() {
               type="checkbox"
               checked={hasAcknowledgedWarning}
               onChange={(e) => setHasAcknowledgedWarning(e.target.checked)}
-              className="mt-1 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700"
+              className="mt-1 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 dark:border-neutral-600 dark:bg-neutral-700"
             />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+            <span className="text-sm text-neutral-600 dark:text-neutral-400">
               {t('vault.warningConfirm')}
             </span>
           </label>

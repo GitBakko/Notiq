@@ -220,10 +220,10 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
     { name: 'Black', value: '#000000' },
   ];
 
-  const menuItemClass = "w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left rounded-md";
-  const disabledClass = "w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 dark:text-gray-600 cursor-not-allowed text-left rounded-md";
+  const menuItemClass = "w-full flex items-center gap-3 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left rounded-md";
+  const disabledClass = "w-full flex items-center gap-3 px-3 py-2 text-sm text-neutral-300 dark:text-neutral-600 cursor-not-allowed text-left rounded-md";
   const dangerClass = "w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left rounded-md";
-  const separatorClass = "border-t border-gray-100 dark:border-gray-800 my-1";
+  const separatorClass = "border-t border-neutral-100 dark:border-neutral-800 my-1";
 
   const activeItemClass = "w-full flex items-center justify-between px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 transition-colors text-left rounded-md font-medium";
 
@@ -280,7 +280,7 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
                 <button
                   key={color.value}
                   onClick={() => setBorderColor(color.value)}
-                  className={`w-7 h-7 rounded-full border-2 hover:scale-110 transition-transform ${isActive ? 'border-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-700' : 'border-gray-200 dark:border-gray-700'}`}
+                  className={`w-7 h-7 rounded-full border-2 hover:scale-110 transition-transform ${isActive ? 'border-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-700' : 'border-neutral-200 dark:border-neutral-700'}`}
                   style={{ backgroundColor: color.value }}
                   title={color.name}
                 />
@@ -298,7 +298,7 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
       {/* Main menu */}
       <div
         ref={menuRef}
-        className="fixed z-[9999] bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700 rounded-lg py-1.5 animate-in fade-in zoom-in-95 duration-150 overflow-y-auto"
+        className="fixed z-[9999] bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg py-1.5 animate-in fade-in zoom-in-95 duration-150 overflow-y-auto"
         style={{
           top: menuPos.y,
           left: menuPos.x,
@@ -356,7 +356,7 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
 
         {/* Table Operations */}
         <button className={menuItemClass} onClick={selectTable}>
-          <Table size={16} className="text-gray-500 flex-shrink-0" />
+          <Table size={16} className="text-neutral-500 flex-shrink-0" />
           <span>{t('editor.selectTable', 'Select Table')}</span>
         </button>
 
@@ -367,10 +367,10 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
         >
           <button className={`${menuItemClass} justify-between`}>
             <span className="flex items-center gap-3">
-              <MoveHorizontal size={16} className="text-gray-500 flex-shrink-0" />
+              <MoveHorizontal size={16} className="text-neutral-500 flex-shrink-0" />
               <span>{t('editor.tableWidth', 'Table Width')}</span>
             </span>
-            <ChevronRight size={14} className="text-gray-400" />
+            <ChevronRight size={14} className="text-neutral-400" />
           </button>
         </div>
 
@@ -381,10 +381,10 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
         >
           <button className={`${menuItemClass} justify-between`}>
             <span className="flex items-center gap-3">
-              <Grid size={16} className="text-gray-500 flex-shrink-0" />
+              <Grid size={16} className="text-neutral-500 flex-shrink-0" />
               <span>{t('editor.borderStyle', 'Border Style')}</span>
             </span>
-            <ChevronRight size={14} className="text-gray-400" />
+            <ChevronRight size={14} className="text-neutral-400" />
           </button>
         </div>
 
@@ -395,10 +395,10 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
         >
           <button className={`${menuItemClass} justify-between`}>
             <span className="flex items-center gap-3">
-              <Palette size={16} className="text-gray-500 flex-shrink-0" />
+              <Palette size={16} className="text-neutral-500 flex-shrink-0" />
               <span>{t('editor.borderColor', 'Border Color')}</span>
             </span>
-            <ChevronRight size={14} className="text-gray-400" />
+            <ChevronRight size={14} className="text-neutral-400" />
           </button>
         </div>
 
@@ -415,7 +415,7 @@ export default function TableContextMenu({ editor, position, onClose }: TableCon
       {activeSubmenu && submenuPos && (
         <div
           ref={submenuRef}
-          className="fixed z-[10000] bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700 rounded-lg animate-in fade-in duration-100"
+          className="fixed z-[10000] bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg animate-in fade-in duration-100"
           style={{
             top: submenuPos.top,
             left: submenuPos.left,

@@ -111,7 +111,7 @@ export default function KanbanColumn({
       ref={setSortableRef}
       style={columnStyle}
       className={clsx(
-        'min-w-[280px] w-[280px] flex-shrink-0 bg-gray-100 dark:bg-gray-800/50 rounded-xl flex flex-col max-h-full',
+        'min-w-[280px] w-[280px] flex-shrink-0 bg-neutral-100 dark:bg-neutral-800/50 rounded-xl flex flex-col max-h-full',
         isDragging && 'opacity-40',
       )}
     >
@@ -119,7 +119,7 @@ export default function KanbanColumn({
       <div className="p-3 flex items-center justify-between gap-2">
         {!readOnly && (
           <button
-            className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors touch-none"
+            className="flex-shrink-0 cursor-grab active:cursor-grabbing text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 transition-colors touch-none"
             {...attributes}
             {...listeners}
           >
@@ -140,13 +140,13 @@ export default function KanbanColumn({
                   setEditTitle(column.title);
                 }
               }}
-              className="w-full bg-transparent border-b-2 border-emerald-500 font-semibold text-sm text-gray-700 dark:text-gray-300 outline-none"
+              className="w-full bg-transparent border-b-2 border-emerald-500 font-semibold text-sm text-neutral-700 dark:text-neutral-300 outline-none"
             />
           ) : (
             <h3
               onDoubleClick={() => !readOnly && setIsEditingTitle(true)}
               className={clsx(
-                'font-semibold text-sm text-gray-700 dark:text-gray-300 truncate',
+                'font-semibold text-sm text-neutral-700 dark:text-neutral-300 truncate',
                 !readOnly && 'cursor-pointer'
               )}
             >
@@ -155,7 +155,7 @@ export default function KanbanColumn({
           )}
 
           {/* Card count badge */}
-          <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded-full">
+          <span className="flex-shrink-0 text-xs text-neutral-400 dark:text-neutral-400 bg-neutral-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded-full">
             {column.cards.length}
           </span>
         </div>
@@ -165,14 +165,14 @@ export default function KanbanColumn({
           <div className="relative flex-shrink-0">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-0.5 rounded transition-colors"
+              className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-0.5 rounded transition-colors"
             >
               <MoreVertical size={16} />
             </button>
             {showMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-8 z-20 w-52 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+                <div className="absolute right-0 top-8 z-20 w-52 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
                   <button
                     onClick={() => {
                       setShowMenu(false);
@@ -182,7 +182,7 @@ export default function KanbanColumn({
                     className={clsx(
                       'flex items-center gap-2 w-full px-3 py-2 text-sm',
                       hasCards
-                        ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        ? 'text-neutral-400 dark:text-neutral-400 cursor-not-allowed'
                         : 'text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'
                     )}
                     title={hasCards ? t('kanban.column.hasCards') : undefined}
@@ -191,7 +191,7 @@ export default function KanbanColumn({
                     {t('kanban.column.deleteColumn')}
                   </button>
                   {hasCards && (
-                    <p className="px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500">
+                    <p className="px-3 py-1.5 text-xs text-neutral-400 dark:text-neutral-400">
                       {t('kanban.column.hasCards')}
                     </p>
                   )}
@@ -222,7 +222,7 @@ export default function KanbanColumn({
         </SortableContext>
 
         {sortedCards.length === 0 && (
-          <p className="text-center text-xs text-gray-400 dark:text-gray-500 py-4 italic">
+          <p className="text-center text-xs text-neutral-400 dark:text-neutral-400 py-4 italic">
             {t('kanban.card.addCard')}
           </p>
         )}
@@ -230,7 +230,7 @@ export default function KanbanColumn({
 
       {/* Add card section */}
       {!readOnly && (
-        <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+        <div className="p-2 border-t border-neutral-200/60 dark:border-neutral-700/40">
           {isAddingCard ? (
             <div className="space-y-2">
               <input
@@ -243,13 +243,13 @@ export default function KanbanColumn({
                 }}
                 onBlur={handleCancelAdd}
                 placeholder={t('kanban.card.cardTitle')}
-                className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500 dark:focus:border-emerald-400"
+                className="w-full bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-600 rounded-lg px-3 py-1.5 text-sm text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-400 outline-none focus:border-emerald-500 dark:focus:border-emerald-400"
               />
             </div>
           ) : (
             <button
               onClick={() => setIsAddingCard(true)}
-              className="flex items-center gap-1 w-full px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className="flex items-center gap-1 w-full px-2 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
             >
               <Plus size={16} />
               {t('kanban.card.addCard')}

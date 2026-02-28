@@ -29,20 +29,20 @@ export default function WhatsNewModal({ onClose }: WhatsNewModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
     >
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800">
+      <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-neutral-800">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+        <div className="flex items-center justify-between border-b border-neutral-200/60 px-6 py-4 dark:border-neutral-700/40">
           <div className="flex items-center gap-3">
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
               v{latestVersion.version}
             </span>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">
               {t('whatsNew.title')}
             </h2>
           </div>
           <button
             onClick={handleClose}
-            className="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+            className="text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
           >
             <X size={20} />
           </button>
@@ -54,7 +54,7 @@ export default function WhatsNewModal({ onClose }: WhatsNewModalProps) {
             {latestVersion.entries.map((entry) => (
               <li key={entry.titleKey} className="flex items-start gap-3">
                 <TypeBadge type={entry.type} />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
+                <span className="text-sm text-neutral-700 dark:text-neutral-300">
                   {t(entry.titleKey)}
                 </span>
               </li>
@@ -63,7 +63,7 @@ export default function WhatsNewModal({ onClose }: WhatsNewModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+        <div className="flex items-center justify-between border-t border-neutral-200/60 px-6 py-4 dark:border-neutral-700/40">
           <Link
             to="/whats-new"
             onClick={handleClose}

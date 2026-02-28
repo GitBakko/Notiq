@@ -38,19 +38,19 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
       aria-modal="true"
     >
       <div
-        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl dark:bg-gray-900 dark:border dark:border-gray-800"
+        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl dark:bg-neutral-900 dark:border dark:border-neutral-800/40"
         onClick={e => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users size={18} className="text-emerald-600 dark:text-emerald-400" />
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">
               {title || t('sharing.sharedWith')}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             aria-label={t('common.close')}
           >
             <X size={18} />
@@ -76,7 +76,7 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  <span className="text-sm font-medium text-neutral-900 dark:text-white truncate">
                     {owner.name || owner.email || '—'}
                   </span>
                   {currentUserId && owner.id === currentUserId && (
@@ -86,7 +86,7 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
                   )}
                 </div>
                 {owner.name && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
                     {owner.email}
                   </div>
                 )}
@@ -100,17 +100,17 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
         )}
 
         {users.length === 0 && !owner ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400 italic py-4 text-center">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 italic py-4 text-center">
             {t('sharing.noOne')}
           </p>
         ) : users.length === 0 ? (
-          <p className="text-xs text-gray-400 dark:text-gray-500 italic text-center py-2">
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 italic text-center py-2">
             {t('sharing.noOtherUsers')}
           </p>
         ) : (
           <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
             {users.map(user => (
-              <li key={user.id} className="flex items-center gap-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+              <li key={user.id} className="flex items-center gap-3 rounded-lg bg-neutral-50 dark:bg-neutral-800 p-3">
                 {user.avatarUrl ? (
                   <img
                     src={user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')}
@@ -126,7 +126,7 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    <span className="text-sm font-medium text-neutral-900 dark:text-white truncate">
                       {user.name || user.email || '—'}
                     </span>
                     {currentUserId && user.id === currentUserId && (
@@ -136,13 +136,13 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
                     )}
                   </div>
                   {user.name && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
                       {user.email}
                     </div>
                   )}
                 </div>
                 {user.permission && (
-                  <span className="flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                  <span className="flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300">
                     {user.permission === 'WRITE' ? t('sharing.readWrite') : t('sharing.readOnly')}
                   </span>
                 )}

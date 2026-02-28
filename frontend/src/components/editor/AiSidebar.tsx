@@ -99,24 +99,24 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
   };
 
   return (
-    <div className="w-[350px] h-full border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col">
+    <div className="w-[350px] h-full border-l border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-900 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200/60 dark:border-neutral-700/40">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-emerald-500" />
-          <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{t('ai.title')}</span>
+          <span className="font-medium text-sm text-neutral-900 dark:text-neutral-100">{t('ai.title')}</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={clearHistory}
             title={t('ai.clearHistory')}
-            className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
           >
             <X className="h-4 w-4" />
           </button>
@@ -124,7 +124,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
       </div>
 
       {/* Quick actions */}
-      <div className="flex gap-1.5 px-3 py-2 border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
+      <div className="flex gap-1.5 px-3 py-2 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto">
         <QuickButton icon={<FileText className="h-3 w-3" />} label={t('ai.summarize')} onClick={() => handleQuickAction('summarize')} disabled={isStreaming} />
         <QuickButton icon={<Tags className="h-3 w-3" />} label={t('ai.suggestTags')} onClick={() => handleQuickAction('tags')} disabled={isStreaming} />
         <QuickButton icon={<ArrowRight className="h-3 w-3" />} label={t('ai.continue')} onClick={() => handleQuickAction('continue')} disabled={isStreaming} />
@@ -134,12 +134,12 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
         {isLoadingHistory && (
           <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
           </div>
         )}
 
         {!isLoadingHistory && messages.length === 0 && (
-          <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
+          <div className="text-center py-8 text-sm text-neutral-400 dark:text-neutral-500">
             <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-30" />
             <p>{t('ai.emptyState')}</p>
           </div>
@@ -167,7 +167,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2">
+      <div className="border-t border-neutral-200/60 dark:border-neutral-700/40 px-3 py-2">
         {/* Operation selector */}
         <div className="flex gap-1 mb-2">
           {(['ask', 'improve', 'translate'] as const).map(op => (
@@ -177,7 +177,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
               className={`text-xs px-2 py-1 rounded-md transition-colors ${
                 selectedOp === op
                   ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300'
-                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
               }`}
             >
               {t(`ai.op_${op}`)}
@@ -191,7 +191,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
             placeholder={t('ai.targetLanguage')}
             value={targetLang}
             onChange={e => setTargetLang(e.target.value)}
-            className="w-full mb-2 px-2 py-1 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+            className="w-full mb-2 px-2 py-1 text-xs rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400"
           />
         )}
 
@@ -203,7 +203,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
             onKeyDown={handleKeyDown}
             placeholder={t('ai.inputPlaceholder')}
             rows={2}
-            className="flex-1 resize-none rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="flex-1 resize-none rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
           {isStreaming ? (
             <button
@@ -239,7 +239,7 @@ function QuickButton({ icon, label, onClick, disabled }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap"
+      className="flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 whitespace-nowrap"
     >
       {icon}
       {label}
@@ -266,7 +266,7 @@ function MessageBubble({ message, onInsert, onReplace, parseTags, t }: {
       <div className={`max-w-[90%] rounded-lg px-3 py-2 text-sm ${
         isUser
           ? 'bg-emerald-500 text-white'
-          : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
       }`}>
         {/* Message content */}
         <div className="whitespace-pre-wrap break-words">
@@ -288,7 +288,7 @@ function MessageBubble({ message, onInsert, onReplace, parseTags, t }: {
 
         {/* Insert/Replace actions for assistant messages */}
         {!isUser && !message.isStreaming && message.content && message.operation !== 'tags' && (
-          <div className="flex gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex gap-2 mt-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
             <button
               onClick={() => onInsert(message.content)}
               className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"

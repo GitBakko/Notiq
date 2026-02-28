@@ -62,11 +62,30 @@ export const toggleShare = async (id: string) => {
 export const shareNote = async (id: string, email: string, permission: 'READ' | 'WRITE' = 'READ') => {
   await syncPush(); // Ensure note exists on backend
   const res = await api.post(`/share/notes/${id}`, { email, permission });
+
+  // Optimistic Dexie update: refresh sharedWith so badges appear immediately
+  try {
+    const freshRes = await api.get(`/notes/${id}`);
+    if (freshRes.data?.sharedWith) {
+      await db.notes.update(id, { sharedWith: freshRes.data.sharedWith });
+    }
+  } catch { /* non-critical: syncPull will eventually refresh */ }
+
   return res.data;
 };
 
 export const revokeShare = async (id: string, userId: string) => {
   const res = await api.delete(`/share/notes/${id}/${userId}`);
+
+  // Optimistic Dexie update: remove revoked user from sharedWith
+  try {
+    const existing = await db.notes.get(id);
+    if (existing?.sharedWith) {
+      const updated = existing.sharedWith.filter((s: { userId: string }) => s.userId !== userId);
+      await db.notes.update(id, { sharedWith: updated });
+    }
+  } catch { /* non-critical: syncPull will eventually refresh */ }
+
   return res.data;
 };
 

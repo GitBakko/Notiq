@@ -37,7 +37,7 @@ export function Dialog({ isOpen, onClose, title, children, className }: DialogPr
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200 dark:bg-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="absolute inset-0"
         onClick={onClose}
@@ -47,11 +47,11 @@ export function Dialog({ isOpen, onClose, title, children, className }: DialogPr
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "dialog-title" : undefined}
-        className={cn("relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl animate-in zoom-in-95 duration-200 dark:bg-gray-900", className)}
+        className={cn("relative w-full max-w-lg rounded-xl bg-white p-6 shadow-xl animate-in zoom-in-95 duration-200 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-700/40", className)}
       >
         <div className="flex items-center justify-between mb-4">
-            {title && <h2 id="dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>}
-            <button onClick={onClose} aria-label={t('common.close')} className="text-gray-400 hover:text-gray-600 transition-colors dark:text-gray-500 dark:hover:text-gray-300">
+            {title && <h2 id="dialog-title" className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white">{title}</h2>}
+            <button onClick={onClose} aria-label={t('common.close')} className="text-neutral-400 hover:text-neutral-600 transition-colors dark:text-neutral-500 dark:hover:text-neutral-300">
                 <X size={20} />
             </button>
         </div>

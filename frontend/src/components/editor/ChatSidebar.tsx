@@ -143,13 +143,13 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
   }
 
   return (
-    <div className="w-[350px] border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col fixed right-0 top-[60px] bottom-0 z-20 shadow-xl print:hidden">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-800">
-        <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+    <div className="w-[350px] border-l border-neutral-200/60 dark:border-neutral-800/40 bg-white dark:bg-neutral-900 flex flex-col fixed right-0 top-[60px] bottom-0 z-20 shadow-xl print:hidden">
+      <div className="p-4 border-b border-neutral-200/60 dark:border-neutral-800/40 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800">
+        <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
           <MessageSquare size={18} />
           {chatTitle}
         </h3>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title={t('common.close')}>
+        <button onClick={onClose} className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200" title={t('common.close')}>
           <X size={18} />
         </button>
       </div>
@@ -178,8 +178,8 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
                     <span>{initial}</span>
                   )}
                 </div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{isMe ? t('collaboration.you') : userName}</span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">{isMe ? t('collaboration.you') : userName}</span>
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
                   {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
@@ -188,7 +188,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
                   "px-3 py-2 rounded-lg text-sm max-w-[85%] break-words",
                   isMe
                     ? "bg-emerald-600 text-white rounded-tr-none"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-none"
+                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 rounded-tl-none"
                 )}
               >
                 {msg.content}
@@ -199,7 +199,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSend} className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 relative">
+      <form onSubmit={handleSend} className="p-4 border-t border-neutral-200/60 dark:border-neutral-800/40 bg-neutral-50 dark:bg-neutral-800 relative">
         <div className="flex gap-2">
           <textarea
             value={newMessage}
@@ -212,7 +212,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
             }}
             placeholder={t('chat.placeholder', 'Type a message...')}
             rows={1}
-            className="flex-1 rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-50 px-4 py-2 resize-none overflow-hidden min-h-[40px] max-h-[120px]"
+            className="flex-1 rounded-lg border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-50 px-4 py-2 resize-none overflow-hidden min-h-[40px] max-h-[120px]"
             style={{ height: newMessage.split('\n').length > 1 ? 'auto' : '40px' }}
             disabled={isSending || sendMutation.isPending}
             // Auto-grow logic
@@ -226,7 +226,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
           <button
             type="button"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="p-2 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700"
             title={t('chat.addEmoji')}
           >
             <Smile size={20} />

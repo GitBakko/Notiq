@@ -80,9 +80,9 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       style={style}
       className={clsx(
         'group flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
-        'hover:bg-gray-50 dark:hover:bg-gray-800/50',
+        'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
         item.isChecked && 'opacity-60',
-        isDragging && 'z-50 shadow-lg bg-white dark:bg-gray-800'
+        isDragging && 'z-50 shadow-lg bg-white dark:bg-neutral-800'
       )}
     >
       {/* Drag handle */}
@@ -91,7 +91,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
           data-dnd-handle
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 touch-none"
+          className="cursor-grab active:cursor-grabbing text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 touch-none"
         >
           <GripVertical size={16} />
         </div>
@@ -109,7 +109,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
             ? canUncheck
               ? 'text-emerald-500 dark:text-emerald-400 scale-110'
               : 'text-emerald-500/50 dark:text-emerald-400/50 scale-110'
-            : 'text-gray-300 dark:text-gray-600 hover:text-emerald-400 dark:hover:text-emerald-500'
+            : 'text-neutral-300 dark:text-neutral-600 hover:text-emerald-400 dark:hover:text-emerald-500'
         )}
         aria-checked={item.isChecked}
         role="checkbox"
@@ -134,7 +134,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
               if (e.key === 'Enter') handleSaveText();
               if (e.key === 'Escape') { setIsEditing(false); setEditText(item.text); }
             }}
-            className="w-full bg-transparent border-b border-emerald-500 text-sm text-gray-900 dark:text-white outline-none py-0.5"
+            className="w-full bg-transparent border-b border-emerald-500 text-sm text-neutral-900 dark:text-white outline-none py-0.5"
           />
         ) : (
           <span
@@ -142,8 +142,8 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
             className={clsx(
               'text-sm cursor-pointer truncate block',
               item.isChecked
-                ? 'line-through text-gray-400 dark:text-gray-500'
-                : 'text-gray-900 dark:text-white'
+                ? 'line-through text-neutral-400 dark:text-neutral-500'
+                : 'text-neutral-900 dark:text-white'
             )}
           >
             {item.text}
@@ -154,7 +154,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       {/* Checked by indicator (only if checked by someone else) */}
       {item.isChecked && item.checkedByUser && item.checkedByUser.id !== currentUserId && (
         <span
-          className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"
+          className="flex-shrink-0 flex items-center gap-1 text-xs text-neutral-400 dark:text-neutral-500"
           title={item.checkedByUser.name || item.checkedByUser.email}
         >
           {item.checkedByUser.avatarUrl ? (
@@ -182,7 +182,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       {item.dueDate ? (
         <div
           onClick={() => !readOnly && dueDateRef.current?.showPicker()}
-          className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 relative cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+          className="flex-shrink-0 flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 relative cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
         >
           <Calendar size={12} />
           <span>{new Date(item.dueDate).toLocaleDateString()}</span>
@@ -197,7 +197,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
           )}
         </div>
       ) : !readOnly ? (
-        <label className="flex-shrink-0 cursor-pointer text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity relative">
+        <label className="flex-shrink-0 cursor-pointer text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity relative">
           <Calendar size={14} />
           <input
             type="date"
@@ -213,7 +213,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       {!readOnly && (
         <button
           onClick={() => onDelete(item.id)}
-          className="flex-shrink-0 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="flex-shrink-0 text-neutral-300 dark:text-neutral-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
           title={t('taskLists.deleteItem')}
         >
           <Trash2 size={14} />

@@ -123,13 +123,13 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
     <Modal isOpen={isOpen} onClose={handleClose} title={title} size="md">
       {/* Items preview */}
       {step !== 'confirm-remove' && step !== 'review' && (
-        <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg max-h-32 overflow-y-auto">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        <div className="mb-4 p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg max-h-32 overflow-y-auto">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
             {t('editor.transform.itemsSelected', { count: items.length })}
           </p>
           <ul className="space-y-1">
             {items.map((item, i) => (
-              <li key={i} className="text-sm text-gray-700 dark:text-gray-300 truncate">
+              <li key={i} className="text-sm text-neutral-700 dark:text-neutral-300 truncate">
                 • {item.text}
               </li>
             ))}
@@ -146,7 +146,7 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
               className={`flex-1 py-2 px-3 text-sm rounded-lg border transition-colors ${
                 mode === 'existing'
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'
               }`}
             >
               {t('editor.transform.existingList')}
@@ -156,7 +156,7 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
               className={`flex-1 py-2 px-3 text-sm rounded-lg border transition-colors ${
                 mode === 'new'
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'
               }`}
             >
               <span className="flex items-center justify-center gap-1">
@@ -169,24 +169,24 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
           {mode === 'existing' ? (
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {!taskLists ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">{t('common.loading')}</p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
               ) : taskLists.length > 0 ? (
                 taskLists.map(list => (
                   <button
                     key={list.id}
                     onClick={() => handleCheckDuplicates(list.id, list.title)}
                     disabled={isCreating}
-                    className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left disabled:opacity-50"
+                    className="w-full flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors text-left disabled:opacity-50"
                   >
                     <span className="flex items-center gap-2">
-                      <ListChecks size={16} className="text-gray-400" />
-                      <span className="text-sm text-gray-900 dark:text-white">{list.title}</span>
+                      <ListChecks size={16} className="text-neutral-400" />
+                      <span className="text-sm text-neutral-900 dark:text-white">{list.title}</span>
                     </span>
-                    <span className="text-xs text-gray-400">{list.items.length}</span>
+                    <span className="text-xs text-neutral-400">{list.items.length}</span>
                   </button>
                 ))
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-4">
                   {t('common.noResults', { query: '' })}
                 </p>
               )}
@@ -198,7 +198,7 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
                 value={newListTitle}
                 onChange={e => setNewListTitle(e.target.value)}
                 placeholder={t('editor.transform.listTitle')}
-                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
                 onKeyDown={e => {
                   if (e.key === 'Enter') handleNewListConfirm();
@@ -219,15 +219,15 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
       {/* Step: Review Duplicates */}
       {step === 'review' && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
             {t('editor.transform.duplicatesFound', { count: itemChecklist.filter(i => i.isDuplicate).length })}
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
             {t('editor.transform.duplicatesFoundSub')}
           </p>
           <div className="max-h-60 overflow-y-auto space-y-1">
             {itemChecklist.map((item, i) => (
-              <label key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+              <label key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={item.checked}
@@ -236,9 +236,9 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
                     updated[i] = { ...updated[i], checked: !updated[i].checked };
                     setItemChecklist(updated);
                   }}
-                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  className="rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
                 />
-                <span className="flex-1 text-sm text-gray-900 dark:text-white truncate">{item.text}</span>
+                <span className="flex-1 text-sm text-neutral-900 dark:text-white truncate">{item.text}</span>
                 <span className={clsx(
                   "text-xs px-2 py-0.5 rounded-full font-medium",
                   item.isDuplicate
@@ -265,7 +265,7 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
             <button
               onClick={() => handleAddItems(selectedListId, selectedListTitle, items)}
               disabled={isCreating}
-              className="flex-1 py-2 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              className="flex-1 py-2 px-4 text-sm border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50"
             >
               {t('editor.transform.addAll')}
             </button>
@@ -276,13 +276,13 @@ export default function TransformToTaskListModal({ isOpen, onClose, items, edito
       {/* Step: Confirm Remove */}
       {step === 'confirm-remove' && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
             {t('editor.transform.removeFromNote')}
           </p>
           <div className="flex gap-3">
             <button
               onClick={handleKeepItems}
-              className="flex-1 py-2 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className="flex-1 py-2 px-4 text-sm border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
             >
               {t('editor.transform.keepItems')}
             </button>

@@ -11,7 +11,7 @@ function SkeletonBase({ className, variant = 'text', width, height }: SkeletonPr
   return (
     <div
       className={clsx(
-        'animate-pulse bg-gray-200 dark:bg-gray-700',
+        'animate-pulse bg-neutral-200 dark:bg-neutral-700',
         variant === 'text' && 'h-4 rounded',
         variant === 'circle' && 'rounded-full',
         variant === 'card' && 'rounded-xl',
@@ -28,7 +28,7 @@ function SkeletonList({ count = 5, className }: { count?: number; className?: st
   return (
     <div className={clsx('space-y-3', className)}>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="p-4 rounded-xl bg-white dark:bg-gray-800/50 space-y-2">
+        <div key={i} className="p-4 rounded-xl bg-white dark:bg-neutral-800/50 space-y-2">
           <SkeletonBase variant="text" className="w-3/4 h-5" />
           <SkeletonBase variant="text" className="w-full h-3" />
           <SkeletonBase variant="text" className="w-1/2 h-3" />
@@ -44,7 +44,7 @@ function SkeletonGrid({ count = 3, className }: { count?: number; className?: st
   return (
     <div className={clsx('grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', className)}>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="p-4 rounded-xl bg-white dark:bg-gray-800/50 space-y-3">
+        <div key={i} className="p-4 rounded-xl bg-white dark:bg-neutral-800/50 space-y-3">
           <SkeletonBase variant="text" className="w-2/3 h-5" />
           <SkeletonBase variant="text" className="w-full h-3" />
           <div className="flex items-center gap-2 mt-2">

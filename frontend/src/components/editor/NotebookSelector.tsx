@@ -29,22 +29,22 @@ export default function NotebookSelector({ notebooks = [], selectedNotebookId, o
             className
           )}
         >
-          <Book size={16} className="text-gray-400 dark:text-gray-500" />
+          <Book size={16} className="text-neutral-400 dark:text-neutral-500" />
           <span className="truncate max-w-[150px]">{selectedNotebook?.name || t('notes.selectNotebook')}</span>
-          <ChevronsUpDown size={14} className="text-gray-400" />
+          <ChevronsUpDown size={14} className="text-neutral-400" />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="z-50 w-[200px] p-0 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden" align="start">
+        <Popover.Content className="z-50 w-[200px] p-0 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 overflow-hidden" align="start">
           <Command className="w-full">
-            <div className="flex items-center border-b border-gray-100 dark:border-gray-700 px-3" cmdk-input-wrapper="">
+            <div className="flex items-center border-b border-neutral-100 dark:border-neutral-700 px-3" cmdk-input-wrapper="">
               <Command.Input
                 placeholder={t('notes.searchNotebooks')}
-                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
+                className="flex h-10 w-full rounded-lg bg-transparent py-3 text-sm outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
               />
             </div>
             <Command.List className="max-h-[300px] overflow-y-auto overflow-x-hidden p-1">
-              <Command.Empty className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
                 {t('notes.noNotebooksFound')}
               </Command.Empty>
               <Command.Group>
@@ -57,7 +57,7 @@ export default function NotebookSelector({ notebooks = [], selectedNotebookId, o
                       setOpen(false);
                     }}
                     className={clsx(
-                      "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100 dark:text-gray-200",
+                      "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100 dark:text-neutral-200",
                       selectedNotebookId === notebook.id && "bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100"
                     )}
                   >

@@ -48,7 +48,7 @@ export function ResizableImage({ node, updateAttributes, selected }: NodeViewPro
         />
         {selected && (
           <div
-            className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-tl cursor-se-resize border border-white dark:border-gray-900 shadow-sm"
+            className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-tl cursor-se-resize border border-white dark:border-neutral-900 shadow-sm"
             onMouseDown={onMouseDown}
             title={t('editor.dragToResize')}
           />

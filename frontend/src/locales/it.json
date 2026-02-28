@@ -789,6 +789,12 @@
       "dbIndexes": "Performance Database — Aggiunti indici per query piu' veloci su gruppi, chat kanban e audit",
       "kanbanCardDetailUX": "Dettaglio Task — Layout piu' ampio, metadati su una riga, posizione scrollbar migliorata",
       "priorityIcons": "Icone Priorita' — Icone distinte per livello (chevron, pausa) al posto delle bandierine su card Kanban, dettaglio modale e task list",
+      "sharingPersistenceFix": "Corretto il badge condivisione che scompariva dopo la rinomina di task list, note e board kanban condivise",
+      "visualRedesign": "Redesign Visuale — Nuovo sistema colori, spaziature raffinate, effetti hover su card e UI rifinita in tutte le pagine",
+      "geistFont": "Font Geist — Adottato Geist Sans e Mono di Vercel per una tipografia moderna e pulita",
+      "slateDarkMode": "Dark Mode Slate — Tema scuro blu-grigio al posto dei precedenti grigi verdastri",
+      "pushNotificationFix": "Corretta la sottoscrizione alle notifiche push che falliva con errore 500",
+      "settingsToggleFix": "Interruttori Impostazioni — Piu' grandi e visibili con miglior contrasto su mobile",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },

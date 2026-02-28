@@ -93,16 +93,16 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
     <NodeViewWrapper className="my-4">
       {/* LOCKED STATE - Minimal */}
       {mode === 'LOCKED' && (
-        <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 group hover:border-emerald-500/50 transition-colors">
-          <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400">
-            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+        <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/60 dark:border-neutral-700/40 group hover:border-emerald-500/50 transition-colors">
+          <div className="flex items-center gap-3 text-neutral-500 dark:text-neutral-400">
+            <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center">
               <Lock size={14} />
             </div>
             <span className="text-sm font-medium">{t('encryption.lockedContent', 'Encrypted Content')}</span>
           </div>
           <button
             onClick={() => setIsUnlockModalOpen(true)}
-            className="p-2 rounded-full hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-colors dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+            className="p-2 rounded-full hover:bg-emerald-50 text-neutral-400 hover:text-emerald-600 transition-colors dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
             title={t('common.unlock')}
           >
             <Unlock size={18} />
@@ -120,7 +120,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="w-full min-h-[100px] p-4 bg-transparent border-none focus:ring-0 resize-y text-gray-800 dark:text-gray-200 placeholder-gray-400"
+            className="w-full min-h-[100px] p-4 bg-transparent border-none focus:ring-0 resize-y text-neutral-800 dark:text-neutral-200 placeholder-neutral-400"
             placeholder={t('encryption.contentPlaceholder')}
           />
 
@@ -147,7 +147,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
 
       {/* WAITING STATE */}
       {mode === 'WAITING' && (
-        <div className="flex items-center justify-center p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/30 text-gray-400">
+        <div className="flex items-center justify-center p-4 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/30 text-neutral-400">
           <div className="flex items-center gap-2 text-sm">
             <Clock size={14} className="animate-pulse" />
             <span>{t('encryption.waiting', 'Encryption in progress...')}</span>
@@ -173,12 +173,12 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={t('encryption.contentPlaceholder', 'Enter confidential content here...')}
-              className="w-full min-h-[100px] p-3 rounded-md border border-blue-200 bg-white dark:border-blue-800 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-y transition-all"
+              className="w-full min-h-[100px] p-3 rounded-lg border border-blue-200 bg-white dark:border-blue-800 dark:bg-neutral-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-y transition-all"
             />
 
             <div className="flex items-end gap-3">
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">
                   {t('encryption.setPin', 'Set Encryption PIN')}
                 </label>
                 <div className="relative">
@@ -187,12 +187,12 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
                     value={pin}
                     onChange={(e) => { setPin(e.target.value); setError(''); }}
                     placeholder={t('editor.pinPlaceholder', 'PIN')}
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 dark:bg-neutral-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPin(!showPin)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
                   >
                     {showPin ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
@@ -216,7 +216,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
         className="max-w-sm"
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
             {t('encryption.enterPinToUnlock', 'Enter the PIN to view this content.')}
           </p>
 
@@ -226,14 +226,14 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
               value={pin}
               onChange={(e) => { setPin(e.target.value); setError(''); }}
               placeholder={t('editor.pinPlaceholder', 'PIN')}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-center text-lg tracking-widest"
+              className="w-full px-4 py-3 rounded-lg border border-neutral-300 dark:border-neutral-600 dark:bg-neutral-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-center text-lg tracking-widest"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleDecrypt()}
             />
             <button
               type="button"
               onClick={() => setShowPin(!showPin)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
             >
               {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>

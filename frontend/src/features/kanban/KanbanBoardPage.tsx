@@ -526,7 +526,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
       </div>
     );
@@ -535,7 +535,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   if (!board) {
     // useEffect above will navigate back to /kanban
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
       </div>
     );
@@ -551,7 +551,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   return (
-    <div className="flex-1 flex h-full bg-gray-50 dark:bg-gray-900">
+    <div className="flex-1 flex h-full bg-neutral-50 dark:bg-neutral-950">
       {/* Main board area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Cover Image */}
@@ -584,20 +584,20 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         )}
 
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 py-3">
+        <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800/40 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {isMobile && (
                 <button
                   onClick={toggleSidebar}
-                  className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                  className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
                 >
                   <Menu size={20} />
                 </button>
               )}
               <button
                 onClick={() => navigate('/kanban')}
-                className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                className="flex-shrink-0 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
               >
                 <ArrowLeft size={20} />
               </button>
@@ -614,7 +614,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 ) : !readOnly ? (
                   <button
                     onClick={() => avatarInputRef.current?.click()}
-                    className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center text-neutral-400 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
                     title={t('kanban.avatar.upload')}
                   >
                     <ImagePlus size={14} />
@@ -641,13 +641,13 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                     if (e.key === 'Enter') handleSaveTitle();
                     if (e.key === 'Escape') setIsEditingTitle(false);
                   }}
-                  className="text-lg font-bold bg-transparent border-b-2 border-emerald-500 text-gray-900 dark:text-white outline-none min-w-0"
+                  className="text-lg font-bold bg-transparent border-b-2 border-emerald-500 text-neutral-900 dark:text-white outline-none min-w-0"
                 />
               ) : (
                 <h1
                   onDoubleClick={handleStartEditTitle}
                   className={clsx(
-                    'text-lg font-bold text-gray-900 dark:text-white truncate',
+                    'text-lg font-bold text-neutral-900 dark:text-white truncate',
                     !readOnly && 'cursor-pointer',
                   )}
                 >
@@ -668,7 +668,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                     return (
                       <div
                         key={u.id}
-                        className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center text-[9px] font-bold text-white shadow-sm overflow-hidden relative"
+                        className="w-7 h-7 rounded-full border-2 border-white dark:border-neutral-950 flex items-center justify-center text-[9px] font-bold text-white shadow-sm overflow-hidden relative"
                         style={{ backgroundColor: u.color || '#319795' }}
                         title={isMe ? t('kanban.presence.you') : (u.name || '?')}
                       >
@@ -693,7 +693,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                     );
                   })}
                   {presenceUsers.length > 5 && (
-                    <div className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-900 bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[9px] font-bold text-gray-700 dark:text-gray-200">
+                    <div className="w-7 h-7 rounded-full border-2 border-white dark:border-neutral-950 bg-neutral-300 dark:bg-neutral-600 flex items-center justify-center text-[9px] font-bold text-neutral-700 dark:text-neutral-200">
                       +{presenceUsers.length - 5}
                     </div>
                   )}
@@ -708,7 +708,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                     'p-2 rounded-lg transition-colors relative',
                     isChatOpen
                       ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
-                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+                      : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                   )}
                   title={t('kanban.chat.title')}
                 >
@@ -725,7 +725,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {!readOnly && !board.coverImage && (
                 <button
                   onClick={() => coverInputRef.current?.click()}
-                  className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
                   title={t('kanban.cover.add')}
                 >
                   <ImagePlus size={18} />
@@ -735,7 +735,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {isOwner && (
                 <button
                   onClick={() => setIsShareOpen(true)}
-                  className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
                   title={t('kanban.share.title')}
                 >
                   <Share2 size={18} />
@@ -746,14 +746,14 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 <div className="relative">
                   <button
                     onClick={() => setShowBoardMenu(!showBoardMenu)}
-                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
                   >
                     <MoreVertical size={18} />
                   </button>
                   {showBoardMenu && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setShowBoardMenu(false)} />
-                      <div className="absolute right-0 top-10 z-20 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+                      <div className="absolute right-0 top-10 z-20 w-48 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
                         <button
                           onClick={() => {
                             setShowBoardMenu(false);
@@ -775,11 +775,11 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
         {/* Board-linked note */}
         {(board.noteId || !readOnly) && (
-          <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 py-2">
+          <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800/40 px-4 py-2">
             {board.note ? (
               <div className="flex items-center gap-2 text-sm">
                 <FileText size={14} className="text-emerald-500 flex-shrink-0" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{t('kanban.boardNote.linkedNote')}:</span>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">{t('kanban.boardNote.linkedNote')}:</span>
                 <button
                   onClick={() => navigate(`/notes?noteId=${board.note!.id}`)}
                   className="text-emerald-600 dark:text-emerald-400 hover:underline truncate text-sm"
@@ -789,7 +789,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 {!readOnly && user?.id === board.noteLinkedById && (
                   <button
                     onClick={handleUnlinkBoardNote}
-                    className="ml-auto flex-shrink-0 p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    className="ml-auto flex-shrink-0 p-1 text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                     title={t('kanban.boardNote.unlink')}
                   >
                     <Unlink size={14} />
@@ -797,14 +797,14 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 )}
               </div>
             ) : board.noteId ? (
-              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 italic">
+              <div className="flex items-center gap-2 text-xs text-neutral-400 dark:text-neutral-400 italic">
                 <FileText size={14} />
                 {t('kanban.boardNote.noAccess')}
               </div>
             ) : !readOnly ? (
               <button
                 onClick={() => setIsNoteLinkPickerOpen(true)}
-                className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
               >
                 <Link2 size={14} />
                 {t('kanban.boardNote.link')}
@@ -823,7 +823,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
         {/* Mobile column tabs */}
         {isMobile && displayColumns.length > 0 && (
-          <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+          <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800/40 overflow-x-auto">
             <div className="flex">
               {displayColumns.map((col, index) => (
                 <button
@@ -833,7 +833,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                     'flex-shrink-0 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap',
                     index === mobileActiveColumnIndex
                       ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                      : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'
                   )}
                 >
                   {col.title} ({col.cards.length})
@@ -865,7 +865,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               <div className="flex items-center justify-center p-8">
                 <button
                   onClick={() => setIsAddingColumn(true)}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-emerald-400 hover:text-emerald-600 transition-colors text-sm font-medium"
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-700/40 text-neutral-400 dark:text-neutral-400 hover:border-emerald-400 hover:text-emerald-600 transition-colors text-sm font-medium"
                 >
                   <Plus size={16} />
                   {t('kanban.column.addColumn')}
@@ -904,7 +904,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 {!readOnly && (
                   <div className="min-w-[280px] w-[280px] flex-shrink-0">
                     {isAddingColumn ? (
-                      <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl p-3 space-y-2">
+                      <div className="bg-neutral-100 dark:bg-neutral-800/50 rounded-xl p-3 space-y-2">
                         <input
                           autoFocus
                           value={newColumnTitle}
@@ -923,13 +923,13 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                             }
                           }}
                           placeholder={t('kanban.column.columnTitle')}
-                          className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500"
+                          className="w-full bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-600 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-400 outline-none focus:border-emerald-500"
                         />
                       </div>
                     ) : (
                       <button
                         onClick={() => setIsAddingColumn(true)}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-600 dark:hover:text-emerald-400 transition-colors text-sm font-medium"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-700/40 text-neutral-400 dark:text-neutral-400 hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-600 dark:hover:text-emerald-400 transition-colors text-sm font-medium"
                       >
                         <Plus size={16} />
                         {t('kanban.column.addColumn')}

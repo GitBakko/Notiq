@@ -2,35 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  /* Premium Color Palette */
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f9fafb;
-  /* Gray 50 */
-  --color-bg-sidebar: #1f2937;
-  /* Gray 800 */
-  --color-bg-sidebar-hover: #374151;
-  /* Gray 700 */
+/* ── Geist Font Family ── */
+@font-face {
+  font-family: 'Geist Sans';
+  src: url('/fonts/GeistSans-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 
-  --color-text-primary: #111827;
-  /* Gray 900 */
-  --color-text-secondary: #6b7280;
-  /* Gray 500 */
-  --color-text-sidebar: #e5e7eb;
-  /* Gray 200 */
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Design Tokens ── */
+:root {
+  /* Slate neutrals (blue-gray) */
+  --color-bg-primary: #f8fafc;
+  --color-bg-secondary: #f1f5f9;
+  --color-bg-sidebar: #141822;
+  --color-bg-sidebar-hover: #1e293b;
+
+  --color-text-primary: #0c0f14;
+  --color-text-secondary: #64748b;
+  --color-text-sidebar: #cbd5e1;
 
   --color-accent: #10b981;
-  /* Emerald 500 */
   --color-accent-hover: #059669;
-  /* Emerald 600 */
+  --color-accent-warm: #f59e0b;
+  --color-accent-warm-hover: #d97706;
   --color-danger: #ef4444;
-  /* Red 500 */
 
-  --color-border: #e5e7eb;
-  /* Gray 200 */
+  --color-border: #e2e8f0;
 
   /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Geist Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'Cascadia Code', monospace;
 
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -40,8 +51,15 @@
   --spacing-xl: 2rem;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-card-hover: 0 8px 25px -5px rgb(0 0 0 / 0.1), 0 4px 10px -6px rgb(0 0 0 / 0.04);
+
+  /* Transitions */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 200ms ease-out;
+  --transition-slow: 300ms ease-out;
 }
 
 * {
@@ -61,15 +79,15 @@ body {
 }
 
 .dark body {
-  background-color: #111827;
-  color: #f3f4f6;
+  background-color: #0c0f14;
+  color: #e2e8f0;
 }
 
 #root {
   height: 100%;
 }
 
-/* Scrollbar styling */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -80,26 +98,70 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: #cbd5e1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #94a3b8;
 }
 
-/* Dark mode scrollbar */
 .dark ::-webkit-scrollbar-thumb {
-  background: #374151;
-  /* gray-700 */
+  background: #334155;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
-  /* gray-600 */
+  background: #475569;
 }
 
-/* Collaboration Styles */
+/* ── Design System Utilities ── */
+
+/* Staggered fade-in for list items */
+.animate-stagger-in > * {
+  opacity: 0;
+  animation: stagger-fade-in 0.3s ease-out forwards;
+}
+.animate-stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger-in > *:nth-child(2) { animation-delay: 40ms; }
+.animate-stagger-in > *:nth-child(3) { animation-delay: 80ms; }
+.animate-stagger-in > *:nth-child(4) { animation-delay: 120ms; }
+.animate-stagger-in > *:nth-child(5) { animation-delay: 160ms; }
+.animate-stagger-in > *:nth-child(n+6) { animation-delay: 200ms; }
+
+@keyframes stagger-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Card hover lift */
+.hover-lift {
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Shake animation for form errors */
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+/* Sync dot animation */
+.sync-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Collaboration Styles ── */
 .collaboration-cursor__caret {
   border-left: 1px solid #0d0d0d;
   border-right: 1px solid #0d0d0d;
@@ -131,7 +193,6 @@ body {
   from {
     background-color: rgba(16, 185, 129, 0.3);
   }
-
   to {
     background-color: transparent;
   }
@@ -144,7 +205,6 @@ body {
     color: #ef4444;
     background-color: rgba(239, 68, 68, 0.1);
   }
-
   to {
     opacity: 0;
     text-decoration: line-through;
@@ -168,7 +228,7 @@ body {
   color: #fff;
 }
 
-/* Override Tailwind Typography prose max-width (65ch) */
+/* ── ProseMirror Editor ── */
 .ProseMirror {
   max-width: none !important;
   overflow-wrap: break-word;
@@ -299,7 +359,7 @@ body {
   animation: bounceSubtle 2s ease-in-out infinite;
 }
 
-/* Safe Area Utilities for PWA (notch, Dynamic Island, gesture bar) */
+/* ── Safe Area Utilities (PWA) ── */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);
 }

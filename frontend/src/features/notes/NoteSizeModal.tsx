@@ -55,15 +55,15 @@ export default function NoteSizeModal({ noteId, onClose }: NoteSizeModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+        className="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200/60 dark:border-neutral-700/40">
+          <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
             {t('notes.size.title')}
           </h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500">
             <X size={18} />
           </button>
         </div>
@@ -71,7 +71,7 @@ export default function NoteSizeModal({ noteId, onClose }: NoteSizeModalProps) {
         {/* Body */}
         <div className="px-5 py-4">
           {loading && (
-            <div className="flex items-center justify-center py-8 text-gray-400">
+            <div className="flex items-center justify-center py-8 text-neutral-400">
               <Loader2 size={24} className="animate-spin mr-2" />
               {t('notes.size.loading')}
             </div>
@@ -87,13 +87,13 @@ export default function NoteSizeModal({ noteId, onClose }: NoteSizeModalProps) {
             <>
               {/* Total */}
               <div className="text-center mb-4">
-                <span className="text-sm text-gray-500 dark:text-gray-400">{t('notes.size.total')}</span>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                <span className="text-sm text-neutral-500 dark:text-neutral-400">{t('notes.size.total')}</span>
+                <div className="text-2xl font-bold text-neutral-900 dark:text-white">
                   {formatBytes(data.total)}
                 </div>
-                <div className="flex items-center justify-center gap-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                <div className="flex items-center justify-center gap-3 mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                   <span>{(data.characters ?? 0).toLocaleString()} {t('notes.size.characters')}</span>
-                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <span className="text-neutral-300 dark:text-neutral-600">|</span>
                   <span>{(data.lines ?? 0).toLocaleString()} {t('notes.size.lines')}</span>
                 </div>
               </div>
@@ -129,7 +129,7 @@ export default function NoteSizeModal({ noteId, onClose }: NoteSizeModalProps) {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="text-center py-4 text-gray-400 text-sm">
+                <div className="text-center py-4 text-neutral-400 text-sm">
                   {t('notes.size.loading')}
                 </div>
               )}
@@ -145,13 +145,13 @@ export default function NoteSizeModal({ noteId, onClose }: NoteSizeModalProps) {
                   <div key={i} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-gray-600 dark:text-gray-300">{item.label}</span>
+                      <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-900 dark:text-white font-medium">
+                      <span className="text-neutral-900 dark:text-white font-medium">
                         {formatBytes(item.value)}
                       </span>
-                      <span className="text-gray-400 text-xs w-12 text-right">
+                      <span className="text-neutral-400 text-xs w-12 text-right">
                         {data.total > 0 ? ((item.value / data.total) * 100).toFixed(1) : '0.0'}%
                       </span>
                     </div>

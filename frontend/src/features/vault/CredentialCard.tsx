@@ -45,7 +45,7 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
         'w-full text-left p-3 rounded-lg transition-colors border',
         isSelected
           ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800'
-          : 'bg-white dark:bg-gray-800 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50'
+          : 'bg-white dark:bg-neutral-800 border-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/50'
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -54,7 +54,7 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
           <img
             src={faviconUrl}
             alt=""
-            className="w-5 h-5 mt-0.5 rounded flex-shrink-0 bg-gray-100 dark:bg-gray-700"
+            className="w-5 h-5 mt-0.5 rounded flex-shrink-0 bg-neutral-100 dark:bg-neutral-700"
             onError={() => setImgError(true)}
           />
         ) : domain ? (
@@ -62,7 +62,7 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
             size={16}
             className={clsx(
               'mt-0.5 flex-shrink-0',
-              isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'
+              isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-400 dark:text-neutral-500'
             )}
           />
         ) : (
@@ -79,7 +79,7 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
             <h3
               className={clsx(
                 'font-medium truncate text-sm',
-                isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-900 dark:text-white'
+                isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-neutral-900 dark:text-white'
               )}
             >
               {note.title || t('vault.credential.untitled')}
@@ -89,18 +89,18 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
             </span>
           </div>
           {domain && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{domain}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">{domain}</p>
           )}
           {note.tags && note.tags.length > 0 && (
             <div className="flex gap-1 mt-1 flex-wrap">
               {note.tags.map((tagEntry: { tag?: { id: string; name: string }; tagId?: string }) => (
-                <span key={tagEntry.tag?.id || tagEntry.tagId} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <span key={tagEntry.tag?.id || tagEntry.tagId} className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400">
                   {tagEntry.tag?.name || ''}
                 </span>
               ))}
             </div>
           )}
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
             {new Date(note.updatedAt).toLocaleDateString()}
           </p>
         </div>

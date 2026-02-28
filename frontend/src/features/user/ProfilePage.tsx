@@ -140,25 +140,25 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-gray-50 p-4 sm:p-8 dark:bg-gray-900">
+    <div className="flex-1 h-full overflow-y-auto bg-neutral-50 p-4 sm:p-8 dark:bg-neutral-900">
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
+            className="flex items-center gap-2 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors"
           >
             <ArrowLeft size={20} />
             <span>{t('common.back')}</span>
           </button>
           {isMobile && (
-            <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+            <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
               <Menu size={24} />
             </button>
           )}
         </div>
 
         {/* Profile Header */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200/60 overflow-hidden dark:bg-neutral-800 dark:border-neutral-700/40">
           <div className="p-6 sm:p-8 flex items-center gap-6">
             <div className="relative group">
               <div className="h-24 w-24 rounded-full bg-emerald-600 flex items-center justify-center text-white text-3xl font-bold shadow-md overflow-hidden">
@@ -170,9 +170,9 @@ export default function ProfilePage() {
               </div>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 p-2 bg-white dark:bg-gray-700 rounded-full shadow-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="absolute bottom-0 right-0 p-2 bg-white dark:bg-neutral-700 rounded-full shadow-lg border border-neutral-200 dark:border-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors"
               >
-                <Camera size={16} className="text-gray-600 dark:text-gray-300" />
+                <Camera size={16} className="text-neutral-600 dark:text-neutral-300" />
               </button>
               <input
                 type="file"
@@ -183,17 +183,17 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('profile.title')}</h1>
-              <p className="text-gray-500 dark:text-gray-400">{user?.email}</p>
+              <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">{t('profile.title')}</h1>
+              <p className="text-neutral-500 dark:text-neutral-400">{user?.email}</p>
             </div>
           </div>
         </div>
 
         <div className="space-y-8">
           {/* Personal Information */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <div className="bg-white rounded-xl shadow-sm border border-neutral-200/60 overflow-hidden dark:bg-neutral-800 dark:border-neutral-700/40">
+            <div className="p-6 border-b border-neutral-200/60 dark:border-neutral-700/40">
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
                 <User size={20} />
                 {t('profile.personalInfo')}
               </h2>
@@ -201,46 +201,46 @@ export default function ProfilePage() {
             <form onSubmit={handleProfileSubmit} className="p-6 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.name')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.name')}</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.surname')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.surname')}</label>
                   <input
                     type="text"
                     value={formData.surname}
                     onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.email')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.email')}</label>
                   <input
                     type="email"
                     value={formData.email}
                     disabled
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 cursor-not-allowed"
+                    className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm bg-neutral-50 text-neutral-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400 cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.mobile')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.mobile')}</label>
                   <div className="relative">
-                    <Phone size={16} className="absolute left-3 top-3 text-gray-400" />
+                    <Phone size={16} className="absolute left-3 top-3 text-neutral-400" />
                     <input
                       type="tel"
                       value={formData.mobile}
                       onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.gender')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.gender')}</label>
                   <SearchableSelect
                     options={[
                       { value: 'male', label: t('gender.male') },
@@ -253,7 +253,7 @@ export default function ProfilePage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.dateOfBirth')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.dateOfBirth')}</label>
                   <DatePicker
                     date={formData.dateOfBirth ? new Date(formData.dateOfBirth) : undefined}
                     onSelect={(date) => setFormData({ ...formData, dateOfBirth: date ? date.toISOString().split('T')[0] : '' })}
@@ -262,7 +262,7 @@ export default function ProfilePage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.language')}</label>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('common.language')}</label>
                   <SearchableSelect
                     options={[
                       { value: 'it', label: 'Italiano', icon: <FlagIcon countryCode="it" /> },
@@ -294,9 +294,9 @@ export default function ProfilePage() {
           </div>
         </div>
         {invitationEnabled && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <div className="bg-white rounded-xl shadow-sm border border-neutral-200/60 overflow-hidden dark:bg-neutral-800 dark:border-neutral-700/40">
+            <div className="p-6 border-b border-neutral-200/60 dark:border-neutral-700/40">
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
                 <Ticket size={20} />
                 {t('profile.invitations')}
               </h2>
@@ -304,10 +304,10 @@ export default function ProfilePage() {
             <div className="p-6 space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {t('profile.availableInvites')}: <span className="font-bold text-gray-900 dark:text-white">{user?.invitesAvailable}</span>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    {t('profile.availableInvites')}: <span className="font-bold text-neutral-900 dark:text-white">{user?.invitesAvailable}</span>
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-neutral-500 mt-1">
                     {t('profile.shareInfo')}
                   </p>
                 </div>
@@ -331,23 +331,23 @@ export default function ProfilePage() {
               </div>
 
               {/* List of Invites */}
-              <div className="border rounded-md divide-y dark:border-gray-700 dark:divide-gray-700">
+              <div className="border rounded-lg divide-y dark:border-neutral-700 dark:divide-neutral-700">
                 {invites.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <div className="p-4 text-center text-sm text-neutral-500 dark:text-neutral-400">
                     {t('profile.noInvites')}
                   </div>
                 ) : (
                   invites.map((invite) => (
                     <div key={invite.id} className="p-4 flex items-center justify-between">
                       <div>
-                        <p className="font-mono font-bold text-lg text-gray-900 dark:text-white tracking-widest">{invite.code}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="font-mono font-bold text-lg text-neutral-900 dark:text-white tracking-widest">{invite.code}</p>
+                        <p className="text-xs text-neutral-500">
                           {t('profile.created')}: {new Date(invite.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                       <div className="text-right">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${invite.status === 'USED'
-                          ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                          ? 'bg-neutral-100 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-300'
                           : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
                           }`}>
                           {invite.status}
@@ -369,7 +369,7 @@ export default function ProfilePage() {
 
                         {invite.usedBy && (
                           <div className="mt-1">
-                            <p className="text-xs text-gray-500">{t('profile.usedBy')}: {invite.usedBy.email}</p>
+                            <p className="text-xs text-neutral-500">{t('profile.usedBy')}: {invite.usedBy.email}</p>
                             {!invite.usedBy.isVerified && (
                               <Button
                                 variant="ghost"
@@ -406,32 +406,32 @@ export default function ProfilePage() {
       >
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.currentPassword')}</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.currentPassword')}</label>
             <input
               type="password"
               value={passwordData.oldPassword}
               onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.newPassword')}</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.newPassword')}</label>
             <input
               type="password"
               value={passwordData.newPassword}
               onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.confirmPassword')}</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.confirmPassword')}</label>
             <input
               type="password"
               value={passwordData.confirmPassword}
               onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
               required
             />
           </div>
@@ -452,27 +452,27 @@ export default function ProfilePage() {
         title={t('profile.sendInvite', 'Send Invitation')}
       >
         <form onSubmit={handleSendInviteSubmit} className="space-y-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
             {t('profile.sendInviteDesc', 'Enter the email address of the person you want to invite.')}
           </p>
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.email')}</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.email')}</label>
             <input
               type="email"
               value={sendInviteData.email}
               onChange={(e) => setSendInviteData({ ...sendInviteData, email: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
               required
               placeholder={t('profile.invitePlaceholderEmail')}
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.name')} ({t('common.optional', 'Optional')})</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('auth.name')} ({t('common.optional', 'Optional')})</label>
             <input
               type="text"
               value={sendInviteData.name}
               onChange={(e) => setSendInviteData({ ...sendInviteData, name: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-white"
               placeholder={t('profile.invitePlaceholderName')}
             />
           </div>

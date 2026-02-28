@@ -43,14 +43,14 @@ export default function Modal({ isOpen, onClose, title, size = 'md', noPadding =
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div ref={modalRef} role="dialog" aria-modal="true" className={clsx('bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700', SIZE_CLASSES[size])}>
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div ref={modalRef} role="dialog" aria-modal="true" className={clsx('bg-white dark:bg-neutral-900 rounded-xl shadow-xl w-full overflow-hidden animate-in zoom-in-95 duration-200 border border-neutral-200/60 dark:border-neutral-700/40', SIZE_CLASSES[size])}>
+        <div className="flex items-center justify-between p-4 border-b border-neutral-200/60 dark:border-neutral-700/40">
+          <h3 className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white">{title}</h3>
           <button
             onClick={onClose}
             aria-label={t('common.close')}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
             <X size={20} />
           </button>

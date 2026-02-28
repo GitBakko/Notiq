@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'fonts/*.woff2'],
       manifest: {
         name: 'Notiq',
         short_name: 'Notiq',
@@ -41,7 +41,7 @@ export default defineConfig({
       workbox: {
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB
         navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/ws/],
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         importScripts: ['/push-sw.js'],
         runtimeCaching: [{
           urlPattern: ({ url }) => url.pathname.startsWith('/api'),

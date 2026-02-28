@@ -11,6 +11,18 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.7.1',
+    date: '2026-02-28',
+    entries: [
+      { type: 'improvement', titleKey: 'whatsNew.entries.visualRedesign' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.geistFont' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.slateDarkMode' },
+      { type: 'fix', titleKey: 'whatsNew.entries.pushNotificationFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.settingsToggleFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.sharingPersistenceFix' },
+    ],
+  },
+  {
     version: '1.7.0',
     date: '2026-02-27',
     entries: [

@@ -26,9 +26,6 @@ export default function RegisterPage() {
         setInvitationEnabled(res.data.invitationSystemEnabled);
       } catch (err) {
         console.error('Failed to load auth config', err);
-        // Default to true or false? Safe to assume enabled if error?
-        // Or false to avoid blocking?
-        // Let's assume false if failed to be safe, or retry.
         setInvitationEnabled(true);
       } finally {
         setIsLoadingConfig(false);
@@ -96,12 +93,12 @@ export default function RegisterPage() {
 
   if (isSuccess) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
         <div className="w-full max-w-md space-y-8 text-center">
           <h2 className="text-3xl font-bold tracking-tight text-emerald-600">
             {t('auth.registrationSuccess')}
           </h2>
-          <p className="text-gray-600 dark:text-gray-300">
+          <p className="text-neutral-600 dark:text-neutral-300">
             {t('auth.checkEmailVerify')}
           </p>
           <div className="mt-6">
@@ -115,10 +112,10 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
       <div className="w-full max-w-md space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
             {t('auth.createAccountTitle')}
           </h2>
         </div>
@@ -127,15 +124,17 @@ export default function RegisterPage() {
           <div className="text-center">{t('common.loading')}</div>
         ) : (
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            <div className="-space-y-px rounded-md shadow-sm">
+            <div className="space-y-3">
               <div>
+                <label htmlFor="name" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('auth.namePlaceholder')}</label>
                 <input
+                  id="name"
                   type="text"
                   className={clsx(
-                    'relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                    'relative block w-full rounded-lg border-0 py-1.5 text-neutral-900 ring-1 ring-inset placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500',
                     fieldErrors.name
                       ? 'ring-red-500 dark:ring-red-500'
-                      : 'ring-gray-300 dark:ring-gray-700'
+                      : 'ring-neutral-300 dark:ring-neutral-700'
                   )}
                   placeholder={t('auth.namePlaceholder')}
                   value={name}
@@ -143,14 +142,16 @@ export default function RegisterPage() {
                 />
               </div>
               <div>
+                <label htmlFor="email" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('auth.email')}</label>
                 <input
+                  id="email"
                   type="email"
                   required
                   className={clsx(
-                    'relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                    'relative block w-full rounded-lg border-0 py-1.5 text-neutral-900 ring-1 ring-inset placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500',
                     fieldErrors.email
                       ? 'ring-red-500 dark:ring-red-500'
-                      : 'ring-gray-300 dark:ring-gray-700'
+                      : 'ring-neutral-300 dark:ring-neutral-700'
                   )}
                   placeholder={t('auth.emailPlaceholder')}
                   value={email}
@@ -158,15 +159,16 @@ export default function RegisterPage() {
                 />
               </div>
               <div>
+                <label htmlFor="password" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('auth.passwordPlaceholder')}</label>
                 <input
+                  id="password"
                   type="password"
                   required
                   className={clsx(
-                    'relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
-                    !invitationEnabled ? 'rounded-b-md' : '',
+                    'relative block w-full rounded-lg border-0 py-1.5 text-neutral-900 ring-1 ring-inset placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500',
                     fieldErrors.password
                       ? 'ring-red-500 dark:ring-red-500'
-                      : 'ring-gray-300 dark:ring-gray-700'
+                      : 'ring-neutral-300 dark:ring-neutral-700'
                   )}
                   placeholder={t('auth.passwordPlaceholder')}
                   value={password}
@@ -175,14 +177,16 @@ export default function RegisterPage() {
               </div>
               {invitationEnabled && (
                 <div>
+                  <label htmlFor="invitationCode" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('auth.invitationCode')}</label>
                   <input
+                    id="invitationCode"
                     type="text"
                     required
                     className={clsx(
-                      'relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                      'relative block w-full rounded-lg border-0 py-1.5 text-neutral-900 ring-1 ring-inset placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500',
                       fieldErrors.invitationCode
                         ? 'ring-red-500 dark:ring-red-500'
-                        : 'ring-gray-300 dark:ring-gray-700'
+                        : 'ring-neutral-300 dark:ring-neutral-700'
                     )}
                     placeholder={t('auth.invitationCode')}
                     value={invitationCode}
@@ -194,10 +198,10 @@ export default function RegisterPage() {
 
             {(fieldErrors.name || fieldErrors.email || fieldErrors.password || fieldErrors.invitationCode) && (
               <div className="mt-2 space-y-1">
-                {fieldErrors.name && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.name}</p>}
-                {fieldErrors.email && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.email}</p>}
-                {fieldErrors.password && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.password}</p>}
-                {fieldErrors.invitationCode && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.invitationCode}</p>}
+                {fieldErrors.name && <p className="text-red-500 dark:text-red-400 text-sm">{fieldErrors.name}</p>}
+                {fieldErrors.email && <p className="text-red-500 dark:text-red-400 text-sm">{fieldErrors.email}</p>}
+                {fieldErrors.password && <p className="text-red-500 dark:text-red-400 text-sm">{fieldErrors.password}</p>}
+                {fieldErrors.invitationCode && <p className="text-red-500 dark:text-red-400 text-sm">{fieldErrors.invitationCode}</p>}
               </div>
             )}
 
@@ -210,7 +214,7 @@ export default function RegisterPage() {
             <div>
               <button
                 type="submit"
-                className="group relative flex w-full justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                className="group relative flex w-full justify-center rounded-md bg-emerald-600 px-3 py-3 h-12 text-base font-semibold text-white hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
               >
                 {t('auth.signUp')}
               </button>

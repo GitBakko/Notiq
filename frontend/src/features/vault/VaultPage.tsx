@@ -189,16 +189,16 @@ export default function VaultPage() {
   ];
 
   const renderNoteList = () => (
-    <div className={clsx("flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800", isMobile ? "w-full" : "w-80")}>
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between min-h-[48px]">
+    <div className={clsx("flex flex-col h-full bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800", isMobile ? "w-full" : "w-80")}>
+      <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between min-h-[48px]">
         <div className="flex items-center gap-3">
           {isMobile && (
-            <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+            <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
               <Menu size={24} />
             </button>
           )}
           <Lock size={20} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('vault.title')}</h1>
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-white">{t('vault.title')}</h1>
         </div>
         <div className="flex items-center gap-2">
           {hiddenInput}
@@ -212,17 +212,17 @@ export default function VaultPage() {
               <Plus size={16} />
             </Button>
             {showCreateMenu && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
+              <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
                 <button
                   onClick={handleCreateSecureNote}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700"
                 >
                   <Lock size={14} />
                   {t('vault.createSecureNote')}
                 </button>
                 <button
                   onClick={handleCreateCredential}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700"
                 >
                   <KeyRound size={14} />
                   {t('vault.createCredential')}
@@ -237,7 +237,7 @@ export default function VaultPage() {
             <>
               <button
                 onClick={collapseAll}
-                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                className="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors"
                 title={t('sidebar.collapseAll')}
                 aria-label={t('sidebar.collapseAll')}
               >
@@ -245,7 +245,7 @@ export default function VaultPage() {
               </button>
               <button
                 onClick={toggleListCollapsed}
-                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                className="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors"
                 title={t('common.collapseList')}
               >
                 <PanelLeftClose size={18} />
@@ -255,15 +255,15 @@ export default function VaultPage() {
         </div>
       </div>
 
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
           <input
             type="text"
             placeholder={t('common.search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border-none rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm dark:text-white"
+            className="w-full pl-9 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm dark:text-white"
           />
         </div>
         {/* Type filter chips + sort */}
@@ -276,7 +276,7 @@ export default function VaultPage() {
                 'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
                 typeFilter === key
                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
               )}
             >
               {label}
@@ -286,7 +286,7 @@ export default function VaultPage() {
         </div>
       </div>
 
-      <div className="border-b border-gray-200 dark:border-gray-800">
+      <div className="border-b border-neutral-200 dark:border-neutral-800">
         <TagList
           onSelectTag={(tagId) => setSelectedTagId(tagId === selectedTagId ? null : tagId ?? null)}
           selectedTagId={selectedTagId ?? undefined}
@@ -313,20 +313,20 @@ export default function VaultPage() {
                 "w-full text-left p-3 rounded-lg transition-colors border",
                 selectedNoteId === note.id
                   ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
-                  : "bg-white dark:bg-gray-800 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                  : "bg-white dark:bg-neutral-800 border-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/50"
               )}
             >
-              <h3 className={clsx("font-medium mb-1 truncate", selectedNoteId === note.id ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-white")}>
+              <h3 className={clsx("font-medium mb-1 truncate", selectedNoteId === note.id ? "text-emerald-700 dark:text-emerald-400" : "text-neutral-900 dark:text-white")}>
                 {note.title || t('notes.untitled')}
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1">
                 {new Date(note.updatedAt).toLocaleDateString()}
               </p>
             </button>
           )
         ))}
         {vaultNotes?.length === 0 && (
-          <div className="text-center text-gray-500 py-8 text-sm">
+          <div className="text-center text-neutral-500 py-8 text-sm">
             {t('vault.noNotes')}
           </div>
         )}
@@ -335,7 +335,7 @@ export default function VaultPage() {
   );
 
   const renderEditor = () => (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-900 relative">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-neutral-900 relative">
       {selectedNote ? (
         selectedNote.noteType === 'CREDENTIAL' ? (
           <CredentialForm
@@ -352,7 +352,7 @@ export default function VaultPage() {
           />
         )
       ) : (
-        <div className="flex h-full items-center justify-center text-gray-400 flex-col p-4 text-center dark:text-gray-500">
+        <div className="flex h-full items-center justify-center text-neutral-400 flex-col p-4 text-center dark:text-neutral-500">
           <Lock size={48} className="mb-4 opacity-20" />
           <p className="mb-4">{t('notes.selectToView')}</p>
           <div className="flex gap-2">
@@ -371,19 +371,19 @@ export default function VaultPage() {
 
   if (isMobile) {
     return (
-      <div className="flex h-full bg-white w-full dark:bg-gray-900">
+      <div className="flex h-full bg-white w-full dark:bg-neutral-900">
         {selectedNoteId ? renderEditor() : renderNoteList()}
       </div>
     );
   }
 
   return (
-    <div className="flex h-full bg-white dark:bg-gray-900">
+    <div className="flex h-full bg-white dark:bg-neutral-900">
       {isListCollapsed ? (
-        <div className="flex flex-col items-center py-3 px-1 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center py-3 px-1 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
           <button
             onClick={toggleListCollapsed}
-            className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
+            className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-md transition-colors"
             title={t('common.expandList')}
           >
             <PanelLeftOpen size={18} />

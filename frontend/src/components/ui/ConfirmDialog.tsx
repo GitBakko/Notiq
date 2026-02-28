@@ -25,7 +25,7 @@ export function ConfirmDialog({
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title={title}>
       <div className="mt-2">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">{message}</p>
       </div>
 
       <div className="mt-6 flex justify-end gap-3">

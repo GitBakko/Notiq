@@ -27,7 +27,7 @@ export default function TasksPage() {
         }
     });
 
-    if (!tasks) return <div className="p-8 text-center text-gray-500">{t('common.loading')}</div>;
+    if (!tasks) return <div className="p-8 text-center text-neutral-500">{t('common.loading')}</div>;
 
     const overdue = tasks.filter(t => !t.isReminderDone && t.reminderDate && isPast(new Date(t.reminderDate)) && !isToday(new Date(t.reminderDate)));
     const today = tasks.filter(t => !t.isReminderDone && t.reminderDate && isToday(new Date(t.reminderDate)));
@@ -35,13 +35,13 @@ export default function TasksPage() {
     const done = tasks.filter(t => t.isReminderDone);
 
     const TaskItem = ({ task }: { task: { id: string; title: string; isReminderDone?: boolean; reminderDate?: string | null } }) => (
-        <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-shadow group dark:bg-gray-800 dark:border-gray-700">
+        <div className="flex items-center gap-3 p-3 bg-white border border-neutral-200/60 rounded-lg hover:shadow-sm transition-shadow group dark:bg-neutral-900 dark:border-neutral-700/40">
             <button
                 onClick={(e) => {
                     e.stopPropagation();
                     toggleTask.mutate({ id: task.id, isDone: !task.isReminderDone });
                 }}
-                className="text-gray-400 hover:text-emerald-600 dark:text-gray-500 dark:hover:text-emerald-400"
+                className="text-neutral-400 hover:text-emerald-600 dark:text-neutral-500 dark:hover:text-emerald-400"
             >
                 {task.isReminderDone ? <CheckCircle className="text-emerald-600 dark:text-emerald-500" /> : <Circle />}
             </button>
@@ -49,8 +49,8 @@ export default function TasksPage() {
                 className="flex-1 cursor-pointer"
                 onClick={() => navigate(`/notes?noteId=${task.id}`)}
             >
-                <div className={clsx("font-medium dark:text-gray-200", task.isReminderDone && "line-through text-gray-400 dark:text-gray-500")}>{task.title || t('notes.untitled')}</div>
-                <div className="text-xs text-gray-500 flex items-center gap-1 dark:text-gray-400">
+                <div className={clsx("font-medium dark:text-neutral-200", task.isReminderDone && "line-through text-neutral-400 dark:text-neutral-500")}>{task.title || t('notes.untitled')}</div>
+                <div className="text-xs text-neutral-500 flex items-center gap-1 dark:text-neutral-400">
                     <Calendar size={12} />
                     {task.reminderDate ? format(new Date(task.reminderDate), 'PPP p', { locale: dateLocale }) : ''}
                 </div>
@@ -59,14 +59,14 @@ export default function TasksPage() {
     );
 
     return (
-        <div className="flex-1 h-full overflow-y-auto bg-gray-50 p-8 dark:bg-gray-900">
+        <div className="flex-1 h-full overflow-y-auto bg-neutral-50 p-8 dark:bg-neutral-950">
             <div className="flex items-center gap-3 mb-6">
                 {isMobile && (
-                    <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
                         <Menu size={24} />
                     </button>
                 )}
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('sidebar.tasks')}</h1>
+                <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">{t('sidebar.tasks')}</h1>
             </div>
 
             <div className="max-w-3xl mx-auto space-y-8">
@@ -90,7 +90,7 @@ export default function TasksPage() {
 
                 {upcoming.length > 0 && (
                     <section>
-                        <h2 className="text-lg font-semibold text-gray-700 mb-3 dark:text-gray-300">{t('tasks.upcoming')}</h2>
+                        <h2 className="text-lg font-semibold text-neutral-700 mb-3 dark:text-neutral-300">{t('tasks.upcoming')}</h2>
                         <div className="space-y-2">
                             {upcoming.map(task => <TaskItem key={task.id} task={task} />)}
                         </div>
@@ -99,7 +99,7 @@ export default function TasksPage() {
 
                 {done.length > 0 && (
                     <section>
-                        <h2 className="text-lg font-semibold text-gray-400 mb-3 dark:text-gray-500">{t('tasks.completed')}</h2>
+                        <h2 className="text-lg font-semibold text-neutral-400 mb-3 dark:text-neutral-500">{t('tasks.completed')}</h2>
                         <div className="space-y-2 opacity-75">
                             {done.map(task => <TaskItem key={task.id} task={task} />)}
                         </div>
@@ -107,7 +107,7 @@ export default function TasksPage() {
                 )}
 
                 {tasks.length === 0 && (
-                    <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                    <div className="text-center py-12 text-neutral-400 dark:text-neutral-500">
                         <CheckCircle size={48} className="mx-auto mb-4 opacity-20" />
                         <p>{t('tasks.noTasks')}</p>
                     </div>

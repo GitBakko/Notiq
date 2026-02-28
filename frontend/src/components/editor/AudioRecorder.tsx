@@ -87,16 +87,16 @@ export default function AudioRecorder({ onSave, onCancel }: AudioRecorderProps) 
   };
 
   return (
-    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 w-full max-w-sm">
+    <div className="p-4 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200/60 dark:border-neutral-700/40 w-full max-w-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900 dark:text-white">{t('editor.voiceMemo')}</h3>
-        <button onClick={onCancel} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+        <h3 className="font-semibold text-neutral-900 dark:text-white">{t('editor.voiceMemo')}</h3>
+        <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
           <X size={20} />
         </button>
       </div>
 
       <div className="flex flex-col items-center gap-4">
-        <div className="text-3xl font-mono font-bold text-gray-900 dark:text-white">
+        <div className="text-3xl font-mono font-bold text-neutral-900 dark:text-white">
           {formatTime(duration)}
         </div>
 
@@ -113,7 +113,7 @@ export default function AudioRecorder({ onSave, onCancel }: AudioRecorderProps) 
             ) : (
               <button
                 onClick={stopRecording}
-                className="rounded-full w-12 h-12 flex items-center justify-center bg-gray-800 hover:bg-gray-900 text-white p-0 animate-pulse transition-colors"
+                className="rounded-full w-12 h-12 flex items-center justify-center bg-neutral-800 hover:bg-neutral-900 text-white p-0 animate-pulse transition-colors"
                 title={t('editor.stopRecording')}
               >
                 <Square size={24} />
@@ -130,14 +130,14 @@ export default function AudioRecorder({ onSave, onCancel }: AudioRecorderProps) 
           <div className="flex gap-2 w-full mt-2">
             <button
               onClick={() => { setAudioBlob(null); setDuration(0); }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:text-neutral-200 transition-colors"
             >
               <Trash2 size={16} />
               {t('common.discard')}
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
             >
               <Save size={16} />
               {t('common.save')}

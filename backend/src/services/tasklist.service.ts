@@ -166,6 +166,11 @@ export const updateTaskList = async (userId: string, id: string, data: { title?:
     data,
     include: {
       items: ITEMS_INCLUDE,
+      sharedWith: {
+        include: {
+          user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        },
+      },
     },
   });
 };

@@ -46,7 +46,7 @@ export default function NoteLinkPicker({ isOpen, onClose, onSelect }: NoteLinkPi
         <div className="relative">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500"
           />
           <input
             ref={inputRef}
@@ -54,12 +54,12 @@ export default function NoteLinkPicker({ isOpen, onClose, onSelect }: NoteLinkPi
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('kanban.noteLink.searchPlaceholder')}
-            className="w-full pl-9 pr-8 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-emerald-500 dark:focus:border-emerald-500"
+            className="w-full pl-9 pr-8 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500 outline-none focus:border-emerald-500 dark:focus:border-emerald-500"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
             >
               <X size={14} />
             </button>
@@ -77,15 +77,15 @@ export default function NoteLinkPicker({ isOpen, onClose, onSelect }: NoteLinkPi
               <button
                 key={note.id}
                 onClick={() => onSelect(note)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
                 <FileText size={16} className="text-emerald-500 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">
                     {note.title || t('kanban.noteLink.untitledNote')}
                   </p>
                   {note.notebook && (
-                    <p className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    <p className="flex items-center gap-1 text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
                       <Book size={10} />
                       {note.notebook.name}
                     </p>
@@ -94,7 +94,7 @@ export default function NoteLinkPicker({ isOpen, onClose, onSelect }: NoteLinkPi
               </button>
             ))
           ) : (
-            <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">
+            <p className="text-center text-sm text-neutral-400 dark:text-neutral-500 py-8">
               {searchQuery
                 ? t('kanban.noteLink.noResults')
                 : t('kanban.noteLink.typeToSearch')}

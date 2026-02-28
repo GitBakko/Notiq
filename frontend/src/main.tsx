@@ -24,6 +24,25 @@ if ('serviceWorker' in navigator) {
       window.location.reload();
     }
   });
+
+  // iOS standalone mode (home screen shortcut) reuses a frozen page snapshot on launch
+  // and doesn't automatically check for SW updates. Force an update check on every startup
+  // and when the app becomes visible again (iOS suspends/resumes standalone apps).
+  const checkForSwUpdate = () => {
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (reg) reg.update().catch(() => { /* ignore network errors */ });
+    });
+  };
+
+  // Check immediately on startup
+  checkForSwUpdate();
+
+  // Re-check when app comes back to foreground (critical for iOS standalone mode)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkForSwUpdate();
+    }
+  });
 }
 
 // Failsafe: If we are somehow serving the index.html from an /uploads path or /api path, 

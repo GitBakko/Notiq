@@ -47,14 +47,14 @@ export default function SortDropdown({ sortField, sortOrder, onChange }: SortDro
           'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
           open
             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-            : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+            : 'text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'
         )}
         title={t('notes.sort.label')}
       >
         <ArrowUpDown size={14} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
           {SORT_OPTIONS.map(({ field, defaultOrder }) => {
             const isActive = sortField === field;
             return (
@@ -65,7 +65,7 @@ export default function SortDropdown({ sortField, sortOrder, onChange }: SortDro
                   'w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors',
                   isActive
                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700'
                 )}
               >
                 <span className="w-4 flex-shrink-0">

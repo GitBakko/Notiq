@@ -29,24 +29,24 @@ export default function WhatsNewPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-4 sm:px-8 sm:py-6 flex items-center gap-3">
+      <div className="bg-white dark:bg-neutral-800 border-b border-neutral-200/60 dark:border-neutral-700/40 px-4 py-4 sm:px-8 sm:py-6 flex items-center gap-3">
         {isMobile && (
           <button
             onClick={toggleSidebar}
-            className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+            className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
           >
             <Menu size={24} />
           </button>
         )}
         <Link
           to="/settings"
-          className="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+          className="text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
         >
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">
           {t('whatsNew.title')}
         </h1>
       </div>
@@ -59,7 +59,7 @@ export default function WhatsNewPage() {
           return (
             <section
               key={version.version}
-              className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+              className="rounded-xl border border-neutral-200/60 bg-white dark:border-neutral-700/40 dark:bg-neutral-800"
             >
               {/* Version header */}
               <button
@@ -70,25 +70,25 @@ export default function WhatsNewPage() {
                   <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                     v{version.version}
                   </span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                  <span className="text-sm text-neutral-500 dark:text-neutral-400">
                     {version.date}
                   </span>
                 </div>
                 {isExpanded ? (
-                  <ChevronDown size={18} className="text-gray-400 dark:text-gray-500" />
+                  <ChevronDown size={18} className="text-neutral-400 dark:text-neutral-500" />
                 ) : (
-                  <ChevronRight size={18} className="text-gray-400 dark:text-gray-500" />
+                  <ChevronRight size={18} className="text-neutral-400 dark:text-neutral-500" />
                 )}
               </button>
 
               {/* Entries */}
               {isExpanded && (
-                <div className="border-t border-gray-100 px-6 py-4 dark:border-gray-700">
+                <div className="border-t border-neutral-100 px-6 py-4 dark:border-neutral-700">
                   <ul className="space-y-3">
                     {version.entries.map((entry) => (
                       <li key={entry.titleKey} className="flex items-start gap-3">
                         <TypeBadge type={entry.type} />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className="text-sm text-neutral-700 dark:text-neutral-300">
                           {t(entry.titleKey)}
                         </span>
                       </li>

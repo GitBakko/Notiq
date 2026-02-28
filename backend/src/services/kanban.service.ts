@@ -406,6 +406,15 @@ export async function updateBoard(
   return prisma.kanbanBoard.update({
     where: { id: boardId },
     data,
+    include: {
+      shares: {
+        include: {
+          user: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
+        },
+      },
+      owner: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
+      note: { select: { id: true, title: true, userId: true } },
+    },
   });
 }
 

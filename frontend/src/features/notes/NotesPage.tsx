@@ -131,14 +131,14 @@ export default function NotesPage() {
 
     // if (showEmptyState) {
     //   return (
-    //     <div className={clsx("flex flex-col bg-white h-full dark:bg-gray-900 items-center justify-center text-center p-8", isMobile ? "w-full" : "w-80 border-r border-gray-200 dark:border-gray-800")}>
+    //     <div className={clsx("flex flex-col bg-white h-full dark:bg-neutral-900 items-center justify-center text-center p-8", isMobile ? "w-full" : "w-80 border-r border-neutral-200/60 dark:border-neutral-800/40")}>
     //       <div className="mb-4 p-4 bg-emerald-50 rounded-full dark:bg-emerald-900/30">
     //         <Book size={32} className="text-emerald-600 dark:text-emerald-400" />
     //       </div>
-    //       <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+    //       <h3 className="text-lg font-medium text-neutral-900 dark:text-white mb-2">
     //         {t('notes.noNotebookSelectedTitle')}
     //       </h3>
-    //       <p className="text-sm text-gray-500 dark:text-gray-400">
+    //       <p className="text-sm text-neutral-500 dark:text-neutral-400">
     //         {t('notes.noNotebookSelectedDescription')}
     //       </p>
     //     </div>
@@ -146,22 +146,22 @@ export default function NotesPage() {
     // }
 
     return (
-      <div className={clsx("flex flex-col bg-white h-full dark:bg-gray-900", isMobile ? "w-full" : "w-80 border-r border-gray-200 dark:border-gray-800")}>
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+      <div className={clsx("flex flex-col bg-white h-full dark:bg-neutral-950", isMobile ? "w-full" : "w-80 border-r border-neutral-200/60 dark:border-neutral-800/40")}>
+        <div className="p-4 border-b border-neutral-200/60 dark:border-neutral-800/40">
           <div className="flex items-center gap-3 mb-4 min-h-[48px]">
             {isMobile && (
-              <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+              <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
                 <Menu size={24} />
               </button>
             )}
             <FileText size={20} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-white">{t('sidebar.notes')}</h2>
+            <h2 className="text-xl font-semibold text-neutral-800 dark:text-white">{t('sidebar.notes')}</h2>
             <div className="ml-auto flex items-center gap-1">
               {selectedNotebookId && (
                 <button
                   onClick={() => importFile(selectedNotebookId, false)}
                   disabled={isUploading}
-                  className="text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+                  className="text-neutral-500 hover:text-emerald-600 dark:text-neutral-400 dark:hover:text-emerald-400"
                   title={t('settings.importTitle')}
                 >
                   <FileDown size={18} />
@@ -171,7 +171,7 @@ export default function NotesPage() {
                 <>
                   <button
                     onClick={collapseAll}
-                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                    className="text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors"
                     title={t('sidebar.collapseAll')}
                     aria-label={t('sidebar.collapseAll')}
                   >
@@ -179,7 +179,7 @@ export default function NotesPage() {
                   </button>
                   <button
                     onClick={toggleListCollapsed}
-                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                    className="text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors"
                     title={t('common.collapseList')}
                   >
                     <PanelLeftClose size={18} />
@@ -191,17 +191,17 @@ export default function NotesPage() {
           {hiddenInput}
           {notebookPickerModal}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-400" size={16} />
             <input
               type="text"
               placeholder={t('common.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-gray-300 bg-gray-50 py-2 pl-9 pr-4 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              className="w-full rounded-lg border border-neutral-300 bg-neutral-50 py-2 pl-9 pr-4 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700/40 dark:text-white"
             />
           </div>
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">
               {t('notes.found', { count: notes?.length || 0 })}
             </span>
             <div className="flex items-center gap-1">
@@ -212,7 +212,7 @@ export default function NotesPage() {
                     "px-2 py-0.5 text-[10px] rounded-full border transition-colors",
                     ownershipFilter === f
                       ? "bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-400"
-                      : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400"
+                      : "bg-neutral-50 border-neutral-200/60 text-neutral-500 hover:bg-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40 dark:text-neutral-400"
                   )}>
                   {t(`notes.filter.${f}`)}
                 </button>
@@ -239,9 +239,9 @@ export default function NotesPage() {
   };
 
   const renderEditor = () => (
-    <div className="flex-1 flex flex-col h-full relative bg-white dark:bg-gray-900">
+    <div className="flex-1 flex flex-col h-full relative bg-white dark:bg-neutral-950">
       {isLoadingNote ? (
-        <div className="flex h-full items-center justify-center text-gray-400">
+        <div className="flex h-full items-center justify-center text-neutral-400">
           {t('common.loading')}
         </div>
       ) : noteToDisplay ? (
@@ -251,7 +251,7 @@ export default function NotesPage() {
           onBack={() => setSelectedNoteId(null)}
         />
       ) : (
-        <div className="flex h-full items-center justify-center text-gray-400 flex-col p-4 text-center dark:text-gray-500">
+        <div className="flex h-full items-center justify-center text-neutral-400 flex-col p-4 text-center dark:text-neutral-400">
           <p className="mb-4">{t('notes.selectToView')}</p>
           <Button
             onClick={handleCreateNote}
@@ -267,17 +267,17 @@ export default function NotesPage() {
   const notebookPickerForCreate = showNotebookPicker ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNotebookPicker(false)}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
+        className="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200/60 dark:border-neutral-700/40">
           <div className="flex items-center gap-2">
             <Book size={18} className="text-emerald-600 dark:text-emerald-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
               {t('notes.selectNotebook')}
             </h3>
           </div>
-          <button onClick={() => setShowNotebookPicker(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
+          <button onClick={() => setShowNotebookPicker(false)} className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500">
             <X size={18} />
           </button>
         </div>
@@ -286,7 +286,7 @@ export default function NotesPage() {
             <button
               key={nb.id}
               onClick={() => handlePickNotebookForCreate(nb.id)}
-              className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors"
+              className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-neutral-700 dark:text-neutral-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors"
             >
               {nb.name}
             </button>
@@ -324,7 +324,7 @@ export default function NotesPage() {
 
   if (isMobile) {
     return (
-      <div className="flex h-full bg-white w-full dark:bg-gray-900">
+      <div className="flex h-full bg-white w-full dark:bg-neutral-950">
         {selectedNoteId ? renderEditor() : renderNoteList()}
         {notebookPickerForCreate}
         {sharingModal}
@@ -333,12 +333,12 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="flex h-full bg-white dark:bg-gray-900">
+    <div className="flex h-full bg-white dark:bg-neutral-950">
       {isListCollapsed ? (
-        <div className="flex flex-col items-center py-3 px-1 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center py-3 px-1 border-r border-neutral-200/60 dark:border-neutral-800/40 bg-neutral-50 dark:bg-neutral-950">
           <button
             onClick={toggleListCollapsed}
-            className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
+            className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
             title={t('common.expandList')}
           >
             <PanelLeftOpen size={18} />

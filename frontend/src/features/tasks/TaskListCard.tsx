@@ -120,10 +120,10 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
 
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+    <div className="rounded-xl border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700/50">
-        <button onClick={() => setIsExpanded(!isExpanded)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-100/80 dark:border-neutral-700/50">
+        <button onClick={() => setIsExpanded(!isExpanded)} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
           {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </button>
 
@@ -138,14 +138,14 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
                 if (e.key === 'Enter') handleSaveTitle();
                 if (e.key === 'Escape') { setIsEditingTitle(false); setEditTitle(taskList.title); }
               }}
-              className="w-full bg-transparent border-b-2 border-emerald-500 font-semibold text-gray-900 dark:text-white outline-none"
+              className="w-full bg-transparent border-b-2 border-emerald-500 font-semibold text-neutral-900 dark:text-white outline-none"
               autoFocus
             />
           ) : (
             <h3
               onClick={() => !readOnly && setIsEditingTitle(true)}
               className={clsx(
-                'font-semibold text-gray-900 dark:text-white truncate transition-colors',
+                'font-semibold text-neutral-900 dark:text-white truncate transition-colors',
                 !readOnly && 'cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400'
               )}
             >
@@ -156,7 +156,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
 
         {/* Shared by badge (for received shared lists) */}
         {taskList.ownership === 'shared' && taskList.sharedByUser && (
-          <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+          <span className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full">
             <Users size={12} />
             {t('taskLists.sharedBy', { name: taskList.sharedByUser.name || taskList.sharedByUser.email })}
           </span>
@@ -175,7 +175,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
         )}
 
         {/* Progress */}
-        <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+        <span className="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
           {t('taskLists.progress', { done: doneCount, total: totalCount })}
         </span>
 
@@ -183,7 +183,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
         {!readOnly && taskList.ownership !== 'shared' && onShareClick && (
           <button
             onClick={() => onShareClick(taskList.id)}
-            className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+            className="text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
             title={t('taskLists.share')}
           >
             <Share2 size={16} />
@@ -195,17 +195,17 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
             >
               <MoreVertical size={16} />
             </button>
             {showMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+                <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
                   <button
                     onClick={() => { setShowMenu(false); setShowConvertModal(true); }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                   >
                     <Kanban size={14} />
                     {t('taskLists.convertToKanban')}
@@ -226,9 +226,9 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
 
       {/* Body */}
       {isExpanded && (
-        <div className="divide-y divide-gray-50 dark:divide-gray-700/30">
+        <div className="divide-y divide-neutral-50 dark:divide-neutral-700/30">
           {sortedItems.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500 italic">
+            <p className="px-4 py-6 text-center text-sm text-neutral-400 dark:text-neutral-400 italic">
               {t('taskLists.emptyList')}
             </p>
           ) : readOnly ? (
@@ -269,7 +269,7 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
                   if (e.key === 'Enter') handleAddItem();
                 }}
                 placeholder={t('taskLists.addItem')}
-                className="w-full bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                className="w-full bg-transparent text-sm text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-400 outline-none"
               />
             </div>
           )}

@@ -86,19 +86,19 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900 dark:border dark:border-gray-800" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-neutral-900 dark:border dark:border-neutral-800/40" onClick={e => e.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('sharing.title')}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+          <h2 className="text-xl font-bold text-neutral-900 dark:text-white">{t('sharing.title')}</h2>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
             <X size={20} />
           </button>
         </div>
 
         {/* Share with Group section */}
         {groups && groups.length > 0 && (
-          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+          <div className="mb-4 pb-4 border-b border-neutral-200/60 dark:border-neutral-700/40">
+            <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2 flex items-center gap-1.5">
               <Orbit size={14} />
               {t('sharing.shareWithGroup')}
             </label>
@@ -106,7 +106,7 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
               <select
                 value={selectedGroupId}
                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
               >
                 <option value="">{t('sharing.selectGroup')}</option>
                 {groups.map((g) => (
@@ -118,7 +118,7 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
               <select
                 value={groupPermission}
                 onChange={(e) => setGroupPermission(e.target.value as 'READ' | 'WRITE')}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
               >
                 <option value="READ">{t('sharing.read')}</option>
                 <option value="WRITE">{t('sharing.write')}</option>
@@ -154,13 +154,13 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t('sharing.emailPlaceholder')}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
               required
             />
             <select
               value={permission}
               onChange={(e) => setPermission(e.target.value as 'READ' | 'WRITE')}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
             >
               <option value="READ">{t('sharing.read')}</option>
               <option value="WRITE">{t('sharing.write')}</option>
@@ -172,13 +172,13 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
         </form>
 
         <div className="space-y-4">
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('sharing.sharedWith')}</h3>
+          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('sharing.sharedWith')}</h3>
           {localSharedWith.length === 0 ? (
-            <p className="text-sm text-gray-500 italic">{t('sharing.noOne')}</p>
+            <p className="text-sm text-neutral-500 italic">{t('sharing.noOne')}</p>
           ) : (
             <ul className="space-y-2">
               {localSharedWith.map(user => (
-                <li key={user.id} className="flex items-center justify-between rounded-lg bg-gray-50 p-2 dark:bg-gray-800">
+                <li key={user.id} className="flex items-center justify-between rounded-lg bg-neutral-50 p-2 dark:bg-neutral-800">
                   <div className="flex items-center gap-3">
                     {user.avatarUrl ? (
                       <img src={user.avatarUrl.replace(/^https?:\/\/localhost:\d+/, '')} alt="" className="h-8 w-8 rounded-full object-cover flex-shrink-0" loading="lazy" decoding="async" />
@@ -188,13 +188,13 @@ export default function SharingModal({ isOpen, onClose, noteId, sharedWith = [] 
                       </div>
                     )}
                     <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">{user.name || user.email}</div>
-                      <div className="text-xs text-gray-500">{user.permission}</div>
+                      <div className="text-sm font-medium text-neutral-900 dark:text-white">{user.name || user.email}</div>
+                      <div className="text-xs text-neutral-500">{user.permission}</div>
                     </div>
                   </div>
                   <button
                     onClick={() => handleRevoke(user.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
+                    className="text-neutral-400 hover:text-red-500 transition-colors"
                     title={t('sharing.revoke')}
                   >
                     <Trash2 size={16} />
