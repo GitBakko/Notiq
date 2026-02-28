@@ -61,7 +61,7 @@ const getFileIconInfo = (filename: string) => {
     case 'py':
       return { icon: FileCode, color: 'text-yellow-600', bg: 'bg-yellow-100 dark:bg-yellow-900/30' };
     default:
-      return { icon: File, color: 'text-gray-500', bg: 'bg-gray-200 dark:bg-gray-700' };
+      return { icon: File, color: 'text-neutral-500', bg: 'bg-neutral-200 dark:bg-neutral-700' };
   }
 };
 
@@ -99,9 +99,9 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
   };
 
   return (
-    <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+    <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 dark:text-gray-400">
+        <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2 dark:text-neutral-400">
           <Paperclip size={12} />
           {t('notes.attachments')} ({attachments?.length || 0})
         </h4>
@@ -112,7 +112,7 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
           const isAudio = ['mp3', 'wav', 'ogg', 'webm'].includes(att.filename.split('.').pop()?.toLowerCase() || '');
 
           return (
-            <li key={att.id} className="flex flex-col bg-gray-50 p-2 rounded border border-gray-100 group dark:bg-gray-800 dark:border-gray-700">
+            <li key={att.id} className="flex flex-col bg-neutral-50 p-2 rounded-lg border border-neutral-100 group dark:bg-neutral-800 dark:border-neutral-700">
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-3 overflow-hidden">
                   <div className={`h-8 w-8 rounded flex items-center justify-center ${bg}`}>
@@ -121,12 +121,12 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
                   <div className="flex flex-col overflow-hidden">
                     <button
                       onClick={() => handleDownload(att.id, att.filename)}
-                      className="text-sm font-medium text-gray-700 truncate hover:text-emerald-600 hover:underline dark:text-gray-200 dark:hover:text-emerald-400 text-left"
+                      className="text-sm font-medium text-neutral-700 truncate hover:text-emerald-600 hover:underline dark:text-neutral-200 dark:hover:text-emerald-400 text-left"
                     >
                       {att.filename}
                     </button>
 
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                    <span className="text-xs text-neutral-400 dark:text-neutral-500">
                       {(att.size / 1024).toFixed(1)} KB {att.version && `• v${att.version}`}
                     </span>
                   </div>
@@ -134,7 +134,7 @@ export default function AttachmentList({ attachments, onDelete, onAdd, readOnly 
                 {!readOnly && onDelete && (
                   <button
                     onClick={() => onDelete(att.id)}
-                    className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity dark:text-gray-500 dark:hover:text-red-400"
+                    className="text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity dark:text-neutral-500 dark:hover:text-red-400"
                     title={t('common.deleteAttachment')}
                   >
                     <X size={16} />

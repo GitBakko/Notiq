@@ -58,7 +58,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-red-600">{t('auth.invalidTokenTitle')}</h2>
           <Button className="mt-4" onClick={() => navigate('/login')}>
@@ -70,13 +70,13 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900">
             <Lock className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
             {t('auth.resetPasswordTitle')}
           </h2>
         </div>
@@ -84,7 +84,7 @@ export default function ResetPasswordPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('profile.newPassword')}</label>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('profile.newPassword')}</label>
               <Input
                 type="password"
                 {...register('password')}
@@ -95,7 +95,7 @@ export default function ResetPasswordPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('profile.confirmPassword')}</label>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('profile.confirmPassword')}</label>
               <Input
                 type="password"
                 {...register('confirmPassword')}

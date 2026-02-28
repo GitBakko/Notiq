@@ -263,7 +263,7 @@ export default function CardDetailModal({
         {/* Title */}
         <div>
           {readOnly ? (
-            <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h4 className="text-lg font-semibold text-neutral-900 dark:text-white">
               {card.title || t('kanban.card.untitled')}
             </h4>
           ) : (
@@ -273,7 +273,7 @@ export default function CardDetailModal({
               onChange={(e) => setEditTitle(e.target.value)}
               onBlur={handleTitleBlur}
               onKeyDown={handleTitleKeyDown}
-              className="w-full text-lg font-semibold text-gray-900 dark:text-white bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none pb-1 transition-colors"
+              className="w-full text-lg font-semibold text-neutral-900 dark:text-white bg-transparent border-b border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none pb-1 transition-colors"
               placeholder={t('kanban.card.cardTitle')}
             />
           )}
@@ -281,11 +281,11 @@ export default function CardDetailModal({
 
         {/* Description */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">
             {t('kanban.card.description')}
           </label>
           {readOnly ? (
-            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+            <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
               {card.description || t('kanban.card.noDescription')}
             </p>
           ) : (
@@ -296,7 +296,7 @@ export default function CardDetailModal({
               onBlur={handleDescriptionBlur}
               placeholder={t('kanban.card.noDescription')}
               rows={2}
-              className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg p-2 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none resize-none transition-colors"
+              className="w-full text-sm text-neutral-700 dark:text-neutral-300 bg-transparent border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg p-2 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none resize-none transition-colors"
             />
           )}
         </div>
@@ -305,7 +305,7 @@ export default function CardDetailModal({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Assignee */}
           <div>
-            <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+            <label className="flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">
               <User size={12} />
               {t('kanban.card.assignee')}
             </label>
@@ -321,13 +321,13 @@ export default function CardDetailModal({
                     {(card.assignee.name || card.assignee.email).charAt(0).toUpperCase()}
                   </span>
                 )}
-                <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                <span className="text-sm text-neutral-700 dark:text-neutral-300 truncate">
                   {card.assignee.name || card.assignee.email}
                 </span>
                 {!readOnly && (
                   <button
                     onClick={handleClearAssignee}
-                    className="ml-auto text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
+                    className="ml-auto text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
                     title={t('common.delete')}
                   >
                     <X size={14} />
@@ -335,7 +335,7 @@ export default function CardDetailModal({
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+              <p className="text-sm text-neutral-400 dark:text-neutral-500 italic">
                 {t('kanban.card.unassigned')}
               </p>
             )}
@@ -343,7 +343,7 @@ export default function CardDetailModal({
 
           {/* Due date */}
           <div>
-            <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+            <label className="flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">
               <Calendar size={12} />
               {t('kanban.card.dueDate')}
             </label>
@@ -353,7 +353,7 @@ export default function CardDetailModal({
                   'text-sm',
                   overdue
                     ? 'text-red-600 dark:text-red-400 font-medium'
-                    : 'text-gray-700 dark:text-gray-300'
+                    : 'text-neutral-700 dark:text-neutral-300'
                 )}>
                   {card.dueDate ? formatDueDate(card.dueDate) : '-'}
                 </span>
@@ -369,7 +369,7 @@ export default function CardDetailModal({
                   type="date"
                   value={card.dueDate ? formatDueDate(card.dueDate) : ''}
                   onChange={handleDueDateChange}
-                  className="text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
+                  className="text-sm text-neutral-700 dark:text-neutral-300 bg-transparent border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg px-2 py-1 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
                 />
                 {overdue && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
@@ -382,11 +382,11 @@ export default function CardDetailModal({
 
           {/* Priority */}
           <div>
-            <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+            <label className="flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">
               {t('kanban.card.priority')}
             </label>
             {readOnly ? (
-              <span className={clsx('flex items-center gap-1.5 text-sm', card.priority ? PRIORITY_CONFIG[card.priority].color : 'text-gray-400 dark:text-gray-500 italic')}>
+              <span className={clsx('flex items-center gap-1.5 text-sm', card.priority ? PRIORITY_CONFIG[card.priority].color : 'text-neutral-400 dark:text-neutral-500 italic')}>
                 {card.priority && (() => { const Icon = PRIORITY_CONFIG[card.priority].icon; return <Icon size={14} />; })()}
                 {card.priority ? t(`kanban.priority.${card.priority}`) : '-'}
               </span>
@@ -395,22 +395,22 @@ export default function CardDetailModal({
                 <button
                   type="button"
                   onClick={() => setPriorityOpen(!priorityOpen)}
-                  className="w-full flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
+                  className="w-full flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg px-2 py-1.5 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors"
                 >
                   {card.priority ? (
                     (() => { const Icon = PRIORITY_CONFIG[card.priority].icon; return <Icon size={14} className={PRIORITY_CONFIG[card.priority].color} />; })()
                   ) : (
                     <span className="w-3.5" />
                   )}
-                  <span className={clsx('flex-1 text-left', card.priority ? PRIORITY_CONFIG[card.priority].color : 'text-gray-400 dark:text-gray-500')}>
+                  <span className={clsx('flex-1 text-left', card.priority ? PRIORITY_CONFIG[card.priority].color : 'text-neutral-400 dark:text-neutral-500')}>
                     {card.priority ? t(`kanban.priority.${card.priority}`) : '-'}
                   </span>
                 </button>
                 {priorityOpen && (
-                  <div className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                  <div className="absolute z-20 mt-1 w-full bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-lg overflow-hidden">
                     {PRIORITIES.map((p) => {
                       const PIcon = p ? PRIORITY_CONFIG[p].icon : null;
-                      const pColor = p ? PRIORITY_CONFIG[p].color : 'text-gray-400 dark:text-gray-500';
+                      const pColor = p ? PRIORITY_CONFIG[p].color : 'text-neutral-400 dark:text-neutral-500';
                       return (
                         <button
                           key={p ?? 'none'}
@@ -421,8 +421,8 @@ export default function CardDetailModal({
                           }}
                           className={clsx(
                             'w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left transition-colors',
-                            'hover:bg-gray-100 dark:hover:bg-gray-700',
-                            card.priority === p && 'bg-gray-50 dark:bg-gray-700/50'
+                            'hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                            card.priority === p && 'bg-neutral-50 dark:bg-neutral-700/50'
                           )}
                         >
                           {PIcon ? (
@@ -444,7 +444,7 @@ export default function CardDetailModal({
 
           {/* Linked note */}
           <div className="col-span-full">
-            <label className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+            <label className="flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">
               <FileText size={12} />
               {t('kanban.card.linkedNote')}
             </label>
@@ -461,7 +461,7 @@ export default function CardDetailModal({
                   <button
                     onClick={handleUnlinkNote}
                     disabled={unlinkNote.isPending}
-                    className="ml-auto text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors flex-shrink-0 disabled:opacity-50"
+                    className="ml-auto text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors flex-shrink-0 disabled:opacity-50"
                     title={t('kanban.noteLink.unlink')}
                   >
                     <Unlink size={14} />
@@ -470,7 +470,7 @@ export default function CardDetailModal({
               </div>
             ) : card.noteId ? (
               // Card has a linked note but user has no access
-              <p className="text-sm text-gray-400 dark:text-gray-500 italic">-</p>
+              <p className="text-sm text-neutral-400 dark:text-neutral-500 italic">-</p>
             ) : !readOnly ? (
               <button
                 onClick={() => setIsNotePickerOpen(true)}
@@ -480,18 +480,18 @@ export default function CardDetailModal({
                 {t('kanban.noteLink.linkNote')}
               </button>
             ) : (
-              <p className="text-sm text-gray-400 dark:text-gray-500 italic">-</p>
+              <p className="text-sm text-neutral-400 dark:text-neutral-500 italic">-</p>
             )}
           </div>
         </div>
 
         {/* Comments section */}
         <div>
-          <h5 className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+          <h5 className="flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-3">
             <MessageSquare size={12} />
             {t('kanban.comment.comments')}
             {comments && comments.length > 0 && (
-              <span className="ml-1 text-gray-400 dark:text-gray-500">({comments.length})</span>
+              <span className="ml-1 text-neutral-400 dark:text-neutral-500">({comments.length})</span>
             )}
           </h5>
 
@@ -515,22 +515,22 @@ export default function CardDetailModal({
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      <span className="text-sm font-medium text-neutral-900 dark:text-white truncate">
                         {comment.author.name || comment.author.email}
                       </span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
+                      <span className="text-xs text-neutral-400 dark:text-neutral-500 flex-shrink-0">
                         {timeAgo(comment.createdAt, dateLocale)}
                       </span>
                       {currentUser?.id === comment.author.id && (
                         <button
                           onClick={() => removeComment.mutate(comment.id)}
-                          className="ml-auto text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
+                          className="ml-auto text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
                         >
                           <Trash2 size={13} />
                         </button>
                       )}
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words mt-0.5">
+                    <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap break-words mt-0.5">
                       {comment.content}
                     </p>
                   </div>
@@ -538,7 +538,7 @@ export default function CardDetailModal({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 dark:text-gray-500 italic mb-3">
+            <p className="text-sm text-neutral-400 dark:text-neutral-500 italic mb-3">
               {t('kanban.comment.noComments')}
             </p>
           )}
@@ -552,7 +552,7 @@ export default function CardDetailModal({
                 onChange={(e) => setCommentText(e.target.value)}
                 onKeyDown={handleCommentKeyDown}
                 placeholder={t('kanban.comment.placeholder')}
-                className="flex-1 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                className="flex-1 text-sm text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-700/50 border border-neutral-200/60 dark:border-neutral-600 rounded-lg px-3 py-2 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none transition-colors placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
               />
               <button
                 onClick={handleSendComment}
@@ -568,11 +568,11 @@ export default function CardDetailModal({
 
         {/* Activity section */}
         <div>
-          <h5 className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+          <h5 className="flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-3">
             <Activity size={12} />
             {t('kanban.activity.title')}
             {activities && activities.length > 0 && (
-              <span className="ml-1 text-gray-400 dark:text-gray-500">({activities.length})</span>
+              <span className="ml-1 text-neutral-400 dark:text-neutral-500">({activities.length})</span>
             )}
           </h5>
 
@@ -600,14 +600,14 @@ export default function CardDetailModal({
                     </span>
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-600 dark:text-gray-300">
-                      <span className="font-medium text-gray-800 dark:text-white">
+                    <p className="text-xs text-neutral-600 dark:text-neutral-300">
+                      <span className="font-medium text-neutral-800 dark:text-white">
                         {activity.user.name || activity.user.email.split('@')[0]}
                       </span>
                       {' '}
                       {getActivityText(activity)}
                     </p>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
                       {timeAgo(activity.createdAt, dateLocale)}
                     </span>
                   </div>
@@ -615,7 +615,7 @@ export default function CardDetailModal({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+            <p className="text-sm text-neutral-400 dark:text-neutral-500 italic">
               {t('kanban.activity.noActivity')}
             </p>
           )}
@@ -623,7 +623,7 @@ export default function CardDetailModal({
 
         {/* Delete card button */}
         {!readOnly && (
-          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-700/40">
             <button
               onClick={handleDeleteCard}
               className="text-sm text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors"

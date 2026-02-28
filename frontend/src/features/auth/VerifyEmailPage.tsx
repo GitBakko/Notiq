@@ -33,8 +33,8 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
-      <div className="w-full max-w-md space-y-8 text-center bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
+      <div className="w-full max-w-md space-y-8 text-center bg-white dark:bg-neutral-800 p-8 rounded-lg shadow-md">
         {status === 'verifying' && (
           <div>
             <h2 className="text-2xl font-bold dark:text-white">{t('auth.verifying')}</h2>
@@ -45,7 +45,7 @@ export default function VerifyEmailPage() {
         {status === 'success' && (
           <div>
             <h2 className="text-2xl font-bold text-emerald-600">{t('auth.emailVerified')}</h2>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">
+            <p className="mt-2 text-neutral-600 dark:text-neutral-300">
               {t('auth.verificationSuccessBody')}
             </p>
             <div className="mt-6">
@@ -62,7 +62,7 @@ export default function VerifyEmailPage() {
         {status === 'error' && (
           <div>
             <h2 className="text-2xl font-bold text-red-600">{t('auth.verificationFailed')}</h2>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">
+            <p className="mt-2 text-neutral-600 dark:text-neutral-300">
               {errorMsg === 'Invalid or expired token' ? t('auth.invalidLink') : errorMsg}
             </p>
             <div className="mt-6">

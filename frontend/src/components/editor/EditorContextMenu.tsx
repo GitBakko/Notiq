@@ -132,13 +132,13 @@ export default function EditorContextMenu({ editor, position, onClose, onTransfo
   }
 
   const menuItemClass =
-    'w-full flex items-center justify-between px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left';
-  const separatorClass = 'border-t border-gray-200 dark:border-gray-700 my-1';
+    'w-full flex items-center justify-between px-4 py-2 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors text-left';
+  const separatorClass = 'border-t border-neutral-200 dark:border-neutral-700 my-1';
 
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-150"
+      className="fixed z-[9999] bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-150"
       style={{
         top: menuPos.y,
         left: menuPos.x,
@@ -147,41 +147,41 @@ export default function EditorContextMenu({ editor, position, onClose, onTransfo
     >
       <button className={menuItemClass} onClick={handleCut}>
         <span className="flex items-center gap-3">
-          <Scissors size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+          <Scissors size={16} className="text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
           <span>{t('editor.cut')}</span>
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+X</span>
+        <span className="text-xs text-neutral-400 dark:text-neutral-500">Ctrl+X</span>
       </button>
       <button className={menuItemClass} onClick={handleCopy}>
         <span className="flex items-center gap-3">
-          <Copy size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+          <Copy size={16} className="text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
           <span>{t('editor.copy')}</span>
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+C</span>
+        <span className="text-xs text-neutral-400 dark:text-neutral-500">Ctrl+C</span>
       </button>
 
       <div className={separatorClass} />
 
       <button className={menuItemClass} onClick={handlePaste}>
         <span className="flex items-center gap-3">
-          <ClipboardPaste size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+          <ClipboardPaste size={16} className="text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
           <span>{t('editor.paste')}</span>
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+V</span>
+        <span className="text-xs text-neutral-400 dark:text-neutral-500">Ctrl+V</span>
       </button>
       <button className={menuItemClass} onClick={handlePasteAsPlainText}>
         <span className="flex items-center gap-3">
-          <ClipboardType size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+          <ClipboardType size={16} className="text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
           <span>{t('editor.pasteAsPlainText')}</span>
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Ctrl+Shift+V</span>
+        <span className="text-xs text-neutral-400 dark:text-neutral-500">Ctrl+Shift+V</span>
       </button>
 
       {listItems.length > 0 && (
         <>
           <div className={separatorClass} />
           <div className="px-3 py-1">
-            <span className="text-xs text-gray-400 dark:text-gray-500">
+            <span className="text-xs text-neutral-400 dark:text-neutral-500">
               {t('editor.transform.itemsSelected', { count: listItems.length })}
             </span>
           </div>
@@ -193,7 +193,7 @@ export default function EditorContextMenu({ editor, position, onClose, onTransfo
             }}
           >
             <span className="flex items-center gap-3">
-              <LayoutDashboard size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+              <LayoutDashboard size={16} className="text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
               <span>{t('editor.transform.toKanban')}</span>
             </span>
           </button>
@@ -205,7 +205,7 @@ export default function EditorContextMenu({ editor, position, onClose, onTransfo
             }}
           >
             <span className="flex items-center gap-3">
-              <ListChecks size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+              <ListChecks size={16} className="text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
               <span>{t('editor.transform.toTaskList')}</span>
             </span>
           </button>

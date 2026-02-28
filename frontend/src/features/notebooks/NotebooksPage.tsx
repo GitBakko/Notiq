@@ -64,21 +64,21 @@ export default function NotebooksPage() {
   });
 
   if (isLoading) {
-    return <div className="p-8 text-center text-gray-500">{t('common.loading')}</div>;
+    return <div className="p-8 text-center text-neutral-500">{t('common.loading')}</div>;
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 sm:px-8 sm:py-6 flex items-center justify-between dark:bg-gray-900 dark:border-gray-800">
+    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
+      <div className="bg-white border-b border-neutral-200/60 px-4 py-4 sm:px-8 sm:py-6 flex items-center justify-between dark:bg-neutral-900 dark:border-neutral-800/40">
         <div className="flex items-center gap-3">
           {isMobile && (
-            <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+            <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
               <Menu size={24} />
             </button>
           )}
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('sidebar.notebooks')}</h1>
-            <p className="text-sm text-gray-500 mt-1 dark:text-gray-400">{t('notebooks.count', { count: notebooks?.length || 0 })}</p>
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">{t('sidebar.notebooks')}</h1>
+            <p className="text-sm text-neutral-500 mt-1 dark:text-neutral-400">{t('notebooks.count', { count: notebooks?.length || 0 })}</p>
           </div>
         </div>
         <Button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2">
@@ -90,7 +90,7 @@ export default function NotebooksPage() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {notebooks?.map((notebook) => (
-            <Card key={notebook.id} className="group hover:shadow-md transition-shadow dark:bg-gray-800 dark:border-gray-700">
+            <Card key={notebook.id} className="group hover:shadow-md transition-shadow dark:bg-neutral-800 dark:border-neutral-700/40">
               <div className="p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600 dark:bg-emerald-900 dark:text-emerald-400">
@@ -100,23 +100,23 @@ export default function NotebooksPage() {
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => setEditingNotebook(notebook)}
-                        className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:hover:bg-emerald-900/30"
+                        className="p-1.5 text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:hover:bg-emerald-900/30"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => setDeletingNotebook(notebook)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors dark:hover:bg-red-900/30"
+                        className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors dark:hover:bg-red-900/30"
                       >
                         <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white" title={notebook.name}>
+                <h3 className="font-semibold text-neutral-900 mb-1 truncate dark:text-white" title={notebook.name}>
                   {notebook.name}
                 </h3>
-                <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
                   <span className="flex items-center gap-1">
                     <Calendar size={12} />
                     {format(new Date(notebook.updatedAt), 'MMM d, yyyy')}
@@ -129,11 +129,11 @@ export default function NotebooksPage() {
 
         {notebooks?.length === 0 && (
           <div className="text-center py-20">
-            <div className="inline-flex p-4 bg-gray-100 rounded-full text-gray-400 mb-4 dark:bg-gray-800 dark:text-gray-500">
+            <div className="inline-flex p-4 bg-neutral-100 rounded-full text-neutral-400 mb-4 dark:bg-neutral-800 dark:text-neutral-500">
               <Book size={48} />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2 dark:text-white">{t('notebooks.emptyTitle')}</h3>
-            <p className="text-gray-500 mb-6 dark:text-gray-400">{t('notebooks.emptyDescription')}</p>
+            <h3 className="text-lg font-medium text-neutral-900 mb-2 dark:text-white">{t('notebooks.emptyTitle')}</h3>
+            <p className="text-neutral-500 mb-6 dark:text-neutral-400">{t('notebooks.emptyDescription')}</p>
             <Button onClick={() => setIsCreateOpen(true)}>
               {t('notebooks.createFirst')}
             </Button>

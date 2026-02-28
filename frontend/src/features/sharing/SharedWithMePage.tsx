@@ -220,22 +220,22 @@ export default function SharedWithMePage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-900">
-      <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-neutral-900">
+      <div className="p-6 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-3">
           {isMobile && (
-            <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+            <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
               <Menu size={24} />
             </button>
           )}
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
             {view === 'received'
               ? <Users className="text-emerald-600" />
               : <Send className="text-emerald-600" />}
             {t('sharing.title')}
           </h1>
         </div>
-        <p className="text-gray-500 mt-1 dark:text-gray-400">
+        <p className="text-neutral-500 mt-1 dark:text-neutral-400">
           {view === 'received' ? t('sharing.sharedWithMeSubtitle') : t('sharing.sentSubtitle')}
         </p>
         <div className="flex gap-2 mt-3">
@@ -245,7 +245,7 @@ export default function SharedWithMePage() {
               "px-4 py-1.5 text-sm font-medium rounded-full transition-colors",
               view === 'received'
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
             )}
           >
             {t('sharing.received')}
@@ -256,7 +256,7 @@ export default function SharedWithMePage() {
               "px-4 py-1.5 text-sm font-medium rounded-full transition-colors",
               view === 'sent'
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
             )}
           >
             {t('sharing.sent')}
@@ -266,14 +266,14 @@ export default function SharedWithMePage() {
 
       {view === 'received' && (
         <>
-          <div className="flex border-b border-gray-200 dark:border-gray-800">
+          <div className="flex border-b border-neutral-200 dark:border-neutral-800">
             <button
               onClick={() => setActiveTab('notes')}
               className={clsx(
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'notes'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.notes')} ({sharedNotes.length})
@@ -284,7 +284,7 @@ export default function SharedWithMePage() {
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'notebooks'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.notebooks')} ({sharedNotebooks.length})
@@ -295,7 +295,7 @@ export default function SharedWithMePage() {
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'taskLists'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.taskLists')} ({sharedTaskLists.length})
@@ -306,7 +306,7 @@ export default function SharedWithMePage() {
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'kanbanBoards'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.kanban')} ({sharedKanbanBoards.length})
@@ -315,7 +315,7 @@ export default function SharedWithMePage() {
 
           <div className="flex-1 overflow-y-auto p-6">
             {isLoading ? (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full text-neutral-400">
                 {t('common.loading')}
               </div>
             ) : (
@@ -330,7 +330,7 @@ export default function SharedWithMePage() {
                   const { pending, accepted } = filterItems(items);
                   if (pending.length === 0 && accepted.length === 0) {
                     return (
-                      <div className="text-center text-gray-500 py-12">
+                      <div className="text-center text-neutral-500 py-12">
                         {activeTab === 'notes' ? t('sharing.noSharedNotes')
                           : activeTab === 'notebooks' ? t('sharing.noSharedNotebooks')
                           : activeTab === 'taskLists' ? t('sharing.noSharedTaskLists')
@@ -367,10 +367,10 @@ export default function SharedWithMePage() {
                   }
 
                   function getTabIcon() {
-                    if (activeTab === 'notes') return <FileText className="text-gray-400 dark:text-gray-500" size={20} />;
-                    if (activeTab === 'notebooks') return <Book className="text-gray-400 dark:text-gray-500" size={20} />;
-                    if (activeTab === 'taskLists') return <ListChecks className="text-gray-400 dark:text-gray-500" size={20} />;
-                    return <Columns3 className="text-gray-400 dark:text-gray-500" size={20} />;
+                    if (activeTab === 'notes') return <FileText className="text-neutral-400 dark:text-neutral-500" size={20} />;
+                    if (activeTab === 'notebooks') return <Book className="text-neutral-400 dark:text-neutral-500" size={20} />;
+                    if (activeTab === 'taskLists') return <ListChecks className="text-neutral-400 dark:text-neutral-500" size={20} />;
+                    return <Columns3 className="text-neutral-400 dark:text-neutral-500" size={20} />;
                   }
 
                   function getAcceptedLink(id: string) {
@@ -384,7 +384,7 @@ export default function SharedWithMePage() {
                     <>
                       {pending.length > 0 && (
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">{t('sharing.pendingInvitations')}</h3>
+                          <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-4 px-1">{t('sharing.pendingInvitations')}</h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {pending.map(item => {
                               const { title, sharerName, id } = getItemData(item);
@@ -402,11 +402,11 @@ export default function SharedWithMePage() {
                                 >
                                   <div className="flex items-start justify-between mb-2">
                                     <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500">{t('sharing.invitation')}</span>
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700">{item.permission}</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-white text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 border border-neutral-100 dark:border-neutral-700">{item.permission}</span>
                                   </div>
-                                  <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{title}</h3>
-                                  <div className="text-xs text-gray-500 mt-2 mb-4">
-                                    {t('sharing.sharedBy')} <span className="font-medium text-gray-700 dark:text-gray-300">{sharerName}</span>
+                                  <h3 className="font-semibold text-neutral-900 mb-1 truncate dark:text-white">{title}</h3>
+                                  <div className="text-xs text-neutral-500 mt-2 mb-4">
+                                    {t('sharing.sharedBy')} <span className="font-medium text-neutral-700 dark:text-neutral-300">{sharerName}</span>
                                   </div>
                                   <div className="flex gap-2">
                                     <button
@@ -417,7 +417,7 @@ export default function SharedWithMePage() {
                                     </button>
                                     <button
                                       onClick={() => handleRespond(id, respondType, 'decline')}
-                                      className="flex-1 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 text-sm font-medium rounded-lg transition-colors dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+                                      className="flex-1 px-3 py-1.5 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 text-sm font-medium rounded-lg transition-colors dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-600 dark:hover:bg-neutral-700"
                                     >
                                       {t('common.decline')}
                                     </button>
@@ -432,7 +432,7 @@ export default function SharedWithMePage() {
                       {/* ACCEPTED SECTION */}
                       {accepted.length > 0 && (
                         <div>
-                          {pending.length > 0 && <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1 mt-8">{t('sharing.sharedWithYou')}</h3>}
+                          {pending.length > 0 && <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-4 px-1 mt-8">{t('sharing.sharedWithYou')}</h3>}
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {accepted.map(item => {
                               const { title, sharerName, id } = getItemData(item);
@@ -446,19 +446,19 @@ export default function SharedWithMePage() {
                                     "block p-4 rounded-xl border transition-all",
                                     highlightedId === id
                                       ? "ring-2 ring-emerald-400 shadow-md shadow-emerald-100 dark:shadow-emerald-900/30 animate-pulse border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                                      : "border-gray-200 hover:border-emerald-500 hover:shadow-md bg-white dark:bg-gray-800 dark:border-gray-700 dark:hover:border-emerald-500"
+                                      : "border-neutral-200 hover:border-emerald-500 hover:shadow-md bg-white dark:bg-neutral-800 dark:border-neutral-700 dark:hover:border-emerald-500"
                                   )}
                                 >
                                   <div className="flex items-start justify-between mb-2">
                                     {getTabIcon()}
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
                                       {item.permission}
                                     </span>
                                   </div>
-                                  <h3 className="font-semibold text-gray-900 mb-1 truncate dark:text-white">{title}</h3>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
+                                  <h3 className="font-semibold text-neutral-900 mb-1 truncate dark:text-white">{title}</h3>
+                                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 flex items-center gap-1">
                                     <span>{t('sharing.sharedBy')}</span>
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">{sharerName}</span>
+                                    <span className="font-medium text-neutral-700 dark:text-neutral-300">{sharerName}</span>
                                   </div>
                                 </Link>
                               );
@@ -477,14 +477,14 @@ export default function SharedWithMePage() {
 
       {view === 'sent' && (
         <>
-          <div className="flex border-b border-gray-200 dark:border-gray-800">
+          <div className="flex border-b border-neutral-200 dark:border-neutral-800">
             <button
               onClick={() => setActiveTab('notes')}
               className={clsx(
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'notes'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.notes')}
@@ -495,7 +495,7 @@ export default function SharedWithMePage() {
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'notebooks'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.notebooks')}
@@ -506,7 +506,7 @@ export default function SharedWithMePage() {
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'taskLists'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.taskLists')}
@@ -517,7 +517,7 @@ export default function SharedWithMePage() {
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === 'kanbanBoards'
                   ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               )}
             >
               {t('sidebar.kanban')}
@@ -526,7 +526,7 @@ export default function SharedWithMePage() {
 
           <div className="flex-1 overflow-y-auto p-6">
             {isSentLoading ? (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full text-neutral-400">
                 {t('common.loading')}
               </div>
             ) : (
@@ -592,7 +592,7 @@ function SentItemsGrid({ sentData, activeTab, onResend, onCancelOrRevoke }: Sent
 
   if (!sentItems || sentItems.length === 0) {
     return (
-      <div className="text-center text-gray-500 dark:text-gray-400 py-12">
+      <div className="text-center text-neutral-500 dark:text-neutral-400 py-12">
         {t('sharing.noSentInvitations')}
       </div>
     );
@@ -608,21 +608,21 @@ function SentItemsGrid({ sentData, activeTab, onResend, onCancelOrRevoke }: Sent
         return (
           <div
             key={item.id}
-            className="block p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+            className="block p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800"
           >
             <div className="flex items-start justify-between mb-2">
               <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", statusColors[item.status])}>
                 {t(statusKey)}
               </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
                 {item.permission}
               </span>
             </div>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-1 truncate">{entityName}</h3>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-              {t('sharing.sentTo')} <span className="font-medium text-gray-700 dark:text-gray-300">{item.user.name || item.user.email}</span>
+            <h3 className="font-semibold text-neutral-900 dark:text-white mb-1 truncate">{entityName}</h3>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+              {t('sharing.sentTo')} <span className="font-medium text-neutral-700 dark:text-neutral-300">{item.user.name || item.user.email}</span>
             </div>
-            <div className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+            <div className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">
               {new Date(item.createdAt).toLocaleDateString()}
             </div>
             <div className="flex gap-2">
@@ -637,7 +637,7 @@ function SentItemsGrid({ sentData, activeTab, onResend, onCancelOrRevoke }: Sent
                   </button>
                   <button
                     onClick={() => onCancelOrRevoke(type, entityId, item.user.id, item.status)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg transition-colors dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 rounded-lg transition-colors dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-600 dark:hover:bg-neutral-700"
                   >
                     <X size={12} />
                     {t('sharing.cancelInvite')}

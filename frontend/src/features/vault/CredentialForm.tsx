@@ -305,7 +305,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
 
   if (decryptFailed) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-gray-500 dark:text-gray-400">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-neutral-500 dark:text-neutral-400">
         <p>{t('vault.credential.decryptFailed')}</p>
         <Button variant="ghost" onClick={onBack} className="mt-4">
           <ArrowLeft size={16} className="mr-2" />
@@ -316,19 +316,19 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-900 overflow-y-auto">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-neutral-900 overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex items-center justify-between p-4 border-b border-neutral-200/60 dark:border-neutral-800/40">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm"
+          className="flex items-center gap-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 text-sm"
         >
           <ArrowLeft size={16} />
           {t('common.back')}
         </button>
         <button
           onClick={() => setShowDeleteConfirm(true)}
-          className="flex items-center gap-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 text-sm transition-colors"
+          className="flex items-center gap-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 text-sm transition-colors"
           title={t('common.delete')}
         >
           <Trash2 size={16} />
@@ -360,7 +360,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
             <img
               src={displayFavicon}
               alt=""
-              className="w-8 h-8 rounded-md flex-shrink-0 bg-gray-100 dark:bg-gray-800"
+              className="w-8 h-8 rounded-md flex-shrink-0 bg-neutral-100 dark:bg-neutral-800"
               onError={() => {
                 if (!faviconError && storedFavicon) {
                   setFaviconError(true);
@@ -368,8 +368,8 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
               }}
             />
           ) : (
-            <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
-              <Globe size={16} className="text-gray-400 dark:text-gray-500" />
+            <div className="w-8 h-8 rounded-md bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0">
+              <Globe size={16} className="text-neutral-400 dark:text-neutral-500" />
             </div>
           )}
           <div className="flex-1 min-w-0">
@@ -378,10 +378,10 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
               value={title}
               onChange={(e) => handleTitleChange(e.target.value)}
               placeholder={t('vault.credential.untitled')}
-              className="w-full text-xl font-semibold bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+              className="w-full text-xl font-semibold bg-transparent border-none outline-none text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500"
             />
             {domain && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{domain}</p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">{domain}</p>
             )}
           </div>
         </div>
@@ -399,12 +399,12 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
 
         {/* Website section */}
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
             {t('vault.credential.websiteInfo')}
           </h4>
-          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 space-y-3">
+          <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 space-y-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
                 {t('vault.credential.siteUrl')}
               </label>
               <div className="flex items-center gap-1">
@@ -415,10 +415,10 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                     onChange={(e) => handleUrlChange(e.target.value)}
                     onBlur={handleUrlBlur}
                     placeholder={t('vault.credential.siteUrlPlaceholder')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   {fetchingMeta && (
-                    <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />
+                    <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-neutral-400" />
                   )}
                 </div>
                 <CopyButton value={data.siteUrl} label={t('vault.credential.copySiteUrl')} />
@@ -426,7 +426,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                   <button
                     type="button"
                     onClick={() => window.open(data.siteUrl, '_blank', 'noopener,noreferrer')}
-                    className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:text-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                     title={t('vault.credential.openUrl')}
                   >
                     <ExternalLink size={16} />
@@ -439,14 +439,14 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
             {(data.screenshotBase64 || fetchingScreenshot) && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
                     {t('vault.credential.websitePreview')}
                   </span>
                   {data.screenshotBase64 && !fetchingScreenshot && (
                     <button
                       type="button"
                       onClick={handleRetakeScreenshot}
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                      className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
                     >
                       <RefreshCw size={12} />
                       {t('vault.credential.retakeScreenshot')}
@@ -454,8 +454,8 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                   )}
                 </div>
                 {fetchingScreenshot ? (
-                  <div className="flex items-center justify-center h-40 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <div className="flex flex-col items-center gap-2 text-gray-400">
+                  <div className="flex items-center justify-center h-40 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                    <div className="flex flex-col items-center gap-2 text-neutral-400">
                       <Camera size={20} className="animate-pulse" />
                       <span className="text-xs">{t('vault.credential.loadingScreenshot')}</span>
                     </div>
@@ -464,7 +464,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                   <img
                     src={data.screenshotBase64}
                     alt=""
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+                    className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm"
                   />
                 ) : null}
               </div>
@@ -474,13 +474,13 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
 
         {/* Login Details section */}
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
             {t('vault.credential.loginDetails')}
           </h4>
-          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 space-y-4">
+          <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 space-y-4">
             {/* Username */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
                 {t('vault.credential.username')}
               </label>
               <div className="flex items-center gap-1">
@@ -490,7 +490,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                   onChange={(e) => updateField('username', e.target.value)}
                   placeholder={t('vault.credential.usernamePlaceholder')}
                   autoComplete="off"
-                  className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 />
                 <CopyButton value={data.username} label={t('vault.credential.copyUsername')} />
               </div>
@@ -498,7 +498,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
 
             {/* Password */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
                 {t('vault.credential.password')}
               </label>
               <div className="flex items-center gap-1">
@@ -509,12 +509,12 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                     onChange={(e) => updateField('password', e.target.value)}
                     placeholder={t('vault.credential.passwordPlaceholder')}
                     autoComplete="new-password"
-                    className="w-full px-3 py-2 pr-9 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="w-full px-3 py-2 pr-9 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
                     title={showPassword ? t('vault.credential.hidePassword') : t('vault.credential.showPassword')}
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -525,7 +525,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
                   <button
                     type="button"
                     onClick={() => setShowGenerator(!showGenerator)}
-                    className="p-1.5 rounded-md text-gray-500 hover:text-amber-600 hover:bg-amber-50 dark:text-gray-400 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors"
+                    className="p-1.5 rounded-lg text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors"
                     title={t('vault.credential.generatePassword')}
                   >
                     <Zap size={16} />
@@ -546,7 +546,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
 
         {/* Notes section */}
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
             {t('vault.credential.additionalNotes')}
           </h4>
           <textarea
@@ -554,7 +554,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
             onChange={(e) => updateField('notes', e.target.value)}
             placeholder={t('vault.credential.notesPlaceholder')}
             rows={4}
-            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white resize-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm text-neutral-900 dark:text-white resize-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
           />
         </div>
       </form>

@@ -45,7 +45,7 @@ export function InputDialog({
       <form onSubmit={handleSubmit}>
         {message && (
           <div className="mt-2 mb-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{message}</p>
           </div>
         )}
 

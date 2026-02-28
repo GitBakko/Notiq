@@ -37,7 +37,7 @@ export const Alert = ({ variant = 'info', title, children, className }: AlertPro
   const Icon = style.icon;
 
   return (
-    <div className={clsx('rounded-md border p-4 shadow-sm', style.container, className)}>
+    <div className={clsx('rounded-lg border p-4 shadow-sm', style.container, className)}>
       <div className="flex">
         <div className="flex-shrink-0">
           <Icon className={clsx('h-5 w-5', style.iconColor)} aria-hidden="true" />

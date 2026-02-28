@@ -84,7 +84,7 @@ export default function BottomSheet({ isOpen, onClose, title, children, size = '
     <div className="fixed inset-0 z-50">
       {/* Overlay */}
       <div
-        className="absolute inset-0 bg-black/50 transition-opacity"
+        className="absolute inset-0 bg-neutral-950/60 transition-opacity"
         onClick={onClose}
       />
 
@@ -96,7 +96,7 @@ export default function BottomSheet({ isOpen, onClose, title, children, size = '
         aria-label={title || 'Dialog'}
         className={clsx(
           'absolute bottom-0 left-0 right-0',
-          'bg-white dark:bg-gray-900',
+          'bg-white dark:bg-neutral-900',
           'rounded-t-2xl shadow-xl max-h-[85vh] flex flex-col',
           'safe-area-bottom',
         )}
@@ -106,13 +106,13 @@ export default function BottomSheet({ isOpen, onClose, title, children, size = '
       >
         {/* Drag Handle */}
         <div className="flex justify-center py-3 flex-shrink-0">
-          <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+          <div className="w-10 h-1 rounded-full bg-neutral-300 dark:bg-neutral-600" />
         </div>
 
         {/* Title */}
         {title && (
-          <div className="px-4 pb-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
+          <div className="px-4 pb-3 border-b border-neutral-200/60 dark:border-neutral-700/40 flex-shrink-0">
+            <h3 className="text-base font-semibold tracking-tight text-neutral-900 dark:text-white">{title}</h3>
           </div>
         )}
 

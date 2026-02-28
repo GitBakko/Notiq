@@ -69,9 +69,9 @@ export default function ScrollToEditButton({ editor, collaborators }: ScrollToEd
     <button
       onClick={scrollToEdit}
       className="absolute bottom-4 right-4 z-20 flex items-center gap-2 px-3 py-2 rounded-full shadow-lg
-        bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-        hover:bg-gray-50 dark:hover:bg-gray-700 transition-all animate-bounce-subtle
-        text-sm text-gray-700 dark:text-gray-200"
+        bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40
+        hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all animate-bounce-subtle
+        text-sm text-neutral-700 dark:text-neutral-200"
       title={t('collaboration.jumpToEdit')}
     >
       <span

@@ -39,27 +39,29 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center">
-          <div className="h-24 w-24 flex items-center justify-center mb-4">
+          <div className="h-28 w-28 sm:h-32 sm:w-32 flex items-center justify-center mb-4">
             <img src="/logo-no-bg.png" alt={t('common.logoAlt')} className="h-full w-full object-contain" />
           </div>
-          <h2 className="mt-2 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h2 className="mt-2 text-center text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
             {t('auth.signInTitle')}
           </h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="-space-y-px rounded-md shadow-sm">
+          <div className="space-y-3">
             <div>
+              <label htmlFor="email" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('auth.email')}</label>
               <input
+                id="email"
                 type="email"
                 required
                 className={clsx(
-                  'relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                  'relative block w-full rounded-lg border-0 py-1.5 text-neutral-900 ring-1 ring-inset placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500',
                   fieldErrors.email
                     ? 'ring-red-500 dark:ring-red-500'
-                    : 'ring-gray-300 dark:ring-gray-700'
+                    : 'ring-neutral-300 dark:ring-neutral-700'
                 )}
                 placeholder={t('auth.emailPlaceholder')}
                 value={email}
@@ -70,14 +72,16 @@ export default function LoginPage() {
               />
             </div>
             <div>
+              <label htmlFor="password" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('auth.passwordPlaceholder')}</label>
               <input
+                id="password"
                 type="password"
                 required
                 className={clsx(
-                  'relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500',
+                  'relative block w-full rounded-lg border-0 py-1.5 text-neutral-900 ring-1 ring-inset placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500',
                   fieldErrors.password
                     ? 'ring-red-500 dark:ring-red-500'
-                    : 'ring-gray-300 dark:ring-gray-700'
+                    : 'ring-neutral-300 dark:ring-neutral-700'
                 )}
                 placeholder={t('auth.passwordPlaceholder')}
                 value={password}
@@ -91,8 +95,8 @@ export default function LoginPage() {
 
           {(fieldErrors.email || fieldErrors.password) && (
             <div className="mt-2 space-y-1">
-              {fieldErrors.email && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.email}</p>}
-              {fieldErrors.password && <p className="text-red-500 dark:text-red-400 text-xs">{fieldErrors.password}</p>}
+              {fieldErrors.email && <p className="text-red-500 dark:text-red-400 text-sm">{fieldErrors.email}</p>}
+              {fieldErrors.password && <p className="text-red-500 dark:text-red-400 text-sm">{fieldErrors.password}</p>}
             </div>
           )}
 
@@ -101,7 +105,7 @@ export default function LoginPage() {
           <div>
             <button
               type="submit"
-              className="group relative flex w-full justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              className="group relative flex w-full justify-center rounded-md bg-emerald-600 px-3 py-3 h-12 text-base font-semibold text-white hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
             >
               {t('auth.signIn')}
             </button>
@@ -110,11 +114,11 @@ export default function LoginPage() {
             <Link to="/forgot-password" className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-500 dark:hover:text-emerald-400">
               {t('auth.forgotPasswordLink')}
             </Link>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span className="text-neutral-300 dark:text-neutral-600">|</span>
             <Link to="/register" className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-500 dark:hover:text-emerald-400">
               {t('auth.noAccount')}
             </Link>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span className="text-neutral-300 dark:text-neutral-600">|</span>
             <Link to="/request-invite" className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-500 dark:hover:text-emerald-400">
               {t('auth.requestInvite', 'Request Invite')}
             </Link>

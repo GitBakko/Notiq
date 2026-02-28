@@ -55,22 +55,22 @@ export default function TagsPage() {
   });
 
   if (isLoading) {
-    return <div className="p-8 text-center text-gray-500">{t('common.loading')}</div>;
+    return <div className="p-8 text-center text-neutral-500">{t('common.loading')}</div>;
   }
 
   return (
-    <div className="flex h-full bg-gray-50 dark:bg-gray-900 relative overflow-hidden">
+    <div className="flex h-full bg-neutral-50 dark:bg-neutral-900 relative overflow-hidden">
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <div className="bg-white border-b border-gray-200 px-4 py-4 sm:px-8 sm:py-6 flex items-center justify-between dark:bg-gray-900 dark:border-gray-800 flex-shrink-0">
+        <div className="bg-white border-b border-neutral-200/60 px-4 py-4 sm:px-8 sm:py-6 flex items-center justify-between dark:bg-neutral-900 dark:border-neutral-800/40 flex-shrink-0">
           <div className="flex items-center gap-3">
             {isMobile && (
-              <button onClick={toggleSidebar} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+              <button onClick={toggleSidebar} className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200">
                 <Menu size={24} />
               </button>
             )}
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('sidebar.tags')}</h1>
-              <p className="text-sm text-gray-500 mt-1 dark:text-gray-400">{t('tags.count', { count: tags?.length || 0 })}</p>
+              <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">{t('sidebar.tags')}</h1>
+              <p className="text-sm text-neutral-500 mt-1 dark:text-neutral-400">{t('tags.count', { count: tags?.length || 0 })}</p>
             </div>
           </div>
           <Button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2">
@@ -84,7 +84,7 @@ export default function TagsPage() {
             {tags?.map((tag) => (
               <Card
                 key={tag.id}
-                className={`group hover:shadow-md transition-all cursor-pointer dark:bg-gray-800 dark:border-gray-700 ${selectedTag?.id === tag.id ? 'ring-2 ring-emerald-500 shadow-md' : ''}`}
+                className={`group hover:shadow-md transition-all cursor-pointer dark:bg-neutral-800 dark:border-neutral-700/40 ${selectedTag?.id === tag.id ? 'ring-2 ring-emerald-500 shadow-md' : ''}`}
                 onClick={() => setSelectedTag(tag)}
               >
                 <div className="p-5 flex items-center justify-between">
@@ -93,10 +93,10 @@ export default function TagsPage() {
                       <TagIcon size={20} />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate dark:text-white" title={tag.name}>
+                      <h3 className="font-semibold text-neutral-900 truncate dark:text-white" title={tag.name}>
                         {tag.name}
                       </h3>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full dark:bg-gray-700 dark:text-gray-300">
+                      <span className="text-xs text-neutral-500 bg-neutral-100 px-2 py-1 rounded-full dark:bg-neutral-700 dark:text-neutral-300">
                         {tag._count?.notes || 0}
                       </span>
                     </div>
@@ -107,7 +107,7 @@ export default function TagsPage() {
                       e.stopPropagation();
                       setDeletingTag(tag);
                     }}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 dark:hover:bg-red-900 dark:hover:text-red-400"
+                    className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 dark:hover:bg-red-900 dark:hover:text-red-400"
                     title={t('common.delete')}
                   >
                     <Trash2 size={16} />
@@ -119,11 +119,11 @@ export default function TagsPage() {
 
           {tags?.length === 0 && (
             <div className="text-center py-20">
-              <div className="inline-flex p-4 bg-gray-100 rounded-full text-gray-400 mb-4 dark:bg-gray-800 dark:text-gray-500">
+              <div className="inline-flex p-4 bg-neutral-100 rounded-full text-neutral-400 mb-4 dark:bg-neutral-800 dark:text-neutral-500">
                 <TagIcon size={48} />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2 dark:text-white">{t('tags.emptyTitle')}</h3>
-              <p className="text-gray-500 mb-6 dark:text-gray-400">{t('tags.emptyDescription')}</p>
+              <h3 className="text-lg font-medium text-neutral-900 mb-2 dark:text-white">{t('tags.emptyTitle')}</h3>
+              <p className="text-neutral-500 mb-6 dark:text-neutral-400">{t('tags.emptyDescription')}</p>
               <Button onClick={() => setIsCreateOpen(true)}>
                 {t('tags.createFirst')}
               </Button>

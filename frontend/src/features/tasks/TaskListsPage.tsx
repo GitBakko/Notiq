@@ -42,20 +42,20 @@ export default function TaskListsPage() {
     : null;
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-gray-50 dark:bg-gray-900">
+    <div className="flex-1 h-full overflow-y-auto bg-neutral-50 dark:bg-neutral-950">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+      <div className="sticky top-0 z-10 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md border-b border-neutral-200/60 dark:border-neutral-800/40 shadow-[0_1px_3px_0_rgb(0,0,0,0.02)] px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {isMobile && (
               <button
                 onClick={toggleSidebar}
-                className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
               >
                 <Menu size={24} />
               </button>
             )}
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
               <ListChecks className="text-emerald-600" size={24} />
               {t('taskLists.title')}
             </h1>
@@ -78,11 +78,11 @@ export default function TaskListsPage() {
         ) : taskLists.length === 0 ? (
           // Empty state
           <div className="text-center py-20">
-            <ListChecks className="mx-auto text-gray-300 dark:text-gray-600 mb-4" size={48} />
-            <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-1">
+            <ListChecks className="mx-auto text-neutral-300 dark:text-neutral-600 mb-4" size={48} />
+            <h3 className="text-lg font-medium text-neutral-600 dark:text-neutral-400 mb-1">
               {t('taskLists.noLists')}
             </h3>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">
+            <p className="text-sm text-neutral-400 dark:text-neutral-400 mb-6">
               {t('taskLists.noListsDescription')}
             </p>
             <button

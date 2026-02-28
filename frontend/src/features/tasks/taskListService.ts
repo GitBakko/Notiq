@@ -197,11 +197,30 @@ export const reorderTaskItems = async (items: { id: string; position: number }[]
 export const shareTaskList = async (taskListId: string, email: string, permission: 'READ' | 'WRITE' = 'READ') => {
   await syncPush(); // Ensure task list exists on backend
   const res = await api.post(`/share/tasklists/${taskListId}`, { email, permission });
+
+  // Optimistic Dexie update: refresh sharedWith so badges appear immediately
+  try {
+    const freshRes = await api.get(`/tasklists/${taskListId}`);
+    if (freshRes.data?.sharedWith) {
+      await db.taskLists.update(taskListId, { sharedWith: freshRes.data.sharedWith });
+    }
+  } catch { /* non-critical: syncPull will eventually refresh */ }
+
   return res.data;
 };
 
 export const revokeTaskListShare = async (taskListId: string, userId: string) => {
   const res = await api.delete(`/share/tasklists/${taskListId}/${userId}`);
+
+  // Optimistic Dexie update: remove revoked user from sharedWith
+  try {
+    const existing = await db.taskLists.get(taskListId);
+    if (existing?.sharedWith) {
+      const updated = existing.sharedWith.filter(s => s.userId !== userId);
+      await db.taskLists.update(taskListId, { sharedWith: updated });
+    }
+  } catch { /* non-critical: syncPull will eventually refresh */ }
+
   return res.data;
 };
 

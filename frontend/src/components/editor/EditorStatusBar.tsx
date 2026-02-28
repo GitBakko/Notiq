@@ -21,7 +21,7 @@ export default function EditorStatusBar({
   const { t } = useTranslation();
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-1 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 select-none shrink-0">
+    <div className="border-t border-neutral-200/60 dark:border-neutral-700/40 px-4 py-1 bg-neutral-50 dark:bg-neutral-800/50 flex items-center justify-between text-[11px] font-mono text-neutral-500 dark:text-neutral-400 select-none shrink-0">
       <div className="flex items-center gap-3">
         {isVault && (
           <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">

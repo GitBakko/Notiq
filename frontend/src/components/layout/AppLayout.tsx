@@ -51,19 +51,19 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900 overflow-hidden safe-area-top safe-area-bottom">
+    <div className="flex h-screen bg-white dark:bg-neutral-950 overflow-hidden safe-area-top safe-area-bottom">
       <CommandMenu />
       {/* Mobile Sidebar Overlay */}
       {isMobile && isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40"
+          className="fixed inset-0 bg-neutral-950/60 z-40"
           onClick={closeSidebar}
         />
       )}
 
       {/* Sidebar */}
       <div className={clsx(
-        "h-full bg-gray-50 border-r border-gray-200 dark:bg-gray-900 dark:border-gray-800 z-50",
+        "h-full bg-neutral-50 border-r border-neutral-200/60 dark:bg-neutral-950 dark:border-neutral-800/40 z-50",
         isMobile
           ? "fixed inset-y-0 left-0 w-64 shadow-xl transition-transform duration-300 ease-in-out"
           : clsx("relative transition-[width] duration-300 ease-in-out", isSidebarCollapsed ? "w-14" : "w-64"),
@@ -73,7 +73,7 @@ export default function AppLayout() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden w-full bg-white dark:bg-gray-900">
+      <div className="flex-1 flex flex-col overflow-hidden w-full bg-white dark:bg-neutral-950">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

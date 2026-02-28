@@ -97,7 +97,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
     <div className="relative" ref={wrapperRef}>
       <div className="flex flex-wrap gap-2 items-center">
         {noteTags.map(t => (
-          <span key={t.tag.id} className="bg-gray-100 px-2 py-1 rounded-full text-xs text-gray-600 flex items-center gap-1 dark:bg-gray-800 dark:text-gray-300">
+          <span key={t.tag.id} className="bg-neutral-100 px-2 py-1 rounded-full text-xs text-neutral-600 flex items-center gap-1 dark:bg-neutral-800 dark:text-neutral-300">
             #{t.tag.name}
             <button onClick={() => handleRemoveTag(t.tag.id)} className="hover:text-red-500 dark:hover:text-red-400">
               <X size={12} />
@@ -107,7 +107,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
         <button
           ref={buttonRef}
           onClick={() => setIsOpen(!isOpen)}
-          className="text-gray-400 hover:text-emerald-600 flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-dashed border-gray-300 hover:border-emerald-500 dark:text-gray-500 dark:border-gray-700 dark:hover:text-emerald-400 dark:hover:border-emerald-400"
+          className="text-neutral-400 hover:text-emerald-600 flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-dashed border-neutral-300 hover:border-emerald-500 dark:text-neutral-500 dark:border-neutral-700 dark:hover:text-emerald-400 dark:hover:border-emerald-400"
         >
           <Plus size={12} />
           {t('tags.addTag')}
@@ -117,7 +117,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
       {isOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] p-2 dark:bg-gray-900 dark:border-gray-700"
+          className="fixed w-64 bg-white rounded-lg shadow-lg border border-neutral-200/60 z-[9999] p-2 dark:bg-neutral-900 dark:border-neutral-700/40"
           style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
         >
           <input
@@ -125,7 +125,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
             placeholder={t('tags.searchOrCreate')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm mb-2 focus:outline-none focus:border-emerald-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:border-emerald-400"
+            className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm mb-2 focus:outline-none focus:border-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:focus:border-emerald-400"
             autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -150,9 +150,9 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
               <button
                 key={tag.id}
                 onClick={() => handleAddTag(tag.id)}
-                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm rounded-md flex items-center gap-2 dark:text-gray-200 dark:hover:bg-gray-800"
+                className="w-full text-left px-3 py-2 hover:bg-neutral-50 text-sm rounded-md flex items-center gap-2 dark:text-neutral-200 dark:hover:bg-neutral-800"
               >
-                <TagIcon size={14} className="text-gray-400 dark:text-gray-500" />
+                <TagIcon size={14} className="text-neutral-400 dark:text-neutral-500" />
                 {tag.name}
               </button>
             ))}

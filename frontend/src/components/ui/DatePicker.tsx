@@ -24,17 +24,17 @@ export default function DatePicker({ date, onSelect, placeholder = "Pick a date"
       <Popover.Trigger asChild>
         <button
           className={clsx(
-            "flex w-full items-center justify-start gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:ring-offset-gray-900 dark:focus:ring-emerald-500",
-            !date && "text-gray-500 dark:text-gray-400",
+            "flex w-full items-center justify-start gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white dark:ring-offset-neutral-900 dark:focus:ring-emerald-500/40 transition-all duration-200",
+            !date && "text-neutral-500 dark:text-neutral-400",
             className
           )}
         >
-          <CalendarIcon size={16} className="text-gray-500 dark:text-gray-400" />
+          <CalendarIcon size={16} className="text-neutral-500 dark:text-neutral-400" />
           <span>{date ? format(date, 'PPP', { locale: currentLocale }) : placeholder}</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-2" align="start">
+        <Popover.Content className="z-50 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 p-2" align="start">
           <DayPicker
             mode="single"
             selected={date}
@@ -53,26 +53,26 @@ export default function DatePicker({ date, onSelect, placeholder = "Pick a date"
               today: 'text-emerald-600 font-bold',
             }}
             classNames={{
-              nav_button: '!text-gray-600 dark:!text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1',
+              nav_button: '!text-neutral-600 dark:!text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded p-1',
               nav_button_previous: 'absolute left-1',
               nav_button_next: 'absolute right-1',
               caption: 'relative flex justify-center items-center pt-1 pb-3',
               caption_label: 'hidden',
               table: 'w-full border-collapse space-y-1',
               head_row: 'flex',
-              head_cell: 'text-gray-500 rounded-md w-9 font-normal text-[0.8rem] dark:text-gray-400',
+              head_cell: 'text-neutral-500 rounded-md w-9 font-normal text-[0.8rem] dark:text-neutral-400',
               row: 'flex w-full mt-2',
               cell: 'text-center text-sm p-0 relative [&:has([aria-selected])]:bg-emerald-50 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 dark:[&:has([aria-selected])]:bg-emerald-900/30',
-              day: 'h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-gray-100 rounded-md dark:hover:bg-gray-700 dark:text-gray-100',
+              day: 'h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-neutral-100 rounded-md dark:hover:bg-neutral-700 dark:text-neutral-100',
               day_selected: 'bg-emerald-600 text-white hover:bg-emerald-600 hover:text-white focus:bg-emerald-600 focus:text-white',
-              day_today: 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100',
-              day_outside: 'text-gray-500 opacity-50 dark:text-gray-500',
-              day_disabled: 'text-gray-500 opacity-50 dark:text-gray-500',
+              day_today: 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
+              day_outside: 'text-neutral-500 opacity-50 dark:text-neutral-500',
+              day_disabled: 'text-neutral-500 opacity-50 dark:text-neutral-500',
               day_range_middle: 'aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100',
               day_hidden: 'invisible',
               dropdown_month: 'flex items-center justify-between mr-2',
               dropdown_year: 'flex items-center justify-between ml-2',
-              dropdown: 'p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white',
+              dropdown: 'p-2 bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white',
             }}
             className="dark:text-white"
           />

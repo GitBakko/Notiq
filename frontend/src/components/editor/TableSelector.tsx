@@ -13,7 +13,7 @@ export default function TableSelector({ onSelect }: TableSelectorProps) {
 
   return (
     <div className="p-2">
-      <div className="mb-2 text-xs text-gray-500 dark:text-gray-400 text-center">
+      <div className="mb-2 text-xs text-neutral-500 dark:text-neutral-400 text-center">
         {hovered.rows > 0 ? `${hovered.cols} x ${hovered.rows}` : 'Insert Table'}
       </div>
       <div
@@ -34,7 +34,7 @@ export default function TableSelector({ onSelect }: TableSelectorProps) {
                   "w-6 h-6 border rounded-sm transition-colors cursor-pointer",
                   isActive
                     ? "bg-emerald-100 border-emerald-500 dark:bg-emerald-900/50 dark:border-emerald-500"
-                    : "bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700"
+                    : "bg-white border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700"
                 )}
                 onMouseEnter={() => setHovered({ rows: r, cols: c })}
                 onClick={() => onSelect(r, c)}

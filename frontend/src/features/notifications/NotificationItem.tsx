@@ -162,7 +162,7 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
         return <Kanban size={16} className="text-purple-500" />;
       case 'SYSTEM':
       default:
-        return <Info size={16} className="text-gray-500" />;
+        return <Info size={16} className="text-neutral-500" />;
     }
   };
 
@@ -194,7 +194,7 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
     <div
       onClick={handleClick}
       className={clsx(
-        "p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group relative",
+        "p-3 border-b border-neutral-100 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors group relative",
         !notification.isRead && "bg-blue-50/50 dark:bg-blue-900/10",
         targetUrl && "cursor-pointer"
       )}
@@ -204,13 +204,13 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
           {getIcon()}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+          <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">
             {title}
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-2">
             {message}
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
             {timeAgo(notification.createdAt, dateLocale)}
           </p>
         </div>
@@ -221,7 +221,7 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
                 e.stopPropagation();
                 onRead(notification.id);
               }}
-              className="p-1 text-gray-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/30"
+              className="p-1 text-neutral-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/30"
               title={t('notifications.markAsRead')}
             >
               <Check size={14} />
@@ -232,7 +232,7 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
               e.stopPropagation();
               onDelete(notification.id);
             }}
-            className="p-1 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30"
+            className="p-1 text-neutral-400 hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30"
             title={t('common.delete')}
           >
             <Trash2 size={14} />

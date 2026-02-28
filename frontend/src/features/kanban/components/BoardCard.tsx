@@ -58,7 +58,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
   return (
     <div
       onClick={() => onSelect(board.id)}
-      className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer relative group"
+      className="rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 hover:shadow-md transition-shadow cursor-pointer relative group hover-lift"
     >
       {/* Cover Image */}
       {board.coverImage && (
@@ -78,27 +78,27 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
             <button
               onClick={handleMenuToggle}
               className={clsx(
-                'p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity',
+                'p-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity',
                 board.coverImage
                   ? 'text-white hover:text-white bg-black/30 hover:bg-black/50'
-                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300',
+                  : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300',
               )}
             >
               <MoreVertical size={16} />
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-8 z-20 w-40 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg py-1">
+              <div className="absolute right-0 top-8 z-20 w-40 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 shadow-lg py-1">
                 <button
                   onClick={handleShare}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 >
                   <Share2 size={14} />
                   {t('kanban.shareBoard')}
                 </button>
                 <button
                   onClick={handleDelete}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 >
                   <Trash2 size={14} />
                   {t('common.delete')}
@@ -121,18 +121,18 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
               <Kanban size={12} className="text-emerald-600 dark:text-emerald-400" />
             </div>
           )}
-          <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">
+          <h3 className="text-sm font-bold text-neutral-900 dark:text-white truncate">
             {board.title}
           </h3>
         </div>
 
         {/* Description */}
         {board.description ? (
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">
             {board.description}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 italic">
+          <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-400 italic">
             {t('kanban.card.noDescription')}
           </p>
         )}
@@ -144,7 +144,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
               {t('kanban.sharedBoard')}
             </span>
             {board.owner && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-400 truncate">
                 {t('kanban.ownerLabel', { name: board.owner.name || board.owner.email })}
               </span>
             )}
@@ -152,7 +152,7 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
         )}
 
         {/* Footer stats */}
-        <div className="mt-3 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+        <div className="mt-3 flex items-center gap-3 text-xs text-neutral-400 dark:text-neutral-400">
           <span className="flex items-center gap-1">
             <Columns3 size={12} />
             {t('kanban.stats.columns', { count: board.columnCount })}

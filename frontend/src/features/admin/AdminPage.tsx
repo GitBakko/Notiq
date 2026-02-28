@@ -91,12 +91,12 @@ interface AuditLog {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 const StatCard = ({ title, value, icon: Icon, subValue, color }: { title: string; value: string | number; icon: React.ComponentType<{ className?: string }>; subValue?: string; color: string }) => (
-  <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
+  <div className="bg-white rounded-xl p-6 shadow-sm border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-        <p className="text-2xl font-bold mt-2 text-gray-900 dark:text-white">{value}</p>
-        {subValue && <p className="text-xs mt-1 text-gray-400">{subValue}</p>}
+        <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{title}</p>
+        <p className="text-2xl font-bold mt-2 text-neutral-900 dark:text-white">{value}</p>
+        {subValue && <p className="text-xs mt-1 text-neutral-400">{subValue}</p>}
       </div>
       <div className={`p-3 rounded-lg ${color} bg-opacity-10 dark:bg-opacity-20`}>
         <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
@@ -288,11 +288,11 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="flex h-full bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-full bg-neutral-50 dark:bg-neutral-950">
 
       {/* Sidebar Navigation */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col dark:bg-gray-800 dark:border-gray-700">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+      <div className="w-64 bg-white border-r border-neutral-200/60 flex flex-col dark:bg-neutral-800 dark:border-neutral-700/40">
+        <div className="p-6 border-b border-neutral-200/60 dark:border-neutral-700/40">
           <span className="text-xl font-bold flex items-center gap-2 text-emerald-600">
             <Shield /> SuperAdmin
           </span>
@@ -304,37 +304,37 @@ export default function AdminPage() {
         <nav className="flex-1 p-4 space-y-2">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700'}`}
           >
             <LayoutDashboard size={20} /> {t('admin.dashboard')}
           </button>
           <button
             onClick={() => setActiveTab('users')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700'}`}
           >
             <Users size={20} /> {t('admin.users', 'User Management')}
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'audit' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'audit' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700'}`}
           >
             <History size={20} /> {t('admin.audit', 'Audit Logs')}
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700'}`}
           >
             <Settings size={20} /> {t('admin.settings', 'Settings')}
           </button>
           <button
             onClick={() => setActiveTab('requests')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'requests' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'requests' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700'}`}
           >
             <Mail size={20} /> {t('admin.requests', 'Requests')}
           </button>
           <Link
             to="/"
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700 mt-auto border-t border-gray-100 dark:border-gray-700"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700 mt-auto border-t border-neutral-100 dark:border-neutral-700/40"
           >
             <LogOut size={20} className="rotate-180" /> {t('common.backToApp', 'Back to App')}
           </Link>
@@ -401,8 +401,8 @@ export default function AdminPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* User Growth */}
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{t('admin.charts.registrations')}</h3>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
+                <h3 className="font-semibold mb-4 text-neutral-900 dark:text-white">{t('admin.charts.registrations')}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={stats?.charts.registrationHistory}>
@@ -423,8 +423,8 @@ export default function AdminPage() {
               </div>
 
               {/* Sharing Activity (New Chart) */}
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{t('admin.charts.sharingActivity')}</h3>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
+                <h3 className="font-semibold mb-4 text-neutral-900 dark:text-white">{t('admin.charts.sharingActivity')}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stats?.charts.sharingHistory}>
@@ -440,8 +440,8 @@ export default function AdminPage() {
               </div>
 
               {/* Storage Composition */}
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{t('admin.charts.storageBreakdown')}</h3>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
+                <h3 className="font-semibold mb-4 text-neutral-900 dark:text-white">{t('admin.charts.storageBreakdown')}</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -464,7 +464,7 @@ export default function AdminPage() {
                 </div>
                 <div className="flex justify-center gap-4 mt-2 flex-wrap">
                   {stats?.charts.storageByType.map((entry, index) => (
-                    <div key={index} className="flex items-center gap-1 text-xs text-gray-500">
+                    <div key={index} className="flex items-center gap-1 text-xs text-neutral-500">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
                       {entry.name}
                     </div>
@@ -478,22 +478,22 @@ export default function AdminPage() {
         {/* USERS TAB */}
         {activeTab === 'users' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
               <div className="relative w-96">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
                 <input
                   type="text"
                   placeholder={t('admin.users.searchPlaceholder')}
-                  className="pl-10 pr-4 py-2 w-full border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  className="pl-10 pr-4 py-2 w-full border rounded-lg dark:bg-neutral-700 dark:text-white dark:border-neutral-600"
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden dark:bg-neutral-800 dark:border-neutral-700/40">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-500 uppercase font-medium dark:bg-gray-900/50">
+                <thead className="bg-neutral-50 text-neutral-500 uppercase font-medium dark:bg-neutral-900/50">
                   <tr>
                     <th className="px-6 py-3">{t('admin.users.user')}</th>
                     <th className="px-6 py-3">{t('admin.users.role')}</th>
@@ -502,22 +502,22 @@ export default function AdminPage() {
                     <th className="px-6 py-3 text-right">{t('admin.users.actions')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-700">
                   {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <tr key={user.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-700/50">
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">{user.name || t('admin.users.anonymous')}</div>
-                        <div className="text-gray-500">{user.email}</div>
+                        <div className="font-medium text-neutral-900 dark:text-white">{user.name || t('admin.users.anonymous')}</div>
+                        <div className="text-neutral-500">{user.email}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.role === 'SUPERADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.role === 'SUPERADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'}`}>
                           {user.role}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-gray-500">
+                      <td className="px-6 py-4 text-neutral-500">
                         {t('admin.users.notesCount', { count: user._count?.notes || 0 })}
                       </td>
-                      <td className="px-6 py-4 text-gray-500">
+                      <td className="px-6 py-4 text-neutral-500">
                         {format(new Date(user.createdAt), 'MMM d, yyyy')}
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -548,7 +548,7 @@ export default function AdminPage() {
 
             {/* Pagination Controls */}
             {userTotalPages > 1 && (
-              <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
+              <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -557,7 +557,7 @@ export default function AdminPage() {
                 >
                   {t('admin.users.previous')}
                 </Button>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-neutral-500">
                   {t('admin.users.pageOf', { page: userPage, total: userTotalPages })}
                 </span>
                 <Button
@@ -576,29 +576,29 @@ export default function AdminPage() {
         {/* AUDIT TAB */}
         {activeTab === 'audit' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:bg-gray-800 dark:border-gray-700">
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-6 dark:bg-neutral-800 dark:border-neutral-700/40">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-gray-900 dark:text-white">System Audit Log</h3>
+                <h3 className="font-semibold text-neutral-900 dark:text-white">System Audit Log</h3>
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => setLogPage(p => Math.max(1, p - 1))} disabled={logPage === 1}>Prev</Button>
-                  <span className="text-sm text-gray-500 self-center">Page {logPage}</span>
+                  <span className="text-sm text-neutral-500 self-center">Page {logPage}</span>
                   <Button variant="secondary" size="sm" onClick={() => setLogPage(p => p + 1)} disabled={logs.length < 20}>Next</Button>
                 </div>
               </div>
               <div className="space-y-4">
-                {logs.length === 0 && <p className="text-gray-500">No logs found.</p>}
+                {logs.length === 0 && <p className="text-neutral-500">No logs found.</p>}
                 {logs.map((log) => (
-                  <div key={log.id} className="flex gap-4 p-4 border rounded-lg bg-gray-50 dark:bg-gray-700/30 dark:border-gray-600">
+                  <div key={log.id} className="flex gap-4 p-4 border rounded-lg bg-neutral-50 dark:bg-neutral-700/30 dark:border-neutral-600">
                     <div className="mt-1">
-                      <History size={18} className="text-gray-400" />
+                      <History size={18} className="text-neutral-400" />
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900 dark:text-white">
+                      <p className="font-medium text-neutral-900 dark:text-white">
                         <span className="font-bold">{log.event}</span> by <span className="text-emerald-600">{log.user?.email || 'System'}</span>
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">{format(new Date(log.createdAt), 'PPpp')}</p>
+                      <p className="text-xs text-neutral-500 mt-1">{format(new Date(log.createdAt), 'PPpp')}</p>
                       {log.details && (
-                        <pre className="text-xs mt-2 bg-gray-100 p-2 rounded dark:bg-gray-800 overflow-x-auto text-gray-600 dark:text-gray-300">
+                        <pre className="text-xs mt-2 bg-neutral-100 p-2 rounded dark:bg-neutral-800 overflow-x-auto text-neutral-600 dark:text-neutral-300">
                           {JSON.stringify(log.details, null, 2)}
                         </pre>
                       )}
@@ -614,31 +614,31 @@ export default function AdminPage() {
         {/* REQUESTS TAB */}
         {activeTab === 'requests' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:bg-gray-800 dark:border-gray-700">
-              <h3 className="font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2">
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-6 dark:bg-neutral-800 dark:border-neutral-700/40">
+              <h3 className="font-semibold mb-4 text-neutral-900 dark:text-white flex items-center gap-2">
                 <Mail size={20} /> Invitation Requests
               </h3>
 
               <div className="overflow-hidden">
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-gray-500 uppercase font-medium dark:bg-gray-900/50">
+                  <thead className="bg-neutral-50 text-neutral-500 uppercase font-medium dark:bg-neutral-900/50">
                     <tr>
                       <th className="px-6 py-3">Email</th>
                       <th className="px-6 py-3">Requested</th>
                       <th className="px-6 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-700">
                     {requests.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-6 py-4 text-center text-gray-500">No pending requests.</td>
+                        <td colSpan={3} className="px-6 py-4 text-center text-neutral-500">No pending requests.</td>
                       </tr>
                     ) : requests.map((req) => (
-                      <tr key={req.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                      <tr key={req.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-700/50">
+                        <td className="px-6 py-4 font-medium text-neutral-900 dark:text-white">
                           {req.email}
                         </td>
-                        <td className="px-6 py-4 text-gray-500">
+                        <td className="px-6 py-4 text-neutral-500">
                           {format(new Date(req.createdAt), 'PPpp')}
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -672,21 +672,21 @@ export default function AdminPage() {
         {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
           <div className="max-w-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:bg-gray-800 dark:border-gray-700">
-              <h3 className="font-semibold mb-6 flex items-center gap-2 text-gray-900 dark:text-white">
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-6 dark:bg-neutral-800 dark:border-neutral-700/40">
+              <h3 className="font-semibold mb-6 flex items-center gap-2 text-neutral-900 dark:text-white">
                 <Settings size={20} /> System Settings
               </h3>
 
-              <div className="flex items-center justify-between pb-6 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between pb-6 border-b border-neutral-100 dark:border-neutral-700/40">
                 <div>
-                  <p className="font-medium text-gray-900 dark:text-white">Invitation System Only</p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="font-medium text-neutral-900 dark:text-white">Invitation System Only</p>
+                  <p className="text-xs text-neutral-500 mt-1">
                     If enabled, new users can only register with a valid invite code.
                   </p>
                 </div>
                 <button
                   onClick={toggleInvitationSystem}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${invitationEnabled ? 'bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${invitationEnabled ? 'bg-emerald-600' : 'bg-neutral-200 dark:bg-neutral-700'}`}
                 >
                   <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${invitationEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
@@ -694,28 +694,28 @@ export default function AdminPage() {
             </div>
 
             {/* AI Configuration */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:bg-gray-800 dark:border-gray-700 mt-6">
-              <h3 className="font-semibold mb-6 flex items-center gap-2 text-gray-900 dark:text-white">
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-6 dark:bg-neutral-800 dark:border-neutral-700/40 mt-6">
+              <h3 className="font-semibold mb-6 flex items-center gap-2 text-neutral-900 dark:text-white">
                 <Sparkles size={20} className="text-purple-500" /> {t('admin.ai.title')}
               </h3>
 
               {/* AI Enable toggle */}
-              <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-neutral-700/40">
                 <div>
-                  <p className="font-medium text-gray-900 dark:text-white">{t('admin.ai.enabled')}</p>
-                  <p className="text-xs text-gray-500 mt-1">{t('admin.ai.enabledDesc')}</p>
+                  <p className="font-medium text-neutral-900 dark:text-white">{t('admin.ai.enabled')}</p>
+                  <p className="text-xs text-neutral-500 mt-1">{t('admin.ai.enabledDesc')}</p>
                 </div>
                 <button
                   onClick={handleAiToggle}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${aiConfig.enabled ? 'bg-purple-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${aiConfig.enabled ? 'bg-purple-600' : 'bg-neutral-200 dark:bg-neutral-700'}`}
                 >
                   <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${aiConfig.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
 
               {/* API Key */}
-              <div className="py-4 border-b border-gray-100 dark:border-gray-700">
-                <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">{t('admin.ai.apiKey')}</label>
+              <div className="py-4 border-b border-neutral-100 dark:border-neutral-700/40">
+                <label className="block text-sm font-medium text-neutral-900 dark:text-white mb-1">{t('admin.ai.apiKey')}</label>
                 <p className={`text-xs mb-2 ${aiConfig.apiKeySet ? 'text-green-600' : 'text-red-500'}`}>
                   {aiConfig.apiKeySet ? t('admin.ai.apiKeySet') : t('admin.ai.apiKeyNotSet')}
                 </p>
@@ -726,12 +726,12 @@ export default function AdminPage() {
                       value={aiApiKey}
                       onChange={e => setAiApiKey(e.target.value)}
                       placeholder={t('admin.ai.apiKeyPlaceholder')}
-                      className="w-full px-3 py-2 pr-10 text-sm border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                      className="w-full px-3 py-2 pr-10 text-sm border rounded-lg dark:bg-neutral-700 dark:text-white dark:border-neutral-600"
                     />
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
                     >
                       {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -743,12 +743,12 @@ export default function AdminPage() {
               </div>
 
               {/* Model */}
-              <div className="py-4 border-b border-gray-100 dark:border-gray-700">
-                <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">{t('admin.ai.model')}</label>
+              <div className="py-4 border-b border-neutral-100 dark:border-neutral-700/40">
+                <label className="block text-sm font-medium text-neutral-900 dark:text-white mb-1">{t('admin.ai.model')}</label>
                 <select
                   value={aiConfig.model}
                   onChange={e => handleAiModelChange(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-neutral-700 dark:text-white dark:border-neutral-600"
                 >
                   <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
                   <option value="claude-opus-4-20250514">Claude Opus 4</option>
@@ -757,8 +757,8 @@ export default function AdminPage() {
               </div>
 
               {/* Max Tokens */}
-              <div className="py-4 border-b border-gray-100 dark:border-gray-700">
-                <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">{t('admin.ai.maxTokens')}</label>
+              <div className="py-4 border-b border-neutral-100 dark:border-neutral-700/40">
+                <label className="block text-sm font-medium text-neutral-900 dark:text-white mb-1">{t('admin.ai.maxTokens')}</label>
                 <input
                   type="number"
                   value={aiConfig.maxTokens}
@@ -766,15 +766,15 @@ export default function AdminPage() {
                   min={256}
                   max={8192}
                   step={256}
-                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-neutral-700 dark:text-white dark:border-neutral-600"
                 />
               </div>
 
               {/* Temperature */}
               <div className="pt-4">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-sm font-medium text-gray-900 dark:text-white">{t('admin.ai.temperature')}</label>
-                  <span className="text-sm text-gray-500">{aiConfig.temperature.toFixed(1)}</span>
+                  <label className="text-sm font-medium text-neutral-900 dark:text-white">{t('admin.ai.temperature')}</label>
+                  <span className="text-sm text-neutral-500">{aiConfig.temperature.toFixed(1)}</span>
                 </div>
                 <input
                   type="range"
@@ -785,7 +785,7 @@ export default function AdminPage() {
                   step={0.1}
                   className="w-full accent-purple-600"
                 />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <div className="flex justify-between text-xs text-neutral-400 mt-1">
                   <span>Precise (0)</span>
                   <span>Creative (1)</span>
                 </div>

@@ -42,15 +42,15 @@ export default function RequestInvitePage() {
 
   if (isSuccess) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
         <div className="w-full max-w-md space-y-8 text-center animate-in fade-in zoom-in duration-500">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900">
             <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
             {t('auth.requestReceived', 'Request Received')}
           </h2>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
             {t('auth.requestReceivedDesc', 'We have received your request. Using the email provided, we will notify you once your invitation is approved.')}
           </p>
           <div className="mt-8">
@@ -64,16 +64,16 @@ export default function RequestInvitePage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-neutral-950">
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center">
-          <div className="h-20 w-20 flex items-center justify-center mb-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
+          <div className="h-20 w-20 flex items-center justify-center mb-4 bg-white dark:bg-neutral-800 rounded-2xl shadow-sm">
             <Mail className="h-10 w-10 text-emerald-600" />
           </div>
-          <h2 className="mt-2 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h2 className="mt-2 text-center text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
             {t('auth.requestInvite', 'Request an Invitation')}
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-2 text-center text-sm text-neutral-600 dark:text-neutral-400">
             {t('auth.requestInviteSub', 'Join Notiq to organize your life.')}
           </p>
         </div>
@@ -90,7 +90,7 @@ export default function RequestInvitePage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="relative block w-full rounded-md border-0 py-2.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 shadow-sm"
+                className="relative block w-full rounded-md border-0 py-2.5 text-neutral-900 ring-1 ring-inset ring-neutral-300 placeholder:text-neutral-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-emerald-600 sm:text-sm sm:leading-6 px-3 dark:bg-neutral-800 dark:text-white dark:ring-neutral-700 dark:placeholder:text-neutral-500 shadow-sm"
                 placeholder={t('auth.emailPlaceholder', 'Email address')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

@@ -58,17 +58,17 @@ export default function PasswordGenerator({ onUse, onClose }: PasswordGeneratorP
   };
 
   return (
-    <div className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg w-80 space-y-4">
-      <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{t('vault.credential.generator.title')}</h3>
+    <div className="p-4 bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-xl shadow-lg w-80 space-y-4">
+      <h3 className="font-semibold text-neutral-900 dark:text-white text-sm">{t('vault.credential.generator.title')}</h3>
 
       {/* Preview */}
-      <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg font-mono text-sm text-gray-900 dark:text-gray-100 break-all select-all min-h-[3rem]">
+      <div className="p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg font-mono text-sm text-neutral-900 dark:text-neutral-100 break-all select-all min-h-[3rem]">
         {password}
       </div>
 
       {/* Length slider */}
       <div className="space-y-1">
-        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
           <span>{t('vault.credential.generator.length')}</span>
           <span>{length}</span>
         </div>
@@ -85,12 +85,12 @@ export default function PasswordGenerator({ onUse, onClose }: PasswordGeneratorP
       {/* Options */}
       <div className="space-y-2">
         {(Object.keys(CHARSETS) as Array<keyof typeof CHARSETS>).map((key) => (
-          <label key={key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+          <label key={key} className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
             <input
               type="checkbox"
               checked={options[key]}
               onChange={() => toggleOption(key)}
-              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700"
+              className="rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 dark:border-neutral-600 dark:bg-neutral-700"
             />
             {t(`vault.credential.generator.${key}`)}
           </label>

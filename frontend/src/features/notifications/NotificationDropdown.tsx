@@ -26,19 +26,19 @@ export default function NotificationDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+        className="relative p-2 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
         title={t('notifications.title')}
       >
         <Bell size={20} />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900" />
+          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-neutral-900" />
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[400px]">
-          <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-800">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+        <div className="absolute bottom-full left-0 mb-2 w-80 bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-700/40 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[400px]">
+          <div className="p-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800">
+            <h3 className="font-semibold text-neutral-900 dark:text-white text-sm">
               {t('notifications.title')}
             </h3>
             <div className="flex items-center gap-1">
@@ -75,7 +75,7 @@ export default function NotificationDropdown() {
                 />
               ))
             ) : (
-              <div className="p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+              <div className="p-8 text-center text-neutral-500 dark:text-neutral-400 text-sm">
                 <Bell size={24} className="mx-auto mb-2 opacity-20" />
                 {t('notifications.empty')}
               </div>

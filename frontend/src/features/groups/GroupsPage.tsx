@@ -157,14 +157,14 @@ export default function GroupsPage() {
     const emailValue = addEmailMap[group.id] || '';
 
     return (
-      <div key={group.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div key={group.id} className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40">
         {/* Header */}
         <div
-          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t-lg"
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700/50 rounded-t-lg"
           onClick={() => setExpandedGroupId(isExpanded ? null : group.id)}
         >
           <div className="flex items-center gap-3 min-w-0">
-            {isExpanded ? <ChevronDown size={18} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />}
+            {isExpanded ? <ChevronDown size={18} className="text-neutral-400 flex-shrink-0" /> : <ChevronRight size={18} className="text-neutral-400 flex-shrink-0" />}
             <div
               className="relative group/avatar flex-shrink-0 cursor-pointer"
               onClick={(e) => { e.stopPropagation(); handleAvatarClick(group.id); }}
@@ -189,7 +189,7 @@ export default function GroupsPage() {
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="text-sm font-medium px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="text-sm font-medium px-2 py-1 border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && editName.trim()) {
                         updateMutation.mutate({ id: group.id, data: { name: editName.trim() } });
@@ -198,20 +198,20 @@ export default function GroupsPage() {
                     }}
                     autoFocus
                   />
-                  <button onClick={() => setEditingGroupId(null)} className="text-gray-400 hover:text-gray-600">
+                  <button onClick={() => setEditingGroupId(null)} className="text-neutral-400 hover:text-neutral-600">
                     <X size={14} />
                   </button>
                 </div>
               ) : (
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{group.name}</h3>
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white truncate">{group.name}</h3>
               )}
               {group.description && !isEditing && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{group.description}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{group.description}</p>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full">
               {t('groups.memberCount', { count: group.members.length })}
             </span>
           </div>
@@ -219,12 +219,12 @@ export default function GroupsPage() {
 
         {/* Expanded content */}
         {isExpanded && (
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
+          <div className="border-t border-neutral-200/60 dark:border-neutral-700/40 p-4 space-y-4">
             {/* Actions row */}
             <div className="flex items-center gap-2 justify-end">
               <button
                 onClick={(e) => { e.stopPropagation(); setEditingGroupId(group.id); setEditName(group.name); }}
-                className="text-xs text-gray-500 hover:text-blue-600 flex items-center gap-1"
+                className="text-xs text-neutral-500 hover:text-blue-600 flex items-center gap-1"
               >
                 <Edit3 size={12} /> {t('common.rename')}
               </button>
@@ -233,7 +233,7 @@ export default function GroupsPage() {
                   e.stopPropagation();
                   setDeleteGroupId(group.id);
                 }}
-                className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
+                className="text-xs text-neutral-500 hover:text-red-600 flex items-center gap-1"
               >
                 <Trash2 size={12} /> {t('common.delete')}
               </button>
@@ -241,14 +241,14 @@ export default function GroupsPage() {
 
             {/* Add member form */}
             <div>
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-1 block">{t('groups.addMember')}</label>
+              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-300 mb-1 block">{t('groups.addMember')}</label>
               <div className="flex gap-2">
                 <input
                   type="email"
                   value={emailValue}
                   onChange={(e) => setAddEmailMap((prev) => ({ ...prev, [group.id]: e.target.value }))}
                   placeholder={t('groups.addMemberPlaceholder')}
-                  className="flex-1 text-sm px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+                  className="flex-1 text-sm px-3 py-1.5 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white placeholder-neutral-400"
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAddMember(group.id); }}
                 />
                 <button
@@ -263,13 +263,13 @@ export default function GroupsPage() {
 
             {/* Members list */}
             <div>
-              <h4 className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">{t('groups.members')}</h4>
+              <h4 className="text-xs font-medium text-neutral-600 dark:text-neutral-300 mb-2">{t('groups.members')}</h4>
               {group.members.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">{t('groups.noMembers')}</p>
+                <p className="text-xs text-neutral-400 italic">{t('groups.noMembers')}</p>
               ) : (
                 <div className="space-y-1">
                   {group.members.map((member) => (
-                    <div key={member.userId} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <div key={member.userId} className="flex items-center justify-between px-3 py-2 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg">
                       <div className="flex items-center gap-2 min-w-0">
                         {member.user.avatarUrl ? (
                           <img
@@ -285,13 +285,13 @@ export default function GroupsPage() {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="text-sm text-gray-900 dark:text-white truncate">{member.user.name || member.user.email}</p>
-                          {member.user.name && <p className="text-xs text-gray-500 truncate">{member.user.email}</p>}
+                          <p className="text-sm text-neutral-900 dark:text-white truncate">{member.user.name || member.user.email}</p>
+                          {member.user.name && <p className="text-xs text-neutral-500 truncate">{member.user.email}</p>}
                         </div>
                       </div>
                       <button
                         onClick={() => removeMemberMutation.mutate({ groupId: group.id, userId: member.userId })}
-                        className="p-1 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 flex-shrink-0"
+                        className="p-1 text-neutral-400 hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 flex-shrink-0"
                         title={t('groups.memberRemoved')}
                       >
                         <UserMinus size={14} />
@@ -305,17 +305,17 @@ export default function GroupsPage() {
             {/* Pending invites */}
             {group.pendingInvites && group.pendingInvites.length > 0 && (
               <div>
-                <h4 className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">{t('groups.pendingInvites')}</h4>
+                <h4 className="text-xs font-medium text-neutral-600 dark:text-neutral-300 mb-2">{t('groups.pendingInvites')}</h4>
                 <div className="space-y-1">
                   {group.pendingInvites.map((invite) => (
                     <div key={invite.id} className="flex items-center justify-between px-3 py-2 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg border border-yellow-200 dark:border-yellow-800/30">
                       <div className="flex items-center gap-2">
                         <Clock size={14} className="text-yellow-600 dark:text-yellow-400" />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">{invite.email}</span>
+                        <span className="text-sm text-neutral-700 dark:text-neutral-300">{invite.email}</span>
                       </div>
                       <button
                         onClick={() => removePendingMutation.mutate({ groupId: group.id, email: invite.email })}
-                        className="p-1 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30"
+                        className="p-1 text-neutral-400 hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30"
                       >
                         <X size={14} />
                       </button>
@@ -334,14 +334,14 @@ export default function GroupsPage() {
     const isExpanded = expandedMemberGroupId === group.id;
 
     return (
-      <div key={group.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div key={group.id} className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40">
         {/* Header */}
         <div
-          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t-lg"
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700/50 rounded-t-lg"
           onClick={() => setExpandedMemberGroupId(isExpanded ? null : group.id)}
         >
           <div className="flex items-center gap-3 min-w-0">
-            {isExpanded ? <ChevronDown size={18} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />}
+            {isExpanded ? <ChevronDown size={18} className="text-neutral-400 flex-shrink-0" /> : <ChevronRight size={18} className="text-neutral-400 flex-shrink-0" />}
             <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
               {group.avatarUrl ? (
                 <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" />
@@ -352,29 +352,29 @@ export default function GroupsPage() {
               )}
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{group.name}</h3>
+              <h3 className="text-sm font-medium text-neutral-900 dark:text-white truncate">{group.name}</h3>
               {group.owner && (
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   {t('groups.owner')}: {group.owner.name || group.owner.email}
                 </p>
               )}
             </div>
           </div>
-          <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full flex-shrink-0">
+          <span className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full flex-shrink-0">
             {t('groups.memberCount', { count: group.members.length })}
           </span>
         </div>
 
         {/* Expanded content — read-only member list */}
         {isExpanded && (
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-            <h4 className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">{t('groups.members')}</h4>
+          <div className="border-t border-neutral-200/60 dark:border-neutral-700/40 p-4">
+            <h4 className="text-xs font-medium text-neutral-600 dark:text-neutral-300 mb-2">{t('groups.members')}</h4>
             {group.members.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">{t('groups.noMembers')}</p>
+              <p className="text-xs text-neutral-400 italic">{t('groups.noMembers')}</p>
             ) : (
               <div className="space-y-1">
                 {group.members.map((member) => (
-                  <div key={member.userId} className="flex items-center px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <div key={member.userId} className="flex items-center px-3 py-2 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg">
                     <div className="flex items-center gap-2 min-w-0">
                       {member.user.avatarUrl ? (
                         <img
@@ -390,8 +390,8 @@ export default function GroupsPage() {
                         </div>
                       )}
                       <div className="min-w-0">
-                        <p className="text-sm text-gray-900 dark:text-white truncate">{member.user.name || member.user.email}</p>
-                        {member.user.name && <p className="text-xs text-gray-500 truncate">{member.user.email}</p>}
+                        <p className="text-sm text-neutral-900 dark:text-white truncate">{member.user.name || member.user.email}</p>
+                        {member.user.name && <p className="text-xs text-neutral-500 truncate">{member.user.email}</p>}
                       </div>
                     </div>
                   </div>
@@ -407,16 +407,16 @@ export default function GroupsPage() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-950">
         <div className="flex items-center gap-3">
           {isMobile && (
-            <button onClick={toggleSidebar} className="p-1 text-gray-500 hover:text-gray-700">
+            <button onClick={toggleSidebar} className="p-1 text-neutral-500 hover:text-neutral-700">
               <Menu size={20} />
             </button>
           )}
           <div>
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{t('groups.title')}</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{t('groups.subtitle')}</p>
+            <h1 className="text-lg font-semibold text-neutral-900 dark:text-white">{t('groups.title')}</h1>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('groups.subtitle')}</p>
           </div>
         </div>
         {!isCreating && (
@@ -434,7 +434,7 @@ export default function GroupsPage() {
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
         {/* Create form */}
         {isCreating && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
+          <div className="bg-white dark:bg-neutral-800 rounded-lg border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
             <div className="flex items-start gap-4">
               {/* Avatar picker */}
               <div
@@ -474,7 +474,7 @@ export default function GroupsPage() {
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   placeholder={t('groups.namePlaceholder')}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+                  className="w-full text-sm px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white placeholder-neutral-400"
                   autoFocus
                   onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setIsCreating(false); }}
                 />
@@ -483,12 +483,12 @@ export default function GroupsPage() {
                   value={newGroupDescription}
                   onChange={(e) => setNewGroupDescription(e.target.value)}
                   placeholder={t('groups.descriptionPlaceholder')}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+                  className="w-full text-sm px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white placeholder-neutral-400"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button onClick={() => setIsCreating(false)} className="px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg">
                 {t('common.cancel')}
               </button>
               <button
@@ -508,7 +508,7 @@ export default function GroupsPage() {
           <>
             {/* My Groups (owned) */}
             <div>
-              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
                 <Orbit size={16} />
                 {t('groups.ownedGroups')}
               </h2>
@@ -517,14 +517,14 @@ export default function GroupsPage() {
                   {data.owned.map(renderOwnedGroup)}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 dark:text-gray-500 italic py-4">{t('groups.empty')}</p>
+                <p className="text-sm text-neutral-400 dark:text-neutral-400 italic py-4">{t('groups.empty')}</p>
               )}
             </div>
 
             {/* Groups I belong to */}
             {data?.memberOf && data.memberOf.length > 0 && (
               <div>
-                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
                   <Orbit size={16} />
                   {t('groups.memberOfGroups')}
                 </h2>

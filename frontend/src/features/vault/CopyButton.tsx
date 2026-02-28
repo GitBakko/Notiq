@@ -41,7 +41,7 @@ export default function CopyButton({ value, label, className = '' }: CopyButtonP
     <button
       type="button"
       onClick={handleCopy}
-      className={`p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors ${className}`}
+      className={`p-1.5 rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:text-neutral-200 dark:hover:bg-neutral-700 transition-colors ${className}`}
       title={label || t('vault.credential.copied')}
     >
       {copied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}

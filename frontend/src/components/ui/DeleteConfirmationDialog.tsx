@@ -40,12 +40,12 @@ export function DeleteConfirmationDialog({
           <p className="font-medium">{t('common.warning')}</p>
         </div>
 
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-neutral-600 dark:text-neutral-300">
           {description}
         </p>
 
         <div className="space-y-2">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
             {t('common.typeToConfirm', { name: itemName })}
           </p>
           <input
@@ -53,7 +53,7 @@ export function DeleteConfirmationDialog({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder={itemName}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 dark:bg-neutral-800 dark:border-neutral-600 dark:text-white transition-all duration-200"
             autoFocus
           />
         </div>

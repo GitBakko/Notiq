@@ -45,14 +45,14 @@ export default function SharingGapModal({
       size="md"
     >
       <div className="space-y-4">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
           {t('kanban.noteLink.sharingGapDescription', { noteTitle: sharingCheck.noteTitle })}
         </p>
 
         {/* Users who already have access */}
         {sharingCheck.usersWithAccess.length > 0 && (
           <div>
-            <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+            <h4 className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">
               {t('kanban.noteLink.usersWithAccess')}
             </h4>
             <div className="space-y-1">
@@ -62,7 +62,7 @@ export default function SharingGapModal({
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-sm"
                 >
                   <Check size={14} className="text-emerald-500" />
-                  <span className="text-gray-700 dark:text-gray-300">
+                  <span className="text-neutral-700 dark:text-neutral-300">
                     {user.name || user.email}
                   </span>
                 </div>
@@ -74,7 +74,7 @@ export default function SharingGapModal({
         {/* Users without access (selectable) */}
         {sharingCheck.usersWithoutAccess.length > 0 && (
           <div>
-            <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+            <h4 className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">
               {t('kanban.noteLink.usersWithoutAccess')}
             </h4>
             <div className="space-y-1">
@@ -82,21 +82,21 @@ export default function SharingGapModal({
                 <button
                   key={user.id}
                   onClick={() => toggleUser(user.id)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 >
                   <div
                     className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
                       selectedUserIds.has(user.id)
                         ? 'bg-emerald-500 border-emerald-500'
-                        : 'border-gray-300 dark:border-gray-600'
+                        : 'border-neutral-300 dark:border-neutral-600'
                     }`}
                   >
                     {selectedUserIds.has(user.id) && (
                       <Check size={10} className="text-white" />
                     )}
                   </div>
-                  <UserPlus size={14} className="text-gray-400" />
-                  <span className="text-gray-700 dark:text-gray-300">
+                  <UserPlus size={14} className="text-neutral-400" />
+                  <span className="text-neutral-700 dark:text-neutral-300">
                     {user.name || user.email}
                   </span>
                 </button>
@@ -106,10 +106,10 @@ export default function SharingGapModal({
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end gap-2 pt-2 border-t border-neutral-200/60 dark:border-neutral-700/40">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+            className="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
           >
             {t('common.cancel')}
           </button>

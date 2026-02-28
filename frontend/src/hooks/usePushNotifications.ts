@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 
-const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BIW6zpzJ20tsygTbA-FOGCNxT82Y5LGzNG2XV_qO2Q0D9FFC1yolwkF06o5NhbA3TJu2Na45777NHxZW_gHRXeU';
+const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BDKzLknh58RGm2E2wWGm7xrE4B8rq0MBbReWJC4sJRyHATREpRLl4dpqikjiL5CYiYFDWyriMG-XAC_vZKQRZyI';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -46,7 +46,7 @@ export const usePushNotifications = () => {
         applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
       });
 
-      await api.post('/notifications/subscribe', sub);
+      await api.post('/notifications/subscribe', sub.toJSON());
       setSubscription(sub);
       setIsSubscribed(true);
     } catch (error) {

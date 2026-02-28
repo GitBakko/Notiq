@@ -72,9 +72,9 @@ const ToolbarButton = ({
     className={clsx(
       "p-2 sm:p-1.5 rounded transition-colors flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-[36px] md:min-h-[36px]",
       isActive
-        ? "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white"
-        : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200",
-      disabled && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-gray-500 dark:hover:bg-transparent dark:hover:text-gray-400"
+        ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-white"
+        : "bg-transparent text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
+      disabled && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-neutral-500 dark:hover:bg-transparent dark:hover:text-neutral-400"
     )}
   >
     {children}
@@ -120,14 +120,14 @@ const ToolbarDropdown = ({ options, value, onChange, placeholder, title, icon }:
       <button
         onClick={() => setIsOpen(!isOpen)}
         title={title}
-        className="flex items-center gap-1 px-2 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors min-w-[80px]"
+        className="flex items-center gap-1 px-2 py-1.5 rounded text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors min-w-[80px]"
       >
         {icon || <Type size={14} />}
         <span className="truncate">{selectedLabel}</span>
         <ChevronDown size={12} className={clsx("transition-transform", isOpen && "rotate-180")} />
       </button>
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[140px]">
+        <div className="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-lg z-50 min-w-[140px]">
           {options.map((option) => (
             <button
               key={option.value}
@@ -136,10 +136,10 @@ const ToolbarDropdown = ({ options, value, onChange, placeholder, title, icon }:
                 setIsOpen(false);
               }}
               className={clsx(
-                "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 first:rounded-t-lg last:rounded-b-lg transition-colors",
+                "w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 first:rounded-t-lg last:rounded-b-lg transition-colors",
                 option.value === value
                   ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-                  : "text-gray-700 dark:text-gray-300"
+                  : "text-neutral-700 dark:text-neutral-300"
               )}
               style={option.value ? { fontFamily: option.value } : undefined}
             >
@@ -254,12 +254,12 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
 
   // Separator component for readability
-  const Separator = () => <div className="w-px bg-gray-200 mx-1 dark:bg-gray-700" />;
+  const Separator = () => <div className="w-px bg-neutral-200 mx-1 dark:bg-neutral-700" />;
 
   return (
     <div
       className={clsx(
-        "border-b border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 z-10 relative flex-shrink-0",
+        "border-b border-neutral-200/60 bg-white dark:bg-neutral-900 dark:border-neutral-800/40 z-10 relative flex-shrink-0",
         isMobile && isKeyboardOpen
           ? "fixed left-0 right-0 shadow-lg"
           : "sticky top-0"
@@ -268,14 +268,14 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
     >
       {/* Online Users — always visible */}
       {users.length > 0 && (
-        <div className="flex -space-x-2 px-2 pt-2 border-b border-gray-100 dark:border-gray-800 pb-2">
+        <div className="flex -space-x-2 px-2 pt-2 border-b border-neutral-100 dark:border-neutral-800 pb-2">
           {users.map((u, i) => {
             const initial = u.user?.name?.[0]?.toUpperCase() || '?';
             const avatarUrl = u.user?.avatarUrl;
             return (
               <div
                 key={i}
-                className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center text-xs font-bold text-white shadow-sm overflow-hidden relative"
+                className="w-8 h-8 rounded-full border-2 border-white dark:border-neutral-800 flex items-center justify-center text-xs font-bold text-white shadow-sm overflow-hidden relative"
                 style={{ backgroundColor: u.user?.color || '#ccc' }}
                 title={u.user?.name || 'User'}
               >
@@ -397,7 +397,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
 
       {/* Inline link URL input popover */}
       {showLinkInput && (
-        <div className="absolute left-0 right-0 top-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-2 mx-2 z-20 flex items-center gap-2">
+        <div className="absolute left-0 right-0 top-full bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-lg p-2 mx-2 z-20 flex items-center gap-2">
           <input
             ref={linkInputRef}
             type="url"
@@ -423,7 +423,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
               }
             }}
             placeholder={t('editor.linkUrl')}
-            className="flex-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-emerald-500"
+            className="flex-1 bg-neutral-50 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded px-2 py-1.5 text-sm text-neutral-900 dark:text-white outline-none focus:border-emerald-500"
             autoFocus
           />
           <button
@@ -444,7 +444,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           </button>
           <button
             onClick={() => { setShowLinkInput(false); setLinkUrl(''); editor.commands.focus(); }}
-            className="px-2 py-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm flex-shrink-0"
+            className="px-2 py-1.5 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 text-sm flex-shrink-0"
           >
             {t('editor.linkCancel')}
           </button>
@@ -567,7 +567,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowTableSelector(false)} />
                 <div className={clsx(
-                  "absolute top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 w-max p-2",
+                  "absolute top-full mt-1 bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-lg z-50 w-max p-2",
                   isMobile ? "right-0" : "left-1/2 -translate-x-1/2"
                 )}>
                   <TableSelector
@@ -703,23 +703,23 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
                 {showKeyboardShortcuts && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowKeyboardShortcuts(false)} />
-                    <div className="absolute top-full right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-3 w-64">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('editor.shortcuts.title')}</p>
+                    <div className="absolute top-full right-0 mt-1 bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-700/40 rounded-lg shadow-lg z-50 p-3 w-64">
+                      <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-200 mb-2">{t('editor.shortcuts.title')}</p>
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-600 dark:text-gray-400">{t('editor.pasteAsPlainText')}</span>
-                          <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
+                          <span className="text-neutral-600 dark:text-neutral-400">{t('editor.pasteAsPlainText')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
                         </div>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toKanban')}</span>
-                          <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
+                          <span className="text-neutral-600 dark:text-neutral-400">{t('editor.transform.toKanban')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
                         </div>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-600 dark:text-gray-400">{t('editor.transform.toTaskList')}</span>
-                          <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
+                          <span className="text-neutral-600 dark:text-neutral-400">{t('editor.transform.toTaskList')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
                         </div>
                       </div>
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+                      <p className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
                     </div>
                   </>
                 )}

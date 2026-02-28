@@ -132,17 +132,17 @@ export const useImport = (options?: UseImportOptions) => {
   const notebookPickerModal = showNotebookPicker ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNotebookPicker(false)}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
+        className="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200/60 dark:border-neutral-700/40">
           <div className="flex items-center gap-2">
             <FileDown size={18} className="text-emerald-600 dark:text-emerald-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
               {t('import.selectNotebook')}
             </h3>
           </div>
-          <button onClick={() => setShowNotebookPicker(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
+          <button onClick={() => setShowNotebookPicker(false)} className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500">
             <X size={18} />
           </button>
         </div>
@@ -151,7 +151,7 @@ export const useImport = (options?: UseImportOptions) => {
             <button
               key={nb.id}
               onClick={() => handlePickNotebook(nb.id)}
-              className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors"
+              className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-neutral-700 dark:text-neutral-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors"
             >
               {nb.name}
             </button>

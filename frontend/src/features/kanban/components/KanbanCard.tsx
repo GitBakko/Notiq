@@ -47,9 +47,9 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
       ref={setNodeRef}
       style={style}
       className={clsx(
-        'rounded-lg bg-white dark:bg-gray-800 p-3 shadow-sm',
-        'border border-gray-200 dark:border-gray-700',
-        'hover:shadow-md transition-all cursor-pointer',
+        'rounded-lg bg-white dark:bg-neutral-800 p-3 shadow-sm',
+        'border border-neutral-200/60 dark:border-neutral-700/40',
+        'hover:shadow-md transition-all cursor-pointer hover-lift',
         isDragging && 'opacity-50 shadow-lg z-50',
         isHighlighted && 'ring-2 ring-emerald-400 dark:ring-emerald-500 animate-pulse shadow-md shadow-emerald-100 dark:shadow-emerald-900/30'
       )}
@@ -61,7 +61,7 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
             data-dnd-handle
             {...attributes}
             {...listeners}
-            className="flex-shrink-0 self-stretch w-1 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-500 active:bg-gray-500 dark:active:bg-gray-400 cursor-grab active:cursor-grabbing touch-none transition-colors"
+            className="flex-shrink-0 self-stretch w-1 rounded-full bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-400 dark:hover:bg-neutral-500 active:bg-neutral-500 dark:active:bg-neutral-400 cursor-grab active:cursor-grabbing touch-none transition-colors"
           />
         )}
 
@@ -84,7 +84,7 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
           onClick={() => onSelect(card.id)}
         >
           {/* Title */}
-          <p className="text-sm font-medium text-gray-900 dark:text-white line-clamp-2">
+          <p className="text-sm font-medium text-neutral-900 dark:text-white line-clamp-2">
             {card.title || t('kanban.card.untitled')}
           </p>
 
@@ -94,7 +94,7 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
               {/* Assignee */}
               {card.assignee && (
                 <span
-                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
+                  className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400"
                   title={card.assignee.name || card.assignee.email}
                 >
                   {card.assignee.avatarUrl ? (
@@ -120,7 +120,7 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
                     'flex items-center gap-1 text-xs px-1.5 py-0.5 rounded',
                     dueDateStatus === 'overdue' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
                     dueDateStatus === 'today' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-                    dueDateStatus === 'default' && 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                    dueDateStatus === 'default' && 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400'
                   )}
                 >
                   <Calendar size={12} />
@@ -130,7 +130,7 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted }: 
 
               {/* Comment count */}
               {card.commentCount > 0 && (
-                <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-1 text-xs text-neutral-400 dark:text-neutral-400">
                   <MessageSquare size={12} />
                   {card.commentCount}
                 </span>

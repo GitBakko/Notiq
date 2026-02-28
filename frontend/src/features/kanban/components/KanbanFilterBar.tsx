@@ -165,20 +165,20 @@ export default function KanbanFilterBar({
     ].filter(Boolean).length;
 
     return (
-      <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 py-2">
+      <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800 px-4 py-2">
         <div className="flex items-center gap-2">
           {/* Search — always visible */}
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={14} />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500" size={14} />
             <input
               type="text"
               value={filters.search}
               onChange={(e) => updateFilter('search', e.target.value)}
               placeholder={t('kanban.filters.searchPlaceholder')}
-              className="w-full pl-8 pr-7 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 border border-transparent focus:border-emerald-500 dark:focus:border-emerald-400 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-colors"
+              className="w-full pl-8 pr-7 py-1.5 text-sm bg-neutral-100 dark:bg-neutral-800 border border-transparent focus:border-emerald-500 dark:focus:border-emerald-400 rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500 outline-none transition-colors"
             />
             {filters.search && (
-              <button onClick={() => updateFilter('search', '')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <button onClick={() => updateFilter('search', '')} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
                 <X size={12} />
               </button>
             )}
@@ -191,7 +191,7 @@ export default function KanbanFilterBar({
               'relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex-shrink-0',
               active
                 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
             )}
           >
             <Filter size={14} />
@@ -205,7 +205,7 @@ export default function KanbanFilterBar({
           {/* Export button */}
           <button
             onClick={onExport}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex-shrink-0"
             title={t('kanban.export.ganttCsv')}
           >
             <Download size={14} />
@@ -217,24 +217,24 @@ export default function KanbanFilterBar({
           <div className="space-y-4">
             {/* Assignee filters */}
             <div>
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kanban.filters.assignee')}</h4>
+              <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">{t('kanban.filters.assignee')}</h4>
               <div className="space-y-1">
                 {assignees.length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">{t('kanban.filters.noAssignees')}</p>
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">{t('kanban.filters.noAssignees')}</p>
                 ) : (
                   <>
                     {assignees.map((a) => (
                       <button
                         key={a.id}
                         onClick={() => toggleAssignee(a.id)}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700/50 rounded-lg transition-colors"
                       >
                         <span
                           className={clsx(
                             'w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors',
                             filters.assigneeIds.includes(a.id)
                               ? 'border-emerald-500 bg-emerald-500 text-white'
-                              : 'border-gray-300 dark:border-gray-600',
+                              : 'border-neutral-300 dark:border-neutral-600',
                           )}
                         >
                           {filters.assigneeIds.includes(a.id) && '✓'}
@@ -249,25 +249,25 @@ export default function KanbanFilterBar({
                             {(a.name || a.email).charAt(0).toUpperCase()}
                           </span>
                         )}
-                        <span className="text-gray-700 dark:text-gray-300 truncate">{a.name || a.email.split('@')[0]}</span>
+                        <span className="text-neutral-700 dark:text-neutral-300 truncate">{a.name || a.email.split('@')[0]}</span>
                       </button>
                     ))}
                     <button
                       onClick={() => toggleAssignee('__unassigned__')}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors border-t border-gray-100 dark:border-gray-700 mt-1 pt-2"
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700/50 rounded-lg transition-colors border-t border-neutral-100 dark:border-neutral-700/40 mt-1 pt-2"
                     >
                       <span
                         className={clsx(
                           'w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors',
                           filters.assigneeIds.includes('__unassigned__')
                             ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-gray-300 dark:border-gray-600',
+                            : 'border-neutral-300 dark:border-neutral-600',
                         )}
                       >
                         {filters.assigneeIds.includes('__unassigned__') && '✓'}
                       </span>
-                      <span className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0">?</span>
-                      <span className="text-gray-500 dark:text-gray-400 italic">{t('kanban.filters.unassigned')}</span>
+                      <span className="w-5 h-5 rounded-full bg-neutral-300 dark:bg-neutral-600 flex items-center justify-center text-[10px] text-neutral-500 dark:text-neutral-400 flex-shrink-0">?</span>
+                      <span className="text-neutral-500 dark:text-neutral-400 italic">{t('kanban.filters.unassigned')}</span>
                     </button>
                   </>
                 )}
@@ -276,7 +276,7 @@ export default function KanbanFilterBar({
 
             {/* Due date filters */}
             <div>
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kanban.filters.dueDate')}</h4>
+              <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">{t('kanban.filters.dueDate')}</h4>
               <div className="space-y-1">
                 {dueDateOptions.map((opt) => (
                   <button
@@ -286,7 +286,7 @@ export default function KanbanFilterBar({
                       'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
                       filters.dueDate === opt.value
                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                     )}
                   >
                     {t(opt.labelKey)}
@@ -297,7 +297,7 @@ export default function KanbanFilterBar({
 
             {/* Has Note toggle */}
             <div>
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kanban.filters.noteAll')}</h4>
+              <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">{t('kanban.filters.noteAll')}</h4>
               <div className="flex gap-2">
                 {(['all', 'yes', 'no'] as const).map((val) => (
                   <button
@@ -307,7 +307,7 @@ export default function KanbanFilterBar({
                       'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                       filters.hasNote === val
                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                     )}
                   >
                     {val === 'all' ? t('kanban.filters.noteAll') : val === 'yes' ? t('kanban.filters.noteLinked') : t('kanban.filters.noteNotLinked')}
@@ -318,7 +318,7 @@ export default function KanbanFilterBar({
 
             {/* Has Comments toggle */}
             <div>
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kanban.filters.commentsAll')}</h4>
+              <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">{t('kanban.filters.commentsAll')}</h4>
               <div className="flex gap-2">
                 {(['all', 'yes', 'no'] as const).map((val) => (
                   <button
@@ -328,7 +328,7 @@ export default function KanbanFilterBar({
                       'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                       filters.hasComments === val
                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                     )}
                   >
                     {val === 'all' ? t('kanban.filters.commentsAll') : val === 'yes' ? t('kanban.filters.commentsHas') : t('kanban.filters.commentsNone')}
@@ -354,22 +354,22 @@ export default function KanbanFilterBar({
 
   // ── Desktop filter bar ──────────────────────────────────────────────────
   return (
-    <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 py-2">
+    <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800 px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
         {/* Search */}
         <div className="relative flex-shrink-0 w-48">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={14} />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500" size={14} />
           <input
             type="text"
             value={filters.search}
             onChange={(e) => updateFilter('search', e.target.value)}
             placeholder={t('kanban.filters.searchPlaceholder')}
-            className="w-full pl-8 pr-7 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 border border-transparent focus:border-emerald-500 dark:focus:border-emerald-400 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-colors"
+            className="w-full pl-8 pr-7 py-1.5 text-sm bg-neutral-100 dark:bg-neutral-800 border border-transparent focus:border-emerald-500 dark:focus:border-emerald-400 rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500 outline-none transition-colors"
           />
           {filters.search && (
             <button
               onClick={() => updateFilter('search', '')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
             >
               <X size={12} />
             </button>
@@ -377,7 +377,7 @@ export default function KanbanFilterBar({
         </div>
 
         {/* Divider */}
-        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
+        <div className="w-px h-6 bg-neutral-200 dark:bg-neutral-700 flex-shrink-0" />
 
         {/* Assignee dropdown */}
         <div ref={assigneeRef} className="relative flex-shrink-0">
@@ -390,7 +390,7 @@ export default function KanbanFilterBar({
               'flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors',
               filters.assigneeIds.length > 0
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600',
+                : 'border-neutral-200/60 bg-white text-neutral-600 hover:border-neutral-300 dark:border-neutral-700/40 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600',
             )}
           >
             <User size={13} />
@@ -404,9 +404,9 @@ export default function KanbanFilterBar({
           </button>
 
           {showAssigneeMenu && (
-            <div className="absolute left-0 top-full mt-1 z-30 w-56 max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+            <div className="absolute left-0 top-full mt-1 z-30 w-56 max-h-64 overflow-y-auto rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
               {assignees.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
+                <p className="px-3 py-2 text-xs text-neutral-400 dark:text-neutral-500 italic">
                   {t('kanban.filters.noAssignees')}
                 </p>
               ) : (
@@ -415,14 +415,14 @@ export default function KanbanFilterBar({
                     <button
                       key={a.id}
                       onClick={() => toggleAssignee(a.id)}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors"
                     >
                       <span
                         className={clsx(
                           'w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors',
                           filters.assigneeIds.includes(a.id)
                             ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-gray-300 dark:border-gray-600',
+                            : 'border-neutral-300 dark:border-neutral-600',
                         )}
                       >
                         {filters.assigneeIds.includes(a.id) && '✓'}
@@ -437,35 +437,35 @@ export default function KanbanFilterBar({
                           {(a.name || a.email).charAt(0).toUpperCase()}
                         </span>
                       )}
-                      <span className="text-gray-700 dark:text-gray-300 truncate">
+                      <span className="text-neutral-700 dark:text-neutral-300 truncate">
                         {a.name || a.email.split('@')[0]}
                       </span>
                     </button>
                   ))}
                   {/* Unassigned option */}
-                  <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1">
+                  <div className="border-t border-neutral-100 dark:border-neutral-700/40 mt-1 pt-1">
                     <button
                       onClick={() => {
                         // Special: filter for unassigned cards
                         // We handle this by adding a sentinel value
                         toggleAssignee('__unassigned__');
                       }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors"
                     >
                       <span
                         className={clsx(
                           'w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors',
                           filters.assigneeIds.includes('__unassigned__')
                             ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-gray-300 dark:border-gray-600',
+                            : 'border-neutral-300 dark:border-neutral-600',
                         )}
                       >
                         {filters.assigneeIds.includes('__unassigned__') && '✓'}
                       </span>
-                      <span className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0">
+                      <span className="w-5 h-5 rounded-full bg-neutral-300 dark:bg-neutral-600 flex items-center justify-center text-[10px] text-neutral-500 dark:text-neutral-400 flex-shrink-0">
                         ?
                       </span>
-                      <span className="text-gray-500 dark:text-gray-400 italic">
+                      <span className="text-neutral-500 dark:text-neutral-400 italic">
                         {t('kanban.filters.unassigned')}
                       </span>
                     </button>
@@ -487,7 +487,7 @@ export default function KanbanFilterBar({
               'flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors',
               filters.dueDate !== 'all'
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600',
+                : 'border-neutral-200/60 bg-white text-neutral-600 hover:border-neutral-300 dark:border-neutral-700/40 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600',
             )}
           >
             <Calendar size={13} />
@@ -498,7 +498,7 @@ export default function KanbanFilterBar({
           </button>
 
           {showDueDateMenu && (
-            <div className="absolute left-0 top-full mt-1 z-30 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+            <div className="absolute left-0 top-full mt-1 z-30 w-48 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
               {dueDateOptions.map((opt) => (
                 <button
                   key={opt.value}
@@ -510,7 +510,7 @@ export default function KanbanFilterBar({
                     'flex items-center gap-2 w-full px-3 py-1.5 text-sm transition-colors',
                     filters.dueDate === opt.value
                       ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50',
+                      : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700/50',
                   )}
                 >
                   {filters.dueDate === opt.value && (
@@ -536,7 +536,7 @@ export default function KanbanFilterBar({
           className={clsx(
             'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors flex-shrink-0',
             filters.hasNote === 'all' &&
-              'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600',
+              'border-neutral-200/60 bg-white text-neutral-500 hover:border-neutral-300 dark:border-neutral-700/40 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600',
             filters.hasNote === 'yes' &&
               'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
             filters.hasNote === 'no' &&
@@ -561,7 +561,7 @@ export default function KanbanFilterBar({
           className={clsx(
             'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors flex-shrink-0',
             filters.hasComments === 'all' &&
-              'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600',
+              'border-neutral-200/60 bg-white text-neutral-500 hover:border-neutral-300 dark:border-neutral-700/40 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600',
             filters.hasComments === 'yes' &&
               'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
             filters.hasComments === 'no' &&
@@ -591,7 +591,7 @@ export default function KanbanFilterBar({
         {/* Export CSV */}
         <button
           onClick={onExport}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200 transition-colors flex-shrink-0"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-neutral-200/60 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-800 dark:border-neutral-700/40 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:text-neutral-200 transition-colors flex-shrink-0"
           title={t('kanban.export.ganttCsv')}
         >
           <Download size={13} />

@@ -43,7 +43,7 @@ export default function SearchableSelect({
           aria-expanded={open}
           disabled={disabled}
           className={clsx(
-            "flex w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:ring-offset-gray-900 dark:focus:ring-emerald-500",
+            "flex w-full items-center justify-between rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white dark:ring-offset-neutral-900 dark:focus:ring-emerald-500/40 transition-all duration-200",
             className
           )}
         >
@@ -55,16 +55,16 @@ export default function SearchableSelect({
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="z-50 w-[200px] p-0 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+        <Popover.Content className="z-50 w-[200px] p-0 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200/60 dark:border-neutral-700/40 overflow-hidden" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
           <Command className="w-full">
-            <div className="flex items-center border-b border-gray-100 dark:border-gray-700 px-3" cmdk-input-wrapper="">
+            <div className="flex items-center border-b border-neutral-100 dark:border-neutral-700 px-3" cmdk-input-wrapper="">
               <Command.Input
                 placeholder={searchPlaceholder}
-                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
+                className="flex h-10 w-full rounded-lg bg-transparent py-3 text-sm outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
               />
             </div>
             <Command.List className="max-h-[300px] overflow-y-auto overflow-x-hidden p-1">
-              <Command.Empty className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
                 {emptyMessage}
               </Command.Empty>
               <Command.Group>
@@ -77,7 +77,7 @@ export default function SearchableSelect({
                       setOpen(false);
                     }}
                     className={clsx(
-                      "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100 dark:text-gray-200",
+                      "relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none aria-selected:bg-emerald-50 aria-selected:text-emerald-900 dark:aria-selected:bg-emerald-900/30 dark:aria-selected:text-emerald-100 dark:text-neutral-200",
                       value === option.value && "bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100"
                     )}
                   >
