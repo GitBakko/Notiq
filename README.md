@@ -9,8 +9,8 @@ Offline-first note-taking PWA with real-time collaboration, encrypted vault, and
 - **Offline-first** — Dexie.js (IndexedDB) with background sync queue
 - **Encrypted Vault** — PBKDF2-derived AES-encrypted notes and credentials behind PIN protection
 - **Task Lists** — Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking
-- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, card priority (5 levels with per-level icons), note linking with smart sharing, activity history, board chat, cover images, column reordering, tiered notifications (SSE/push/email), offline sync via IndexedDB, group sharing, and real-time SSE updates
-- **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, resend/cancel, smart merge duplicate detection, and clickable sharing badges with read-only user viewer
+- **Kanban Boards** — Drag-and-drop boards with columns, cards, comments, assignees, due dates, card priority (5 levels with per-level icons), note linking with smart sharing, activity history, board chat, cover images, column reordering, completion column tracking, auto-archiving (7-day), task list linking with bidirectional sync, tiered notifications (SSE/push/email), smooth mobile swipe navigation, offline sync via IndexedDB, group sharing, and real-time SSE updates
+- **Sharing** — Note, notebook, task list, and kanban board sharing with granular permissions (read/write), Sharing Center with sent invitations panel, pending invitations display, resend/cancel, smart merge duplicate detection, and clickable sharing badges with read-only user viewer
 - **Groups** — User groups with avatar, invitation management, shared notebooks, and expandable member visibility for all groups
 - **Reminders** — Date-based reminders with notification support
 - **AI Chat** — Per-note AI assistant powered by AWS Bedrock with dynamic titles and notification badges
@@ -125,10 +125,7 @@ notiq/
       lib/           # API client, Dexie DB, i18n
       locales/       # en.json, it.json
     e2e/             # Playwright E2E tests (18 specs)
-  docs/
-    deployment/      # IIS/Docker deployment guides
-    testing/         # E2E test documentation
-    archive/         # Historical design specs and roadmap
+  deploy/            # Deployment scripts (pre/post-install)
 ```
 
 ## Security
