@@ -19,6 +19,8 @@ interface KanbanColumnProps {
   onToggleCompletion?: (columnId: string, isCompleted: boolean) => void;
   readOnly?: boolean;
   highlightedCardIds?: Set<string>;
+  allColumns?: KanbanColumnType[];
+  onMoveCardToColumn?: (cardId: string, targetColumnId: string) => void;
 }
 
 export default function KanbanColumn({
@@ -30,6 +32,8 @@ export default function KanbanColumn({
   onToggleCompletion,
   readOnly,
   highlightedCardIds,
+  allColumns,
+  onMoveCardToColumn,
 }: KanbanColumnProps) {
   const { t } = useTranslation();
 
@@ -237,6 +241,9 @@ export default function KanbanColumn({
               readOnly={readOnly}
               isHighlighted={highlightedCardIds?.has(card.id)}
               isInCompletedColumn={column.isCompleted}
+              allColumns={allColumns}
+              currentColumnId={column.id}
+              onMoveToColumn={onMoveCardToColumn}
             />
           ))}
         </SortableContext>

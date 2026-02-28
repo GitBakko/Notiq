@@ -812,6 +812,10 @@
       "mobileEntityButtonsFix": "I pulsanti di creazione su mobile ora mostrano solo l'icona per evitare il wrapping del testo",
       "taskListKanbanLinkFix": "Corretto il link task list → kanban board che navigava alla lista note invece che alla kanban",
       "kanbanBoardCardSize": "Card Kanban Board Più Grandi — Le card delle board nella lista sono ora più ampie con testo e icone più grandi",
+      "kanbanMobileCardMove": "Spostamento Card Mobile — Sposta le card Kanban tra le colonne tramite menu tre puntini o pressione prolungata su mobile",
+      "taskListExistingBoardLink": "Link Task List ↔ Board — La conversione verso una board esistente ora crea un link bidirezionale e sincronizza lo stato delle checkbox",
+      "taskItemLongPressModal": "Testo Task Pressione Prolungata — Tieni premuto su un task su mobile per visualizzare il testo completo in una modale",
+      "kanbanAutoCompleteColumn": "Colonna Completamento Automatico — L'ultima colonna viene automaticamente impostata come 'completata' se nessuna colonna è stata configurata",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -940,7 +944,8 @@
       "description": "Descrizione",
       "deleteConfirm": "Eliminare questa card?",
       "deleteCard": "Elimina card",
-      "priority": "Priorità"
+      "priority": "Priorità",
+      "moveToColumn": "Sposta nella colonna"
     },
     "priority": {
       "STANDBY": "In standby",

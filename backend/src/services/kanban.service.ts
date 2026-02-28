@@ -332,6 +332,24 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
   // Run lazy archive before returning board data
   await archiveCompletedCards(boardId);
 
+  // Auto-mark last column as "completed" if no column has isCompleted set
+  try {
+    const columns = await prisma.kanbanColumn.findMany({
+      where: { boardId },
+      orderBy: { position: 'asc' },
+      select: { id: true, isCompleted: true },
+    });
+    if (columns.length > 0 && !columns.some(c => c.isCompleted)) {
+      const lastColumn = columns[columns.length - 1];
+      await prisma.kanbanColumn.update({
+        where: { id: lastColumn.id },
+        data: { isCompleted: true },
+      });
+    }
+  } catch (err) {
+    logger.error(err, 'Failed to auto-set last column as completed');
+  }
+
   const board = await prisma.kanbanBoard.findUnique({
     where: { id: boardId },
     include: {
@@ -1703,6 +1721,67 @@ export async function linkTaskListToBoard(
       taskList: { select: { id: true, title: true, userId: true } },
     },
   });
+
+  // ── Sync existing cards' completion state back to task items ──
+  // After linking, match kanban cards to task items by title and sync checkboxes.
+  try {
+    const columns = await prisma.kanbanColumn.findMany({
+      where: { boardId },
+      select: { id: true, isCompleted: true },
+    });
+
+    const completedColumnIds = new Set(
+      columns.filter(c => c.isCompleted).map(c => c.id)
+    );
+
+    // Get all cards in this board (with their taskItemId if any)
+    const cards = await prisma.kanbanCard.findMany({
+      where: { column: { boardId } },
+      select: { id: true, title: true, columnId: true, taskItemId: true },
+    });
+
+    // Get all task items in this task list
+    const taskItems = await prisma.taskItem.findMany({
+      where: { taskListId },
+      select: { id: true, text: true, isChecked: true },
+    });
+
+    // Build a map of task item text (lowercase) → task item
+    const taskItemByText = new Map<string, typeof taskItems[0]>();
+    for (const item of taskItems) {
+      taskItemByText.set(item.text.trim().toLowerCase(), item);
+    }
+
+    // Match cards to task items by title and sync completion state
+    for (const card of cards) {
+      const isInCompleted = completedColumnIds.has(card.columnId);
+      const matchedItem = taskItemByText.get(card.title.trim().toLowerCase());
+
+      if (matchedItem) {
+        // Link card to task item if not already linked
+        if (!card.taskItemId) {
+          await prisma.kanbanCard.update({
+            where: { id: card.id },
+            data: { taskItemId: matchedItem.id },
+          });
+        }
+
+        // If card is in a completed column and task item is not checked, check it
+        if (isInCompleted && !matchedItem.isChecked) {
+          await prisma.taskItem.update({
+            where: { id: matchedItem.id },
+            data: { isChecked: true, checkedByUserId: userId },
+          });
+        }
+
+        // Remove matched item so it's not matched again
+        taskItemByText.delete(matchedItem.text.trim().toLowerCase());
+      }
+    }
+  } catch (err) {
+    // Sync is non-critical — the link is created regardless
+    logger.error(err, 'Failed to sync task list items with kanban cards on link');
+  }
 
   broadcast(boardId, { type: 'board:updated', boardId });
 

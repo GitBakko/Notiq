@@ -709,7 +709,7 @@ export default function Sidebar() {
             {/* Footer */}
             <div className="p-4 border-t border-neutral-200/60 dark:border-neutral-800/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <img src="/favicon.png" alt={t('common.logoAlt')} className="h-6 w-6 object-contain" />
+                <img src="/logo-no-bg.png" alt={t('common.logoAlt')} className="h-6 w-6 object-contain" />
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-neutral-900 dark:text-white leading-none">{t('common.notiq')}</span>
                   <span className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-none mt-0.5">v{CURRENT_VERSION}</span>

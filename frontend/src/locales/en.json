@@ -813,7 +813,8 @@
       "description": "Description",
       "deleteConfirm": "Delete this card permanently?",
       "deleteCard": "Delete card",
-      "priority": "Priority"
+      "priority": "Priority",
+      "moveToColumn": "Move to column"
     },
     "priority": {
       "STANDBY": "Standby",
@@ -1123,6 +1124,10 @@
       "mobileEntityButtonsFix": "Mobile entity buttons now show icon-only to prevent text wrapping",
       "taskListKanbanLinkFix": "Fixed task list → kanban board link navigating to notes list instead of kanban",
       "kanbanBoardCardSize": "Larger Kanban Board Cards — Board cards in the list view are now wider with bigger text and icons",
+      "kanbanMobileCardMove": "Mobile Card Movement — Move Kanban cards between columns via three-dot menu or long-press on mobile",
+      "taskListExistingBoardLink": "Task List ↔ Board Linking — Converting to an existing board now creates a bidirectional link and syncs checkbox status",
+      "taskItemLongPressModal": "Task Text Long-Press — Long-press a task item on mobile to view full text in a modal",
+      "kanbanAutoCompleteColumn": "Auto-Complete Column — Last column is automatically marked as 'completed' when no column has been set",
       "initialRelease": "Initial release with full feature set"
     }
   },

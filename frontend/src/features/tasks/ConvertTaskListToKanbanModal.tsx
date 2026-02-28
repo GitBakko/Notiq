@@ -9,7 +9,7 @@ import Modal from '../../components/ui/Modal';
 import { useKanbanBoards } from '../kanban/hooks/useKanbanBoards';
 import { useKanbanBoard } from '../kanban/hooks/useKanbanBoard';
 import { useKanbanMutations } from '../kanban/hooks/useKanbanMutations';
-import { createBoardFromTaskList } from '../kanban/kanbanService';
+import { createBoardFromTaskList, linkTaskList } from '../kanban/kanbanService';
 import { syncPush } from '../sync/syncService';
 import * as taskListService from './taskListService';
 import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
@@ -106,6 +106,19 @@ export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList
       for (const item of items) {
         const columnId = item.isChecked ? doneColumnId : todoColumnId;
         await createCard.mutateAsync({ columnId, title: item.text });
+      }
+
+      // Sync the task list to remote before linking (ensures IDs are stable)
+      await syncPush();
+
+      // Create bidirectional link: task list ↔ kanban board
+      // This also syncs completion state of existing cards back to task items
+      try {
+        await linkTaskList(selectedBoardId, taskList.id);
+        queryClient.invalidateQueries({ queryKey: ['task-lists'] });
+      } catch (e) {
+        // Linking is non-critical — cards already created
+        console.error('Failed to link task list to board', e);
       }
 
       toast.success(t('editor.transform.kanbanSuccess', { count: items.length, board: boardDetail.title }));

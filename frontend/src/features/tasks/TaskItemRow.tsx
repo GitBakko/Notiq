@@ -7,6 +7,7 @@ import { CSS } from '@dnd-kit/utilities';
 import TaskPriorityBadge from './TaskPriorityBadge';
 import TaskTextModal from './TaskTextModal';
 import { useAuthStore } from '../../store/authStore';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import type { LocalTaskItem } from '../../lib/db';
 
 interface TaskItemRowProps {
@@ -20,6 +21,7 @@ interface TaskItemRowProps {
 export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDelete }: TaskItemRowProps) {
   const { t } = useTranslation();
   const currentUserId = useAuthStore((s) => s.user?.id);
+  const isMobile = useIsMobile();
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const [showTextModal, setShowTextModal] = useState(false);
@@ -27,6 +29,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
   const inputRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const dueDateRef = useRef<HTMLInputElement>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkOverflow = useCallback(() => {
     if (textRef.current) {
@@ -157,6 +160,25 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
             <span
               ref={textRef}
               onClick={() => !readOnly && setIsEditing(true)}
+              onTouchStart={() => {
+                if (!isMobile || !isOverflowing) return;
+                longPressTimerRef.current = setTimeout(() => {
+                  longPressTimerRef.current = null;
+                  setShowTextModal(true);
+                }, 600);
+              }}
+              onTouchEnd={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }}
+              onTouchMove={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }}
               className={clsx(
                 'text-sm cursor-pointer truncate block flex-1 min-w-0',
                 item.isChecked

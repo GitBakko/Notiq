@@ -26,6 +26,10 @@ export const changelog: VersionEntry[] = [
       { type: 'fix', titleKey: 'whatsNew.entries.mobileEntityButtonsFix' },
       { type: 'fix', titleKey: 'whatsNew.entries.taskListKanbanLinkFix' },
       { type: 'improvement', titleKey: 'whatsNew.entries.kanbanBoardCardSize' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanMobileCardMove' },
+      { type: 'feature', titleKey: 'whatsNew.entries.taskListExistingBoardLink' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.taskItemLongPressModal' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanAutoCompleteColumn' },
     ],
   },
   {

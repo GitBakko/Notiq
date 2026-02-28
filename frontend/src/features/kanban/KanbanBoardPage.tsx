@@ -501,6 +501,37 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     mutations.unlinkTaskList.mutate(boardId);
   }
 
+  // Move card to a different column via menu (mobile & desktop)
+  const handleMoveCardToColumn = useCallback((cardId: string, targetColumnId: string) => {
+    // Optimistic: move card in localColumns immediately
+    setLocalColumns(prev => {
+      let movedCard: typeof prev[0]['cards'][0] | undefined;
+      const updated = prev.map(col => {
+        const cardIdx = col.cards.findIndex(c => c.id === cardId);
+        if (cardIdx >= 0) {
+          movedCard = col.cards[cardIdx];
+          return { ...col, cards: col.cards.filter(c => c.id !== cardId) };
+        }
+        return col;
+      });
+      if (!movedCard) return prev;
+      return updated.map(col => {
+        if (col.id === targetColumnId) {
+          const newPosition = col.cards.length;
+          return { ...col, cards: [...col.cards, { ...movedCard!, position: newPosition }] };
+        }
+        return col;
+      });
+    });
+
+    // Persist to backend
+    setIsMoveInFlight(true);
+    mutations.moveCard.mutate(
+      { cardId, toColumnId: targetColumnId, position: 999 },
+      { onSettled: () => setIsMoveInFlight(false) },
+    );
+  }, [mutations.moveCard]);
+
   function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1020,6 +1051,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       onToggleCompletion={!readOnly ? handleToggleColumnCompletion : undefined}
                       readOnly={readOnly || filtersActive}
                       highlightedCardIds={highlightedCardIds}
+                      allColumns={displayColumns}
+                      onMoveCardToColumn={handleMoveCardToColumn}
                     />
                   </div>
                 ))}
@@ -1060,6 +1093,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       onToggleCompletion={!readOnly ? handleToggleColumnCompletion : undefined}
                       readOnly={readOnly || filtersActive}
                       highlightedCardIds={highlightedCardIds}
+                      allColumns={displayColumns}
+                      onMoveCardToColumn={handleMoveCardToColumn}
                     />
                   ))}
                 </SortableContext>
