@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import clsx from 'clsx';
@@ -35,6 +36,8 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
   const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
 
   const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
 
@@ -57,8 +60,25 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
   const otherColumns = allColumns?.filter(c => c.id !== currentColumnId) ?? [];
   const canMove = !readOnly && onMoveToColumn && otherColumns.length > 0;
 
+  const openMoveMenu = useCallback((anchorEl?: HTMLElement | null) => {
+    const el = anchorEl || menuBtnRef.current;
+    if (el && !isMobile) {
+      const rect = el.getBoundingClientRect();
+      const menuWidth = 224; // w-56 = 14rem
+      let left = rect.right - menuWidth;
+      if (left < 8) left = 8;
+      if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
+      let top = rect.bottom + 4;
+      // If near bottom, flip above
+      if (top + 200 > window.innerHeight) top = rect.top - 200 - 4;
+      setMenuPos({ top, left });
+    }
+    setShowMoveMenu(true);
+  }, [isMobile]);
+
   const handleMoveToColumn = useCallback((targetColumnId: string) => {
     setShowMoveMenu(false);
+    setMenuPos(null);
     onMoveToColumn?.(card.id, targetColumnId);
   }, [card.id, onMoveToColumn]);
 
@@ -80,9 +100,9 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
     longPressTimerRef.current = setTimeout(() => {
       longPressTimerRef.current = null;
       longPressFiredRef.current = true;
-      setShowMoveMenu(true);
+      openMoveMenu();
     }, 600);
-  }, [canMove, isMobile]);
+  }, [canMove, isMobile, openMoveMenu]);
 
   const handleCardTouchEnd = useCallback(() => {
     clearLongPress();
@@ -154,12 +174,18 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
 
               {/* Three-dot menu — Move to column */}
               {canMove && (
-                <div className="relative flex-shrink-0">
+                <div className="flex-shrink-0">
                   <button
+                    ref={menuBtnRef}
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowMoveMenu(!showMoveMenu);
+                      if (showMoveMenu) {
+                        setShowMoveMenu(false);
+                        setMenuPos(null);
+                      } else {
+                        openMoveMenu(e.currentTarget);
+                      }
                     }}
                     onTouchEnd={(e) => {
                       // Prevent the card's touch handlers from interfering
@@ -243,16 +269,19 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
         </div>
       </div>
 
-      {/* Move to column dropdown/overlay */}
-      {showMoveMenu && canMove && (
+      {/* Move to column dropdown — rendered via portal to escape transform stacking contexts */}
+      {showMoveMenu && canMove && createPortal(
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setShowMoveMenu(false)} />
-          <div className={clsx(
-            'z-40 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-xl py-1 overflow-hidden',
-            isMobile
-              ? 'fixed bottom-0 left-0 right-0 rounded-t-2xl rounded-b-none pb-[env(safe-area-inset-bottom)] border-b-0 shadow-2xl'
-              : 'absolute mt-1 w-56 right-0'
-          )}>
+          <div className="fixed inset-0 z-[100]" onClick={() => { setShowMoveMenu(false); setMenuPos(null); }} />
+          <div
+            className={clsx(
+              'fixed z-[101] rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-xl py-1 overflow-hidden',
+              isMobile
+                ? 'bottom-0 left-0 right-0 rounded-t-2xl rounded-b-none pb-[env(safe-area-inset-bottom)] border-b-0 shadow-2xl'
+                : 'w-56'
+            )}
+            style={!isMobile && menuPos ? { top: menuPos.top, left: menuPos.left } : undefined}
+          >
             <div className="px-3 py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide flex items-center gap-1.5">
               <ArrowRightLeft size={12} />
               {t('kanban.card.moveToColumn')}
@@ -272,7 +301,8 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
               ))}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </>
   );
