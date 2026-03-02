@@ -161,7 +161,7 @@ model TagsOnNotes {
   noteId String
   tagId  String
   note   Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  tag    Tag  @relation(fields: [tagId], references: [id])
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([noteId, tagId])
 }
@@ -423,7 +423,7 @@ model KanbanBoard {
   coverImage      String?
   avatarUrl       String?
   noteId          String?
-  note            Note?               @relation("KanbanBoardNote", fields: [noteId], references: [id])
+  note            Note?               @relation("KanbanBoardNote", fields: [noteId], references: [id], onDelete: SetNull)
   noteLinkedById  String?
   noteLinkedBy    User?               @relation("KanbanBoardNoteLinker", fields: [noteLinkedById], references: [id])
   taskListId         String?          @unique
@@ -470,7 +470,7 @@ model KanbanCard {
   taskItemId  String?         @unique
   taskItem    TaskItem?       @relation(fields: [taskItemId], references: [id], onDelete: SetNull)
   noteId          String?
-  note            Note?           @relation(fields: [noteId], references: [id])
+  note            Note?           @relation(fields: [noteId], references: [id], onDelete: SetNull)
   noteLinkedById  String?
   noteLinkedBy    User?           @relation("KanbanNoteLinker", fields: [noteLinkedById], references: [id])
   comments        KanbanComment[]
