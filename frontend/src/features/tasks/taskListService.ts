@@ -111,6 +111,10 @@ export const addTaskItem = async (
     createdAt: Date.now(),
   });
 
+  // Flush sync immediately so the backend can auto-create a kanban card
+  // in the linked board (if any). Fire-and-forget to keep UI responsive.
+  syncPush().catch(() => {});
+
   return taskItem;
 };
 

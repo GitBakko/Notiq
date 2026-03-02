@@ -758,7 +758,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {/* Presence avatars */}
               {presenceUsers.length > 0 && (
                 <div className="flex items-center -space-x-2 mr-2">
-                  {presenceUsers.slice(0, 5).map((u) => {
+                  {presenceUsers.slice(0, isMobile ? 3 : 5).map((u) => {
                     const isMe = u.id === user?.id;
                     const initial = isMe
                       ? 'ME'
@@ -790,120 +790,197 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       </div>
                     );
                   })}
-                  {presenceUsers.length > 5 && (
+                  {presenceUsers.length > (isMobile ? 3 : 5) && (
                     <div className="w-7 h-7 rounded-full border-2 border-white dark:border-neutral-950 bg-neutral-300 dark:bg-neutral-600 flex items-center justify-center text-[9px] font-bold text-neutral-700 dark:text-neutral-200">
-                      +{presenceUsers.length - 5}
+                      +{presenceUsers.length - (isMobile ? 3 : 5)}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Chat toggle */}
-              {(isOwner || isShared) && (
-                <button
-                  onClick={handleChatToggle}
-                  className={clsx(
-                    'p-2 rounded-lg transition-colors relative',
-                    isChatOpen
-                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
-                      : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+              {/* Desktop-only action buttons — hidden on mobile (merged into three-dot menu) */}
+              {!isMobile && (
+                <>
+                  {/* Chat toggle */}
+                  {(isOwner || isShared) && (
+                    <button
+                      onClick={handleChatToggle}
+                      className={clsx(
+                        'p-2 rounded-lg transition-colors relative',
+                        isChatOpen
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      )}
+                      title={t('kanban.chat.title')}
+                    >
+                      <MessageSquare size={18} />
+                      {unreadCount > 0 && (
+                        <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
+                    </button>
                   )}
-                  title={t('kanban.chat.title')}
+
+                  {/* Cover image button (no cover yet) */}
+                  {!readOnly && !board.coverImage && (
+                    <button
+                      onClick={() => coverInputRef.current?.click()}
+                      className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                      title={t('kanban.cover.add')}
+                    >
+                      <ImagePlus size={18} />
+                    </button>
+                  )}
+
+                  {/* Archive button */}
+                  <button
+                    onClick={() => setIsArchiveOpen(true)}
+                    className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
+                    title={t('kanban.archive.title')}
+                  >
+                    <Archive size={18} />
+                    {board.archivedCardsCount > 0 && (
+                      <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neutral-500 dark:bg-neutral-600 text-[10px] text-white px-1">
+                        {board.archivedCardsCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {isOwner && (
+                    <button
+                      onClick={() => setIsShareOpen(true)}
+                      className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                      title={t('kanban.share.title')}
+                    >
+                      <Share2 size={18} />
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Three-dot menu — on mobile contains all actions, on desktop only board management */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowBoardMenu(!showBoardMenu)}
+                  className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
                 >
-                  <MessageSquare size={18} />
-                  {unreadCount > 0 && (
+                  <MoreVertical size={18} />
+                  {/* Unread badge on mobile (chat is inside menu) */}
+                  {isMobile && unreadCount > 0 && (
                     <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   )}
                 </button>
-              )}
-
-              {/* Cover image button (no cover yet) */}
-              {!readOnly && !board.coverImage && (
-                <button
-                  onClick={() => coverInputRef.current?.click()}
-                  className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-                  title={t('kanban.cover.add')}
-                >
-                  <ImagePlus size={18} />
-                </button>
-              )}
-
-              {/* Archive button */}
-              <button
-                onClick={() => setIsArchiveOpen(true)}
-                className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
-                title={t('kanban.archive.title')}
-              >
-                <Archive size={18} />
-                {board.archivedCardsCount > 0 && (
-                  <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neutral-500 dark:bg-neutral-600 text-[10px] text-white px-1">
-                    {board.archivedCardsCount}
-                  </span>
+                {showBoardMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowBoardMenu(false)} />
+                    <div className="absolute right-0 top-10 z-20 w-56 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
+                      {/* Mobile-only items — actions moved from header */}
+                      {isMobile && (
+                        <>
+                          {(isOwner || isShared) && (
+                            <button
+                              onClick={() => {
+                                setShowBoardMenu(false);
+                                handleChatToggle();
+                              }}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                            >
+                              <MessageSquare size={14} />
+                              {t('kanban.chat.title')}
+                              {unreadCount > 0 && (
+                                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 text-[10px] text-white px-1">
+                                  {unreadCount}
+                                </span>
+                              )}
+                            </button>
+                          )}
+                          {!readOnly && !board.coverImage && (
+                            <button
+                              onClick={() => {
+                                setShowBoardMenu(false);
+                                coverInputRef.current?.click();
+                              }}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                            >
+                              <ImagePlus size={14} />
+                              {t('kanban.cover.add')}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setShowBoardMenu(false);
+                              setIsArchiveOpen(true);
+                            }}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                          >
+                            <Archive size={14} />
+                            {t('kanban.archive.title')}
+                            {board.archivedCardsCount > 0 && (
+                              <span className="ml-auto text-xs text-neutral-400 dark:text-neutral-500">
+                                {board.archivedCardsCount}
+                              </span>
+                            )}
+                          </button>
+                          {isOwner && (
+                            <button
+                              onClick={() => {
+                                setShowBoardMenu(false);
+                                setIsShareOpen(true);
+                              }}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                            >
+                              <Share2 size={14} />
+                              {t('kanban.share.title')}
+                            </button>
+                          )}
+                          <div className="border-t border-neutral-200/60 dark:border-neutral-700/40 my-1" />
+                        </>
+                      )}
+                      {/* Common items — always visible */}
+                      {isOwner && (
+                        <>
+                          {board.taskListId ? (
+                            <button
+                              onClick={() => {
+                                setShowBoardMenu(false);
+                                handleUnlinkTaskList();
+                              }}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                            >
+                              <Unlink size={14} />
+                              {t('kanban.linking.unlinkTaskList')}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setShowBoardMenu(false);
+                                setIsTaskListPickerOpen(true);
+                              }}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                            >
+                              <ListChecks size={14} />
+                              {t('kanban.linking.linkTaskList')}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setShowBoardMenu(false);
+                              handleDeleteBoard();
+                            }}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          >
+                            <Trash2 size={14} />
+                            {t('kanban.deleteBoard')}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
-              </button>
-
-              {isOwner && (
-                <button
-                  onClick={() => setIsShareOpen(true)}
-                  className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-                  title={t('kanban.share.title')}
-                >
-                  <Share2 size={18} />
-                </button>
-              )}
-
-              {isOwner && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowBoardMenu(!showBoardMenu)}
-                    className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-                  >
-                    <MoreVertical size={18} />
-                  </button>
-                  {showBoardMenu && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowBoardMenu(false)} />
-                      <div className="absolute right-0 top-10 z-20 w-56 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
-                        {board.taskListId ? (
-                          <button
-                            onClick={() => {
-                              setShowBoardMenu(false);
-                              handleUnlinkTaskList();
-                            }}
-                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                          >
-                            <Unlink size={14} />
-                            {t('kanban.linking.unlinkTaskList')}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setShowBoardMenu(false);
-                              setIsTaskListPickerOpen(true);
-                            }}
-                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                          >
-                            <ListChecks size={14} />
-                            {t('kanban.linking.linkTaskList')}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setShowBoardMenu(false);
-                            handleDeleteBoard();
-                          }}
-                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          <Trash2 size={14} />
-                          {t('kanban.deleteBoard')}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>

@@ -164,6 +164,8 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
                 if (!isMobile || !isOverflowing) return;
                 longPressTimerRef.current = setTimeout(() => {
                   longPressTimerRef.current = null;
+                  // Clear any text selection caused by long-press before opening modal
+                  window.getSelection()?.removeAllRanges();
                   setShowTextModal(true);
                 }, 600);
               }}
@@ -185,6 +187,7 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
                   ? 'line-through text-neutral-400 dark:text-neutral-500'
                   : 'text-neutral-900 dark:text-white'
               )}
+              style={isMobile && isOverflowing ? { WebkitUserSelect: 'none', userSelect: 'none' } : undefined}
             >
               {item.text}
             </span>
