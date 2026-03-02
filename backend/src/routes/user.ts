@@ -11,6 +11,7 @@ const updateProfileSchema = z.object({
   mobile: z.string().optional(),
   avatarUrl: z.string().optional(),
   emailNotificationsEnabled: z.boolean().optional(),
+  locale: z.enum(['en', 'it']).optional(),
 });
 
 const changePasswordSchema = z.object({

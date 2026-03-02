@@ -24,6 +24,9 @@ interface UIState {
   isSidebarCollapsed: boolean;
   toggleSidebarCollapsed: () => void;
   collapseAll: () => void;
+  isNotificationPanelOpen: boolean;
+  toggleNotificationPanel: () => void;
+  closeNotificationPanel: () => void;
 }
 
 const loadSort = (): { field: SortField; order: SortOrder } => {
@@ -90,6 +93,9 @@ export const useUIStore = create<UIState>((set) => ({
     localStorage.setItem('listCollapsed', 'true');
     return { isSidebarCollapsed: true, isListCollapsed: true };
   }),
+  isNotificationPanelOpen: false,
+  toggleNotificationPanel: () => set((state) => ({ isNotificationPanelOpen: !state.isNotificationPanelOpen })),
+  closeNotificationPanel: () => set({ isNotificationPanelOpen: false }),
 }));
 
 // Initialize theme

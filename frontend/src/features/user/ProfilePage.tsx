@@ -269,7 +269,7 @@ export default function ProfilePage() {
                       { value: 'en', label: 'English', icon: <FlagIcon countryCode="en" /> },
                     ]}
                     value={i18n.language.split('-')[0]}
-                    onChange={(val) => i18n.changeLanguage(val)}
+                    onChange={(val) => { i18n.changeLanguage(val); updateUser({ locale: val }); }}
                     placeholder={t('common.select')}
                   />
                 </div>

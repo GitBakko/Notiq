@@ -8,15 +8,17 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import clsx from 'clsx';
 import CommandMenu from '../search/CommandMenu';
 import WhatsNewModal from '../WhatsNewModal';
+import NotificationPanel from '../../features/notifications/NotificationPanel';
 import { CURRENT_VERSION } from '../../data/changelog';
+import i18n from '../../i18n';
 
 import { useSync } from '../../hooks/useSync';
 
 export default function AppLayout() {
-  const { token } = useAuthStore();
+  const { token, user, updateUser } = useAuthStore();
   useSync();
 
-  const { isSidebarOpen, closeSidebar, isSidebarCollapsed, toggleSidebarCollapsed } = useUIStore();
+  const { isSidebarOpen, closeSidebar, isSidebarCollapsed, toggleSidebarCollapsed, closeNotificationPanel } = useUIStore();
   const isMobile = useIsMobile();
   const location = useLocation();
 
@@ -25,12 +27,22 @@ export default function AppLayout() {
     return lastSeen !== CURRENT_VERSION;
   });
 
-  // Close sidebar on route change on mobile
+  // Close sidebar on route change on mobile, close notification panel on any route change
   useEffect(() => {
     if (isMobile) {
       closeSidebar();
     }
-  }, [location.pathname, location.search, isMobile, closeSidebar]);
+    closeNotificationPanel();
+  }, [location.pathname, location.search, isMobile, closeSidebar, closeNotificationPanel]);
+
+  // Sync frontend language to backend locale (covers existing users who never had locale set)
+  useEffect(() => {
+    if (!user) return;
+    const frontendLang = i18n.language?.split('-')[0] || 'en';
+    if (user.locale !== frontendLang && (frontendLang === 'en' || frontendLang === 'it')) {
+      updateUser({ locale: frontendLang });
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ctrl+B to toggle sidebar collapse (desktop only)
   useEffect(() => {
@@ -79,6 +91,7 @@ export default function AppLayout() {
         </ErrorBoundary>
       </div>
 
+      <NotificationPanel />
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
     </div>
   );
