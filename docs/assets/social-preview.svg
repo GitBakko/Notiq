@@ -1,0 +1,39 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="640" fill="#0F172A"/>
+
+  <!-- Subtle grid pattern -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="640" fill="url(#grid)" opacity="0.3"/>
+
+  <!-- Notiq N symbol (scaled) -->
+  <g transform="translate(180, 180) scale(0.5)">
+    <path d="M140 360 L140 150 L360 360 L360 150"
+          stroke="#F5F7FA" stroke-width="36" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M300 300 L340 260 L360 280 L320 320 Z" fill="#0F172A"/>
+    <circle cx="110" cy="380" r="22" fill="#22D3EE"/>
+  </g>
+
+  <!-- Text -->
+  <text x="480" y="310" font-family="'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="80" fill="#F5F7FA">Notiq</text>
+  <circle cx="682" cy="298" r="8" fill="#22D3EE"/>
+  <text x="480" y="365" font-family="'Segoe UI', system-ui, sans-serif" font-weight="300" font-size="28" fill="#94A3B8">A thinking instrument</text>
+
+  <!-- Feature tags -->
+  <text x="480" y="430" font-family="'Segoe UI', system-ui, sans-serif" font-weight="400" font-size="20" fill="#475569">
+    <tspan>Offline-first</tspan>
+    <tspan dx="16" fill="#334155">&#183;</tspan>
+    <tspan dx="16">Real-time collaboration</tspan>
+    <tspan dx="16" fill="#334155">&#183;</tspan>
+    <tspan dx="16">Encrypted vault</tspan>
+    <tspan dx="16" fill="#334155">&#183;</tspan>
+    <tspan dx="16">Kanban</tspan>
+  </text>
+
+  <!-- Bottom accent line -->
+  <rect x="480" y="460" width="60" height="3" rx="1.5" fill="#22D3EE" opacity="0.6"/>
+</svg>

@@ -1,0 +1,54 @@
+<svg width="900" height="200" viewBox="0 0 900 200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="200" rx="12" fill="#0F172A"/>
+
+  <!-- Subtle grid -->
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1E293B" stroke-width="0.4"/>
+    </pattern>
+    <clipPath id="rounded">
+      <rect width="900" height="200" rx="12"/>
+    </clipPath>
+  </defs>
+  <rect width="900" height="200" fill="url(#grid)" opacity="0.3" clip-path="url(#rounded)"/>
+
+  <!-- Notiq N symbol -->
+  <g transform="translate(60, 40) scale(0.23)">
+    <path d="M140 360 L140 150 L360 360 L360 150"
+          stroke="#F5F7FA" stroke-width="36" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M300 300 L340 260 L360 280 L320 320 Z" fill="#0F172A"/>
+    <circle cx="110" cy="380" r="22" fill="#22D3EE"/>
+  </g>
+
+  <!-- Text -->
+  <text x="200" y="95" font-family="'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="52" fill="#F5F7FA" letter-spacing="-0.5">Notiq</text>
+  <circle cx="340" cy="86" r="5" fill="#22D3EE"/>
+  <text x="200" y="130" font-family="'Segoe UI', system-ui, sans-serif" font-weight="300" font-size="18" fill="#94A3B8">A thinking instrument</text>
+
+  <!-- Feature pills -->
+  <g transform="translate(200, 148)">
+    <rect x="0" y="0" width="88" height="26" rx="13" fill="#1E293B"/>
+    <text x="44" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">Offline-first</text>
+
+    <rect x="96" y="0" width="72" height="26" rx="13" fill="#1E293B"/>
+    <text x="132" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">Real-time</text>
+
+    <rect x="176" y="0" width="110" height="26" rx="13" fill="#1E293B"/>
+    <text x="231" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">Encrypted vault</text>
+
+    <rect x="294" y="0" width="65" height="26" rx="13" fill="#1E293B"/>
+    <text x="326.5" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">Kanban</text>
+
+    <rect x="367" y="0" width="52" height="26" rx="13" fill="#1E293B"/>
+    <text x="393" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">PWA</text>
+
+    <rect x="427" y="0" width="46" height="26" rx="13" fill="#1E293B"/>
+    <text x="450" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">i18n</text>
+  </g>
+
+  <!-- Right side decorative accent -->
+  <rect x="820" y="40" width="3" height="120" rx="1.5" fill="#22D3EE" opacity="0.15"/>
+  <rect x="840" y="60" width="3" height="80" rx="1.5" fill="#22D3EE" opacity="0.08"/>
+  <rect x="860" y="75" width="3" height="50" rx="1.5" fill="#22D3EE" opacity="0.04"/>
+</svg>
