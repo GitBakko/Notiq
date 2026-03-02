@@ -11,6 +11,16 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.7.3',
+    date: '2026-03-02',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.pushNotificationI18n' },
+      { type: 'fix', titleKey: 'whatsNew.entries.emailNotificationI18n' },
+      { type: 'fix', titleKey: 'whatsNew.entries.missingNotificationKeys' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.brandedReadme' },
+    ],
+  },
+  {
     version: '1.7.2',
     date: '2026-02-28',
     entries: [

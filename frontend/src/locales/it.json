@@ -816,6 +816,10 @@
       "taskListExistingBoardLink": "Link Task List ↔ Board — La conversione verso una board esistente ora crea un link bidirezionale e sincronizza lo stato delle checkbox",
       "taskItemLongPressModal": "Testo Task Pressione Prolungata — Tieni premuto su un task su mobile per visualizzare il testo completo in una modale",
       "kanbanAutoCompleteColumn": "Colonna Completamento Automatico — L'ultima colonna viene automaticamente impostata come 'completata' se nessuna colonna è stata configurata",
+      "pushNotificationI18n": "Notifiche Push Localizzate — Le notifiche push ora vengono mostrate nella lingua dell'utente (Inglese/Italiano)",
+      "emailNotificationI18n": "Corrette email di notifica senza lingua — Tutte le email di condivisione e risposta ora inviate nella lingua del destinatario",
+      "missingNotificationKeys": "Corrette traduzioni mancanti per notifiche chat board e messaggi diretti",
+      "brandedReadme": "README GitHub Brandizzato — Il repository ora mostra il logo Notiq, i colori del brand e l'anteprima social",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -864,7 +868,11 @@
     "kanbanCommentDeleted": "{{authorName}} ha eliminato un commento su \"{{cardTitle}}\" nella board \"{{boardTitle}}\"",
     "kanbanCommentDeleted_TITLE": "Commento Eliminato",
     "kanbanCardMoved": "{{actorName}} ha spostato \"{{cardTitle}}\" da {{fromColumn}} a {{toColumn}}",
-    "kanbanCardMoved_TITLE": "Card Spostata"
+    "kanbanCardMoved_TITLE": "Card Spostata",
+    "kanbanBoardChat": "{{senderName}} ha inviato un messaggio nella board \"{{boardTitle}}\"",
+    "kanbanBoardChat_TITLE": "Chat Board",
+    "chatMessage": "{{senderName}} ti ha inviato un messaggio",
+    "chatMessage_TITLE": "Nuovo Messaggio"
   },
   "groups": {
     "title": "Gruppi",

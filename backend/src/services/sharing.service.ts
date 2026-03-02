@@ -78,6 +78,7 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
           itemType: 'Note',
           shareId: sharedNote.id,
           tab: 'notes',
+          locale: targetUser.locale,
         }
       );
 
@@ -155,7 +156,7 @@ export const autoShareNoteForBoard = async (
       });
 
       // In-app notification
-      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { email: true, name: true } });
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { email: true, name: true, locale: true } });
       if (targetUser) {
         await notificationService.createNotification(
           targetUserId,
@@ -183,6 +184,7 @@ export const autoShareNoteForBoard = async (
             itemType: 'Note',
             shareId: '',
             tab: 'notes',
+            locale: targetUser.locale,
           }
         ).catch((e) => logger.error(e, 'Failed to send auto-share email'));
       }
@@ -310,6 +312,7 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
           itemType: 'Notebook',
           shareId: sharedNotebook.id,
           tab: 'notebooks',
+          locale: targetUser.locale,
         }
       );
 
@@ -443,7 +446,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
 
   // Notify Owner
   if (result) {
-    let owner: { id: string; email: string; name: string | null } | undefined;
+    let owner: { id: string; email: string; name: string | null; locale?: string | null } | undefined;
     let itemName: string;
     if (type === 'NOTE' && 'note' in result) {
       owner = result.note.user;
@@ -469,6 +472,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
             action: action === 'accept' ? 'accepted' : 'declined',
             itemName,
             itemId,
+            locale: owner.locale || 'en',
           }
         );
 
@@ -549,6 +553,7 @@ export const shareKanbanBoard = async (
       itemType: 'kanban board',
       shareId: share.id,
       tab: 'kanbanBoards',
+      locale: targetUser.locale,
     });
   } catch {
     // Email failure should not block sharing
@@ -643,47 +648,53 @@ export const resendShareInvitation = async (
   let itemType: string;
   let tab: string;
 
+  let targetLocale: string | null = null;
+
   if (type === 'NOTE') {
     const share = await prisma.sharedNote.findUnique({
       where: { id: shareId },
-      include: { user: { select: { email: true } }, note: { select: { title: true, userId: true } } },
+      include: { user: { select: { email: true, locale: true } }, note: { select: { title: true, userId: true } } },
     });
     if (!share || share.note.userId !== userId) throw new Error('Share not found');
     if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
     targetEmail = share.user.email;
+    targetLocale = share.user.locale;
     itemName = share.note.title;
     itemType = 'Note';
     tab = 'notes';
   } else if (type === 'NOTEBOOK') {
     const share = await prisma.sharedNotebook.findUnique({
       where: { id: shareId },
-      include: { user: { select: { email: true } }, notebook: { select: { name: true, userId: true } } },
+      include: { user: { select: { email: true, locale: true } }, notebook: { select: { name: true, userId: true } } },
     });
     if (!share || share.notebook.userId !== userId) throw new Error('Share not found');
     if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
     targetEmail = share.user.email;
+    targetLocale = share.user.locale;
     itemName = share.notebook.name;
     itemType = 'Notebook';
     tab = 'notebooks';
   } else if (type === 'TASKLIST') {
     const share = await prisma.sharedTaskList.findUnique({
       where: { id: shareId },
-      include: { user: { select: { email: true } }, taskList: { select: { title: true, userId: true } } },
+      include: { user: { select: { email: true, locale: true } }, taskList: { select: { title: true, userId: true } } },
     });
     if (!share || share.taskList.userId !== userId) throw new Error('Share not found');
     if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
     targetEmail = share.user.email;
+    targetLocale = share.user.locale;
     itemName = share.taskList.title;
     itemType = 'Task List';
     tab = 'taskLists';
   } else {
     const share = await prisma.sharedKanbanBoard.findUnique({
       where: { id: shareId },
-      include: { user: { select: { email: true } }, board: { select: { title: true, ownerId: true } } },
+      include: { user: { select: { email: true, locale: true } }, board: { select: { title: true, ownerId: true } } },
     });
     if (!share || share.board.ownerId !== userId) throw new Error('Share not found');
     if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
     targetEmail = share.user.email;
+    targetLocale = share.user.locale;
     itemName = share.board.title;
     itemType = 'kanban board';
     tab = 'kanbanBoards';
@@ -695,6 +706,7 @@ export const resendShareInvitation = async (
     itemType,
     shareId,
     tab,
+    locale: targetLocale || 'en',
   });
 
   return { success: true };

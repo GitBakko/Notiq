@@ -733,7 +733,11 @@
     "kanbanCommentDeleted": "{{authorName}} deleted a comment on \"{{cardTitle}}\" in board \"{{boardTitle}}\"",
     "kanbanCommentDeleted_TITLE": "Comment Deleted",
     "kanbanCardMoved": "{{actorName}} moved \"{{cardTitle}}\" from {{fromColumn}} to {{toColumn}}",
-    "kanbanCardMoved_TITLE": "Card Moved"
+    "kanbanCardMoved_TITLE": "Card Moved",
+    "kanbanBoardChat": "{{senderName}} sent a message in board \"{{boardTitle}}\"",
+    "kanbanBoardChat_TITLE": "Board Chat",
+    "chatMessage": "{{senderName}} sent you a message",
+    "chatMessage_TITLE": "New Message"
   },
   "groups": {
     "title": "Groups",
@@ -1128,6 +1132,10 @@
       "taskListExistingBoardLink": "Task List ↔ Board Linking — Converting to an existing board now creates a bidirectional link and syncs checkbox status",
       "taskItemLongPressModal": "Task Text Long-Press — Long-press a task item on mobile to view full text in a modal",
       "kanbanAutoCompleteColumn": "Auto-Complete Column — Last column is automatically marked as 'completed' when no column has been set",
+      "pushNotificationI18n": "Localized Push Notifications — Push notifications now display in the user's language (English/Italian)",
+      "emailNotificationI18n": "Fixed email notifications missing locale — All sharing and response emails now sent in the recipient's language",
+      "missingNotificationKeys": "Fixed missing notification translations for board chat and direct messages",
+      "brandedReadme": "Branded GitHub README — Repository now shows Notiq logo, brand colors, and social preview image",
       "initialRelease": "Initial release with full feature set"
     }
   },

@@ -66,6 +66,7 @@ export const shareTaskList = async (
           itemType: 'Task List',
           shareId: sharedTaskList.id,
           tab: 'taskLists',
+          locale: targetUser.locale,
         }
       );
 
@@ -173,6 +174,7 @@ export const respondToTaskListShareById = async (
           action: action === 'accept' ? 'accepted' : 'declined',
           itemName: result.taskList.title,
           itemId: taskListId,
+          locale: owner.locale,
         }
       );
 

@@ -11,7 +11,7 @@ self.addEventListener('push', function (event) {
       actions: [
         {
           action: 'open',
-          title: 'Open App'
+          title: payload.data?.actionLabel || 'Open App'
         }
       ]
     };

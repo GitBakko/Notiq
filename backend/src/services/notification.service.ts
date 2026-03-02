@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../plugins/prisma';
 import { sendPushNotification } from './push.service';
 import logger from '../utils/logger';
+import { resolveNotification, resolveActionLabel } from '../utils/notificationI18n';
 
 const INACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -26,16 +27,21 @@ export const createNotification = async (
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { lastActiveAt: true },
+      select: { lastActiveAt: true, locale: true },
     });
 
     if (user) {
       const inactiveSince = Date.now() - new Date(user.lastActiveAt).getTime();
       if (inactiveSince > INACTIVE_THRESHOLD_MS) {
+        const localizationKey = (data as Record<string, unknown>)?.localizationKey as string | undefined;
+        const localizationArgs = (data as Record<string, unknown>)?.localizationArgs as Record<string, string> | undefined;
+        const resolved = resolveNotification(localizationKey, localizationArgs, user.locale, title, message);
+        const actionLabel = resolveActionLabel(user.locale);
+
         await sendPushNotification(userId, {
-          title,
-          body: message,
-          data: { ...data, type },
+          title: resolved.title,
+          body: resolved.body,
+          data: { ...data, type, actionLabel },
         });
       }
     }

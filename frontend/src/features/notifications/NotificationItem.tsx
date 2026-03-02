@@ -72,6 +72,7 @@ const TYPE_TO_KEY: Record<string, string> = {
   KANBAN_COMMENT_ADDED: 'notifications.kanbanCommentAdded',
   KANBAN_COMMENT_DELETED: 'notifications.kanbanCommentDeleted',
   KANBAN_CARD_MOVED: 'notifications.kanbanCardMoved',
+  CHAT_MESSAGE: 'notifications.chatMessage',
 };
 
 /** Normalize localization args — handles old notifications with mismatched field names */
