@@ -164,12 +164,26 @@ export const syncPull = async () => {
       const taskListsRes = await api.get<any[]>('/tasklists');
       const serverTaskLists = taskListsRes.data;
 
-      await db.transaction('rw', db.taskLists, db.taskItems, async () => {
+      await db.transaction('rw', db.taskLists, db.taskItems, db.syncQueue, async () => {
         const dirtyTaskLists = await db.taskLists.where('syncStatus').notEqual('synced').toArray();
         const dirtyIds = new Set(dirtyTaskLists.map(tl => tl.id));
 
+        // Zombie prevention: check for pending task list deletes
+        const pendingTaskListDeletes = await db.syncQueue
+          .where('entity').equals('TASK_LIST')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingTaskListDeleteIds = new Set(pendingTaskListDeletes.map(i => i.entityId));
+
+        // Zombie prevention: check for pending task item deletes
+        const pendingTaskItemDeletes = await db.syncQueue
+          .where('entity').equals('TASK_ITEM')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingTaskItemDeleteIds = new Set(pendingTaskItemDeletes.map(i => i.entityId));
+
         const taskListsToPut: LocalTaskList[] = serverTaskLists
-          .filter((tl: { id: string }) => !dirtyIds.has(tl.id))
+          .filter((tl: { id: string }) => !dirtyIds.has(tl.id) && !pendingTaskListDeleteIds.has(tl.id))
           .map((tl: Omit<LocalTaskList, 'ownership' | 'syncStatus'>) => ({
             ...tl,
             ownership: 'owned' as const,
@@ -180,7 +194,7 @@ export const syncPull = async () => {
         const allLocalSynced = await db.taskLists.where('syncStatus').equals('synced')
           .filter(tl => tl.ownership !== 'shared').toArray();
         const toDeleteIds = allLocalSynced
-          .filter(tl => !serverIds.has(tl.id))
+          .filter(tl => !serverIds.has(tl.id) && !pendingTaskListDeleteIds.has(tl.id))
           .map(tl => tl.id);
 
         if (toDeleteIds.length > 0) {
@@ -194,10 +208,12 @@ export const syncPull = async () => {
         // Sync items for each task list
         for (const tl of taskListsToPut) {
           if (tl.items && tl.items.length > 0) {
-            const itemsToPut = tl.items.map((item: Omit<LocalTaskItem, 'syncStatus'>) => ({
-              ...item,
-              syncStatus: 'synced' as const,
-            }));
+            const itemsToPut = tl.items
+              .filter((item: { id: string }) => !pendingTaskItemDeleteIds.has(item.id))
+              .map((item: Omit<LocalTaskItem, 'syncStatus'>) => ({
+                ...item,
+                syncStatus: 'synced' as const,
+              }));
             await db.taskItems.bulkPut(itemsToPut);
           }
         }
