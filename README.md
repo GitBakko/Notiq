@@ -1,17 +1,19 @@
 <p align="center">
-  <img src="docs/assets/readme-header.svg" alt="Notiq — A thinking instrument" width="900" />
+  <img src="docs/assets/notiq-logo.png" alt="Notiq" width="120" />
 </p>
+
+<h1 align="center">Notiq</h1>
 
 <p align="center">
   <strong>Offline-first note-taking PWA</strong> with real-time collaboration, encrypted vault, and invitation-based authentication.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.3-0F172A?style=flat-square&labelColor=1E293B&color=22D3EE" alt="Version" />
-  <img src="https://img.shields.io/badge/react-19-0F172A?style=flat-square&labelColor=1E293B&color=22D3EE" alt="React 19" />
-  <img src="https://img.shields.io/badge/fastify-5-0F172A?style=flat-square&labelColor=1E293B&color=22D3EE" alt="Fastify 5" />
-  <img src="https://img.shields.io/badge/prisma-7-0F172A?style=flat-square&labelColor=1E293B&color=22D3EE" alt="Prisma 7" />
-  <img src="https://img.shields.io/badge/license-private-0F172A?style=flat-square&labelColor=1E293B&color=475569" alt="License" />
+  <img src="https://img.shields.io/badge/version-1.7.3-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Version" />
+  <img src="https://img.shields.io/badge/react-19-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="React 19" />
+  <img src="https://img.shields.io/badge/fastify-5-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Fastify 5" />
+  <img src="https://img.shields.io/badge/prisma-7-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Prisma 7" />
+  <img src="https://img.shields.io/badge/license-private-white?style=flat-square&labelColor=6B7280&color=374151" alt="License" />
 </p>
 
 ---
@@ -193,7 +195,7 @@ Notiq/
 ---
 
 <p align="center">
-  <img src="docs/assets/notiq-logo-256.png" alt="Notiq" width="32" />
+  <img src="docs/assets/notiq-logo.png" alt="Notiq" width="32" />
 </p>
 
 <p align="center">
