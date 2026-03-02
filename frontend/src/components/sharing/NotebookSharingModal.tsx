@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { shareNotebook, revokeNotebookShare } from '../../features/notebooks/notebookService';
 import { getGroupsForSharing, shareNotebookWithGroup } from '../../features/groups/groupService';
 import toast from 'react-hot-toast';
+import { queryKeys } from '../../lib/queryKeys';
 
 interface SharedUser {
   id: string;
@@ -35,7 +36,7 @@ export default function NotebookSharingModal({ isOpen, onClose, notebookId, note
   const [isGroupSharing, setIsGroupSharing] = useState(false);
 
   const { data: groups } = useQuery({
-    queryKey: ['groups-for-sharing'],
+    queryKey: queryKeys.groups.forSharing,
     queryFn: getGroupsForSharing,
     staleTime: 5 * 60 * 1000,
     enabled: isOpen,

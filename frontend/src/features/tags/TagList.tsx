@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { createTag, deleteTag } from './tagService';
 import { Tag as TagIcon, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -36,7 +37,7 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
   const createMutation = useMutation({
     mutationFn: (name: string) => createTag(name, isVault),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       handleCloseCreate();
       setNewTagName('');
       toast.success(t('tags.created'));

@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { getComments, createComment, deleteComment } from '../kanbanService';
 
 export function useKanbanComments(cardId: string | undefined) {
   const queryClient = useQueryClient();
 
   const { data: comments, isLoading } = useQuery({
-    queryKey: ['kanban-comments', cardId],
+    queryKey: queryKeys.kanban.comments(cardId!),
     queryFn: () => getComments(cardId!),
     enabled: !!cardId,
   });
@@ -13,14 +14,14 @@ export function useKanbanComments(cardId: string | undefined) {
   const addComment = useMutation({
     mutationFn: (content: string) => createComment(cardId!, content),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kanban-comments', cardId] });
-      queryClient.invalidateQueries({ queryKey: ['kanban-board'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.comments(cardId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
     },
   });
 
   const removeComment = useMutation({
     mutationFn: deleteComment,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kanban-comments', cardId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.kanban.comments(cardId!) }),
   });
 
   return { comments, isLoading, addComment, removeComment };

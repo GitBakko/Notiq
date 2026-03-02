@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { getTags, createTag, deleteTag, type Tag } from './tagService';
 import { Plus, Tag as TagIcon, Trash2, Menu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -23,14 +24,14 @@ export default function TagsPage() {
   const [selectedTag, setSelectedTag] = useState<Tag | null>(null);
 
   const { data: tags, isLoading } = useQuery({
-    queryKey: ['tags'],
+    queryKey: queryKeys.tags.all,
     queryFn: getTags,
   });
 
   const createMutation = useMutation({
     mutationFn: (name: string) => createTag(name),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       toast.success(t('tags.created'));
       setIsCreateOpen(false);
     },
@@ -42,7 +43,7 @@ export default function TagsPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteTag,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       toast.success(t('tags.deleted'));
       setDeletingTag(null);
       if (selectedTag?.id === deletingTag?.id) {

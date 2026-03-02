@@ -6,6 +6,7 @@ import { createTag, addTagToNote, removeTagFromNote } from '../../features/tags/
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 
 interface TagSelectorProps {
   noteId: string;
@@ -73,7 +74,7 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
     try {
       const newTag = await createTag(search.trim(), isVault);
       await addTagToNote(noteId, newTag.id);
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       onUpdate();
       setSearch('');
       setIsOpen(false);

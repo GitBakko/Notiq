@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { restoreNote, permanentlyDeleteNote, type Note } from '../notes/noteService';
 import { Trash2, RefreshCw, Menu, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -26,7 +27,7 @@ export default function TrashPage() {
   const restoreMutation = useMutation({
     mutationFn: restoreNote,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
       toast.success(t('trash.restored'));
     },
     onError: (error: Error) => {
@@ -37,7 +38,7 @@ export default function TrashPage() {
   const deleteMutation = useMutation({
     mutationFn: permanentlyDeleteNote,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
       toast.success(t('trash.deletedForever'));
       setDeletingNote(null);
     },

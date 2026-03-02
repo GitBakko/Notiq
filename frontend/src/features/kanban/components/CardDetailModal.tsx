@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { isPast, startOfDay, isToday, format } from 'date-fns';
 import { timeAgo } from '../../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
@@ -55,7 +56,7 @@ export default function CardDetailModal({
   const { comments, isLoading: commentsLoading, addComment, removeComment } = useKanbanComments(card?.id);
 
   const { data: activities, isLoading: activitiesLoading } = useQuery({
-    queryKey: ['kanban-card-activities', card?.id],
+    queryKey: queryKeys.kanban.cardActivities(card?.id ?? ''),
     queryFn: () => kanbanService.getCardActivities(card!.id),
     enabled: isOpen && !!card?.id,
   });

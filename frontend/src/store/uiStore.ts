@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type SortField = 'updatedAt' | 'createdAt' | 'title';
 export type SortOrder = 'asc' | 'desc';
@@ -29,82 +30,63 @@ interface UIState {
   closeNotificationPanel: () => void;
 }
 
-const loadSort = (): { field: SortField; order: SortOrder } => {
-  try {
-    const raw = localStorage.getItem('notesSort');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (['updatedAt', 'createdAt', 'title'].includes(parsed.field) && ['asc', 'desc'].includes(parsed.order)) {
-        return parsed;
-      }
-    }
-  } catch { /* ignore */ }
-  return { field: 'updatedAt', order: 'desc' };
+const applyThemeClass = (theme: 'light' | 'dark' | 'system') => {
+  const root = window.document.documentElement;
+  root.classList.remove('light', 'dark');
+  if (theme === 'system') {
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    root.classList.add(systemTheme);
+  } else {
+    root.classList.add(theme);
+  }
 };
 
-export const useUIStore = create<UIState>((set) => ({
-  isSidebarOpen: false,
-  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  closeSidebar: () => set({ isSidebarOpen: false }),
-  openSidebar: () => set({ isSidebarOpen: true }),
-  isSearchOpen: false,
-  toggleSearch: () => set((state) => ({ isSearchOpen: !state.isSearchOpen })),
-  openSearch: () => set({ isSearchOpen: true }),
-  closeSearch: () => set({ isSearchOpen: false }),
-  theme: (localStorage.getItem('theme') as 'light' | 'dark' | 'system') || 'system',
-  setTheme: (theme) => {
-    set({ theme });
-    localStorage.setItem('theme', theme);
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
+export const useUIStore = create<UIState>()(
+  persist(
+    (set) => ({
+      // Transient state (not persisted)
+      isSidebarOpen: false,
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      closeSidebar: () => set({ isSidebarOpen: false }),
+      openSidebar: () => set({ isSidebarOpen: true }),
+      isSearchOpen: false,
+      toggleSearch: () => set((state) => ({ isSearchOpen: !state.isSearchOpen })),
+      openSearch: () => set({ isSearchOpen: true }),
+      closeSearch: () => set({ isSearchOpen: false }),
+      isNotificationPanelOpen: false,
+      toggleNotificationPanel: () => set((state) => ({ isNotificationPanelOpen: !state.isNotificationPanelOpen })),
+      closeNotificationPanel: () => set({ isNotificationPanelOpen: false }),
 
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.add(theme);
+      // Persisted state
+      theme: 'system',
+      setTheme: (theme) => {
+        set({ theme });
+        applyThemeClass(theme);
+      },
+      notesSortField: 'updatedAt' as SortField,
+      notesSortOrder: 'desc' as SortOrder,
+      setNotesSort: (field, order) => set({ notesSortField: field, notesSortOrder: order }),
+      notificationSoundEnabled: true,
+      setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
+      isListCollapsed: false,
+      toggleListCollapsed: () => set((state) => ({ isListCollapsed: !state.isListCollapsed })),
+      isSidebarCollapsed: false,
+      toggleSidebarCollapsed: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
+      collapseAll: () => set({ isSidebarCollapsed: true, isListCollapsed: true }),
+    }),
+    {
+      name: 'ui-storage',
+      partialize: (state) => ({
+        theme: state.theme,
+        notesSortField: state.notesSortField,
+        notesSortOrder: state.notesSortOrder,
+        notificationSoundEnabled: state.notificationSoundEnabled,
+        isListCollapsed: state.isListCollapsed,
+        isSidebarCollapsed: state.isSidebarCollapsed,
+      }),
     }
-  },
-  notesSortField: loadSort().field,
-  notesSortOrder: loadSort().order,
-  setNotesSort: (field, order) => {
-    set({ notesSortField: field, notesSortOrder: order });
-    localStorage.setItem('notesSort', JSON.stringify({ field, order }));
-  },
-  notificationSoundEnabled: localStorage.getItem('notificationSound') !== 'false',
-  setNotificationSoundEnabled: (enabled) => {
-    set({ notificationSoundEnabled: enabled });
-    localStorage.setItem('notificationSound', String(enabled));
-  },
-  isListCollapsed: localStorage.getItem('listCollapsed') === 'true',
-  toggleListCollapsed: () => set((state) => {
-    const next = !state.isListCollapsed;
-    localStorage.setItem('listCollapsed', String(next));
-    return { isListCollapsed: next };
-  }),
-  isSidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
-  toggleSidebarCollapsed: () => set((state) => {
-    const next = !state.isSidebarCollapsed;
-    localStorage.setItem('sidebarCollapsed', String(next));
-    return { isSidebarCollapsed: next };
-  }),
-  collapseAll: () => set(() => {
-    localStorage.setItem('sidebarCollapsed', 'true');
-    localStorage.setItem('listCollapsed', 'true');
-    return { isSidebarCollapsed: true, isListCollapsed: true };
-  }),
-  isNotificationPanelOpen: false,
-  toggleNotificationPanel: () => set((state) => ({ isNotificationPanelOpen: !state.isNotificationPanelOpen })),
-  closeNotificationPanel: () => set({ isNotificationPanelOpen: false }),
-}));
+  )
+);
 
-// Initialize theme
-const theme = useUIStore.getState().theme;
-const root = window.document.documentElement;
-root.classList.remove('light', 'dark');
-if (theme === 'system') {
-  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  root.classList.add(systemTheme);
-} else {
-  root.classList.add(theme);
-}
+// Initialize theme from persisted state
+applyThemeClass(useUIStore.getState().theme);

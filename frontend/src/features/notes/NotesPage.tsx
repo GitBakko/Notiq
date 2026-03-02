@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Menu, FileDown, X, Book, FileText, PanelLeftClose, PanelLeftOpen, ChevronsLeft } from 'lucide-react';
 import NoteList from './NoteList';
@@ -60,14 +61,14 @@ export default function NotesPage() {
   const queryClient = useQueryClient();
   const { importFile, isUploading, hiddenInput, notebookPickerModal } = useImport({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
     }
   });
 
   const selectedNote = notes?.find((n) => n.id === selectedNoteId);
 
   const { data: fetchedNote, isLoading: isLoadingNote } = useQuery({
-    queryKey: ['note', selectedNoteId],
+    queryKey: queryKeys.notes.detail(selectedNoteId!),
     queryFn: () => getNote(selectedNoteId!),
     enabled: !!selectedNoteId,
     retry: false,
@@ -87,7 +88,7 @@ export default function NotesPage() {
   const createMutation = useMutation({
     mutationFn: createNote,
     onSuccess: (newNote) => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
       setSelectedNoteId(newNote.id);
     },
   });

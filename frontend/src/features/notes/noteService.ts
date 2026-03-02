@@ -1,5 +1,6 @@
 import api from '../../lib/api';
 import queryClient from '../../lib/queryClient';
+import { queryKeys } from '../../lib/queryKeys';
 import type { Tag } from '../tags/tagService';
 
 
@@ -163,7 +164,7 @@ export const updateNote = async (id: string, data: Partial<Note>) => {
   });
 
   // Keep React Query cache in sync so switching notes doesn't show stale content
-  queryClient.setQueryData(['note', id], (old: Note | undefined) =>
+  queryClient.setQueryData(queryKeys.notes.detail(id), (old: Note | undefined) =>
     old ? { ...old, ...data, updatedAt } : old
   );
 
@@ -179,7 +180,7 @@ export const updateNoteLocalOnly = async (id: string, data: Partial<Note>) => {
   await db.notes.update(id, { ...data, updatedAt });
 
   // Keep React Query cache in sync so switching notes doesn't show stale content
-  queryClient.setQueryData(['note', id], (old: Note | undefined) =>
+  queryClient.setQueryData(queryKeys.notes.detail(id), (old: Note | undefined) =>
     old ? { ...old, ...data, updatedAt } : old
   );
 

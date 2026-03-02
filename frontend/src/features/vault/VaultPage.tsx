@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { createNote } from '../notes/noteService';
 import toast from 'react-hot-toast';
 import NoteEditor from '../notes/NoteEditor';
@@ -55,7 +56,7 @@ export default function VaultPage() {
   const createMutation = useMutation({
     mutationFn: createNote,
     onSuccess: (newNote) => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
       setSelectedNoteId(newNote.id);
       toast.success(t('notes.created'));
     },
@@ -66,7 +67,7 @@ export default function VaultPage() {
 
   const { importFile, isUploading, hiddenInput, notebookPickerModal } = useImport({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
     }
   });
 

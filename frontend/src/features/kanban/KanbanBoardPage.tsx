@@ -1,27 +1,20 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
-  closestCenter,
-  pointerWithin,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-  type CollisionDetection,
   DragOverlay,
 } from '@dnd-kit/core';
-import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
 import { useKanbanMutations } from './hooks/useKanbanMutations';
 import { useKanbanRealtime } from './hooks/useKanbanRealtime';
+import { useBoardModals } from './hooks/useBoardModals';
+import { useBoardDnD } from './hooks/useBoardDnD';
+import { useBoardMobileSwipe } from './hooks/useBoardMobileSwipe';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
@@ -98,117 +91,28 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     return merged;
   }, [realtimeHighlights, urlHighlightIds]);
 
+  // ── Modal/overlay states (extracted hook) ──
+  const modals = useBoardModals();
+
+  // ── DnD state & handlers (extracted hook) ──
+  const dnd = useBoardDnD({ board, boardId, mutations });
+
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [isShareOpen, setIsShareOpen] = useState(false);
-  const [showBoardMenu, setShowBoardMenu] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
-  const [activeCardId, setActiveCardId] = useState<string | null>(null);
-  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  // Mobile swipe navigation refs
-  const touchStartRef = useRef<number>(0);
-  const touchDeltaRef = useRef<number>(0);
-  const mobileTabBarRef = useRef<HTMLDivElement>(null);
-  const mobileTabRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const [filters, setFilters] = useState<KanbanFilters>(defaultKanbanFilters);
-  const [isNoteLinkPickerOpen, setIsNoteLinkPickerOpen] = useState(false);
   const [boardSharingCheck, setBoardSharingCheck] = useState<NoteSharingCheck | null>(null);
   const [pendingBoardNote, setPendingBoardNote] = useState<NoteSearchResult | null>(null);
-  const [isBoardSharingGapOpen, setIsBoardSharingGapOpen] = useState(false);
-  const [showDeleteBoardConfirm, setShowDeleteBoardConfirm] = useState(false);
-  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-  const [isTaskListPickerOpen, setIsTaskListPickerOpen] = useState(false);
   const filtersActive = isFiltersActive(filters);
-  const [mobileActiveColumnIndex, setMobileActiveColumnIndex] = useState(0);
-
-  // ── DnD multi-container state ──────────────────────────────────
-  // Local copy of columns that can be mutated during drag for smooth cross-column moves
-  const [localColumns, setLocalColumns] = useState(board?.columns ?? []);
-  const [isMoveInFlight, setIsMoveInFlight] = useState(false);
-
-  // Sync local columns with server data when not dragging and no mutation in progress
-  useEffect(() => {
-    if (board?.columns && !activeCardId && !activeColumnId && !isMoveInFlight) {
-      setLocalColumns(board.columns);
-    }
-  }, [board?.columns, activeCardId, activeColumnId, isMoveInFlight]);
-
-  const columnIds = useMemo(() => localColumns.map((c) => c.id), [localColumns]);
-
-  /** Find which column contains the given card or column ID */
-  const findColumnId = useCallback(
-    (id: string): string | undefined => {
-      if (columnIds.includes(id)) return id;
-      return localColumns.find((col) => col.cards.some((c) => c.id === id))?.id;
-    },
-    [localColumns, columnIds],
-  );
-
-  /** Custom collision detection: pointer-based for columns, closest-center for cards */
-  const kanbanCollisionDetection: CollisionDetection = useCallback(
-    (args) => {
-      // When dragging a column, only detect collisions with other columns
-      const isDraggingColumn = columnIds.includes(args.active.id as string);
-      if (isDraggingColumn) {
-        const columnContainers = args.droppableContainers.filter((c) =>
-          columnIds.includes(c.id as string),
-        );
-        return closestCenter({ ...args, droppableContainers: columnContainers });
-      }
-
-      // Card dragging: find columns the pointer is inside
-      const columnContainers = args.droppableContainers.filter((c) =>
-        columnIds.includes(c.id as string),
-      );
-      const pointerCollisions = pointerWithin({
-        ...args,
-        droppableContainers: columnContainers,
-      });
-
-      if (pointerCollisions.length > 0) {
-        const targetColumnId = pointerCollisions[0].id as string;
-        // Find the closest card within that column
-        const targetColumn = localColumns.find((c) => c.id === targetColumnId);
-        const cardContainers = args.droppableContainers.filter((c) =>
-          targetColumn?.cards.some((card) => card.id === c.id),
-        );
-
-        if (cardContainers.length > 0) {
-          const cardCollisions = closestCenter({
-            ...args,
-            droppableContainers: cardContainers,
-          });
-          if (cardCollisions.length > 0) return cardCollisions;
-        }
-        // Empty column — return column itself
-        return pointerCollisions;
-      }
-
-      // Fallback: closest center across all droppables
-      return closestCenter(args);
-    },
-    [columnIds, localColumns],
-  );
-  // ── End DnD multi-container state ──────────────────────────────
 
   const isOwner = board?.ownerId === user?.id;
   const readOnly = !isOwner && board?.shares?.every((s) => s.permission === 'READ');
   const isShared = board && (board.shares?.some((s) => s.status === 'ACCEPTED') || false);
-
-  // Clear unread when chat opens
-  const handleChatToggle = useCallback(() => {
-    setIsChatOpen((prev) => {
-      if (!prev) setUnreadCount(0);
-      return !prev;
-    });
-  }, []);
 
   // Find selected card across all columns
   const selectedCard = useMemo(() => {
@@ -220,174 +124,31 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     return null;
   }, [selectedCardId, board]);
 
-  // Find active card for DragOverlay (search localColumns so it works during cross-column drag)
-  const activeCard = useMemo(() => {
-    if (!activeCardId) return null;
-    for (const col of localColumns) {
-      const card = col.cards.find((c) => c.id === activeCardId);
-      if (card) return card;
-    }
-    return null;
-  }, [activeCardId, localColumns]);
-
-  // Find active column for DragOverlay
-  const activeColumn = useMemo(() => {
-    if (!activeColumnId) return null;
-    return localColumns.find((c) => c.id === activeColumnId) ?? null;
-  }, [activeColumnId, localColumns]);
-
-  // DnD sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const id = event.active.id as string;
-    if (columnIds.includes(id)) {
-      setActiveColumnId(id);
-    } else {
-      setActiveCardId(id);
-    }
-  }, [columnIds]);
-
-  const handleDragOver = useCallback(
-    (event: DragOverEvent) => {
-      const { active, over } = event;
-      if (!over) return;
-
-      // Skip cross-column card logic when dragging a column
-      if (columnIds.includes(active.id as string)) return;
-
-      const activeId = active.id as string;
-      const overId = over.id as string;
-
-      const activeColId = findColumnId(activeId);
-      const overColId = findColumnId(overId);
-
-      // Only handle cross-column moves (same-column reorder is handled by SortableContext)
-      if (!activeColId || !overColId || activeColId === overColId) return;
-
-      setLocalColumns((prev) => {
-        const srcCol = prev.find((c) => c.id === activeColId);
-        const dstCol = prev.find((c) => c.id === overColId);
-        if (!srcCol || !dstCol) return prev;
-
-        const card = srcCol.cards.find((c) => c.id === activeId);
-        if (!card) return prev;
-
-        // Build destination cards list without the active card
-        const dstCards = [...dstCol.cards]
-          .filter((c) => c.id !== activeId)
-          .sort((a, b) => a.position - b.position);
-
-        // Insert at the over-item position, or at end for column drop target
-        let insertIdx: number;
-        if (overId === overColId) {
-          insertIdx = dstCards.length;
-        } else {
-          const idx = dstCards.findIndex((c) => c.id === overId);
-          insertIdx = idx >= 0 ? idx : dstCards.length;
-        }
-        dstCards.splice(insertIdx, 0, card);
-
-        return prev.map((col) => {
-          if (col.id === activeColId) {
-            return { ...col, cards: col.cards.filter((c) => c.id !== activeId) };
-          }
-          if (col.id === overColId) {
-            return { ...col, cards: dstCards.map((c, i) => ({ ...c, position: i })) };
-          }
-          return col;
-        });
-      });
-    },
-    [columnIds, findColumnId],
-  );
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      setActiveCardId(null);
-      setActiveColumnId(null);
-
-      if (!over || !board) return;
-
-      const activeId = active.id as string;
-      const overId = over.id as string;
-
-      // ── Column reorder ──
-      if (columnIds.includes(activeId)) {
-        if (activeId === overId) return;
-        const oldIdx = localColumns.findIndex((c) => c.id === activeId);
-        const newIdx = localColumns.findIndex((c) => c.id === overId);
-        if (oldIdx < 0 || newIdx < 0 || oldIdx === newIdx) return;
-
-        const reordered = arrayMove(localColumns, oldIdx, newIdx);
-        setLocalColumns(reordered);
-
-        const columnsPayload = reordered.map((col, i) => ({ id: col.id, position: i }));
-        setIsMoveInFlight(true);
-        mutations.reorderColumns.mutate(
-          { boardId, columns: columnsPayload },
-          { onSettled: () => setIsMoveInFlight(false) },
-        );
-        return;
-      }
-
-      // ── Card reorder / cross-column move ──
-      const cardId = activeId;
-
-
-      // Find the column the card is in now (localColumns, after any onDragOver moves)
-      const currentColId = findColumnId(cardId);
-      if (!currentColId) return;
-
-      const currentCol = localColumns.find((c) => c.id === currentColId);
-      if (!currentCol) return;
-
-      const sortedCards = [...currentCol.cards].sort((a, b) => a.position - b.position);
-
-      // Same-column reorder (onDragOver didn't fire — same container)
-      const overColId = findColumnId(overId);
-      if (currentColId === overColId && overId !== currentColId) {
-        const oldIdx = sortedCards.findIndex((c) => c.id === cardId);
-        const newIdx = sortedCards.findIndex((c) => c.id === overId);
-
-        if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
-          const reordered = arrayMove(sortedCards, oldIdx, newIdx);
-          setLocalColumns((prev) =>
-            prev.map((col) =>
-              col.id === currentColId
-                ? { ...col, cards: reordered.map((c, i) => ({ ...c, position: i })) }
-                : col,
-            ),
-          );
-          setIsMoveInFlight(true);
-          mutations.moveCard.mutate(
-            { cardId, toColumnId: currentColId, position: newIdx },
-            { onSettled: () => setIsMoveInFlight(false) },
-          );
-          return;
+  // Unique assignees from all cards for the filter dropdown
+  const allAssignees = useMemo(() => {
+    if (!board) return [];
+    const map = new Map<string, { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null }>();
+    for (const col of board.columns) {
+      for (const card of col.cards) {
+        if (card.assignee && !map.has(card.assignee.id)) {
+          map.set(card.assignee.id, card.assignee);
         }
       }
+    }
+    return Array.from(map.values());
+  }, [board]);
 
-      // Cross-column move — card was already transferred in onDragOver
-      const position = sortedCards.findIndex((c) => c.id === cardId);
+  // Filtered columns for display (DnD uses localColumns unfiltered)
+  const displayColumns = useMemo(() => {
+    if (!filtersActive) return dnd.sortedColumns;
+    return dnd.sortedColumns.map((col) => ({
+      ...col,
+      cards: col.cards.filter((card) => cardMatchesFilters(card, filters)),
+    }));
+  }, [dnd.sortedColumns, filtersActive, filters]);
 
-      // Verify something actually changed
-      const origCol = board.columns.find((col) => col.cards.some((c) => c.id === cardId));
-      const origCard = origCol?.cards.find((c) => c.id === cardId);
-      if (origCol?.id === currentColId && origCard?.position === position) return;
-
-      setIsMoveInFlight(true);
-      mutations.moveCard.mutate(
-        { cardId, toColumnId: currentColId, position: position >= 0 ? position : sortedCards.length },
-        { onSettled: () => setIsMoveInFlight(false) },
-      );
-    },
-    [board, boardId, localColumns, columnIds, findColumnId, mutations.moveCard, mutations.reorderColumns],
-  );
+  // ── Mobile swipe (extracted hook) ──
+  const swipe = useBoardMobileSwipe({ displayColumns, isMobile });
 
   // Board title editing
   function handleStartEditTitle(): void {
@@ -438,7 +199,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   function handleDeleteBoard(): void {
-    setShowDeleteBoardConfirm(true);
+    modals.setShowDeleteBoardConfirm(true);
   }
 
   // Cover image
@@ -458,7 +219,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
   // Board note linking
   async function handleBoardNoteSelected(note: NoteSearchResult): Promise<void> {
-    setIsNoteLinkPickerOpen(false);
+    modals.setIsNoteLinkPickerOpen(false);
     setPendingBoardNote(note);
     try {
       const check = await kanbanService.checkBoardNoteSharing(boardId, note.id);
@@ -467,7 +228,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         setPendingBoardNote(null);
       } else {
         setBoardSharingCheck(check);
-        setIsBoardSharingGapOpen(true);
+        modals.setIsBoardSharingGapOpen(true);
       }
     } catch {
       setPendingBoardNote(null);
@@ -480,7 +241,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       { boardId, noteId: pendingBoardNote.id, shareWithUserIds: selectedUserIds },
       {
         onSuccess: () => {
-          setIsBoardSharingGapOpen(false);
+          modals.setIsBoardSharingGapOpen(false);
           setBoardSharingCheck(null);
           setPendingBoardNote(null);
         },
@@ -493,44 +254,13 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   function handleLinkTaskList(taskListId: string): void {
-    setIsTaskListPickerOpen(false);
+    modals.setIsTaskListPickerOpen(false);
     mutations.linkTaskList.mutate({ boardId, taskListId });
   }
 
   function handleUnlinkTaskList(): void {
     mutations.unlinkTaskList.mutate(boardId);
   }
-
-  // Move card to a different column via menu (mobile & desktop)
-  const handleMoveCardToColumn = useCallback((cardId: string, targetColumnId: string) => {
-    // Optimistic: move card in localColumns immediately
-    setLocalColumns(prev => {
-      let movedCard: typeof prev[0]['cards'][0] | undefined;
-      const updated = prev.map(col => {
-        const cardIdx = col.cards.findIndex(c => c.id === cardId);
-        if (cardIdx >= 0) {
-          movedCard = col.cards[cardIdx];
-          return { ...col, cards: col.cards.filter(c => c.id !== cardId) };
-        }
-        return col;
-      });
-      if (!movedCard) return prev;
-      return updated.map(col => {
-        if (col.id === targetColumnId) {
-          const newPosition = col.cards.length;
-          return { ...col, cards: [...col.cards, { ...movedCard!, position: newPosition }] };
-        }
-        return col;
-      });
-    });
-
-    // Persist to backend
-    setIsMoveInFlight(true);
-    mutations.moveCard.mutate(
-      { cardId, toColumnId: targetColumnId, position: 999 },
-      { onSettled: () => setIsMoveInFlight(false) },
-    );
-  }, [mutations.moveCard]);
 
   function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
@@ -541,86 +271,6 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     );
     e.target.value = '';
   }
-
-  // ── These useMemo hooks MUST be above early returns to satisfy React hook rules ──
-  const sortedColumns = useMemo(
-    () => [...localColumns].sort((a, b) => a.position - b.position),
-    [localColumns],
-  );
-
-  // Unique assignees from all cards for the filter dropdown
-  const allAssignees = useMemo(() => {
-    if (!board) return [];
-    const map = new Map<string, { id: string; name: string | null; email: string; color: string | null; avatarUrl: string | null }>();
-    for (const col of board.columns) {
-      for (const card of col.cards) {
-        if (card.assignee && !map.has(card.assignee.id)) {
-          map.set(card.assignee.id, card.assignee);
-        }
-      }
-    }
-    return Array.from(map.values());
-  }, [board]);
-
-  // Filtered columns for display (DnD uses localColumns unfiltered)
-  const displayColumns = useMemo(() => {
-    if (!filtersActive) return sortedColumns;
-    return sortedColumns.map((col) => ({
-      ...col,
-      cards: col.cards.filter((card) => cardMatchesFilters(card, filters)),
-    }));
-  }, [sortedColumns, filtersActive, filters]);
-
-  // Clamp mobile active column index when columns change
-  useEffect(() => {
-    if (mobileActiveColumnIndex >= displayColumns.length && displayColumns.length > 0) {
-      setMobileActiveColumnIndex(displayColumns.length - 1);
-    }
-  }, [displayColumns.length, mobileActiveColumnIndex]);
-
-  // Auto-scroll active tab into view
-  useEffect(() => {
-    if (!isMobile) return;
-    const tabEl = mobileTabRefs.current.get(mobileActiveColumnIndex);
-    if (tabEl) {
-      tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  }, [mobileActiveColumnIndex, isMobile]);
-
-  // Mobile swipe gesture handlers — smooth animated sliding
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const [isSwipeTransitioning, setIsSwipeTransitioning] = useState(false);
-  const swipeContainerRef = useRef<HTMLDivElement>(null);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartRef.current = e.touches[0].clientX;
-    touchDeltaRef.current = 0;
-    setIsSwipeTransitioning(false);
-  }, []);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    const delta = e.touches[0].clientX - touchStartRef.current;
-    touchDeltaRef.current = delta;
-    // Dampen overscroll at edges
-    const atStart = mobileActiveColumnIndex === 0 && delta > 0;
-    const atEnd = mobileActiveColumnIndex >= displayColumns.length - 1 && delta < 0;
-    setSwipeOffset(atStart || atEnd ? delta * 0.25 : delta);
-  }, [mobileActiveColumnIndex, displayColumns.length]);
-
-  const handleTouchEnd = useCallback(() => {
-    setIsSwipeTransitioning(true);
-    if (Math.abs(touchDeltaRef.current) > 50) {
-      if (touchDeltaRef.current < 0 && mobileActiveColumnIndex < displayColumns.length - 1) {
-        setMobileActiveColumnIndex(prev => prev + 1);
-      } else if (touchDeltaRef.current > 0 && mobileActiveColumnIndex > 0) {
-        setMobileActiveColumnIndex(prev => prev - 1);
-      }
-    }
-    setSwipeOffset(0);
-    touchDeltaRef.current = 0;
-    // Remove transition flag after animation completes
-    setTimeout(() => setIsSwipeTransitioning(false), 300);
-  }, [mobileActiveColumnIndex, displayColumns.length]);
 
   if (isLoading) {
     return (
@@ -804,19 +454,19 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                   {/* Chat toggle */}
                   {(isOwner || isShared) && (
                     <button
-                      onClick={handleChatToggle}
+                      onClick={modals.handleChatToggle}
                       className={clsx(
                         'p-2 rounded-lg transition-colors relative',
-                        isChatOpen
+                        modals.isChatOpen
                           ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                           : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       )}
                       title={t('kanban.chat.title')}
                     >
                       <MessageSquare size={18} />
-                      {unreadCount > 0 && (
+                      {modals.unreadCount > 0 && (
                         <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
-                          {unreadCount > 9 ? '9+' : unreadCount}
+                          {modals.unreadCount > 9 ? '9+' : modals.unreadCount}
                         </span>
                       )}
                     </button>
@@ -835,7 +485,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
                   {/* Archive button */}
                   <button
-                    onClick={() => setIsArchiveOpen(true)}
+                    onClick={() => modals.setIsArchiveOpen(true)}
                     className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
                     title={t('kanban.archive.title')}
                   >
@@ -849,7 +499,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
                   {isOwner && (
                     <button
-                      onClick={() => setIsShareOpen(true)}
+                      onClick={() => modals.setIsShareOpen(true)}
                       className="p-2 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
                       title={t('kanban.share.title')}
                     >
@@ -862,20 +512,20 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {/* Three-dot menu — on mobile contains all actions, on desktop only board management */}
               <div className="relative">
                 <button
-                  onClick={() => setShowBoardMenu(!showBoardMenu)}
+                  onClick={() => modals.setShowBoardMenu(!modals.showBoardMenu)}
                   className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
                 >
                   <MoreVertical size={18} />
                   {/* Unread badge on mobile (chat is inside menu) */}
-                  {isMobile && unreadCount > 0 && (
+                  {isMobile && modals.unreadCount > 0 && (
                     <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
+                      {modals.unreadCount > 9 ? '9+' : modals.unreadCount}
                     </span>
                   )}
                 </button>
-                {showBoardMenu && (
+                {modals.showBoardMenu && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowBoardMenu(false)} />
+                    <div className="fixed inset-0 z-10" onClick={() => modals.setShowBoardMenu(false)} />
                     <div className="absolute right-0 top-10 z-20 w-56 rounded-lg border border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-800 shadow-lg py-1">
                       {/* Mobile-only items — actions moved from header */}
                       {isMobile && (
@@ -883,16 +533,16 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           {(isOwner || isShared) && (
                             <button
                               onClick={() => {
-                                setShowBoardMenu(false);
-                                handleChatToggle();
+                                modals.setShowBoardMenu(false);
+                                modals.handleChatToggle();
                               }}
                               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                             >
                               <MessageSquare size={14} />
                               {t('kanban.chat.title')}
-                              {unreadCount > 0 && (
+                              {modals.unreadCount > 0 && (
                                 <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 text-[10px] text-white px-1">
-                                  {unreadCount}
+                                  {modals.unreadCount}
                                 </span>
                               )}
                             </button>
@@ -900,7 +550,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           {!readOnly && !board.coverImage && (
                             <button
                               onClick={() => {
-                                setShowBoardMenu(false);
+                                modals.setShowBoardMenu(false);
                                 coverInputRef.current?.click();
                               }}
                               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
@@ -911,8 +561,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           )}
                           <button
                             onClick={() => {
-                              setShowBoardMenu(false);
-                              setIsArchiveOpen(true);
+                              modals.setShowBoardMenu(false);
+                              modals.setIsArchiveOpen(true);
                             }}
                             className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                           >
@@ -927,8 +577,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           {isOwner && (
                             <button
                               onClick={() => {
-                                setShowBoardMenu(false);
-                                setIsShareOpen(true);
+                                modals.setShowBoardMenu(false);
+                                modals.setIsShareOpen(true);
                               }}
                               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                             >
@@ -945,7 +595,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           {board.taskListId ? (
                             <button
                               onClick={() => {
-                                setShowBoardMenu(false);
+                                modals.setShowBoardMenu(false);
                                 handleUnlinkTaskList();
                               }}
                               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
@@ -956,8 +606,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           ) : (
                             <button
                               onClick={() => {
-                                setShowBoardMenu(false);
-                                setIsTaskListPickerOpen(true);
+                                modals.setShowBoardMenu(false);
+                                modals.setIsTaskListPickerOpen(true);
                               }}
                               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                             >
@@ -967,7 +617,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                           )}
                           <button
                             onClick={() => {
-                              setShowBoardMenu(false);
+                              modals.setShowBoardMenu(false);
                               handleDeleteBoard();
                             }}
                             className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
@@ -1015,7 +665,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               </div>
             ) : !readOnly ? (
               <button
-                onClick={() => setIsNoteLinkPickerOpen(true)}
+                onClick={() => modals.setIsNoteLinkPickerOpen(true)}
                 className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
               >
                 <Link2 size={14} />
@@ -1061,7 +711,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         {/* Mobile column tabs */}
         {isMobile && displayColumns.length > 0 && (
           <div
-            ref={mobileTabBarRef}
+            ref={swipe.mobileTabBarRef}
             className="flex-shrink-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 overflow-x-auto scrollbar-none"
           >
             <div className="flex">
@@ -1069,13 +719,13 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 <button
                   key={col.id}
                   ref={(el) => {
-                    if (el) mobileTabRefs.current.set(index, el);
-                    else mobileTabRefs.current.delete(index);
+                    if (el) swipe.mobileTabRefs.current.set(index, el);
+                    else swipe.mobileTabRefs.current.delete(index);
                   }}
-                  onClick={() => { setIsSwipeTransitioning(true); setMobileActiveColumnIndex(index); setTimeout(() => setIsSwipeTransitioning(false), 300); }}
+                  onClick={() => swipe.selectTab(index)}
                   className={clsx(
                     'flex-shrink-0 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap min-h-[44px] flex items-center gap-1.5',
-                    index === mobileActiveColumnIndex
+                    index === swipe.mobileActiveColumnIndex
                       ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
                       : 'border-transparent text-neutral-500 dark:text-neutral-400 active:text-neutral-700 dark:active:text-neutral-300'
                   )}
@@ -1084,7 +734,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                   <span
                     className={clsx(
                       'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold',
-                      index === mobileActiveColumnIndex
+                      index === swipe.mobileActiveColumnIndex
                         ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
                         : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400'
                     )}
@@ -1102,17 +752,17 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           // Mobile: sliding column carousel with smooth swipe
           <div
             className="flex-1 overflow-hidden"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onTouchStart={swipe.handleTouchStart}
+            onTouchMove={swipe.handleTouchMove}
+            onTouchEnd={swipe.handleTouchEnd}
           >
             {displayColumns.length > 0 ? (
               <div
-                ref={swipeContainerRef}
+                ref={swipe.swipeContainerRef}
                 className="flex h-full"
                 style={{
-                  transform: `translateX(calc(-${mobileActiveColumnIndex * 100}% + ${swipeOffset}px))`,
-                  transition: isSwipeTransitioning ? 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
+                  transform: `translateX(calc(-${swipe.mobileActiveColumnIndex * 100}% + ${swipe.swipeOffset}px))`,
+                  transition: swipe.isSwipeTransitioning ? 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
                   willChange: 'transform',
                 }}
               >
@@ -1129,7 +779,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       readOnly={readOnly || filtersActive}
                       highlightedCardIds={highlightedCardIds}
                       allColumns={displayColumns}
-                      onMoveCardToColumn={handleMoveCardToColumn}
+                      onMoveCardToColumn={dnd.handleMoveCardToColumn}
                     />
                   </div>
                 ))}
@@ -1150,14 +800,14 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           // Desktop: multi-column layout with DnD
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             <DndContext
-              sensors={sensors}
-              collisionDetection={kanbanCollisionDetection}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
+              sensors={dnd.sensors}
+              collisionDetection={dnd.kanbanCollisionDetection}
+              onDragStart={dnd.handleDragStart}
+              onDragOver={dnd.handleDragOver}
+              onDragEnd={dnd.handleDragEnd}
             >
               <div className="flex gap-4 p-4 h-full items-start">
-                <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+                <SortableContext items={dnd.columnIds} strategy={horizontalListSortingStrategy}>
                   {displayColumns.map((column) => (
                     <KanbanColumn
                       key={column.id}
@@ -1171,7 +821,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       readOnly={readOnly || filtersActive}
                       highlightedCardIds={highlightedCardIds}
                       allColumns={displayColumns}
-                      onMoveCardToColumn={handleMoveCardToColumn}
+                      onMoveCardToColumn={dnd.handleMoveCardToColumn}
                     />
                   ))}
                 </SortableContext>
@@ -1217,18 +867,18 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
               {/* Drag overlay */}
               <DragOverlay>
-                {activeCard ? (
+                {dnd.activeCard ? (
                   <div className="opacity-90">
                     <KanbanCard
-                      card={activeCard}
+                      card={dnd.activeCard}
                       onSelect={() => {}}
                       readOnly
                     />
                   </div>
-                ) : activeColumn ? (
+                ) : dnd.activeColumn ? (
                   <div className="opacity-90">
                     <KanbanColumn
-                      column={activeColumn}
+                      column={dnd.activeColumn}
                       boardId={boardId}
                       onCardSelect={() => {}}
                       onRenameColumn={() => {}}
@@ -1265,15 +915,15 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       {(isOwner || isShared) && (
         <BoardChatSidebar
           boardId={boardId}
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
+          isOpen={modals.isChatOpen}
+          onClose={() => modals.setIsChatOpen(false)}
           currentUser={{
             id: user?.id || 'anon',
             name: user?.name || 'User',
             color: userColor,
             avatarUrl: user?.avatarUrl || null,
           }}
-          onNewMessage={() => setUnreadCount((prev) => prev + 1)}
+          onNewMessage={modals.incrementUnread}
           participants={presenceUsers}
         />
       )}
@@ -1291,8 +941,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       {/* Share Modal */}
       {isOwner && (
         <ShareBoardModal
-          isOpen={isShareOpen}
-          onClose={() => setIsShareOpen(false)}
+          isOpen={modals.isShareOpen}
+          onClose={() => modals.setIsShareOpen(false)}
           boardId={boardId}
           boardTitle={board.title}
           sharedWith={board.shares?.filter((s) => s.status === 'ACCEPTED')}
@@ -1301,15 +951,15 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
       {/* Board note picker + sharing gap modal */}
       <NoteLinkPicker
-        isOpen={isNoteLinkPickerOpen}
-        onClose={() => setIsNoteLinkPickerOpen(false)}
+        isOpen={modals.isNoteLinkPickerOpen}
+        onClose={() => modals.setIsNoteLinkPickerOpen(false)}
         onSelect={handleBoardNoteSelected}
       />
       {boardSharingCheck && (
         <SharingGapModal
-          isOpen={isBoardSharingGapOpen}
+          isOpen={modals.isBoardSharingGapOpen}
           onClose={() => {
-            setIsBoardSharingGapOpen(false);
+            modals.setIsBoardSharingGapOpen(false);
             setBoardSharingCheck(null);
             setPendingBoardNote(null);
           }}
@@ -1320,8 +970,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       )}
 
       <ConfirmDialog
-        isOpen={showDeleteBoardConfirm}
-        onClose={() => setShowDeleteBoardConfirm(false)}
+        isOpen={modals.showDeleteBoardConfirm}
+        onClose={() => modals.setShowDeleteBoardConfirm(false)}
         onConfirm={() => mutations.deleteBoard.mutate(boardId, { onSuccess: () => navigate('/kanban') })}
         title={t('kanban.deleteBoard')}
         message={t('kanban.deleteBoardConfirm')}
@@ -1331,8 +981,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
       {/* Archived cards modal */}
       <ArchivedCardsModal
-        isOpen={isArchiveOpen}
-        onClose={() => setIsArchiveOpen(false)}
+        isOpen={modals.isArchiveOpen}
+        onClose={() => modals.setIsArchiveOpen(false)}
         boardId={boardId}
         onUnarchive={() => {
           // Board data will be refetched via invalidateBoard in the mutation
@@ -1341,8 +991,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
 
       {/* Task list link picker */}
       <TaskListLinkPicker
-        isOpen={isTaskListPickerOpen}
-        onClose={() => setIsTaskListPickerOpen(false)}
+        isOpen={modals.isTaskListPickerOpen}
+        onClose={() => modals.setIsTaskListPickerOpen(false)}
         onSelect={handleLinkTaskList}
       />
     </div>

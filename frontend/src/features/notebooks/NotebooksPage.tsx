@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { getNotebooks, createNotebook, updateNotebook, deleteNotebook, type Notebook } from './notebookService';
 import { Plus, Book, Pencil, Trash2, Calendar, Menu } from 'lucide-react';
 import { format } from 'date-fns';
@@ -23,14 +24,14 @@ export default function NotebooksPage() {
   const [deletingNotebook, setDeletingNotebook] = useState<Notebook | null>(null);
 
   const { data: notebooks, isLoading } = useQuery({
-    queryKey: ['notebooks'],
+    queryKey: queryKeys.notebooks.all,
     queryFn: getNotebooks,
   });
 
   const createMutation = useMutation({
     mutationFn: createNotebook,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notebooks'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notebooks.all });
       toast.success(t('notebooks.created'));
       setIsCreateOpen(false);
     },
@@ -42,7 +43,7 @@ export default function NotebooksPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateNotebook(id, name),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notebooks'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notebooks.all });
       toast.success(t('notebooks.updated'));
       setEditingNotebook(null);
     },
@@ -54,7 +55,7 @@ export default function NotebooksPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteNotebook,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notebooks'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notebooks.all });
       toast.success(t('notebooks.deleted'));
       setDeletingNotebook(null);
     },

@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { shareTaskList, revokeTaskListShare } from './taskListService';
 import { getGroupsForSharing, shareTaskListWithGroup } from '../../features/groups/groupService';
 import toast from 'react-hot-toast';
+import { queryKeys } from '../../lib/queryKeys';
 
 interface SharedUser {
   id: string;
@@ -42,7 +43,7 @@ export default function TaskListSharingModal({ isOpen, onClose, taskListId, shar
   }, [sharedWithJson]);
 
   const { data: groups } = useQuery({
-    queryKey: ['groups-for-sharing'],
+    queryKey: queryKeys.groups.forSharing,
     queryFn: getGroupsForSharing,
     staleTime: 5 * 60 * 1000,
     enabled: isOpen,
@@ -59,7 +60,7 @@ export default function TaskListSharingModal({ isOpen, onClose, taskListId, shar
       await shareTaskList(taskListId, email, permission);
       toast.success(t('sharing.inviteSuccess'));
       setEmail('');
-      queryClient.invalidateQueries({ queryKey: ['taskList', taskListId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskLists.detail(taskListId) });
     } catch (error: unknown) {
       console.error('Share failed', error);
       const axiosErr = error as { response?: { status?: number } };
@@ -78,7 +79,7 @@ export default function TaskListSharingModal({ isOpen, onClose, taskListId, shar
       await revokeTaskListShare(taskListId, userId);
       setLocalSharedWith(prev => prev.filter(u => u.id !== userId));
       toast.success(t('sharing.revoked'));
-      queryClient.invalidateQueries({ queryKey: ['taskList', taskListId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskLists.detail(taskListId) });
     } catch (error) {
       console.error('Revoke failed', error);
       toast.error(t('sharing.revokeFailed'));
@@ -133,7 +134,7 @@ export default function TaskListSharingModal({ isOpen, onClose, taskListId, shar
                     const result = await shareTaskListWithGroup(taskListId, selectedGroupId, groupPermission);
                     toast.success(t('sharing.shareGroupSuccess', { count: result.shared }));
                     setSelectedGroupId('');
-                    queryClient.invalidateQueries({ queryKey: ['taskList', taskListId] });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.taskLists.detail(taskListId) });
                   } catch {
                     toast.error(t('sharing.shareGroupFailed'));
                   } finally {

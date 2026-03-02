@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { Trash2, UserPlus, Orbit, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
@@ -36,7 +37,7 @@ export default function ShareBoardModal({
   const [isGroupSharing, setIsGroupSharing] = useState(false);
 
   const { data: groups } = useQuery({
-    queryKey: ['groups-for-sharing'],
+    queryKey: queryKeys.groups.forSharing,
     queryFn: getGroupsForSharing,
     staleTime: 5 * 60 * 1000,
     enabled: isOpen,
@@ -59,7 +60,7 @@ export default function ShareBoardModal({
       setLocalSharedWith((prev) => [...prev, newShare]);
       setEmail('');
       toast.success(t('kanban.share.shareSuccess'));
-      queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
     } catch (error: unknown) {
       const axiosErr = error as { response?: { status?: number } };
       if (axiosErr.response?.status === 404) {
@@ -77,7 +78,7 @@ export default function ShareBoardModal({
       await revokeShare(boardId, userId);
       setLocalSharedWith((prev) => prev.filter((s) => s.userId !== userId));
       toast.success(t('kanban.share.revoked'));
-      queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
     } catch {
       toast.error(t('kanban.share.revokeFailed'));
     }
@@ -127,7 +128,7 @@ export default function ShareBoardModal({
                   const result = await shareKanbanBoardWithGroup(boardId, selectedGroupId, groupPermission);
                   toast.success(t('sharing.shareGroupSuccess', { count: result.shared }));
                   setSelectedGroupId('');
-                  queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+                  queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
                 } catch {
                   toast.error(t('sharing.shareGroupFailed'));
                 } finally {

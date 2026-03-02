@@ -3,7 +3,7 @@ import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import * as kanbanService from '../services/kanban.service';
+import * as kanbanService from '../services/kanban/index';
 import { assertBoardAccess, getColumnWithAccess, getCardWithAccess } from '../services/kanbanPermissions';
 import { addConnection } from '../services/kanbanSSE';
 import prisma from '../plugins/prisma';

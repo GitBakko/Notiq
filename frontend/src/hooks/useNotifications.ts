@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getNotifications, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } from '../features/notifications/notificationService';
 import { playNotificationSound } from '../utils/notificationSound';
+import { queryKeys } from '../lib/queryKeys';
 
 export const useNotifications = () => {
   const queryClient = useQueryClient();
@@ -9,7 +10,7 @@ export const useNotifications = () => {
   const isInitializedRef = useRef(false);
 
   const { data: notifications, isLoading } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: queryKeys.notifications.all,
     queryFn: getNotifications,
     refetchInterval: 30000, // Poll every 30 seconds
   });
@@ -17,28 +18,28 @@ export const useNotifications = () => {
   const markAsReadMutation = useMutation({
     mutationFn: markAsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
     },
   });
 
   const markAllAsReadMutation = useMutation({
     mutationFn: markAllAsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteNotification,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
     },
   });
 
   const deleteAllMutation = useMutation({
     mutationFn: deleteAllNotifications,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
     },
   });
 

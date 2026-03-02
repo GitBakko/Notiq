@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { queryKeys } from '../../lib/queryKeys';
 import toast from 'react-hot-toast';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { playNotificationSound } from '../../utils/notificationSound';
@@ -68,7 +69,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
 
   // Fetch messages
   const { data: messages = [], isLoading } = useQuery({
-    queryKey: ['chat', noteId],
+    queryKey: queryKeys.chat(noteId),
     queryFn: async () => {
       const res = await api.get<ChatMessage[]>(`/chat/${noteId}`);
       return res.data;
@@ -103,7 +104,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
       await api.post('/chat', { noteId, content });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chat', noteId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chat(noteId) });
     },
     onError: () => {
       toast.error(t('chat.sendFailed', 'Failed to send message'));

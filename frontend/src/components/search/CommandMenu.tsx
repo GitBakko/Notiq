@@ -8,6 +8,7 @@ import { getNotebooks } from '../../features/notebooks/notebookService';
 import { getTags } from '../../features/tags/tagService';
 import { searchNotes, type SearchResult } from '../../features/search/searchService';
 import { useUIStore } from '../../store/uiStore';
+import { queryKeys } from '../../lib/queryKeys';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -58,15 +59,15 @@ export default function CommandMenu() {
 
   // Server-side full-text search (only when query >= 2 chars)
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['search', debouncedSearch],
+    queryKey: queryKeys.search(debouncedSearch),
     queryFn: () => searchNotes(debouncedSearch, 1, 10),
     enabled: isSearchOpen && debouncedSearch.length >= 2,
     staleTime: 30_000,
   });
 
   // Client-side data for notebooks/tags (small datasets, no need for server search)
-  const { data: notebooks } = useQuery({ queryKey: ['notebooks'], queryFn: getNotebooks });
-  const { data: tags } = useQuery({ queryKey: ['tags'], queryFn: getTags });
+  const { data: notebooks } = useQuery({ queryKey: queryKeys.notebooks.all, queryFn: getNotebooks });
+  const { data: tags } = useQuery({ queryKey: queryKeys.tags.all, queryFn: getTags });
 
   const filteredNotebooks = useMemo(() =>
     notebooks?.filter(nb => !search || nb.name.toLowerCase().includes(search.toLowerCase())).slice(0, 5),

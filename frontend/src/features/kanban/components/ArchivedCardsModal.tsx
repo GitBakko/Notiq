@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { format } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
 import { Archive, RotateCcw } from 'lucide-react';
@@ -19,16 +20,16 @@ export default function ArchivedCardsModal({ isOpen, onClose, boardId, onUnarchi
   const dateLocale = i18n.language?.startsWith('it') ? itLocale : enUS;
 
   const { data: archivedCards, isLoading } = useQuery({
-    queryKey: ['kanban-archived-cards', boardId],
+    queryKey: queryKeys.kanban.archivedCards(boardId),
     queryFn: () => kanbanService.getArchivedCards(boardId),
     enabled: isOpen,
   });
 
   async function handleUnarchive(cardId: string): Promise<void> {
     await kanbanService.unarchiveCard(cardId);
-    queryClient.invalidateQueries({ queryKey: ['kanban-archived-cards', boardId] });
-    queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
-    queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.archivedCards(boardId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
     onUnarchive();
   }
 

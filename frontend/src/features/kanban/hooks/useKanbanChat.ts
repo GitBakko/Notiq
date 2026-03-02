@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { getBoardChat, sendBoardChatMessage } from '../kanbanService';
 
 export function useKanbanChat(boardId: string | undefined) {
   const queryClient = useQueryClient();
 
   const { data: messages = [], isLoading } = useQuery({
-    queryKey: ['kanban-board-chat', boardId],
+    queryKey: queryKeys.kanban.boardChat(boardId!),
     queryFn: () => getBoardChat(boardId!),
     enabled: !!boardId,
     refetchInterval: 3000,
@@ -14,7 +15,7 @@ export function useKanbanChat(boardId: string | undefined) {
   const sendMessage = useMutation({
     mutationFn: (content: string) => sendBoardChatMessage(boardId!, content),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kanban-board-chat', boardId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boardChat(boardId!) });
     },
   });
 

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { Plus, ChevronDown, ChevronRight, UserMinus, Trash2, Clock, Menu, Edit3, X, Orbit, Camera } from 'lucide-react';
 import { getMyGroups, createGroup, updateGroup, deleteGroup, addGroupMember, removeGroupMember, removePendingInvite, uploadGroupAvatar } from './groupService';
 import type { Group } from './groupService';
@@ -32,7 +33,7 @@ export default function GroupsPage() {
   const [newGroupAvatarPreview, setNewGroupAvatarPreview] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['groups'],
+    queryKey: queryKeys.groups.all,
     queryFn: getMyGroups,
   });
 
@@ -45,7 +46,7 @@ export default function GroupsPage() {
       return group;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       toast.success(t('groups.created'));
       setIsCreating(false);
       setNewGroupName('');
@@ -59,7 +60,7 @@ export default function GroupsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteGroup(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       toast.success(t('groups.deleted'));
       setExpandedGroupId(null);
     },
@@ -69,7 +70,7 @@ export default function GroupsPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data: d }: { id: string; data: { name?: string } }) => updateGroup(id, d),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       toast.success(t('groups.updated'));
       setEditingGroupId(null);
     },
@@ -79,7 +80,7 @@ export default function GroupsPage() {
   const addMemberMutation = useMutation({
     mutationFn: ({ groupId, email }: { groupId: string; email: string }) => addGroupMember(groupId, email),
     onSuccess: (result, { groupId }) => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       if (result.type === 'pending') {
         toast.success(t('groups.memberAddedPending'));
       } else {
@@ -103,7 +104,7 @@ export default function GroupsPage() {
   const removeMemberMutation = useMutation({
     mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) => removeGroupMember(groupId, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       toast.success(t('groups.memberRemoved'));
     },
     onError: () => toast.error(t('groups.memberRemoveFailed')),
@@ -112,7 +113,7 @@ export default function GroupsPage() {
   const removePendingMutation = useMutation({
     mutationFn: ({ groupId, email }: { groupId: string; email: string }) => removePendingInvite(groupId, email),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       toast.success(t('groups.inviteCancelled'));
     },
     onError: () => toast.error(t('groups.inviteCancelFailed')),
@@ -121,7 +122,7 @@ export default function GroupsPage() {
   const avatarMutation = useMutation({
     mutationFn: ({ groupId, file }: { groupId: string; file: File }) => uploadGroupAvatar(groupId, file),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
       toast.success(t('groups.avatarUpdated'));
     },
     onError: () => toast.error(t('groups.avatarUpdateFailed')),

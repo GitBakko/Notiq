@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { useTranslation } from 'react-i18next';
 import { Search, FileText, X, Book } from 'lucide-react';
 import Modal from '../../../components/ui/Modal';
@@ -34,7 +35,7 @@ export default function NoteLinkPicker({ isOpen, onClose, onSelect }: NoteLinkPi
   }, [isOpen]);
 
   const { data: notes, isLoading } = useQuery({
-    queryKey: ['kanban-note-search', debouncedQuery],
+    queryKey: queryKeys.kanban.noteSearch(debouncedQuery),
     queryFn: () => kanbanService.searchNotes(debouncedQuery),
     enabled: isOpen,
   });

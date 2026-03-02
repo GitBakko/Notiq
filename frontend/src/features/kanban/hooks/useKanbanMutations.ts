@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import * as kanbanService from '../kanbanService';
 import type { KanbanBoardListItem, KanbanCardPriority } from '../types';
 
@@ -7,36 +8,36 @@ export function useKanbanMutations(boardId?: string) {
 
   function invalidateBoard(): void {
     if (boardId) {
-      queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
     }
-    queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
   }
 
   const createBoard = useMutation({
     mutationFn: kanbanService.createBoard,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kanban-boards'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards }),
   });
 
   const deleteBoard = useMutation({
     mutationFn: kanbanService.deleteBoard,
     onMutate: async (deletedId) => {
-      await queryClient.cancelQueries({ queryKey: ['kanban-boards'] });
-      const previousBoards = queryClient.getQueryData<KanbanBoardListItem[]>(['kanban-boards']);
-      queryClient.setQueryData<KanbanBoardListItem[]>(['kanban-boards'], (old) =>
+      await queryClient.cancelQueries({ queryKey: queryKeys.kanban.boards });
+      const previousBoards = queryClient.getQueryData<KanbanBoardListItem[]>(queryKeys.kanban.boards);
+      queryClient.setQueryData<KanbanBoardListItem[]>(queryKeys.kanban.boards, (old) =>
         old ? old.filter((b) => b.id !== deletedId) : [],
       );
       return { previousBoards };
     },
     onError: (_err, _deletedId, context) => {
       if (context?.previousBoards) {
-        queryClient.setQueryData(['kanban-boards'], context.previousBoards);
+        queryClient.setQueryData(queryKeys.kanban.boards, context.previousBoards);
       }
     },
     onSettled: (_data, _error, deletedId) => {
       // Remove stale individual board queries to prevent 404 refetches
-      queryClient.removeQueries({ queryKey: ['kanban-board', deletedId] });
-      queryClient.removeQueries({ queryKey: ['kanban-board-chat', deletedId] });
-      queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+      queryClient.removeQueries({ queryKey: queryKeys.kanban.board(deletedId) });
+      queryClient.removeQueries({ queryKey: queryKeys.kanban.boardChat(deletedId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
     },
   });
 

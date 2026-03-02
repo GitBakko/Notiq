@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LayoutDashboard, SquareKanban } from 'lucide-react';
@@ -17,7 +18,7 @@ export default function KanbanBoardLink({ noteId }: KanbanBoardLinkProps) {
   const navigate = useNavigate();
 
   const { data: linkedBoards } = useQuery({
-    queryKey: ['kanban-linked-boards', noteId],
+    queryKey: queryKeys.kanban.linkedBoards(noteId),
     queryFn: () => getLinkedBoardsForNote(noteId),
     enabled: !!noteId,
     staleTime: 30_000,

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../lib/api';
+import { queryKeys } from '../lib/queryKeys';
 
 interface NotebookShareUser {
   userId: string;
@@ -21,7 +22,7 @@ export interface NotebookShareInfo {
 
 export function useNotebookShareCounts() {
   return useQuery({
-    queryKey: ['notebook-share-counts'],
+    queryKey: queryKeys.notebooks.shareCounts,
     queryFn: async () => {
       const res = await api.get<NotebookShareData[]>('/notebooks');
       const map: Record<string, NotebookShareInfo> = {};

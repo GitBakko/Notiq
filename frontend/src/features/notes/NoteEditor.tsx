@@ -21,6 +21,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useNoteController } from './useNoteController';
 import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { useAiStatus } from '../../hooks/useAiStatus';
 import ScrollToEditButton from '../../components/editor/ScrollToEditButton';
 import KanbanBoardLink from '../kanban/components/KanbanBoardLink';
@@ -238,8 +239,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
     // Refresh note data after image upload
     const handleImageUploaded = useCallback(() => {
-        queryClient.invalidateQueries({ queryKey: ['note', note.id] });
-        queryClient.invalidateQueries({ queryKey: ['notes'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.notes.detail(note.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
     }, [queryClient, note.id]);
 
     // When an image is removed from the editor body, delete the matching attachment
@@ -248,8 +249,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         if (!att) return;
         try {
             await deleteAttachment(note.id, att.id);
-            queryClient.invalidateQueries({ queryKey: ['note', note.id] });
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.notes.detail(note.id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
         } catch (e) {
             console.error('Failed to auto-delete attachment after image removal', e);
         }
@@ -288,14 +289,14 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             }
 
             // Update cached note data without re-fetching (avoids stale content overwriting editor)
-            queryClient.setQueryData(['note', note.id], (oldData: Record<string, unknown> | undefined) => {
+            queryClient.setQueryData(queryKeys.notes.detail(note.id), (oldData: Record<string, unknown> | undefined) => {
                 if (!oldData) return oldData;
                 return {
                     ...oldData,
                     attachments: (oldData.attachments as { id: string }[] | undefined)?.filter((a) => a.id !== attachmentToDelete.id)
                 };
             });
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
             toast.success(t('common.deleted'));
         } catch (e) {
             console.error('Failed to delete attachment', e);
@@ -398,16 +399,16 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                 selectedNotebookId={note.notebookId}
                                 onSelect={(notebookId) => {
                                     saveNote({ notebookId });
-                                    queryClient.setQueryData(['note', note.id], (old: Record<string, unknown> | undefined) =>
+                                    queryClient.setQueryData(queryKeys.notes.detail(note.id), (old: Record<string, unknown> | undefined) =>
                                         old ? { ...old, notebookId } : old
                                     );
-                                    queryClient.invalidateQueries({ queryKey: ['notes'] });
+                                    queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
                                 }}
                             />
                             <TagSelector
                                 noteId={note.id}
                                 noteTags={note.tags || []}
-                                onUpdate={() => queryClient.invalidateQueries({ queryKey: ['notes'] })}
+                                onUpdate={() => queryClient.invalidateQueries({ queryKey: queryKeys.notes.all })}
                                 isVault={note.isVault}
                             />
                         </div>

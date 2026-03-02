@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { useTranslation } from 'react-i18next';
 import { Search, ListChecks, X, Link2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -34,7 +35,7 @@ export default function TaskListLinkPicker({ isOpen, onClose, onSelect }: TaskLi
   }, [isOpen]);
 
   const { data: taskLists, isLoading } = useQuery({
-    queryKey: ['kanban-tasklist-search', debouncedQuery],
+    queryKey: queryKeys.kanban.taskListSearch(debouncedQuery),
     queryFn: () => kanbanService.searchTaskLists(debouncedQuery),
     enabled: isOpen,
   });

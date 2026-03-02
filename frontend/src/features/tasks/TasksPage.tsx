@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { updateNote } from '../notes/noteService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 
@@ -23,7 +24,7 @@ export default function TasksPage() {
         mutationFn: ({ id, isDone }: { id: string, isDone: boolean }) =>
             updateNote(id, { isReminderDone: isDone }),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
         }
     });
 

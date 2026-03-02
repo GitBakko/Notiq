@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
+import { queryKeys } from '../lib/queryKeys';
 
 export interface KanbanReminderItem {
   id: string;
@@ -15,7 +16,7 @@ export interface KanbanReminderItem {
 
 export function useKanbanReminders() {
   return useQuery({
-    queryKey: ['kanban-reminders'],
+    queryKey: queryKeys.kanban.reminders,
     queryFn: async () => {
       const res = await api.get<KanbanReminderItem[]>('/kanban/reminders');
       return res.data;
@@ -29,7 +30,7 @@ export function useToggleKanbanReminder() {
     mutationFn: ({ id, isDone }: { id: string; isDone: boolean }) =>
       api.put(`/kanban/reminders/${id}`, { isDone }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kanban-reminders'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.reminders });
     },
   });
 }

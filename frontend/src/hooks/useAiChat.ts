@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
+import { queryKeys } from '../lib/queryKeys';
 
 export interface AiMessage {
   id?: string;
@@ -25,7 +26,7 @@ export function useAiChat(noteId: string | undefined) {
 
   // Load history from server
   const { isLoading: isLoadingHistory } = useQuery({
-    queryKey: ['ai-history', noteId],
+    queryKey: queryKeys.ai.history(noteId!),
     queryFn: async () => {
       if (!noteId) return [];
       const res = await api.get<AiMessage[]>(`/ai/history/${noteId}`);
@@ -145,7 +146,7 @@ export function useAiChat(noteId: string | undefined) {
     if (!noteId) return;
     await api.delete(`/ai/history/${noteId}`);
     setMessages([]);
-    queryClient.invalidateQueries({ queryKey: ['ai-history', noteId] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.ai.history(noteId!) });
   }, [noteId, queryClient]);
 
   const stopStreaming = useCallback(() => {

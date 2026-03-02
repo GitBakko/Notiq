@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { LayoutDashboard, Plus, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -115,7 +116,7 @@ export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList
       // This also syncs completion state of existing cards back to task items
       try {
         await linkTaskList(selectedBoardId, taskList.id);
-        queryClient.invalidateQueries({ queryKey: ['task-lists'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.taskLists.all });
       } catch (e) {
         // Linking is non-critical — cards already created
         console.error('Failed to link task list to board', e);
@@ -136,7 +137,7 @@ export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList
     try {
       await syncPush();
       const board = await createBoardFromTaskList(taskList.id);
-      queryClient.invalidateQueries({ queryKey: ['kanban-boards'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
       toast.success(t('taskLists.convertedToKanban'));
       setConvertedBoardId(board.id);
       setStep('confirm-remove');

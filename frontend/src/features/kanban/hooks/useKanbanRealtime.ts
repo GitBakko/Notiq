@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { useAuthStore } from '../../../store/authStore';
 import type { KanbanSSEEvent, BoardPresenceUser } from '../types';
 
@@ -29,7 +30,7 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
       if (event.type === 'presence:update') {
         setPresenceUsers(event.users);
       } else if (event.type === 'chat:message') {
-        queryClient.invalidateQueries({ queryKey: ['kanban-board-chat', boardId] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boardChat(boardId!) });
       } else {
         // Highlight moved cards with a 2s pulse
         if (event.type === 'card:moved') {
@@ -52,11 +53,11 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
         }
 
         if (event.type !== 'connected') {
-          queryClient.invalidateQueries({ queryKey: ['kanban-board', boardId] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId!) });
 
           // Invalidate card activities so the detail modal stays in sync
           if ('cardId' in event && event.cardId) {
-            queryClient.invalidateQueries({ queryKey: ['kanban-card-activities', event.cardId] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.kanban.cardActivities(event.cardId) });
           }
         }
       }
