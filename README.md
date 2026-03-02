@@ -193,7 +193,7 @@ Notiq/
 ---
 
 <p align="center">
-  <img src="docs/assets/notiq-logo.svg" alt="Notiq" width="32" />
+  <img src="docs/assets/notiq-logo-256.png" alt="Notiq" width="32" />
 </p>
 
 <p align="center">

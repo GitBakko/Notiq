@@ -1,26 +1,32 @@
 <svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1280" height="640" fill="#0F172A"/>
-
-  <!-- Subtle grid pattern -->
   <defs>
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
       <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="0.5"/>
     </pattern>
   </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="#0F172A"/>
   <rect width="1280" height="640" fill="url(#grid)" opacity="0.3"/>
 
-  <!-- Notiq N symbol (scaled) -->
-  <g transform="translate(180, 180) scale(0.5)">
+  <!-- Official Notiq symbol (from notiq-symbol.svg — scaled up) -->
+  <g transform="translate(160, 160) scale(0.55)">
+    <!-- Monoline N -->
     <path d="M140 360 L140 150 L360 360 L360 150"
           stroke="#F5F7FA" stroke-width="36" fill="none"
           stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Stylus cut (negative space) -->
     <path d="M300 300 L340 260 L360 280 L320 320 Z" fill="#0F172A"/>
+    <!-- Forward dot — brand cyan -->
     <circle cx="110" cy="380" r="22" fill="#22D3EE"/>
   </g>
 
-  <!-- Text -->
+  <!-- Title -->
   <text x="480" y="310" font-family="'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="80" fill="#F5F7FA">Notiq</text>
+  <!-- Forward dot accent -->
   <circle cx="682" cy="298" r="8" fill="#22D3EE"/>
+
+  <!-- Tagline -->
   <text x="480" y="365" font-family="'Segoe UI', system-ui, sans-serif" font-weight="300" font-size="28" fill="#94A3B8">A thinking instrument</text>
 
   <!-- Feature tags -->

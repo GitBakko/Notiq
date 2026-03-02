@@ -1,30 +1,36 @@
 <svg width="900" height="200" viewBox="0 0 900 200" xmlns="http://www.w3.org/2000/svg">
-  <rect width="900" height="200" rx="12" fill="#0F172A"/>
-
-  <!-- Subtle grid -->
   <defs>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1E293B" stroke-width="0.4"/>
-    </pattern>
     <clipPath id="rounded">
       <rect width="900" height="200" rx="12"/>
     </clipPath>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1E293B" stroke-width="0.4"/>
+    </pattern>
   </defs>
+
+  <!-- Background -->
+  <rect width="900" height="200" rx="12" fill="#0F172A"/>
   <rect width="900" height="200" fill="url(#grid)" opacity="0.3" clip-path="url(#rounded)"/>
 
-  <!-- Notiq N symbol -->
-  <g transform="translate(60, 40) scale(0.23)">
+  <!-- Official Notiq symbol (from notiq-symbol.svg — monoline N + stylus cut + forward dot) -->
+  <g transform="translate(56, 38) scale(0.24)">
+    <!-- Monoline N -->
     <path d="M140 360 L140 150 L360 360 L360 150"
           stroke="#F5F7FA" stroke-width="36" fill="none"
           stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Stylus cut (negative space) -->
     <path d="M300 300 L340 260 L360 280 L320 320 Z" fill="#0F172A"/>
+    <!-- Forward dot — brand cyan -->
     <circle cx="110" cy="380" r="22" fill="#22D3EE"/>
   </g>
 
-  <!-- Text -->
-  <text x="200" y="95" font-family="'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="52" fill="#F5F7FA" letter-spacing="-0.5">Notiq</text>
-  <circle cx="340" cy="86" r="5" fill="#22D3EE"/>
-  <text x="200" y="130" font-family="'Segoe UI', system-ui, sans-serif" font-weight="300" font-size="18" fill="#94A3B8">A thinking instrument</text>
+  <!-- Title -->
+  <text x="200" y="92" font-family="'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="52" fill="#F5F7FA" letter-spacing="-0.5">Notiq</text>
+  <!-- Forward dot accent after title -->
+  <circle cx="340" cy="83" r="5" fill="#22D3EE"/>
+
+  <!-- Tagline -->
+  <text x="200" y="126" font-family="'Segoe UI', system-ui, sans-serif" font-weight="300" font-size="18" fill="#94A3B8">A thinking instrument</text>
 
   <!-- Feature pills -->
   <g transform="translate(200, 148)">
@@ -47,7 +53,7 @@
     <text x="450" y="17" font-family="'Segoe UI', system-ui, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">i18n</text>
   </g>
 
-  <!-- Right side decorative accent -->
+  <!-- Right side decorative accents -->
   <rect x="820" y="40" width="3" height="120" rx="1.5" fill="#22D3EE" opacity="0.15"/>
   <rect x="840" y="60" width="3" height="80" rx="1.5" fill="#22D3EE" opacity="0.08"/>
   <rect x="860" y="75" width="3" height="50" rx="1.5" fill="#22D3EE" opacity="0.04"/>
