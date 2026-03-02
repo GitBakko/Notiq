@@ -376,6 +376,37 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Get Accepted Shared Kanban Boards (for sync)
+  fastify.get('/kanbans/accepted', async (request) => {
+    const shares = await prisma.sharedKanbanBoard.findMany({
+      where: { userId: request.user.id, status: 'ACCEPTED' },
+      include: {
+        board: {
+          include: {
+            owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            columns: {
+              orderBy: { position: 'asc' },
+              include: {
+                cards: {
+                  orderBy: { position: 'asc' },
+                  include: {
+                    assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
+                    _count: { select: { comments: true } },
+                  },
+                },
+              },
+            },
+            _count: { select: { columns: true } },
+          },
+        },
+      },
+    });
+    return shares.map(s => ({
+      ...s.board,
+      _sharedPermission: s.permission,
+    }));
+  });
+
   // Get Shared Kanban Boards (all statuses)
   fastify.get('/kanbans', async (request) => {
     const shares = await prisma.sharedKanbanBoard.findMany({

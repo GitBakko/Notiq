@@ -41,6 +41,17 @@ export default async function tagRoutes(fastify: FastifyInstance) {
     return tags;
   });
 
+  const updateTagSchema = z.object({
+    name: z.string().min(1).optional(),
+  });
+
+  fastify.put('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = updateTagSchema.parse(request.body);
+    await tagService.updateTag(request.user.id, id, data);
+    return { message: 'Tag updated' };
+  });
+
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     await tagService.deleteTag(request.user.id, id);

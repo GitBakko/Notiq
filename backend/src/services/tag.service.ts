@@ -34,6 +34,13 @@ export const getTags = async (userId: string, isVault?: boolean) => {
   });
 };
 
+export const updateTag = async (userId: string, id: string, data: { name?: string }) => {
+  return prisma.tag.updateMany({
+    where: { id, userId },
+    data,
+  });
+};
+
 export const deleteTag = async (userId: string, id: string) => {
   return prisma.tag.deleteMany({
     where: { id, userId },

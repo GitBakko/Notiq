@@ -390,6 +390,72 @@ export const syncPull = async () => {
       console.error('syncPull kanban boards failed', e);
     }
 
+    // --- Shared Kanban Boards Pull ---
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sharedKanbanRes = await api.get<any[]>('/share/kanbans/accepted');
+      const sharedBoards = sharedKanbanRes.data;
+
+      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards.map((b: any) => ({
+          ...b,
+          ownership: 'shared' as const,
+          permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
+          syncStatus: 'synced' as const,
+          columnCount: b._count?.columns ?? b.columns?.length ?? 0,
+          cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
+        }));
+
+        // Remove stale shared boards no longer in server response
+        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared').toArray();
+        const sharedServerIds = new Set(sharedBoardsMapped.map(b => b.id));
+        const staleIds = localSharedBoards.filter(b => !sharedServerIds.has(b.id)).map(b => b.id);
+        if (staleIds.length > 0) {
+          await db.kanbanBoards.bulkDelete(staleIds);
+          for (const boardId of staleIds) {
+            await db.kanbanColumns.where('boardId').equals(boardId).delete();
+            await db.kanbanCards.where('boardId').equals(boardId).delete();
+          }
+        }
+
+        if (sharedBoardsMapped.length > 0) await db.kanbanBoards.bulkPut(sharedBoardsMapped);
+
+        // Sync columns and cards for each shared board
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const board of sharedBoards as any[]) {
+          if (board.columns) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const columns: LocalKanbanColumn[] = board.columns.map((col: any) => ({
+              id: col.id,
+              title: col.title,
+              position: col.position,
+              boardId: board.id,
+              syncStatus: 'synced' as const,
+            }));
+            if (columns.length > 0) await db.kanbanColumns.bulkPut(columns);
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            for (const col of board.columns as any[]) {
+              if (col.cards && col.cards.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const cards: LocalKanbanCard[] = col.cards.map((card: any) => ({
+                  ...card,
+                  columnId: col.id,
+                  boardId: board.id,
+                  commentCount: card._count?.comments ?? 0,
+                  syncStatus: 'synced' as const,
+                }));
+                await db.kanbanCards.bulkPut(cards);
+              }
+            }
+          }
+        }
+      });
+    } catch (e) {
+      console.error('syncPull shared kanban boards failed', e);
+    }
+
   } catch (error) {
     console.error('Sync Pull Failed:', error);
   }
@@ -446,6 +512,8 @@ export const syncPush = async () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { id, ...data } = item.data as any;
             await api.post('/tags', { ...data, id });
+          } else if (item.type === 'UPDATE') {
+            await api.put(`/tags/${item.entityId}`, item.data);
           } else if (item.type === 'DELETE') {
             await api.delete(`/tags/${item.entityId}`);
           }

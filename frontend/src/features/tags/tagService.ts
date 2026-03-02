@@ -48,6 +48,19 @@ export const createTag = async (name: string, isVault: boolean = false) => {
   return newTag;
 };
 
+export const updateTag = async (id: string, data: { name?: string }) => {
+  await db.tags.update(id, { ...data, syncStatus: 'updated' });
+  const userId = useAuthStore.getState().user?.id || 'current-user';
+  await db.syncQueue.add({
+    type: 'UPDATE',
+    entity: 'TAG',
+    entityId: id,
+    userId,
+    data,
+    createdAt: Date.now()
+  });
+};
+
 export const deleteTag = async (id: string) => {
   await db.tags.delete(id);
   const userId = useAuthStore.getState().user?.id || 'current-user';
