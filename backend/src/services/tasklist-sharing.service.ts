@@ -148,6 +148,7 @@ export const respondToTaskListShareById = async (
   });
 
   if (!existing) throw new Error('Invitation not found');
+  if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
   const result = await prisma.sharedTaskList.update({
     where: {

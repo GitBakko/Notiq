@@ -115,6 +115,7 @@ export default function SharedWithMePage() {
   const [view, setView] = useState<'received' | 'sent'>('received');
   const [sentData, setSentData] = useState<SentData | null>(null);
   const [isSentLoading, setIsSentLoading] = useState(false);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
 
@@ -205,11 +206,15 @@ export default function SharedWithMePage() {
   };
 
   const handleRespond = async (itemId: string, type: 'NOTE' | 'NOTEBOOK' | 'TASKLIST' | 'KANBAN', action: 'accept' | 'decline') => {
+    if (respondingId) return; // Prevent double-click
+    setRespondingId(itemId);
     try {
       await api.post('/share/respond-id', { itemId, type, action });
       fetchData();
     } catch (e) {
       console.error('Error responding', e);
+    } finally {
+      setRespondingId(null);
     }
   };
 
@@ -411,13 +416,15 @@ export default function SharedWithMePage() {
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => handleRespond(id, respondType, 'accept')}
-                                      className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+                                      disabled={respondingId === id}
+                                      className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                      {t('common.accept')}
+                                      {respondingId === id ? t('common.loading') : t('common.accept')}
                                     </button>
                                     <button
                                       onClick={() => handleRespond(id, respondType, 'decline')}
-                                      className="flex-1 px-3 py-1.5 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 text-sm font-medium rounded-lg transition-colors dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-600 dark:hover:bg-neutral-700"
+                                      disabled={respondingId === id}
+                                      className="flex-1 px-3 py-1.5 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 text-sm font-medium rounded-lg transition-colors dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-600 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       {t('common.decline')}
                                     </button>
