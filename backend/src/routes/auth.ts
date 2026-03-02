@@ -84,6 +84,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
           invitesAvailable: user.invitesAvailable,
           avatarUrl: user.avatarUrl,
           color: user.color,
+          locale: user.locale,
           createdAt: user.createdAt
         }
       };
@@ -147,7 +148,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
         avatarUrl: true,
         createdAt: true,
         role: true,
-        invitesAvailable: true
+        invitesAvailable: true,
+        locale: true
       }
     });
     return user;

@@ -21,7 +21,7 @@ import SharedUsersModal from '../sharing/SharedUsersModal';
 import type { SharedUserInfo } from '../sharing/SharedUsersModal';
 import { useNotebookShareCounts } from '../../hooks/useNotebookShareCounts';
 import toast from 'react-hot-toast';
-import NotificationDropdown from '../../features/notifications/NotificationDropdown';
+import { useNotifications } from '../../hooks/useNotifications';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 export default function Sidebar() {
@@ -32,8 +32,9 @@ export default function Sidebar() {
   const selectedTagId = searchParams.get('tagId') || undefined;
 
   const { user, logout } = useAuthStore();
-  const { theme, setTheme, openSearch, closeSidebar, isSidebarCollapsed, toggleSidebarCollapsed } = useUIStore();
+  const { theme, setTheme, openSearch, closeSidebar, isSidebarCollapsed, toggleSidebarCollapsed, toggleNotificationPanel } = useUIStore();
   const isMobile = useIsMobile();
+  const { unreadCount } = useNotifications();
   const [isNotebooksOpen, setIsNotebooksOpen] = useState(true);
   const [isNewNotebookOpen, setIsNewNotebookOpen] = useState(false);
   const [isTagsOpen, setIsTagsOpen] = useState(true);
@@ -332,7 +333,17 @@ export default function Sidebar() {
 
             {/* Footer actions */}
             <div className="flex flex-col items-center gap-0.5">
-              <NotificationDropdown />
+              <button
+                onClick={toggleNotificationPanel}
+                className="relative flex items-center justify-center w-9 h-9 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white transition-colors"
+                title={t('notifications.title')}
+                aria-label={t('notifications.title')}
+              >
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+                )}
+              </button>
               <button
                 onClick={toggleTheme}
                 className="flex items-center justify-center w-9 h-9 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
@@ -716,7 +727,17 @@ export default function Sidebar() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <NotificationDropdown />
+                <button
+                  onClick={toggleNotificationPanel}
+                  className="relative p-2 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 rounded-lg dark:hover:bg-neutral-800 transition-colors"
+                  title={t('notifications.title')}
+                  aria-label={t('notifications.title')}
+                >
+                  <Bell size={20} />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-neutral-900" />
+                  )}
+                </button>
                 <button
                   onClick={toggleTheme}
                   className="p-2 text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"

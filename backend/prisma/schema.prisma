@@ -116,7 +116,7 @@ model Note {
   content     String   // HTML/JSON content
   searchText  String?  // Plain text for search
   notebookId  String
-  notebook    Notebook @relation(fields: [notebookId], references: [id])
+  notebook    Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   tags        TagsOnNotes[]

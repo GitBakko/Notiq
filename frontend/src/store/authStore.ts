@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as userService from '../features/user/userService';
+import queryClient from '../lib/queryClient';
+import { useVaultStore } from './vaultStore';
 
 interface User {
   id: string;
@@ -16,6 +18,7 @@ interface User {
   role?: 'USER' | 'SUPERADMIN';
   invitesAvailable?: number;
   emailNotificationsEnabled?: boolean;
+  locale?: string;
 }
 
 interface AuthState {
@@ -68,7 +71,11 @@ export const useAuthStore = create<AuthState>()(
         if (!token) return;
         await userService.changePassword(token, { oldPassword, newPassword });
       },
-      logout: () => set({ user: null, token: null }),
+      logout: () => {
+        set({ user: null, token: null });
+        useVaultStore.getState().resetVault();
+        queryClient.clear();
+      },
     }),
     {
       name: 'auth-storage',

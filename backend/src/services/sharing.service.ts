@@ -384,11 +384,12 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
 
   let result;
   if (type === 'NOTE') {
-    // Check existence
+    // Check existence and guard against non-PENDING (prevents duplicate notifications on double-click)
     const existing = await prisma.sharedNote.findUnique({
       where: { noteId_userId: { noteId: itemId, userId } }
     });
     if (!existing) throw new Error('Invitation not found');
+    if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
     result = await prisma.sharedNote.update({
       where: {
@@ -405,6 +406,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
       where: { notebookId_userId: { notebookId: itemId, userId } }
     });
     if (!existing) throw new Error('Invitation not found');
+    if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
     result = await prisma.sharedNotebook.update({
       where: {
@@ -421,6 +423,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
       where: { boardId_userId: { boardId: itemId, userId } }
     });
     if (!existing) throw new Error('Invitation not found');
+    if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
     result = await prisma.sharedKanbanBoard.update({
       where: {

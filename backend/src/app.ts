@@ -25,6 +25,7 @@ import groupRoutes from './routes/groups';
 import urlMetadataRoutes from './routes/url-metadata';
 import taskListRoutes from './routes/tasklists';
 import kanbanRoutes from './routes/kanban';
+import healthRoutes from './routes/health';
 
 
 // ... ensure start
@@ -41,6 +42,15 @@ server.register(cors, {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
+});
+
+// Security headers
+server.addHook('onSend', (request, reply, payload, done) => {
+  reply.header('X-Frame-Options', 'DENY');
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  reply.header('X-XSS-Protection', '1; mode=block');
+  done();
 });
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -126,6 +136,7 @@ server.register(groupRoutes, { prefix: '/api/groups' });
 server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
 server.register(taskListRoutes, { prefix: '/api/tasklists' });
 server.register(kanbanRoutes, { prefix: '/api/kanban' });
+server.register(healthRoutes);
 
 // Uploads base directory — consistent with attachment.service.ts
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
@@ -196,12 +207,6 @@ server.get('/uploads/:filename', async (request, reply) => {
   const stream = fs.createReadStream(filepath);
   return reply.type(contentType).send(stream);
 });
-
-// Health Check
-server.get('/health', async (request, reply) => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
 
 import { hocuspocus } from './hocuspocus';
 import type { WebSocket } from 'ws';

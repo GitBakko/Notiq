@@ -21,6 +21,7 @@ export const updateUser = async (userId: string, data: {
   mobile?: string;
   avatarUrl?: string;
   emailNotificationsEnabled?: boolean;
+  locale?: string;
 }) => {
   let dob: Date | undefined | null = undefined;
   if (data.dateOfBirth) {
@@ -43,6 +44,7 @@ export const updateUser = async (userId: string, data: {
       mobile: data.mobile,
       avatarUrl: data.avatarUrl,
       ...(data.emailNotificationsEnabled !== undefined && { emailNotificationsEnabled: data.emailNotificationsEnabled }),
+      ...(data.locale && { locale: data.locale }),
     },
   });
 };
