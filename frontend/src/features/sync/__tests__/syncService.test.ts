@@ -1091,7 +1091,7 @@ describe('syncPush', () => {
     });
 
     it('does nothing if no user is logged in', async () => {
-      mockAuthStore.getState.mockReturnValue({ user: null });
+      mockAuthStore.getState.mockReturnValue({ user: null as unknown as { id: string } });
 
       mockDb.syncQueue.toArray.mockResolvedValue([
         { id: 500, type: 'CREATE', entity: 'NOTE', entityId: 'x', userId: 'user-1', data: {}, createdAt: Date.now() },
