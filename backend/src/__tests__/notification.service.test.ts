@@ -66,7 +66,7 @@ describe('notification.service — createNotification', () => {
     expect(sendPushMock).toHaveBeenCalledWith('user-1', {
       title: 'Shared',
       body: 'Note shared',
-      data: { noteId: 'n-1', type: 'SHARE_NOTE' },
+      data: { noteId: 'n-1', type: 'SHARE_NOTE', actionLabel: 'Open App' },
     });
   });
 

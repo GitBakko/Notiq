@@ -113,7 +113,7 @@ describe('shareNote', () => {
     prismaMock.note.findUnique.mockResolvedValue(null);
 
     await expect(shareNote(OWNER_ID, NOTE_ID, targetUser.email, 'READ')).rejects.toThrow(
-      'Note not found or access denied',
+      'errors.notes.notFoundOrDenied',
     );
     expect(prismaMock.sharedNote.upsert).not.toHaveBeenCalled();
   });
@@ -122,7 +122,7 @@ describe('shareNote', () => {
     prismaMock.note.findUnique.mockResolvedValue({ ...sampleNote, userId: 'other-owner' });
 
     await expect(shareNote(OWNER_ID, NOTE_ID, targetUser.email, 'READ')).rejects.toThrow(
-      'Note not found or access denied',
+      'errors.notes.notFoundOrDenied',
     );
   });
 
@@ -130,7 +130,7 @@ describe('shareNote', () => {
     prismaMock.note.findUnique.mockResolvedValue(sampleNote);
     prismaMock.user.findUnique.mockResolvedValue(null);
 
-    await expect(shareNote(OWNER_ID, NOTE_ID, 'nobody@test.com', 'READ')).rejects.toThrow('User not found');
+    await expect(shareNote(OWNER_ID, NOTE_ID, 'nobody@test.com', 'READ')).rejects.toThrow('errors.user.notFound');
   });
 
   it('should throw when owner tries to share with themselves', async () => {
@@ -138,7 +138,7 @@ describe('shareNote', () => {
     prismaMock.user.findUnique.mockResolvedValue(ownerUser);
 
     await expect(shareNote(OWNER_ID, NOTE_ID, ownerUser.email, 'WRITE')).rejects.toThrow(
-      'Cannot share with yourself',
+      'errors.sharing.cannotShareSelf',
     );
   });
 
@@ -231,7 +231,7 @@ describe('revokeNoteShare', () => {
     prismaMock.note.findUnique.mockResolvedValue(null);
 
     await expect(revokeNoteShare(OWNER_ID, NOTE_ID, TARGET_USER_ID)).rejects.toThrow(
-      'Note not found or access denied',
+      'errors.notes.notFoundOrDenied',
     );
     expect(prismaMock.sharedNote.delete).not.toHaveBeenCalled();
   });
@@ -240,7 +240,7 @@ describe('revokeNoteShare', () => {
     prismaMock.note.findUnique.mockResolvedValue({ ...sampleNote, userId: 'someone-else' });
 
     await expect(revokeNoteShare(OWNER_ID, NOTE_ID, TARGET_USER_ID)).rejects.toThrow(
-      'Note not found or access denied',
+      'errors.notes.notFoundOrDenied',
     );
     expect(prismaMock.sharedNote.delete).not.toHaveBeenCalled();
   });
@@ -427,7 +427,7 @@ describe('shareNotebook', () => {
     prismaMock.notebook.findUnique.mockResolvedValue(null);
 
     await expect(shareNotebook(OWNER_ID, NOTEBOOK_ID, targetUser.email, 'READ')).rejects.toThrow(
-      'Notebook not found or access denied',
+      'errors.notebooks.notFoundOrDenied',
     );
   });
 
@@ -435,7 +435,7 @@ describe('shareNotebook', () => {
     prismaMock.notebook.findUnique.mockResolvedValue({ ...sampleNotebook, userId: 'other-owner' });
 
     await expect(shareNotebook(OWNER_ID, NOTEBOOK_ID, targetUser.email, 'READ')).rejects.toThrow(
-      'Notebook not found or access denied',
+      'errors.notebooks.notFoundOrDenied',
     );
   });
 
@@ -444,7 +444,7 @@ describe('shareNotebook', () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
 
     await expect(shareNotebook(OWNER_ID, NOTEBOOK_ID, 'nobody@test.com', 'WRITE')).rejects.toThrow(
-      'User not found',
+      'errors.user.notFound',
     );
   });
 
@@ -453,7 +453,7 @@ describe('shareNotebook', () => {
     prismaMock.user.findUnique.mockResolvedValue(ownerUser);
 
     await expect(shareNotebook(OWNER_ID, NOTEBOOK_ID, ownerUser.email, 'READ')).rejects.toThrow(
-      'Cannot share with yourself',
+      'errors.sharing.cannotShareSelf',
     );
   });
 
@@ -523,7 +523,7 @@ describe('revokeNotebookShare', () => {
     prismaMock.notebook.findUnique.mockResolvedValue(null);
 
     await expect(revokeNotebookShare(OWNER_ID, NOTEBOOK_ID, TARGET_USER_ID)).rejects.toThrow(
-      'Notebook not found or access denied',
+      'errors.notebooks.notFoundOrDenied',
     );
     expect(prismaMock.sharedNotebook.delete).not.toHaveBeenCalled();
   });
@@ -532,7 +532,7 @@ describe('revokeNotebookShare', () => {
     prismaMock.notebook.findUnique.mockResolvedValue({ ...sampleNotebook, userId: 'someone-else' });
 
     await expect(revokeNotebookShare(OWNER_ID, NOTEBOOK_ID, TARGET_USER_ID)).rejects.toThrow(
-      'Notebook not found or access denied',
+      'errors.notebooks.notFoundOrDenied',
     );
     expect(prismaMock.sharedNotebook.delete).not.toHaveBeenCalled();
   });
@@ -643,7 +643,7 @@ describe('respondToShareById', () => {
 
       await expect(
         respondToShareById(TARGET_USER_ID, NOTE_ID, 'NOTE', 'accept'),
-      ).rejects.toThrow('Invitation not found');
+      ).rejects.toThrow('errors.sharing.invitationNotFound');
       expect(prismaMock.sharedNote.update).not.toHaveBeenCalled();
     });
   });
@@ -701,7 +701,7 @@ describe('respondToShareById', () => {
 
       await expect(
         respondToShareById(TARGET_USER_ID, NOTEBOOK_ID, 'NOTEBOOK', 'accept'),
-      ).rejects.toThrow('Invitation not found');
+      ).rejects.toThrow('errors.sharing.invitationNotFound');
       expect(prismaMock.sharedNotebook.update).not.toHaveBeenCalled();
     });
   });

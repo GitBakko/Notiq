@@ -112,7 +112,7 @@ describe('note.service — createNote', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
-    await expect(createNote('user-1', 'Test', '{}', 'nb-none')).rejects.toThrow('Notebook not found');
+    await expect(createNote('user-1', 'Test', '{}', 'nb-none')).rejects.toThrow('errors.notebooks.notFound');
   });
 
   it('should return existing note on P2002 duplicate key conflict', async () => {
@@ -162,7 +162,7 @@ describe('note.service — updateNote', () => {
   it('should throw if note not found or not owned', async () => {
     prismaMock.note.findFirst.mockResolvedValueOnce(null);
 
-    await expect(updateNote('user-2', 'note-1', { title: 'Hack' })).rejects.toThrow('Note not found');
+    await expect(updateNote('user-2', 'note-1', { title: 'Hack' })).rejects.toThrow('errors.notes.notFound');
   });
 
   it('should prevent overwriting substantial content with empty doc', async () => {
@@ -206,7 +206,7 @@ describe('note.service — toggleShare', () => {
       isVault: true,
     } as any);
 
-    await expect(toggleShare('user-1', 'note-1')).rejects.toThrow('Vault notes cannot be shared');
+    await expect(toggleShare('user-1', 'note-1')).rejects.toThrow('errors.sharing.vaultNotShareable');
   });
 });
 
@@ -226,6 +226,6 @@ describe('note.service — deleteNote', () => {
   it('should throw if note not owned by user', async () => {
     prismaMock.note.findFirst.mockResolvedValueOnce(null);
 
-    await expect(deleteNote('user-2', 'note-1')).rejects.toThrow('Note not found');
+    await expect(deleteNote('user-2', 'note-1')).rejects.toThrow('errors.notes.notFound');
   });
 });

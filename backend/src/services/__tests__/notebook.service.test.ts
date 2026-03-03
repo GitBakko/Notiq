@@ -56,7 +56,7 @@ describe('createNotebook', () => {
     });
 
     await expect(createNotebook(USER_ID, 'Work')).rejects.toThrow(
-      'Notebook with this name already exists',
+      'errors.notebooks.nameExists',
     );
     expect(prismaMock.notebook.create).not.toHaveBeenCalled();
   });
@@ -81,6 +81,17 @@ describe('getNotebooks', () => {
             notes: {
               where: { isVault: false },
             },
+            sharedWith: {
+              where: { status: 'ACCEPTED' },
+            },
+          },
+        },
+        sharedWith: {
+          where: { status: 'ACCEPTED' },
+          select: {
+            userId: true,
+            permission: true,
+            user: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
         },
       },
@@ -178,7 +189,7 @@ describe('deleteNotebook', () => {
     prismaMock.notebook.findFirst.mockResolvedValue(null);
 
     await expect(deleteNotebook(USER_ID, 'missing')).rejects.toThrow(
-      'Notebook not found',
+      'errors.notebooks.notFound',
     );
     expect(prismaMock.notebook.delete).not.toHaveBeenCalled();
   });

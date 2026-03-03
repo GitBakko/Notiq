@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import jwtPlugin from '@fastify/jwt';
+import { ConflictError, UnauthorizedError } from '../../utils/errors';
 
 // Mock services
 vi.mock('../../services/auth.service', () => ({
@@ -50,7 +51,8 @@ beforeAll(async () => {
     if (error.name === 'ZodError') {
       return reply.status(400).send({ message: 'Validation error' });
     }
-    reply.status(500).send({ message: error.message });
+    const statusCode = (error as any).statusCode || 500;
+    reply.status(statusCode).send({ message: error.message });
   });
 
   app.register(authRoutes, { prefix: '/api/auth' });
@@ -101,8 +103,8 @@ describe('POST /api/auth/register', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('returns 400 when user already exists', async () => {
-    mockRegister.mockRejectedValue(new Error('auth.errors.userExists'));
+  it('returns 409 when user already exists', async () => {
+    mockRegister.mockRejectedValue(new ConflictError('auth.errors.userExists'));
 
     const res = await app.inject({
       method: 'POST',
@@ -110,7 +112,7 @@ describe('POST /api/auth/register', () => {
       payload: { email: 'existing@test.com', password: 'password123' },
     });
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(409);
     expect(JSON.parse(res.payload).message).toBe('auth.errors.userExists');
   });
 });
@@ -136,7 +138,7 @@ describe('POST /api/auth/login', () => {
   });
 
   it('returns 401 for invalid credentials', async () => {
-    mockLogin.mockRejectedValue(new Error('Invalid credentials'));
+    mockLogin.mockRejectedValue(new UnauthorizedError('auth.errors.invalidCredentials'));
 
     const res = await app.inject({
       method: 'POST',
@@ -147,15 +149,15 @@ describe('POST /api/auth/login', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns 401 for missing password (login catches validation errors as auth errors)', async () => {
+  it('returns 400 for missing password (Zod validation error)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: 'test@test.com', password: '' },
     });
 
-    // Login route catches ZodError internally and returns 401 (same as auth errors)
-    expect(res.statusCode).toBe(401);
+    // Empty password fails Zod validation (min(1)), error handler returns 400
+    expect(res.statusCode).toBe(400);
   });
 });
 
@@ -173,8 +175,8 @@ describe('POST /api/auth/verify-email', () => {
     expect(JSON.parse(res.payload).message).toBe('Email verified successfully');
   });
 
-  it('returns 400 for invalid token', async () => {
-    mockVerify.mockRejectedValue(new Error('Invalid token'));
+  it('returns 401 for invalid token', async () => {
+    mockVerify.mockRejectedValue(new UnauthorizedError('auth.errors.invalidOrExpiredToken'));
 
     const res = await app.inject({
       method: 'POST',
@@ -182,7 +184,7 @@ describe('POST /api/auth/verify-email', () => {
       payload: { token: 'bad-token' },
     });
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(401);
   });
 
   it('returns 400 for empty token', async () => {
@@ -237,8 +239,8 @@ describe('POST /api/auth/reset-password', () => {
     expect(JSON.parse(res.payload).message).toBe('Password reset successfully');
   });
 
-  it('returns 400 for invalid token', async () => {
-    mockResetPw.mockRejectedValue(new Error('Invalid token'));
+  it('returns 401 for invalid token', async () => {
+    mockResetPw.mockRejectedValue(new UnauthorizedError('auth.errors.invalidOrExpiredToken'));
 
     const res = await app.inject({
       method: 'POST',
@@ -246,7 +248,7 @@ describe('POST /api/auth/reset-password', () => {
       payload: { token: 'bad-token', newPassword: 'newpass123' },
     });
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(401);
   });
 
   it('returns 400 for short password', async () => {

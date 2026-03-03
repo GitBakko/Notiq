@@ -160,7 +160,7 @@ describe('createNote', () => {
       .mockResolvedValueOnce(null);
 
     await expect(createNote('user-1', 'Test', '{}', 'nb-missing'))
-      .rejects.toThrow('Notebook not found');
+      .rejects.toThrow('errors.notebooks.notFound');
   });
 
   it('sets searchText to null when note is encrypted', async () => {
@@ -188,7 +188,9 @@ describe('createNote', () => {
   it('handles P2002 duplicate id by returning existing note (idempotency)', async () => {
     const existing = { id: 'dup-id', title: 'Existing' };
     prismaMock.notebook.findFirst.mockResolvedValueOnce({ id: 'nb-1', userId: 'user-1' });
-    prismaMock.note.create.mockRejectedValue({ code: 'P2002' });
+    const p2002Error = new Error('Unique constraint failed') as Error & { code: string };
+    p2002Error.code = 'P2002';
+    prismaMock.note.create.mockRejectedValue(p2002Error);
     prismaMock.note.findUnique.mockResolvedValue(existing);
 
     const result = await createNote('user-1', 'Test', '{}', 'nb-1', false, false, 'dup-id');
@@ -386,7 +388,7 @@ describe('updateNote', () => {
     prismaMock.note.findFirst.mockResolvedValue(null);
 
     await expect(updateNote('stranger', 'n1', { title: 'Hack' }))
-      .rejects.toThrow('Note not found');
+      .rejects.toThrow('errors.notes.notFound');
   });
 
   it('replaces tags within the transaction', async () => {
@@ -535,7 +537,7 @@ describe('deleteNote', () => {
   it('throws when note does not exist or user is not owner', async () => {
     prismaMock.note.findFirst.mockResolvedValue(null);
 
-    await expect(deleteNote('stranger', 'n1')).rejects.toThrow('Note not found');
+    await expect(deleteNote('stranger', 'n1')).rejects.toThrow('errors.notes.notFound');
 
     // Ensure no deletions occurred
     expect(prismaMock.tagsOnNotes.deleteMany).not.toHaveBeenCalled();
@@ -599,7 +601,7 @@ describe('toggleShare', () => {
   it('throws when note does not exist or user is not owner', async () => {
     prismaMock.note.findFirst.mockResolvedValue(null);
 
-    await expect(toggleShare('stranger', 'n1')).rejects.toThrow('Note not found');
+    await expect(toggleShare('stranger', 'n1')).rejects.toThrow('errors.notes.notFound');
   });
 
   it('throws when trying to share a vault note', async () => {
@@ -610,7 +612,7 @@ describe('toggleShare', () => {
       isVault: true,
     });
 
-    await expect(toggleShare('user-1', 'n1')).rejects.toThrow('Vault notes cannot be shared');
+    await expect(toggleShare('user-1', 'n1')).rejects.toThrow('errors.sharing.vaultNotShareable');
   });
 });
 
@@ -717,7 +719,7 @@ describe('getNoteSizeBreakdown', () => {
     prismaMock.note.findUnique.mockResolvedValueOnce(null);
 
     await expect(getNoteSizeBreakdown('stranger', 'note-1'))
-      .rejects.toThrow('Note not found');
+      .rejects.toThrow('errors.notes.notFound');
   });
 
   it('throws when note data is not found (inconsistent state)', async () => {
@@ -731,7 +733,7 @@ describe('getNoteSizeBreakdown', () => {
     prismaMock.aiConversation.findMany.mockResolvedValue([]);
 
     await expect(getNoteSizeBreakdown('user-1', 'note-1'))
-      .rejects.toThrow('Note not found');
+      .rejects.toThrow('errors.notes.notFound');
   });
 
   it('handles notes with null/empty fields gracefully', async () => {

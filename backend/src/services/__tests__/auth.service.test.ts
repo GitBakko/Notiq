@@ -331,17 +331,17 @@ describe('loginUser', () => {
     );
   });
 
-  it('should throw "Invalid credentials" when user is not found', async () => {
+  it('should throw "auth.errors.invalidCredentials" when user is not found', async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
 
-    await expect(loginUser(MOCK_EMAIL, MOCK_PASSWORD)).rejects.toThrow('Invalid credentials');
+    await expect(loginUser(MOCK_EMAIL, MOCK_PASSWORD)).rejects.toThrow('auth.errors.invalidCredentials');
     expect(bcrypt.compare).not.toHaveBeenCalled();
   });
 
-  it('should throw "Invalid credentials" when password is wrong', async () => {
+  it('should throw "auth.errors.invalidCredentials" when password is wrong', async () => {
     vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
 
-    await expect(loginUser(MOCK_EMAIL, MOCK_PASSWORD)).rejects.toThrow('Invalid credentials');
+    await expect(loginUser(MOCK_EMAIL, MOCK_PASSWORD)).rejects.toThrow('auth.errors.invalidCredentials');
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -456,14 +456,14 @@ describe('verifyEmail', () => {
   it('should throw when token is invalid (no matching user)', async () => {
     prismaMock.user.findFirst.mockResolvedValue(null);
 
-    await expect(verifyEmail('bad-token')).rejects.toThrow('Invalid or expired token');
+    await expect(verifyEmail('bad-token')).rejects.toThrow('auth.errors.invalidOrExpiredToken');
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('should throw when token is expired (findFirst returns null)', async () => {
     prismaMock.user.findFirst.mockResolvedValue(null);
 
-    await expect(verifyEmail(RAW_TOKEN)).rejects.toThrow('Invalid or expired token');
+    await expect(verifyEmail(RAW_TOKEN)).rejects.toThrow('auth.errors.invalidOrExpiredToken');
   });
 
   it('should hash the raw token with SHA-256 before querying', async () => {
@@ -596,7 +596,7 @@ describe('resetPassword', () => {
     prismaMock.user.findFirst.mockResolvedValue(null);
 
     await expect(resetPassword('bad-token', NEW_PASSWORD)).rejects.toThrow(
-      'Invalid or expired token',
+      'auth.errors.invalidOrExpiredToken',
     );
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
@@ -605,7 +605,7 @@ describe('resetPassword', () => {
     prismaMock.user.findFirst.mockResolvedValue(null);
 
     await expect(resetPassword(RAW_TOKEN, NEW_PASSWORD)).rejects.toThrow(
-      'Invalid or expired token',
+      'auth.errors.invalidOrExpiredToken',
     );
   });
 
@@ -690,7 +690,7 @@ describe('resendVerificationForInvite', () => {
 
     await expect(
       resendVerificationForInvite(INVITE_CODE, REQUESTER_ID),
-    ).rejects.toThrow('Invite not found');
+    ).rejects.toThrow('errors.invites.notFound');
   });
 
   it('should throw when requester is not the invite creator and not SUPERADMIN', async () => {
@@ -703,7 +703,7 @@ describe('resendVerificationForInvite', () => {
 
     await expect(
       resendVerificationForInvite(INVITE_CODE, REQUESTER_ID),
-    ).rejects.toThrow('Not authorized to manage this invite');
+    ).rejects.toThrow('errors.invites.notAuthorized');
   });
 
   it('should allow SUPERADMIN to resend verification for any invite', async () => {
@@ -728,7 +728,7 @@ describe('resendVerificationForInvite', () => {
 
     await expect(
       resendVerificationForInvite(INVITE_CODE, REQUESTER_ID),
-    ).rejects.toThrow('Invite has not been used yet');
+    ).rejects.toThrow('errors.invites.notUsedYet');
   });
 
   it('should throw when the invited user is already verified', async () => {
@@ -739,7 +739,7 @@ describe('resendVerificationForInvite', () => {
 
     await expect(
       resendVerificationForInvite(INVITE_CODE, REQUESTER_ID),
-    ).rejects.toThrow('User is already verified');
+    ).rejects.toThrow('auth.errors.alreadyVerified');
   });
 
   it('should set verificationTokenExpires to 24 hours from now', async () => {

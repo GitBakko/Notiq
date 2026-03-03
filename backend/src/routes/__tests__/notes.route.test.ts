@@ -18,6 +18,7 @@ vi.mock('../../services/sharing.service', () => ({
 }));
 
 import * as noteService from '../../services/note.service';
+import { AppError, NotFoundError } from '../../utils/errors';
 import noteRoutes from '../notes';
 
 const mockNoteService = noteService as any;
@@ -39,8 +40,11 @@ beforeAll(async () => {
     }
   });
 
-  // Zod validation error handler (matches production behavior)
+  // Error handler (matches production behavior)
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AppError) {
+      return reply.status(error.statusCode).send({ message: error.message });
+    }
     if (error.name === 'ZodError') {
       return reply.status(400).send({ message: 'Validation error', issues: (error as any).issues || (error as any).errors });
     }
@@ -181,7 +185,7 @@ describe('PUT /api/notes/:id', () => {
   });
 
   it('returns 404 when note not found', async () => {
-    mockNoteService.updateNote.mockRejectedValue(new Error('Note not found'));
+    mockNoteService.updateNote.mockRejectedValue(new NotFoundError('errors.notes.notFound'));
 
     const res = await app.inject({
       method: 'PUT',
@@ -224,7 +228,7 @@ describe('DELETE /api/notes/:id', () => {
   });
 
   it('returns 404 when note not found', async () => {
-    mockNoteService.deleteNote.mockRejectedValue(new Error('Note not found'));
+    mockNoteService.deleteNote.mockRejectedValue(new NotFoundError('errors.notes.notFound'));
 
     const res = await app.inject({
       method: 'DELETE',
@@ -253,7 +257,7 @@ describe('GET /api/notes/:id/size', () => {
   });
 
   it('returns 404 when note not found', async () => {
-    mockNoteService.getNoteSizeBreakdown.mockRejectedValue(new Error('Note not found'));
+    mockNoteService.getNoteSizeBreakdown.mockRejectedValue(new NotFoundError('errors.notes.notFound'));
     const uuid = '550e8400-e29b-41d4-a716-446655440000';
 
     const res = await app.inject({

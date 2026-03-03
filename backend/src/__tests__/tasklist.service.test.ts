@@ -121,7 +121,7 @@ describe('tasklist.service — getTaskList', () => {
   it('should throw if task list not found', async () => {
     prismaMock.taskList.findUnique.mockResolvedValueOnce(null);
 
-    await expect(getTaskList('user-1', 'nonexistent')).rejects.toThrow('TaskList not found');
+    await expect(getTaskList('user-1', 'nonexistent')).rejects.toThrow('errors.tasks.listNotFound');
   });
 
   it('should throw if user has no access (not owner and no accepted share)', async () => {
@@ -129,7 +129,7 @@ describe('tasklist.service — getTaskList', () => {
     prismaMock.taskList.findUnique.mockResolvedValueOnce(mockList);
     prismaMock.sharedTaskList.findUnique.mockResolvedValueOnce(null);
 
-    await expect(getTaskList('stranger', 'tl-1')).rejects.toThrow('TaskList not found');
+    await expect(getTaskList('stranger', 'tl-1')).rejects.toThrow('errors.tasks.listNotFound');
   });
 });
 
@@ -145,7 +145,7 @@ describe('tasklist.service — deleteTaskList', () => {
   it('should throw if not the owner', async () => {
     prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'real-owner' });
 
-    await expect(deleteTaskList('not-owner', 'tl-1')).rejects.toThrow('Access denied');
+    await expect(deleteTaskList('not-owner', 'tl-1')).rejects.toThrow('errors.common.accessDenied');
   });
 });
 
@@ -175,7 +175,7 @@ describe('tasklist.service — addTaskItem', () => {
     prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'other' });
     prismaMock.sharedTaskList.findUnique.mockResolvedValueOnce(null);
 
-    await expect(addTaskItem('user-1', 'tl-1', { text: 'Blocked' })).rejects.toThrow('Access denied');
+    await expect(addTaskItem('user-1', 'tl-1', { text: 'Blocked' })).rejects.toThrow('errors.common.accessDenied');
   });
 });
 
@@ -221,7 +221,7 @@ describe('tasklist.service — updateTaskItem (only-checker-can-uncheck)', () =>
     });
 
     await expect(updateTaskItem('user-2', 'tl-1', 'item-1', { isChecked: false }))
-      .rejects.toThrow('Only the user who checked this item can uncheck it');
+      .rejects.toThrow('errors.tasks.onlyCheckerCanUncheck');
   });
 
   it('should throw if task item not found', async () => {
@@ -229,7 +229,7 @@ describe('tasklist.service — updateTaskItem (only-checker-can-uncheck)', () =>
     prismaMock.taskItem.findUnique.mockResolvedValueOnce(null);
 
     await expect(updateTaskItem('user-1', 'tl-1', 'item-999', { text: 'Updated' }))
-      .rejects.toThrow('TaskItem not found');
+      .rejects.toThrow('errors.tasks.itemNotFound');
   });
 });
 
@@ -261,6 +261,6 @@ describe('tasklist.service — deleteTaskItem', () => {
       text: 'Wrong list',
     });
 
-    await expect(deleteTaskItem('user-1', 'tl-1', 'item-1')).rejects.toThrow('TaskItem not found');
+    await expect(deleteTaskItem('user-1', 'tl-1', 'item-1')).rejects.toThrow('errors.tasks.itemNotFound');
   });
 });

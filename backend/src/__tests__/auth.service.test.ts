@@ -147,7 +147,7 @@ describe('auth.service — loginUser', () => {
   it('should throw if user not found', async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
 
-    await expect(loginUser('no@user.com', 'pass')).rejects.toThrow('Invalid credentials');
+    await expect(loginUser('no@user.com', 'pass')).rejects.toThrow('auth.errors.invalidCredentials');
   });
 
   it('should throw if password is wrong', async () => {
@@ -155,7 +155,7 @@ describe('auth.service — loginUser', () => {
     bcryptMock.compare.mockResolvedValueOnce(false as any);
     prismaMock.auditLog.create.mockResolvedValue({} as any);
 
-    await expect(loginUser('test@example.com', 'wrong-password')).rejects.toThrow('Invalid credentials');
+    await expect(loginUser('test@example.com', 'wrong-password')).rejects.toThrow('auth.errors.invalidCredentials');
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ event: 'LOGIN_FAILURE' }),
@@ -210,7 +210,7 @@ describe('auth.service — verifyEmail', () => {
   it('should throw if token is invalid or expired', async () => {
     prismaMock.user.findFirst.mockResolvedValueOnce(null);
 
-    await expect(verifyEmail('invalid-token')).rejects.toThrow('Invalid or expired token');
+    await expect(verifyEmail('invalid-token')).rejects.toThrow('auth.errors.invalidOrExpiredToken');
   });
 });
 
@@ -266,6 +266,6 @@ describe('auth.service — resetPassword', () => {
   it('should throw if reset token is invalid or expired', async () => {
     prismaMock.user.findFirst.mockResolvedValueOnce(null);
 
-    await expect(resetPassword('bad-token', 'newpass')).rejects.toThrow('Invalid or expired token');
+    await expect(resetPassword('bad-token', 'newpass')).rejects.toThrow('auth.errors.invalidOrExpiredToken');
   });
 });
