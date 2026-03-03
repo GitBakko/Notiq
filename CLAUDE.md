@@ -141,7 +141,8 @@ SMTP_PORT=587
 SMTP_USER=user@example.com
 SMTP_PASS=password
 SMTP_SECURE=false
-SMTP_FROM_NAME=Notiq App
+SMTP_FROM_NAME=Notiq
+SMTP_FROM_EMAIL=notiq@epartner.it
 
 # frontend/.env.production
 VITE_API_URL=/api

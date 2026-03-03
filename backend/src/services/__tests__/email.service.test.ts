@@ -20,8 +20,8 @@ const prismaMock = prisma as any;
 const FRONTEND_URL = process.env.FRONTEND_URL; // 'http://localhost:5173' from setup.ts
 
 // The email service reads SMTP env vars at module load time (setup.ts doesn't set them),
-// so smtpUser is undefined and smtpFromName defaults to 'Notiq App'.
-const EXPECTED_FROM = '"Notiq App" <undefined>';
+// so smtpUser is undefined, smtpFromName defaults to 'Notiq', smtpFromEmail defaults to smtpUser (undefined).
+const EXPECTED_FROM = '"Notiq" <undefined>';
 
 beforeEach(() => {
   vi.clearAllMocks();

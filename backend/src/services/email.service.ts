@@ -25,7 +25,8 @@ const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
 const smtpSecure = process.env.SMTP_SECURE === 'true';
-const smtpFromName = process.env.SMTP_FROM_NAME || 'Notiq App';
+const smtpFromName = process.env.SMTP_FROM_NAME || 'Notiq';
+const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser;
 
 if (!smtpHost || !smtpUser || !smtpPass) {
   logger.warn('SMTP environment variables (SMTP_HOST, SMTP_USER, SMTP_PASS) are not fully configured. Emails will fail.');
@@ -44,7 +45,7 @@ const transporter = nodemailer.createTransport({
 export const sendEmail = async (to: string, subject: string, html: string) => {
   try {
     const info = await transporter.sendMail({
-      from: `"${smtpFromName}" <${smtpUser}>`,
+      from: `"${smtpFromName}" <${smtpFromEmail}>`,
       to,
       subject,
       html,
