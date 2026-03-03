@@ -10,6 +10,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/utils/**', 'src/store/**', 'src/features/**', 'src/hooks/**'],
+      thresholds: {
+        statements: 40,
+        branches: 30,
+        functions: 40,
+        lines: 40,
+      },
     },
   },
   resolve: {
