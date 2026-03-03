@@ -119,6 +119,7 @@ vi.mock('../plugins/prisma', () => {
       findMany: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
+      delete: vi.fn(),
     },
     systemSetting: {
       findUnique: vi.fn(),
@@ -272,6 +273,7 @@ vi.mock('../plugins/prisma', () => {
       return Promise.resolve(fn);
     }),
     $queryRaw: vi.fn(),
+    $queryRawUnsafe: vi.fn(),
   };
 
   return { default: mockPrisma };

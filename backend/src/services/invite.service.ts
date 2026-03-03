@@ -2,6 +2,7 @@
 import prisma from '../plugins/prisma';
 import crypto from 'crypto';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
+import { sendNotificationEmail } from './email.service';
 
 const generateSecureCode = (): string => {
   return crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6);
@@ -69,9 +70,7 @@ export const sendInviteEmail = async (code: string, userId: string, email: strin
 
   const sender = await prisma.user.findUnique({ where: { id: userId } });
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const emailService = require('./email.service');
-  await emailService.sendNotificationEmail(email, 'REGISTRATION_INVITATION', {
+  await sendNotificationEmail(email, 'REGISTRATION_INVITATION', {
     sharerName: sender?.name || 'A user',
     code: invite.code,
     locale
@@ -134,10 +133,7 @@ export const approveInvitationRequest = async (requestId: string, adminId: strin
   const existingUser = await prisma.user.findUnique({ where: { email: req.email }, select: { locale: true } });
   const locale = existingUser?.locale || 'en';
 
-  // Send Email
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const emailService = require('./email.service');
-  await emailService.sendNotificationEmail(req.email, 'INVITE_APPROVED', {
+  await sendNotificationEmail(req.email, 'INVITE_APPROVED', {
     code,
     locale,
   });
@@ -156,10 +152,7 @@ export const rejectInvitationRequest = async (requestId: string) => {
   const existingUser = await prisma.user.findUnique({ where: { email: req.email }, select: { locale: true } });
   const locale = existingUser?.locale || 'en';
 
-  // Send Email
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const emailService = require('./email.service');
-  await emailService.sendNotificationEmail(req.email, 'INVITE_REJECTED', {
+  await sendNotificationEmail(req.email, 'INVITE_REJECTED', {
     locale,
   });
 };
