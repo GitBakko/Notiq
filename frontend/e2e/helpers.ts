@@ -1,5 +1,17 @@
-import { Page, expect } from '@playwright/test';
+import { Page, expect, request as pwRequest } from '@playwright/test';
 import { v4 as uuidv4 } from 'uuid';
+import { readFileSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const API_BASE = 'http://localhost:3001';
+const SUPERADMIN_EMAIL = 'superadmin@notiq.ai';
+const SUPERADMIN_PASSWORD = 'superadmin';
+
+// Read the current version from package.json so we can suppress the "What's New" modal
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const CURRENT_VERSION: string = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8')).version;
 
 export interface TestUser {
   name: string;
@@ -8,7 +20,16 @@ export interface TestUser {
 }
 
 /**
- * Register a new user with UUID email and navigate to /notes.
+ * Create a verified user via the API and log in through the browser.
+ *
+ * Flow:
+ *  1. Login as superadmin → get admin JWT
+ *  2. Generate an invitation code
+ *  3. Register the test user (SMTP may fail, but the DB row is created)
+ *  4. Look up the new user via admin search to get their ID
+ *  5. Mark the user as verified via admin API
+ *  6. Navigate to /login in the browser, fill credentials, submit
+ *  7. Wait for redirect to /notes and sidebar to appear
  */
 export async function registerAndLogin(
   page: Page,
@@ -20,8 +41,53 @@ export async function registerAndLogin(
     password: options?.password ?? 'password123',
   };
 
-  await page.goto('/register');
-  await page.fill('input[type="text"]', user.name);
+  // --- API setup (runs outside the browser) ---
+  const api = await pwRequest.newContext({ baseURL: API_BASE });
+
+  // 1. Superadmin login
+  const loginRes = await api.post('/api/auth/login', {
+    data: { email: SUPERADMIN_EMAIL, password: SUPERADMIN_PASSWORD },
+  });
+  const { token: saToken } = await loginRes.json();
+
+  // 2. Generate invitation code
+  const inviteRes = await api.post('/api/invites', {
+    headers: { Authorization: `Bearer ${saToken}` },
+  });
+  const { code: inviteCode } = await inviteRes.json();
+
+  // 3. Register (SMTP send may throw — ignore the error, the user row is created)
+  await api.post('/api/auth/register', {
+    data: {
+      email: user.email,
+      password: user.password,
+      name: user.name,
+      invitationCode: inviteCode,
+    },
+  });
+
+  // 4. Find the user via admin search
+  const usersRes = await api.get(`/api/admin/users?search=${encodeURIComponent(user.email)}`, {
+    headers: { Authorization: `Bearer ${saToken}` },
+  });
+  const { users } = await usersRes.json();
+  const userId = users?.[0]?.id;
+  if (!userId) throw new Error(`registerAndLogin: user ${user.email} was not created in DB`);
+
+  // 5. Verify the user
+  await api.put(`/api/admin/users/${userId}`, {
+    headers: { Authorization: `Bearer ${saToken}` },
+    data: { isVerified: true },
+  });
+
+  await api.dispose();
+
+  // --- Browser login ---
+  // Suppress the "What's New" modal by marking the current version as seen
+  await page.goto('/login');
+  await page.evaluate((ver) => {
+    localStorage.setItem('lastSeenVersion', ver);
+  }, CURRENT_VERSION);
   await page.fill('input[type="email"]', user.email);
   await page.fill('input[type="password"]', user.password);
   await page.click('button[type="submit"]');
