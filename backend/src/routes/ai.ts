@@ -40,11 +40,11 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     const { noteId, message, operation, targetLanguage } = parsed.data;
 
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Note not found or access denied' });
+    if (!access) return reply.code(403).send({ message: 'errors.notes.notFoundOrDenied' });
 
     const enabled = await isAiEnabled();
     if (!enabled) {
-      return reply.status(503).send({ message: 'AI is not enabled' });
+      return reply.status(503).send({ message: 'errors.ai.notEnabled' });
     }
 
     // Set SSE headers

@@ -23,7 +23,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
       return tag;
     } catch (e: unknown) {
       if (e instanceof Object && 'code' in e && e.code === 'P2002') {
-        return reply.status(409).send({ message: 'Tag already exists' });
+        return reply.status(409).send({ message: 'errors.tags.alreadyExists' });
       }
       throw e;
     }

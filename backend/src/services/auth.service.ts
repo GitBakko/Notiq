@@ -126,7 +126,7 @@ export const registerUser = async (data: { email: string; password: string; name
 export const loginUser = async (email: string, password: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
-    throw new UnauthorizedError('Invalid credentials');
+    throw new UnauthorizedError('auth.errors.invalidCredentials');
   }
 
   const validPassword = await bcrypt.compare(password, user.password);
@@ -138,7 +138,7 @@ export const loginUser = async (email: string, password: string) => {
         details: { email, reason: 'Invalid Password' }
       }
     });
-    throw new UnauthorizedError('Invalid credentials');
+    throw new UnauthorizedError('auth.errors.invalidCredentials');
   }
 
   if (!user.isVerified) {
@@ -168,7 +168,7 @@ export const verifyEmail = async (token: string) => {
   });
 
   if (!user) {
-    throw new UnauthorizedError('Invalid or expired token');
+    throw new UnauthorizedError('auth.errors.invalidOrExpiredToken');
   }
 
   const updatedUser = await prisma.user.update({
@@ -245,7 +245,7 @@ export const resetPassword = async (token: string, newPassword: string) => {
   });
 
   if (!user) {
-    throw new UnauthorizedError('Invalid or expired token');
+    throw new UnauthorizedError('auth.errors.invalidOrExpiredToken');
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -270,23 +270,23 @@ export const resendVerificationForInvite = async (inviteCode: string, requesterI
   });
 
   if (!invite) {
-    throw new NotFoundError('Invite not found');
+    throw new NotFoundError('errors.invites.notFound');
   }
 
   if (invite.creatorId !== requesterId) {
     const requester = await prisma.user.findUnique({ where: { id: requesterId } });
     if (requester?.role !== 'SUPERADMIN') {
-      throw new ForbiddenError('Not authorized to manage this invite');
+      throw new ForbiddenError('errors.invites.notAuthorized');
     }
   }
 
   if (invite.status !== 'USED' || !invite.usedBy) {
-    throw new BadRequestError('Invite has not been used yet');
+    throw new BadRequestError('errors.invites.notUsedYet');
   }
 
   const user = invite.usedBy;
   if (user.isVerified) {
-    throw new BadRequestError('User is already verified');
+    throw new BadRequestError('auth.errors.alreadyVerified');
   }
 
   const verificationToken = crypto.randomBytes(32).toString('hex');

@@ -98,7 +98,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       where: { id: request.user.id },
       select: { id: true, email: true, role: true, tokenVersion: true }
     });
-    if (!user) return reply.status(401).send({ message: 'User not found' });
+    if (!user) return reply.status(401).send({ message: 'errors.user.notFound' });
     const token = fastify.jwt.sign(
       { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion },
       { expiresIn: '24h' }

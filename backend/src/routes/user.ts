@@ -42,7 +42,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.post('/me/avatar', async (request, reply) => {
     const data = await request.file();
     if (!data) {
-      return reply.status(400).send({ message: 'No file uploaded' });
+      return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
     const user = await userService.uploadAvatar(request.user.id, data);
     return user;

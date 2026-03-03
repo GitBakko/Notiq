@@ -28,7 +28,7 @@ export default async function notebookRoutes(fastify: FastifyInstance) {
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const notebook = await notebookService.getNotebook(request.user.id, id);
-    if (!notebook) return reply.status(404).send({ message: 'Notebook not found' });
+    if (!notebook) return reply.status(404).send({ message: 'errors.notebooks.notFound' });
     return notebook;
   });
 

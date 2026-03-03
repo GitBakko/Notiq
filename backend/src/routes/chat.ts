@@ -14,7 +14,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   fastify.post('/', async (request, reply) => {
     const { noteId, content } = createMessageSchema.parse(request.body);
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
     // Chat is allowed for both READ and WRITE users — it's communication, not note editing
     const message = await chatService.createMessage(request.user.id, noteId, content);
     return message;
@@ -23,7 +23,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   fastify.get('/:noteId', async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
     const messages = await chatService.getMessages(noteId);
     return messages;
   });

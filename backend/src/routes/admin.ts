@@ -32,7 +32,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     // Check if user is SUPERADMIN
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
     if (user?.role !== 'SUPERADMIN') {
-      return reply.status(403).send({ message: 'Forbidden' });
+      return reply.status(403).send({ message: 'errors.common.forbidden' });
     }
 
     const { key, value } = updateSettingSchema.parse(request.body);
@@ -44,7 +44,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     // Check SUPERADMIN
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
     if (user?.role !== 'SUPERADMIN') {
-      return reply.status(403).send({ message: 'Forbidden' });
+      return reply.status(403).send({ message: 'errors.common.forbidden' });
     }
 
     const stats = await adminService.getDashboardStats();
@@ -54,7 +54,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   fastify.get('/users', async (request, reply) => {
     const { page, limit, search } = paginatedQuerySchema.parse(request.query);
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
-    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'Forbidden' });
+    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'errors.common.forbidden' });
 
     return adminService.getUsers(page, limit, search);
   });
@@ -68,7 +68,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     const body = updateSchema.parse(request.body);
 
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
-    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'Forbidden' });
+    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'errors.common.forbidden' });
 
     await adminService.updateUser(id, body);
     return { message: 'User updated' };
@@ -77,7 +77,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   fastify.get('/audit-logs', async (request, reply) => {
     const { page, limit } = auditLogQuerySchema.parse(request.query);
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
-    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'Forbidden' });
+    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'errors.common.forbidden' });
 
     return adminService.getAuditLogs(page, limit);
   });
@@ -85,7 +85,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   // AI Configuration
   fastify.get('/ai-config', async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.user.id } });
-    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'Forbidden' });
+    if (user?.role !== 'SUPERADMIN') return reply.status(403).send({ message: 'errors.common.forbidden' });
 
     const [enabled, provider, apiKey, model, maxTokens, temperature] = await Promise.all([
       settingsService.getSetting('ai_enabled', 'false'),

@@ -74,7 +74,7 @@ export default async function groupRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/avatar', async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = await request.file();
-    if (!data) return reply.status(400).send({ message: 'No file uploaded' });
+    if (!data) return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     return groupService.uploadGroupAvatar(id, request.user.id, data);
   });
 

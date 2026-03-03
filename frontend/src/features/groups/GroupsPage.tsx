@@ -8,6 +8,7 @@ import type { Group } from './groupService';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import toast from 'react-hot-toast';
+import { getApiErrorMessage } from '../../utils/errorUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import Skeleton from '../../components/ui/Skeleton';
 
@@ -89,15 +90,7 @@ export default function GroupsPage() {
       setAddEmailMap((prev) => ({ ...prev, [groupId]: '' }));
     },
     onError: (error: unknown) => {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      const msg = axiosErr.response?.data?.message || '';
-      if (msg === 'User is already a member') {
-        toast.error(t('groups.alreadyMember'));
-      } else if (msg === 'Cannot add yourself to a group') {
-        toast.error(t('groups.cannotAddSelf'));
-      } else {
-        toast.error(t('groups.memberAddFailed'));
-      }
+      toast.error(getApiErrorMessage(error, 'groups.memberAddFailed'));
     },
   });
 

@@ -7,7 +7,7 @@ export default async function publicRoutes(fastify: FastifyInstance) {
     const note = await noteService.getPublicNote(shareId);
     
     if (!note || !note.isPublic) {
-        return reply.status(404).send({ message: 'Note not found or not public' });
+        return reply.status(404).send({ message: 'errors.notes.notFoundOrNotPublic' });
     }
     
     return note;

@@ -162,8 +162,8 @@ export async function toggleReminderDone(
     where: { id: reminderId },
     select: { userId: true },
   });
-  if (!reminder) throw new NotFoundError('Reminder not found');
-  if (reminder.userId !== userId) throw new ForbiddenError('Access denied');
+  if (!reminder) throw new NotFoundError('errors.kanban.reminderNotFound');
+  if (reminder.userId !== userId) throw new ForbiddenError('errors.common.accessDenied');
 
   await prisma.kanbanReminder.update({
     where: { id: reminderId },

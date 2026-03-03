@@ -25,7 +25,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   fastify.get('/public/:shareId', async (request, reply) => {
     const { shareId } = request.params as { shareId: string };
     const note = await noteService.getPublicNote(shareId);
-    if (!note) return reply.status(404).send({ message: 'Note not found' });
+    if (!note) return reply.status(404).send({ message: 'errors.notes.notFound' });
     return note;
   });
 
@@ -41,7 +41,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     const { type, id } = request.params as { type: string; id: string };
     const validTypes = ['NOTE', 'NOTEBOOK', 'TASKLIST', 'KANBAN'];
     if (!validTypes.includes(type.toUpperCase())) {
-      return reply.status(400).send({ message: 'Invalid type' });
+      return reply.status(400).send({ message: 'errors.sharing.invalidType' });
     }
 
     const result = await sharingService.resendShareInvitation(

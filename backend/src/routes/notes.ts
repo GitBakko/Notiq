@@ -64,7 +64,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const note = await noteService.getNote(request.user.id, id);
-    if (!note) return reply.status(404).send({ message: 'Note not found' });
+    if (!note) return reply.status(404).send({ message: 'errors.notes.notFound' });
     return note;
   });
 

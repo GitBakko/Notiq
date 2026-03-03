@@ -180,7 +180,7 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
       taskList: { select: { id: true, title: true, userId: true } },
     },
   });
-  if (!board) throw new NotFoundError('Board not found');
+  if (!board) throw new NotFoundError('errors.kanban.boardNotFound');
 
   // Count archived cards
   const archivedCardsCount = await prisma.kanbanCard.count({
@@ -279,7 +279,7 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
     },
   });
 
-  if (!taskList) throw new NotFoundError('TaskList not found');
+  if (!taskList) throw new NotFoundError('errors.tasks.listNotFound');
 
   // Only the owner can convert
   if (taskList.userId !== userId) {
@@ -289,7 +289,7 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
       select: { status: true, permission: true },
     });
     if (!shared || shared.status !== 'ACCEPTED' || shared.permission !== 'WRITE') {
-      throw new ForbiddenError('Access denied');
+      throw new ForbiddenError('errors.common.accessDenied');
     }
   }
 

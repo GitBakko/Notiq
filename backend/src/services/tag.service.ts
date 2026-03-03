@@ -53,7 +53,7 @@ export const addTagToNote = async (userId: string, noteId: string, tagId: string
   const note = await prisma.note.findFirst({ where: { id: noteId, userId } });
   const tag = await prisma.tag.findFirst({ where: { id: tagId, userId } });
 
-  if (!note || !tag) throw new NotFoundError('Note or Tag not found');
+  if (!note || !tag) throw new NotFoundError('errors.tags.noteOrTagNotFound');
 
   return prisma.tagsOnNotes.create({
     data: {

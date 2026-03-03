@@ -45,7 +45,7 @@ export const createNote = async (
       targetNotebookId = anyNotebook.id;
     } else {
       // Create a default notebook? For now throw
-      throw new NotFoundError('Notebook not found');
+      throw new NotFoundError('errors.notebooks.notFound');
     }
   }
 
@@ -187,7 +187,7 @@ export const updateNote = async (userId: string, id: string, data: {
 }) => {
   // Verify ownership first
   const note = await prisma.note.findFirst({ where: { id, userId } });
-  if (!note) throw new NotFoundError('Note not found');
+  if (!note) throw new NotFoundError('errors.notes.notFound');
 
   const { tags, ...rest } = data;
 
@@ -238,10 +238,10 @@ export const updateNote = async (userId: string, id: string, data: {
 
 export const toggleShare = async (userId: string, id: string) => {
   const note = await prisma.note.findFirst({ where: { id, userId } });
-  if (!note) throw new NotFoundError('Note not found');
+  if (!note) throw new NotFoundError('errors.notes.notFound');
 
   if (note.isVault) {
-    throw new BadRequestError('Vault notes cannot be shared');
+    throw new BadRequestError('errors.sharing.vaultNotShareable');
   }
 
   const isPublic = !note.isPublic;
@@ -265,7 +265,7 @@ export const getPublicNote = async (shareId: string) => {
 
 export const getNoteSizeBreakdown = async (userId: string, noteId: string) => {
   const access = await checkNoteAccess(userId, noteId);
-  if (!access) throw new NotFoundError('Note not found');
+  if (!access) throw new NotFoundError('errors.notes.notFound');
 
   const [note, attachments, chatMessages, aiConversations] = await Promise.all([
     prisma.note.findUnique({
@@ -286,7 +286,7 @@ export const getNoteSizeBreakdown = async (userId: string, noteId: string) => {
     }),
   ]);
 
-  if (!note) throw new NotFoundError('Note not found');
+  if (!note) throw new NotFoundError('errors.notes.notFound');
 
   const noteSize =
     Buffer.byteLength(note.title || '', 'utf8') +
@@ -319,7 +319,7 @@ export const deleteNote = async (userId: string, id: string) => {
   return prisma.$transaction(async (tx) => {
     // Check ownership FIRST before deleting any relations
     const note = await tx.note.findFirst({ where: { id, userId } });
-    if (!note) throw new NotFoundError('Note not found');
+    if (!note) throw new NotFoundError('errors.notes.notFound');
 
     await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
     await tx.attachment.deleteMany({ where: { noteId: id } });

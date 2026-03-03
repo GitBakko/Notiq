@@ -72,8 +72,8 @@ export async function deleteColumn(columnId: string) {
     where: { id: columnId },
     select: { boardId: true, _count: { select: { cards: true } } },
   });
-  if (!column) throw new NotFoundError('Column not found');
-  if (column._count.cards > 0) throw new BadRequestError('Column has cards');
+  if (!column) throw new NotFoundError('errors.kanban.columnNotFound');
+  if (column._count.cards > 0) throw new BadRequestError('errors.kanban.columnHasCards');
 
   await prisma.kanbanColumn.delete({ where: { id: columnId } });
 

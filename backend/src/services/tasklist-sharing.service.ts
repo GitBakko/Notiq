@@ -15,7 +15,7 @@ export const shareTaskList = async (
   });
 
   if (!taskList || taskList.userId !== ownerId) {
-    throw new NotFoundError('TaskList not found or access denied');
+    throw new NotFoundError('errors.tasks.listNotFoundOrDenied');
   }
 
   const targetUser = await prisma.user.findUnique({
@@ -23,11 +23,11 @@ export const shareTaskList = async (
   });
 
   if (!targetUser) {
-    throw new NotFoundError('User not found');
+    throw new NotFoundError('errors.user.notFound');
   }
 
   if (targetUser.id === ownerId) {
-    throw new BadRequestError('Cannot share with yourself');
+    throw new BadRequestError('errors.sharing.cannotShareSelf');
   }
 
   const sharedTaskList = await prisma.sharedTaskList.upsert({
@@ -103,7 +103,7 @@ export const revokeTaskListShare = async (
   });
 
   if (!taskList || taskList.userId !== ownerId) {
-    throw new NotFoundError('TaskList not found or access denied');
+    throw new NotFoundError('errors.tasks.listNotFoundOrDenied');
   }
 
   return prisma.sharedTaskList.delete({
@@ -148,7 +148,7 @@ export const respondToTaskListShareById = async (
     where: { taskListId_userId: { taskListId, userId } },
   });
 
-  if (!existing) throw new NotFoundError('Invitation not found');
+  if (!existing) throw new NotFoundError('errors.sharing.invitationNotFound');
   if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
   const result = await prisma.sharedTaskList.update({

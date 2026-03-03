@@ -12,7 +12,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
   app.post('/', { preValidation: [app.authenticate] }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
-      return reply.status(400).send({ message: 'No file uploaded' });
+      return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
 
     // We expect noteId as a field, but multipart handling is tricky.
@@ -28,12 +28,12 @@ export async function attachmentRoutes(app: FastifyInstance) {
 
     const { noteId } = request.query as { noteId: string };
     if (!noteId) {
-      return reply.status(400).send({ message: 'noteId is required' });
+      return reply.status(400).send({ message: 'errors.attachments.noteIdRequired' });
     }
 
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
-    if (access === 'READ') return reply.code(403).send({ message: 'Read-only access' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
+    if (access === 'READ') return reply.code(403).send({ message: 'errors.common.readOnlyAccess' });
 
     const attachment = await saveAttachment(data, noteId);
     return attachment;
@@ -43,7 +43,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
   app.get('/:noteId', { preValidation: [app.authenticate] }, async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
     const attachments = await getAttachments(noteId);
     return attachments;
   });
@@ -58,7 +58,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
     }
 
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
 
     const history = await getAttachmentHistory(noteId, filename);
     return history;
@@ -70,15 +70,15 @@ export async function attachmentRoutes(app: FastifyInstance) {
     const attachment = await prisma.attachment.findUnique({ where: { id } });
 
     if (!attachment) {
-      return reply.status(404).send({ message: 'Attachment not found' });
+      return reply.status(404).send({ message: 'errors.attachments.notFound' });
     }
 
     const access = await checkNoteAccess(request.user.id, attachment.noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
 
     const filepath = getAttachmentPath(attachment.url);
     if (!fs.existsSync(filepath)) {
-      return reply.status(404).send({ message: 'File not found on disk' });
+      return reply.status(404).send({ message: 'errors.attachments.fileNotFoundOnDisk' });
     }
 
     const filename = encodeURIComponent(attachment.filename);
@@ -93,11 +93,11 @@ export async function attachmentRoutes(app: FastifyInstance) {
   app.get('/download-all/:noteId', { preValidation: [app.authenticate] }, async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
     const access = await checkNoteAccess(request.user.id, noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
     const attachments = await getAttachments(noteId); // Gets latest versions
 
     if (!attachments || attachments.length === 0) {
-      return reply.status(404).send({ message: 'No attachments found' });
+      return reply.status(404).send({ message: 'errors.attachments.noAttachmentsFound' });
     }
 
     reply.header('Content-Type', 'application/zip');
@@ -110,7 +110,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
     archive.on('error', (err: Error) => {
       request.log.error(err);
       if (!reply.raw.headersSent) {
-        reply.status(500).send({ message: 'Archiving error' });
+        reply.status(500).send({ message: 'errors.attachments.archivingError' });
       }
     });
 
@@ -151,11 +151,11 @@ export async function attachmentRoutes(app: FastifyInstance) {
   app.delete('/:id', { preValidation: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const attachment = await prisma.attachment.findUnique({ where: { id } });
-    if (!attachment) return reply.status(404).send({ message: 'Attachment not found' });
+    if (!attachment) return reply.status(404).send({ message: 'errors.attachments.notFound' });
 
     const access = await checkNoteAccess(request.user.id, attachment.noteId);
-    if (!access) return reply.code(403).send({ message: 'Forbidden' });
-    if (access === 'READ') return reply.code(403).send({ message: 'Read-only access' });
+    if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
+    if (access === 'READ') return reply.code(403).send({ message: 'errors.common.readOnlyAccess' });
 
     await deleteAttachment(id);
     return { message: 'Attachment deleted' };

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import api from '../../lib/api';
 import { Alert } from '../../components/ui/Alert';
+import { getApiErrorMessage } from '../../utils/errorUtils';
 
 export default function RegisterPage() {
 
@@ -59,14 +59,13 @@ export default function RegisterPage() {
       // Correct flow: Show success message, do not login
       setIsSuccess(true);
     } catch (err) {
-      const error = err as AxiosError<{ message: string }>;
-      const rawMessage = error.response?.data?.message || t('auth.registrationFailed');
-      setError(rawMessage);
+      setError(getApiErrorMessage(err, 'auth.registrationFailed'));
     }
   };
 
   const parseErrorMessage = (msg: string) => {
     try {
+      // Handle Zod validation errors (JSON arrays in message)
       if (msg.trim().startsWith('[') || msg.trim().startsWith('{')) {
         const parsed = JSON.parse(msg);
         if (Array.isArray(parsed)) {
@@ -76,15 +75,11 @@ export default function RegisterPage() {
             </ul>
           );
         }
-        if (typeof parsed === 'object' && parsed !== null) {
-          return t(parsed.message) || parsed.message;
-        }
       }
-      if (!msg.includes(' ')) return t(msg);
-      return t(msg);
     } catch {
-      return t(msg);
+      // Not JSON, fall through
     }
+    return msg;
   };
 
   const clearFieldError = (field: string) => {

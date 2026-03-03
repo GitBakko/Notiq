@@ -17,7 +17,7 @@ export async function createCard(
     where: { id: columnId },
     select: { boardId: true, title: true },
   });
-  if (!column) throw new NotFoundError('Column not found');
+  if (!column) throw new NotFoundError('errors.kanban.columnNotFound');
 
   const maxPos = await prisma.kanbanCard.aggregate({
     where: { columnId },
@@ -60,7 +60,7 @@ export async function updateCard(
     where: { id: cardId },
     select: { assigneeId: true, title: true, dueDate: true, column: { select: { boardId: true } } },
   });
-  if (!currentCard) throw new NotFoundError('Card not found');
+  if (!currentCard) throw new NotFoundError('errors.kanban.cardNotFound');
 
   const updateData: Record<string, unknown> = {};
   if (data.title !== undefined) updateData.title = data.title;
@@ -187,13 +187,13 @@ export async function moveCard(
       column: { select: { boardId: true, title: true, isCompleted: true } },
     },
   });
-  if (!card) throw new NotFoundError('Card not found');
+  if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
 
   const targetColumn = await prisma.kanbanColumn.findUnique({
     where: { id: toColumnId },
     select: { boardId: true, title: true, position: true, isCompleted: true },
   });
-  if (!targetColumn) throw new NotFoundError('Column not found');
+  if (!targetColumn) throw new NotFoundError('errors.kanban.columnNotFound');
 
   const boardId = card.column.boardId;
 
@@ -323,7 +323,7 @@ export async function deleteCard(cardId: string, actorId?: string) {
     where: { id: cardId },
     select: { columnId: true, position: true, title: true, column: { select: { boardId: true, title: true } } },
   });
-  if (!card) throw new NotFoundError('Card not found');
+  if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
 
   const boardId = card.column.boardId;
 
@@ -426,8 +426,8 @@ export async function unarchiveCard(cardId: string) {
     where: { id: cardId },
     select: { id: true, archivedAt: true, column: { select: { boardId: true } } },
   });
-  if (!card) throw new NotFoundError('Card not found');
-  if (!card.archivedAt) throw new BadRequestError('Card is not archived');
+  if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
+  if (!card.archivedAt) throw new BadRequestError('errors.kanban.cardNotArchived');
 
   await prisma.kanbanCard.update({
     where: { id: cardId },

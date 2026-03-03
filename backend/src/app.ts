@@ -64,24 +64,24 @@ server.setErrorHandler((error, request, reply) => {
   // Zod validation errors (thrown by schema.parse in routes)
   if (error instanceof Error && error.name === 'ZodError') {
     return reply.status(400).send({
-      message: 'Validation error',
+      message: 'errors.common.validationError',
       details: (error as { issues?: unknown }).issues,
     });
   }
 
   // Prisma P2025 — record not found (unhandled by service)
   if (isPrismaError(error, 'P2025')) {
-    return reply.status(404).send({ message: 'Record not found' });
+    return reply.status(404).send({ message: 'errors.common.recordNotFound' });
   }
 
   // Fastify validation errors (schema validation)
   if (error !== null && typeof error === 'object' && 'validation' in error) {
-    return reply.status(400).send({ message: error instanceof Error ? error.message : 'Validation error' });
+    return reply.status(400).send({ message: error instanceof Error ? error.message : 'errors.common.validationError' });
   }
 
   // Fallback — log and return 500
   request.log.error({ err: error }, 'Unhandled error');
-  return reply.status(500).send({ message: 'Internal server error' });
+  return reply.status(500).send({ message: 'errors.common.internalError' });
 });
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -117,11 +117,11 @@ server.decorate('authenticate', async (request: FastifyRequest, reply: FastifyRe
         select: { tokenVersion: true }
       });
       if (!user || user.tokenVersion !== request.user.tokenVersion) {
-        return reply.code(401).send({ message: 'Token invalidated' });
+        return reply.code(401).send({ message: 'auth.errors.tokenInvalidated' });
       }
     }
   } catch (err) {
-    return reply.code(401).send({ message: 'Unauthorized' });
+    return reply.code(401).send({ message: 'auth.errors.unauthorized' });
   }
 });
 
@@ -178,7 +178,7 @@ server.get('/uploads/avatars/:filename', async (request, reply) => {
   const safeName = path.basename(filename); // prevent path traversal
   const filepath = path.join(UPLOADS_DIR, 'avatars', safeName);
   if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'Not found' });
+    return reply.code(404).send({ message: 'errors.common.notFound' });
   }
   const stream = fs.createReadStream(filepath);
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
@@ -190,7 +190,7 @@ server.get('/uploads/groups/:filename', async (request, reply) => {
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'groups', safeName);
   if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'Not found' });
+    return reply.code(404).send({ message: 'errors.common.notFound' });
   }
   const stream = fs.createReadStream(filepath);
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
@@ -202,7 +202,7 @@ server.get('/uploads/kanban/avatars/:filename', async (request, reply) => {
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'kanban', 'avatars', safeName);
   if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'Not found' });
+    return reply.code(404).send({ message: 'errors.common.notFound' });
   }
   const stream = fs.createReadStream(filepath);
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
@@ -214,7 +214,7 @@ server.get('/uploads/kanban/:filename', async (request, reply) => {
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'kanban', safeName);
   if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'Not found' });
+    return reply.code(404).send({ message: 'errors.common.notFound' });
   }
   const stream = fs.createReadStream(filepath);
   return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
@@ -226,7 +226,7 @@ server.get('/uploads/:filename', async (request, reply) => {
   const safeName = path.basename(filename); // prevent path traversal
   const filepath = path.join(UPLOADS_DIR, safeName);
   if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'Not found' });
+    return reply.code(404).send({ message: 'errors.common.notFound' });
   }
   const ext = path.extname(safeName).slice(1).toLowerCase();
   const mimeMap: Record<string, string> = {

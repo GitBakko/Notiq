@@ -378,7 +378,12 @@
       "userExists": "Utente già registrato con questa email",
       "unverified": "Account non verificato. Controlla la tua email.",
       "nameRequired": "Nome obbligatorio",
-      "invitationCodeRequired": "Il codice di invito è obbligatorio"
+      "invitationCodeRequired": "Il codice di invito è obbligatorio",
+      "invalidCredentials": "Credenziali non valide",
+      "invalidOrExpiredToken": "Token non valido o scaduto",
+      "alreadyVerified": "L'utente è già verificato",
+      "tokenInvalidated": "Token invalidato",
+      "unauthorized": "Non autorizzato"
     },
     "invitationCode": "Codice Invito",
     "registrationSuccess": "Registrazione Completata!",
@@ -1243,5 +1248,125 @@
     "continuePrompt": "Per favore continua a scrivere questo testo.",
     "tagsPrompt": "Suggerisci tag pertinenti per questa nota.",
     "encryptedNotSupported": "L'AI non e' disponibile per le note criptate."
+  },
+  "errors": {
+    "common": {
+      "accessDenied": "Accesso negato",
+      "writeAccessRequired": "Accesso in scrittura richiesto",
+      "notTheOwner": "Non sei il proprietario",
+      "notFoundOrDenied": "Non trovato o accesso negato",
+      "forbidden": "Vietato",
+      "readOnlyAccess": "Accesso in sola lettura",
+      "onlyImagesAllowed": "Sono ammessi solo file immagine",
+      "onlyImageFormatsAllowed": "Sono ammessi solo JPEG, PNG, GIF, WebP",
+      "validationError": "Errore di validazione",
+      "recordNotFound": "Record non trovato",
+      "internalError": "Errore interno del server",
+      "notFound": "Non trovato"
+    },
+    "notes": {
+      "notFound": "Nota non trovata",
+      "notFoundOrDenied": "Nota non trovata o accesso negato",
+      "notFoundOrNotPublic": "Nota non trovata o non pubblica"
+    },
+    "notebooks": {
+      "notFound": "Taccuino non trovato",
+      "notFoundOrDenied": "Taccuino non trovato o accesso negato",
+      "nameExists": "Esiste già un taccuino con questo nome"
+    },
+    "sharing": {
+      "notFound": "Condivisione non trovata",
+      "invitationNotFound": "Invito non trovato",
+      "onlyOwnerCanShare": "Solo il proprietario della nota può condividerla",
+      "cannotShareSelf": "Non puoi condividere con te stesso",
+      "vaultNotShareable": "Le note vault non possono essere condivise",
+      "onlyPendingResend": "Solo le condivisioni in attesa possono essere reinviate",
+      "invalidType": "Tipo non valido"
+    },
+    "groups": {
+      "notFound": "Gruppo non trovato",
+      "memberNotFound": "Membro non trovato",
+      "cannotAddSelf": "Non puoi aggiungere te stesso al gruppo",
+      "alreadyMember": "L'utente è già un membro",
+      "cannotRemoveSelfOwner": "Non puoi rimuovere te stesso come proprietario"
+    },
+    "kanban": {
+      "boardNotFound": "Board non trovata",
+      "cardNotFound": "Card non trovata",
+      "columnNotFound": "Colonna non trovata",
+      "reminderNotFound": "Promemoria non trovato",
+      "commentNotFound": "Commento non trovato",
+      "notYourComment": "Non è un tuo commento",
+      "onlyLinkerCanUnlinkNote": "Solo chi ha collegato la nota può scollegarla",
+      "onlyLinkerCanUnlinkTaskList": "Solo chi ha collegato la lista può scollegarla",
+      "onlyOwnerCanLink": "Solo il proprietario della nota può collegarla",
+      "onlyOwnerCanDelete": "Solo il proprietario può eliminare la board",
+      "boardAlreadyLinkedNote": "La board ha già una nota collegata",
+      "boardAlreadyLinkedTaskList": "La board ha già una lista collegata",
+      "cardAlreadyLinkedNote": "La card ha già una nota collegata",
+      "boardNoLinkedNote": "La board non ha una nota collegata",
+      "boardNoLinkedTaskList": "La board non ha una lista collegata",
+      "cardNoLinkedNote": "La card non ha una nota collegata",
+      "cardNotArchived": "La card non è archiviata",
+      "columnHasCards": "La colonna contiene delle card",
+      "coverTooLarge": "File troppo grande (max 5MB)",
+      "avatarTooLarge": "File troppo grande (max 2MB)"
+    },
+    "tasks": {
+      "listNotFound": "Lista attività non trovata",
+      "itemNotFound": "Attività non trovata",
+      "listNotFoundOrDenied": "Lista attività non trovata o accesso negato",
+      "onlyCheckerCanUncheck": "Solo chi ha spuntato questo elemento può deselezionarlo"
+    },
+    "attachments": {
+      "fileTypeNotAllowed": "Tipo di file non consentito",
+      "mimeTypeNotAllowed": "Tipo MIME non consentito",
+      "noFileUploaded": "Nessun file caricato",
+      "noteIdRequired": "noteId è obbligatorio",
+      "notFound": "Allegato non trovato",
+      "fileNotFoundOnDisk": "File non trovato su disco",
+      "noAttachmentsFound": "Nessun allegato trovato",
+      "archivingError": "Errore durante l'archiviazione"
+    },
+    "import": {
+      "unsupportedFormat": "Formato file non supportato",
+      "invalidEnex": "Formato ENEX non valido",
+      "fileTooLarge": "Il file supera il limite massimo"
+    },
+    "ai": {
+      "keyNotConfigured": "Chiave API AI non configurata",
+      "unsupportedProvider": "Provider AI non supportato",
+      "cannotProcessEncrypted": "L'AI non può elaborare note criptate",
+      "notEnabled": "L'AI non è abilitata"
+    },
+    "invites": {
+      "notFound": "Invito non trovato",
+      "requestNotFound": "Richiesta non trovata",
+      "notAuthorized": "Non autorizzato a gestire questo invito",
+      "invalidCode": "Codice invito non valido",
+      "noInvitesAvailable": "Nessun invito disponibile",
+      "notUsedYet": "L'invito non è ancora stato utilizzato",
+      "codeAlreadyUsed": "Codice invito già utilizzato",
+      "alreadyUsed": "Invito già utilizzato"
+    },
+    "tags": {
+      "noteOrTagNotFound": "Nota o tag non trovato",
+      "alreadyExists": "Il tag esiste già"
+    },
+    "user": {
+      "notFound": "Utente non trovato",
+      "onlyImagesForAvatar": "Sono ammessi solo file immagine per l'avatar",
+      "invalidOldPassword": "Vecchia password non valida"
+    },
+    "admin": {
+      "updateFailed": "Aggiornamento utente fallito"
+    },
+    "urlMetadata": {
+      "fetchFailed": "Impossibile recuperare l'URL",
+      "fetchTimeout": "Timeout nel recupero dell'URL",
+      "screenshotFailed": "Impossibile recuperare lo screenshot",
+      "screenshotTooLarge": "Screenshot troppo grande",
+      "screenshotTimeout": "Timeout nello screenshot"
+    }
   }
 }

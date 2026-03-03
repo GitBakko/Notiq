@@ -53,7 +53,7 @@ export const updateUser = async (userId: string, data: {
 const AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 export const uploadAvatar = async (userId: string, file: MultipartFile) => {
-  if (!AVATAR_MIME_TYPES.has(file.mimetype)) throw new BadRequestError('Only image files allowed for avatar');
+  if (!AVATAR_MIME_TYPES.has(file.mimetype)) throw new BadRequestError('errors.user.onlyImagesForAvatar');
 
   const filename = `${userId}-${Date.now()}${path.extname(file.filename)}`;
   const filepath = path.join(UPLOADS_DIR, filename);
@@ -90,10 +90,10 @@ export const getUser = async (userId: string) => {
 
 export const changePassword = async (userId: string, oldPassword: string, newPassword: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new NotFoundError('User not found');
+  if (!user) throw new NotFoundError('errors.user.notFound');
 
   const valid = await bcrypt.compare(oldPassword, user.password);
-  if (!valid) throw new BadRequestError('Invalid old password');
+  if (!valid) throw new BadRequestError('errors.user.invalidOldPassword');
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   return prisma.user.update({

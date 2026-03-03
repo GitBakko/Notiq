@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import api from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { getApiErrorMessage } from '../../utils/errorUtils';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -33,8 +33,7 @@ export default function LoginPage() {
       setAuth(res.data.user, res.data.token);
       navigate('/');
     } catch (err) {
-      const error = err as AxiosError<{ message: string }>;
-      setError(error.response?.data?.message || t('auth.loginFailed'));
+      setError(getApiErrorMessage(err, 'auth.loginFailed'));
     }
   };
 

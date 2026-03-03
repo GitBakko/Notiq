@@ -290,7 +290,12 @@
       "userExists": "User already exists with this email",
       "unverified": "Account not verified. Please check your email.",
       "nameRequired": "Name is required",
-      "invitationCodeRequired": "Invitation code is required"
+      "invitationCodeRequired": "Invitation code is required",
+      "invalidCredentials": "Invalid credentials",
+      "invalidOrExpiredToken": "Invalid or expired token",
+      "alreadyVerified": "User is already verified",
+      "tokenInvalidated": "Token invalidated",
+      "unauthorized": "Unauthorized"
     },
     "invitationCode": "Invitation Code",
     "registrationSuccess": "Registration Successful!",
@@ -1243,5 +1248,125 @@
     "continuePrompt": "Please continue writing this text.",
     "tagsPrompt": "Suggest relevant tags for this note.",
     "encryptedNotSupported": "AI is not available for encrypted notes."
+  },
+  "errors": {
+    "common": {
+      "accessDenied": "Access denied",
+      "writeAccessRequired": "Write access required",
+      "notTheOwner": "Not the owner",
+      "notFoundOrDenied": "Not found or access denied",
+      "forbidden": "Forbidden",
+      "readOnlyAccess": "Read-only access",
+      "onlyImagesAllowed": "Only image files allowed",
+      "onlyImageFormatsAllowed": "Only JPEG, PNG, GIF, WebP images are allowed",
+      "validationError": "Validation error",
+      "recordNotFound": "Record not found",
+      "internalError": "Internal server error",
+      "notFound": "Not found"
+    },
+    "notes": {
+      "notFound": "Note not found",
+      "notFoundOrDenied": "Note not found or access denied",
+      "notFoundOrNotPublic": "Note not found or not public"
+    },
+    "notebooks": {
+      "notFound": "Notebook not found",
+      "notFoundOrDenied": "Notebook not found or access denied",
+      "nameExists": "Notebook with this name already exists"
+    },
+    "sharing": {
+      "notFound": "Share not found",
+      "invitationNotFound": "Invitation not found",
+      "onlyOwnerCanShare": "Only the note owner can share it",
+      "cannotShareSelf": "Cannot share with yourself",
+      "vaultNotShareable": "Vault notes cannot be shared",
+      "onlyPendingResend": "Only pending shares can be resent",
+      "invalidType": "Invalid type"
+    },
+    "groups": {
+      "notFound": "Group not found",
+      "memberNotFound": "Member not found",
+      "cannotAddSelf": "Cannot add yourself to a group",
+      "alreadyMember": "User is already a member",
+      "cannotRemoveSelfOwner": "Cannot remove yourself as owner"
+    },
+    "kanban": {
+      "boardNotFound": "Board not found",
+      "cardNotFound": "Card not found",
+      "columnNotFound": "Column not found",
+      "reminderNotFound": "Reminder not found",
+      "commentNotFound": "Comment not found",
+      "notYourComment": "Not your comment",
+      "onlyLinkerCanUnlinkNote": "Only the user who linked the note can unlink it",
+      "onlyLinkerCanUnlinkTaskList": "Only the user who linked the task list can unlink it",
+      "onlyOwnerCanLink": "Only the note owner can link this note",
+      "onlyOwnerCanDelete": "Only the owner can delete a board",
+      "boardAlreadyLinkedNote": "Board already has a linked note",
+      "boardAlreadyLinkedTaskList": "Board already has a linked task list",
+      "cardAlreadyLinkedNote": "Card already has a linked note",
+      "boardNoLinkedNote": "Board has no linked note",
+      "boardNoLinkedTaskList": "Board has no linked task list",
+      "cardNoLinkedNote": "Card has no linked note",
+      "cardNotArchived": "Card is not archived",
+      "columnHasCards": "Column has cards",
+      "coverTooLarge": "File too large (max 5MB)",
+      "avatarTooLarge": "File too large (max 2MB)"
+    },
+    "tasks": {
+      "listNotFound": "Task list not found",
+      "itemNotFound": "Task item not found",
+      "listNotFoundOrDenied": "Task list not found or access denied",
+      "onlyCheckerCanUncheck": "Only the user who checked this item can uncheck it"
+    },
+    "attachments": {
+      "fileTypeNotAllowed": "File type not allowed",
+      "mimeTypeNotAllowed": "MIME type not allowed",
+      "noFileUploaded": "No file uploaded",
+      "noteIdRequired": "noteId is required",
+      "notFound": "Attachment not found",
+      "fileNotFoundOnDisk": "File not found on disk",
+      "noAttachmentsFound": "No attachments found",
+      "archivingError": "Archiving error"
+    },
+    "import": {
+      "unsupportedFormat": "Unsupported file format",
+      "invalidEnex": "Invalid ENEX file format",
+      "fileTooLarge": "Import file exceeds maximum size limit"
+    },
+    "ai": {
+      "keyNotConfigured": "AI API key not configured",
+      "unsupportedProvider": "Unsupported AI provider",
+      "cannotProcessEncrypted": "AI cannot process encrypted notes",
+      "notEnabled": "AI is not enabled"
+    },
+    "invites": {
+      "notFound": "Invite not found",
+      "requestNotFound": "Request not found",
+      "notAuthorized": "Not authorized to manage this invite",
+      "invalidCode": "Invalid invitation code",
+      "noInvitesAvailable": "No invites available",
+      "notUsedYet": "Invite has not been used yet",
+      "codeAlreadyUsed": "Invitation code already used",
+      "alreadyUsed": "Invite already used"
+    },
+    "tags": {
+      "noteOrTagNotFound": "Note or Tag not found",
+      "alreadyExists": "Tag already exists"
+    },
+    "user": {
+      "notFound": "User not found",
+      "onlyImagesForAvatar": "Only image files allowed for avatar",
+      "invalidOldPassword": "Invalid old password"
+    },
+    "admin": {
+      "updateFailed": "Failed to update user"
+    },
+    "urlMetadata": {
+      "fetchFailed": "Failed to fetch URL",
+      "fetchTimeout": "URL fetch timed out",
+      "screenshotFailed": "Failed to fetch screenshot",
+      "screenshotTooLarge": "Screenshot too large",
+      "screenshotTimeout": "Screenshot timed out"
+    }
   }
 }

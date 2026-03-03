@@ -59,7 +59,7 @@ const MAX_IMPORT_SIZE = 10 * 1024 * 1024; // 10MB
 
 export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetNotebookId?: string, isVault: boolean = false) => {
   if (fileBuffer.length > MAX_IMPORT_SIZE) {
-    throw new BadRequestError('Import file exceeds maximum size limit');
+    throw new BadRequestError('errors.import.fileTooLarge');
   }
 
   const parser = new XMLParser({
@@ -72,7 +72,7 @@ export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetN
   const xmlData = parser.parse(fileBuffer);
 
   if (!xmlData['en-export'] || !xmlData['en-export'].note) {
-    throw new BadRequestError('Invalid ENEX file format');
+    throw new BadRequestError('errors.import.invalidEnex');
   }
 
   const notes = Array.isArray(xmlData['en-export'].note)

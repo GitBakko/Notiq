@@ -11,7 +11,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
   }>('/evernote', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
-      return reply.status(400).send({ message: 'No file uploaded' });
+      return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
 
     const { notebookId, isVault } = request.query;
@@ -36,7 +36,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
   }>('/onenote', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
-      return reply.status(400).send({ message: 'No file uploaded' });
+      return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
 
     const { notebookId, isVault } = request.query;

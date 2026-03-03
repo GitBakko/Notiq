@@ -142,7 +142,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { isOwner } = await assertBoardAccess(id, request.user.id, 'WRITE');
     if (!isOwner) {
-      return reply.status(403).send({ message: 'Only the owner can delete a board' });
+      return reply.status(403).send({ message: 'errors.kanban.onlyOwnerCanDelete' });
     }
     await kanbanService.deleteBoard(id);
     return { success: true };
@@ -156,10 +156,10 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
     const data = await request.file();
     if (!data) {
-      return reply.status(400).send({ message: 'No file uploaded' });
+      return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
     if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
-      return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
+      return reply.status(400).send({ message: 'errors.common.onlyImageFormatsAllowed' });
     }
 
     // Read file into buffer and check size
@@ -168,7 +168,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     for await (const chunk of data.file) {
       totalSize += chunk.length;
       if (totalSize > MAX_COVER_SIZE) {
-        return reply.status(400).send({ message: 'File too large (max 5MB)' });
+        return reply.status(400).send({ message: 'errors.kanban.coverTooLarge' });
       }
       chunks.push(chunk);
     }
@@ -237,10 +237,10 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
     const data = await request.file();
     if (!data) {
-      return reply.status(400).send({ message: 'No file uploaded' });
+      return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
     if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
-      return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
+      return reply.status(400).send({ message: 'errors.common.onlyImageFormatsAllowed' });
     }
 
     // Read file into buffer and check size
@@ -249,7 +249,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     for await (const chunk of data.file) {
       totalSize += chunk.length;
       if (totalSize > MAX_AVATAR_SIZE) {
-        return reply.status(400).send({ message: 'File too large (max 2MB)' });
+        return reply.status(400).send({ message: 'errors.kanban.avatarTooLarge' });
       }
       chunks.push(chunk);
     }

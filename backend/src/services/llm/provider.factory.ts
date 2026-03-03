@@ -10,7 +10,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
   const apiKey = await getSetting('ai_api_key', '');
 
   if (!apiKey) {
-    throw new BadRequestError('AI API key not configured');
+    throw new BadRequestError('errors.ai.keyNotConfigured');
   }
 
   // Cache provider instance (recreate if key changed)
@@ -26,7 +26,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
       cachedKey = apiKey;
       return cachedProvider;
     default:
-      throw new BadRequestError(`Unsupported AI provider: ${provider}`);
+      throw new BadRequestError('errors.ai.unsupportedProvider');
   }
 }
 

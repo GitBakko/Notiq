@@ -27,7 +27,7 @@ export default async function (fastify: FastifyInstance) {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        return reply.status(502).send({ message: 'Failed to fetch URL' });
+        return reply.status(502).send({ message: 'errors.urlMetadata.fetchFailed' });
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -82,10 +82,10 @@ export default async function (fastify: FastifyInstance) {
       return { title: title || null, faviconUrl };
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
-        return reply.status(504).send({ message: 'URL fetch timed out' });
+        return reply.status(504).send({ message: 'errors.urlMetadata.fetchTimeout' });
       }
       request.log.warn({ err, url }, 'Failed to fetch URL metadata');
-      return reply.status(502).send({ message: 'Failed to fetch URL' });
+      return reply.status(502).send({ message: 'errors.urlMetadata.fetchFailed' });
     }
   });
 
@@ -107,14 +107,14 @@ export default async function (fastify: FastifyInstance) {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        return reply.status(502).send({ message: 'Failed to fetch screenshot' });
+        return reply.status(502).send({ message: 'errors.urlMetadata.screenshotFailed' });
       }
 
       const buffer = Buffer.from(await response.arrayBuffer());
 
       // Cap at 500KB to avoid bloating encrypted credential data
       if (buffer.length > 500 * 1024) {
-        return reply.status(413).send({ message: 'Screenshot too large' });
+        return reply.status(413).send({ message: 'errors.urlMetadata.screenshotTooLarge' });
       }
 
       const contentType = response.headers.get('content-type') || 'image/png';
@@ -123,10 +123,10 @@ export default async function (fastify: FastifyInstance) {
       return { screenshotBase64: `data:${contentType};base64,${base64}` };
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
-        return reply.status(504).send({ message: 'Screenshot timed out' });
+        return reply.status(504).send({ message: 'errors.urlMetadata.screenshotTimeout' });
       }
       request.log.warn({ err, url }, 'Failed to fetch screenshot');
-      return reply.status(502).send({ message: 'Failed to fetch screenshot' });
+      return reply.status(502).send({ message: 'errors.urlMetadata.screenshotFailed' });
     }
   });
 }
