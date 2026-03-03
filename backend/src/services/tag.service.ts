@@ -1,4 +1,5 @@
 import prisma from '../plugins/prisma';
+import { NotFoundError } from '../utils/errors';
 
 export const createTag = async (userId: string, name: string, isVault: boolean = false, id?: string) => {
   return prisma.tag.create({
@@ -52,7 +53,7 @@ export const addTagToNote = async (userId: string, noteId: string, tagId: string
   const note = await prisma.note.findFirst({ where: { id: noteId, userId } });
   const tag = await prisma.tag.findFirst({ where: { id: tagId, userId } });
 
-  if (!note || !tag) throw new Error('Note or Tag not found');
+  if (!note || !tag) throw new NotFoundError('Note or Tag not found');
 
   return prisma.tagsOnNotes.create({
     data: {

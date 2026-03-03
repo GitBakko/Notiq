@@ -39,69 +39,46 @@ export default async function authRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/register', { config: { rateLimit: { max: 3, timeWindow: '1 minute' } } }, async (request, reply) => {
-    try {
-      const data = registerSchema.parse(request.body);
-      const user = await registerUser(data);
+    const data = registerSchema.parse(request.body);
+    const user = await registerUser(data);
 
-      // Do NOT sign token. Return success message.
-      return reply.code(201).send({
-        message: 'Registration successful. Please check your email to verify your account.',
-        userId: user.id
-      });
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg) {
-        // Handle specific service errors
-        if (msg === 'auth.errors.userExists' || msg.startsWith('auth.errors')) {
-          return reply.status(400).send({ message: msg });
-        }
-        if (msg === 'Invalid invitation code' || msg === 'Invitation code already used') {
-          return reply.status(400).send({ message: 'auth.errors.invalidInvite' });
-        }
-      }
-      return reply.status(400).send({ message: msg || 'Registration failed' });
-    }
+    // Do NOT sign token. Return success message.
+    return reply.code(201).send({
+      message: 'Registration successful. Please check your email to verify your account.',
+      userId: user.id
+    });
   });
 
   fastify.post('/login', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
-    try {
-      const { email, password } = loginSchema.parse(request.body);
-      const user = await loginUser(email, password);
+    const { email, password } = loginSchema.parse(request.body);
+    const user = await loginUser(email, password);
 
-      const token = fastify.jwt.sign(
-        { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion },
-        { expiresIn: '24h' }
-      );
+    const token = fastify.jwt.sign(
+      { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion },
+      { expiresIn: '24h' }
+    );
 
-      return {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          surname: user.surname,
-          role: user.role,
-          invitesAvailable: user.invitesAvailable,
-          avatarUrl: user.avatarUrl,
-          color: user.color,
-          locale: user.locale,
-          createdAt: user.createdAt
-        }
-      };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Invalid credentials';
-      return reply.status(401).send({ message: msg });
-    }
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        surname: user.surname,
+        role: user.role,
+        invitesAvailable: user.invitesAvailable,
+        avatarUrl: user.avatarUrl,
+        color: user.color,
+        locale: user.locale,
+        createdAt: user.createdAt
+      }
+    };
   });
 
   fastify.post('/verify-email', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
-    try {
-      const { token } = verifyEmailSchema.parse(request.body);
-      await verifyEmail(token);
-      return { message: 'Email verified successfully' };
-    } catch (_error: unknown) {
-      return reply.status(400).send({ message: 'Invalid or expired token' });
-    }
+    const { token } = verifyEmailSchema.parse(request.body);
+    await verifyEmail(token);
+    return { message: 'Email verified successfully' };
   });
 
   fastify.post('/forgot-password', { config: { rateLimit: { max: 3, timeWindow: '5 minutes' } } }, async (request, reply) => {
@@ -112,12 +89,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   fastify.post('/reset-password', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const { token, newPassword } = resetPasswordSchema.parse(request.body);
-    try {
-      await resetPassword(token, newPassword);
-      return { message: 'Password reset successfully' };
-    } catch (error) {
-      return reply.status(400).send({ message: 'Invalid or expired token' });
-    }
+    await resetPassword(token, newPassword);
+    return { message: 'Password reset successfully' };
   });
 
   fastify.post('/refresh', { onRequest: [fastify.authenticate] }, async (request, reply) => {

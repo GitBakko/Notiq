@@ -71,29 +71,13 @@ export default async function (fastify: FastifyInstance) {
   fastify.put('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateNoteSchema.parse(request.body);
-    try {
-      await noteService.updateNote(request.user.id, id, data);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg === 'Note not found') {
-        return reply.status(404).send({ message: 'Note not found' });
-      }
-      throw err;
-    }
+    await noteService.updateNote(request.user.id, id, data);
     return { message: 'Note updated' };
   });
 
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    try {
-      await noteService.deleteNote(request.user.id, id);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg === 'Note not found') {
-        return reply.status(404).send({ message: 'Note not found' });
-      }
-      throw err;
-    }
+    await noteService.deleteNote(request.user.id, id);
     return { message: 'Note deleted' };
   });
 
@@ -105,14 +89,6 @@ export default async function (fastify: FastifyInstance) {
 
   fastify.get('/:id/size', async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    try {
-      return await noteService.getNoteSizeBreakdown(request.user.id, id);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg === 'Note not found') {
-        return reply.status(404).send({ message: 'Note not found' });
-      }
-      throw err;
-    }
+    return await noteService.getNoteSizeBreakdown(request.user.id, id);
   });
 }

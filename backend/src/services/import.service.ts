@@ -9,6 +9,7 @@ import { extensions } from '../hocuspocus';
 import { JSDOM } from 'jsdom';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import logger from '../utils/logger';
+import { BadRequestError } from '../utils/errors';
 
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
@@ -58,7 +59,7 @@ const MAX_IMPORT_SIZE = 10 * 1024 * 1024; // 10MB
 
 export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetNotebookId?: string, isVault: boolean = false) => {
   if (fileBuffer.length > MAX_IMPORT_SIZE) {
-    throw new Error('Import file exceeds maximum size limit');
+    throw new BadRequestError('Import file exceeds maximum size limit');
   }
 
   const parser = new XMLParser({
@@ -71,7 +72,7 @@ export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetN
   const xmlData = parser.parse(fileBuffer);
 
   if (!xmlData['en-export'] || !xmlData['en-export'].note) {
-    throw new Error('Invalid ENEX file format');
+    throw new BadRequestError('Invalid ENEX file format');
   }
 
   const notes = Array.isArray(xmlData['en-export'].note)

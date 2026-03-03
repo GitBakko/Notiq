@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import prisma from './plugins/prisma';
+import { AppError, isPrismaError } from './utils/errors';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import fastifyMultipart from '@fastify/multipart';
@@ -51,6 +52,36 @@ server.addHook('onSend', (request, reply, payload, done) => {
   reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   reply.header('X-XSS-Protection', '1; mode=block');
   done();
+});
+
+// Global error handler — maps typed errors to HTTP responses
+server.setErrorHandler((error, request, reply) => {
+  // Typed application errors (AppError hierarchy)
+  if (error instanceof AppError) {
+    return reply.status(error.statusCode).send({ message: error.message });
+  }
+
+  // Zod validation errors (thrown by schema.parse in routes)
+  if (error instanceof Error && error.name === 'ZodError') {
+    return reply.status(400).send({
+      message: 'Validation error',
+      details: (error as { issues?: unknown }).issues,
+    });
+  }
+
+  // Prisma P2025 — record not found (unhandled by service)
+  if (isPrismaError(error, 'P2025')) {
+    return reply.status(404).send({ message: 'Record not found' });
+  }
+
+  // Fastify validation errors (schema validation)
+  if (error !== null && typeof error === 'object' && 'validation' in error) {
+    return reply.status(400).send({ message: error instanceof Error ? error.message : 'Validation error' });
+  }
+
+  // Fallback — log and return 500
+  request.log.error({ err: error }, 'Unhandled error');
+  return reply.status(500).send({ message: 'Internal server error' });
 });
 
 const JWT_SECRET = process.env.JWT_SECRET;

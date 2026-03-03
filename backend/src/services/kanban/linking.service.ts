@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../../plugins/prisma';
 import logger from '../../utils/logger';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
 import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
 
@@ -19,7 +20,7 @@ export async function checkNoteSharingForBoard(
     where: { id: noteId },
     select: { id: true, title: true, userId: true },
   });
-  if (!note) throw new Error('Note not found');
+  if (!note) throw new NotFoundError('Note not found');
 
   // Get board owner + accepted shares
   const board = await prisma.kanbanBoard.findUnique({
@@ -33,7 +34,7 @@ export async function checkNoteSharingForBoard(
       },
     },
   });
-  if (!board) throw new Error('Board not found');
+  if (!board) throw new NotFoundError('Board not found');
 
   // All board participants (owner + accepted shares)
   const boardParticipants = [
@@ -75,17 +76,17 @@ export async function linkNoteToCard(
     where: { id: cardId },
     select: { noteId: true, column: { select: { boardId: true, board: { select: { title: true } } } } },
   });
-  if (!card) throw new Error('Card not found');
-  if (card.noteId) throw new Error('Card already has a linked note');
+  if (!card) throw new NotFoundError('Card not found');
+  if (card.noteId) throw new BadRequestError('Card already has a linked note');
 
   const note = await prisma.note.findUnique({
     where: { id: noteId },
     select: { id: true, title: true, userId: true },
   });
-  if (!note) throw new Error('Note not found');
+  if (!note) throw new NotFoundError('Note not found');
 
   // Only the note owner can link their note
-  if (note.userId !== actorId) throw new Error('Only the note owner can link this note');
+  if (note.userId !== actorId) throw new ForbiddenError('Only the note owner can link this note');
 
   await prisma.kanbanCard.update({
     where: { id: cardId },
@@ -138,9 +139,9 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
       column: { select: { boardId: true } },
     },
   });
-  if (!card) throw new Error('Card not found');
-  if (!card.noteId) throw new Error('Card has no linked note');
-  if (card.noteLinkedById !== actorId) throw new Error('Only the user who linked the note can unlink it');
+  if (!card) throw new NotFoundError('Card not found');
+  if (!card.noteId) throw new BadRequestError('Card has no linked note');
+  if (card.noteLinkedById !== actorId) throw new ForbiddenError('Only the user who linked the note can unlink it');
 
   const noteTitle = card.note?.title || '';
 
@@ -181,17 +182,17 @@ export async function linkNoteToBoard(
     where: { id: boardId },
     select: { noteId: true, title: true },
   });
-  if (!board) throw new Error('Board not found');
-  if (board.noteId) throw new Error('Board already has a linked note');
+  if (!board) throw new NotFoundError('Board not found');
+  if (board.noteId) throw new BadRequestError('Board already has a linked note');
 
   const note = await prisma.note.findUnique({
     where: { id: noteId },
     select: { id: true, title: true, userId: true },
   });
-  if (!note) throw new Error('Note not found');
+  if (!note) throw new NotFoundError('Note not found');
 
   // Only the note owner can link their note
-  if (note.userId !== actorId) throw new Error('Only the note owner can link this note');
+  if (note.userId !== actorId) throw new ForbiddenError('Only the note owner can link this note');
 
   const updatedBoard = await prisma.kanbanBoard.update({
     where: { id: boardId },
@@ -222,9 +223,9 @@ export async function unlinkNoteFromBoard(boardId: string, actorId: string) {
     where: { id: boardId },
     select: { noteId: true, noteLinkedById: true },
   });
-  if (!board) throw new Error('Board not found');
-  if (!board.noteId) throw new Error('Board has no linked note');
-  if (board.noteLinkedById !== actorId) throw new Error('Only the user who linked the note can unlink it');
+  if (!board) throw new NotFoundError('Board not found');
+  if (!board.noteId) throw new BadRequestError('Board has no linked note');
+  if (board.noteLinkedById !== actorId) throw new ForbiddenError('Only the user who linked the note can unlink it');
 
   await prisma.kanbanBoard.update({
     where: { id: boardId },
@@ -369,14 +370,14 @@ export async function linkTaskListToBoard(
     where: { id: boardId },
     select: { taskListId: true },
   });
-  if (!board) throw new Error('Board not found');
-  if (board.taskListId) throw new Error('Board already has a linked task list');
+  if (!board) throw new NotFoundError('Board not found');
+  if (board.taskListId) throw new BadRequestError('Board already has a linked task list');
 
   const taskList = await prisma.taskList.findUnique({
     where: { id: taskListId },
     select: { id: true, title: true, userId: true },
   });
-  if (!taskList) throw new Error('TaskList not found');
+  if (!taskList) throw new NotFoundError('TaskList not found');
 
   const updatedBoard = await prisma.kanbanBoard.update({
     where: { id: boardId },
@@ -462,9 +463,9 @@ export async function unlinkTaskListFromBoard(boardId: string, userId: string) {
     where: { id: boardId },
     select: { taskListId: true, taskListLinkedById: true },
   });
-  if (!board) throw new Error('Board not found');
-  if (!board.taskListId) throw new Error('Board has no linked task list');
-  if (board.taskListLinkedById !== userId) throw new Error('Only the user who linked the task list can unlink it');
+  if (!board) throw new NotFoundError('Board not found');
+  if (!board.taskListId) throw new BadRequestError('Board has no linked task list');
+  if (board.taskListLinkedById !== userId) throw new ForbiddenError('Only the user who linked the task list can unlink it');
 
   await prisma.kanbanBoard.update({
     where: { id: boardId },

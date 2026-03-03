@@ -1,7 +1,6 @@
 
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import prisma from '../plugins/prisma';
 import * as inviteService from '../services/invite.service';
 
 const sendInviteEmailSchema = z.object({
@@ -34,13 +33,8 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
 
   // Generate invite
   fastify.post('/', async (request, reply) => {
-    try {
-      const invite = await inviteService.generateInvite(request.user.id);
-      return invite;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Failed to generate invite';
-      return reply.status(400).send({ message: msg });
-    }
+    const invite = await inviteService.generateInvite(request.user.id);
+    return invite;
   });
 
   // Send Invite via Email
@@ -48,25 +42,15 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
     const { code } = codeParamSchema.parse(request.params);
     const { email, name, locale } = sendInviteEmailSchema.parse(request.body);
 
-    try {
-      await inviteService.sendInviteEmail(code, request.user.id, email, name, locale);
-      return { success: true };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Failed to send email';
-      return reply.status(400).send({ message: msg });
-    }
+    await inviteService.sendInviteEmail(code, request.user.id, email, name, locale);
+    return { success: true };
   });
 
   // Resend Verification Email for an invite (Existing)
   fastify.post('/:code/resend', async (request, reply) => {
     const { code } = codeParamSchema.parse(request.params);
-    try {
-      const result = await (await import('../services/auth.service')).resendVerificationForInvite(code, request.user.id);
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Failed to resend email';
-      return reply.status(400).send({ message: msg });
-    }
+    const result = await (await import('../services/auth.service')).resendVerificationForInvite(code, request.user.id);
+    return result;
   });
 }
 
@@ -92,7 +76,7 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
       await inviteService.createInvitationRequest(email, request.ip);
       return { success: true };
     } catch (_error: unknown) {
-      // Don't leak if email exists
+      // KEEP: Returns success on error to avoid leaking whether the email exists
       return { success: true };
     }
   });
@@ -110,24 +94,14 @@ export async function adminInviteRoutes(fastify: FastifyInstance) {
   fastify.post('/requests/:id/approve', async (request, reply) => {
     if (request.user.role !== 'SUPERADMIN') return reply.status(403).send();
     const { id } = idParamSchema.parse(request.params);
-    try {
-      await inviteService.approveInvitationRequest(id, request.user.id);
-      return { success: true };
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Unknown error';
-      return reply.status(400).send({ message: msg });
-    }
+    await inviteService.approveInvitationRequest(id, request.user.id);
+    return { success: true };
   });
 
   fastify.post('/requests/:id/reject', async (request, reply) => {
     if (request.user.role !== 'SUPERADMIN') return reply.status(403).send();
     const { id } = idParamSchema.parse(request.params);
-    try {
-      await inviteService.rejectInvitationRequest(id);
-      return { success: true };
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Unknown error';
-      return reply.status(400).send({ message: msg });
-    }
+    await inviteService.rejectInvitationRequest(id);
+    return { success: true };
   });
 }

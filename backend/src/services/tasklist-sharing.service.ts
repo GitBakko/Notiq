@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma';
 import logger from '../utils/logger';
 import * as notificationService from './notification.service';
 import * as emailService from './email.service';
+import { NotFoundError, BadRequestError } from '../utils/errors';
 
 export const shareTaskList = async (
   ownerId: string,
@@ -14,7 +15,7 @@ export const shareTaskList = async (
   });
 
   if (!taskList || taskList.userId !== ownerId) {
-    throw new Error('TaskList not found or access denied');
+    throw new NotFoundError('TaskList not found or access denied');
   }
 
   const targetUser = await prisma.user.findUnique({
@@ -22,11 +23,11 @@ export const shareTaskList = async (
   });
 
   if (!targetUser) {
-    throw new Error('User not found');
+    throw new NotFoundError('User not found');
   }
 
   if (targetUser.id === ownerId) {
-    throw new Error('Cannot share with yourself');
+    throw new BadRequestError('Cannot share with yourself');
   }
 
   const sharedTaskList = await prisma.sharedTaskList.upsert({
@@ -102,7 +103,7 @@ export const revokeTaskListShare = async (
   });
 
   if (!taskList || taskList.userId !== ownerId) {
-    throw new Error('TaskList not found or access denied');
+    throw new NotFoundError('TaskList not found or access denied');
   }
 
   return prisma.sharedTaskList.delete({
@@ -147,7 +148,7 @@ export const respondToTaskListShareById = async (
     where: { taskListId_userId: { taskListId, userId } },
   });
 
-  if (!existing) throw new Error('Invitation not found');
+  if (!existing) throw new NotFoundError('Invitation not found');
   if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
   const result = await prisma.sharedTaskList.update({

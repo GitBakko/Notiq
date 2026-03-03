@@ -1,4 +1,5 @@
 import prisma from '../plugins/prisma';
+import { ConflictError, NotFoundError } from '../utils/errors';
 
 export const createNotebook = async (userId: string, name: string, id?: string) => {
   const existing = await prisma.notebook.findFirst({
@@ -6,7 +7,7 @@ export const createNotebook = async (userId: string, name: string, id?: string) 
   });
 
   if (existing) {
-    throw new Error('Notebook with this name already exists');
+    throw new ConflictError('Notebook with this name already exists');
   }
 
   return prisma.notebook.create({
@@ -61,7 +62,7 @@ export const updateNotebook = async (userId: string, id: string, name: string) =
 export const deleteNotebook = async (userId: string, id: string) => {
   return prisma.$transaction(async (tx) => {
     const notebook = await tx.notebook.findFirst({ where: { id, userId } });
-    if (!notebook) throw new Error('Notebook not found');
+    if (!notebook) throw new NotFoundError('Notebook not found');
 
     // Find or create a fallback notebook for orphaned notes
     let fallbackNotebook = await tx.notebook.findFirst({

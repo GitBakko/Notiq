@@ -1,6 +1,7 @@
 import prisma from '../plugins/prisma';
 import logger from '../utils/logger';
 import * as notificationService from './notification.service';
+import { NotFoundError, ForbiddenError } from '../utils/errors';
 
 /** Reusable include for task items with checkedByUser */
 const ITEMS_INCLUDE = {
@@ -27,7 +28,7 @@ async function assertWriteAccess(userId: string, taskListId: string): Promise<vo
 
   if (shared && shared.status === 'ACCEPTED' && shared.permission === 'WRITE') return;
 
-  throw new Error('Access denied');
+  throw new ForbiddenError('Access denied');
 }
 
 async function notifyCollaborators(
@@ -143,7 +144,7 @@ export const getTaskList = async (userId: string, id: string) => {
     },
   });
 
-  if (!taskList) throw new Error('TaskList not found');
+  if (!taskList) throw new NotFoundError('TaskList not found');
 
   // Owner can always access
   if (taskList.userId === userId) return taskList;
@@ -156,7 +157,7 @@ export const getTaskList = async (userId: string, id: string) => {
 
   if (shared && shared.status === 'ACCEPTED') return taskList;
 
-  throw new Error('TaskList not found');
+  throw new NotFoundError('TaskList not found');
 };
 
 export const updateTaskList = async (userId: string, id: string, data: { title?: string; isTrashed?: boolean }) => {
@@ -183,7 +184,7 @@ export const deleteTaskList = async (userId: string, id: string) => {
   });
 
   if (!taskList || taskList.userId !== userId) {
-    throw new Error('Access denied');
+    throw new ForbiddenError('Access denied');
   }
 
   return prisma.taskList.update({
@@ -319,12 +320,12 @@ export const updateTaskItem = async (
   });
 
   if (!existing || existing.taskListId !== taskListId) {
-    throw new Error('TaskItem not found');
+    throw new NotFoundError('TaskItem not found');
   }
 
   // Only the user who checked the item can uncheck it
   if (data.isChecked === false && existing.isChecked && existing.checkedByUserId && existing.checkedByUserId !== userId) {
-    throw new Error('Only the user who checked this item can uncheck it');
+    throw new ForbiddenError('Only the user who checked this item can uncheck it');
   }
 
   const updateData: Record<string, unknown> = {};
@@ -361,7 +362,7 @@ export const deleteTaskItem = async (userId: string, taskListId: string, itemId:
   });
 
   if (!existing || existing.taskListId !== taskListId) {
-    throw new Error('TaskItem not found');
+    throw new NotFoundError('TaskItem not found');
   }
 
   await prisma.taskItem.delete({ where: { id: itemId } });

@@ -4,6 +4,7 @@ import * as emailService from './email.service';
 import * as notificationService from './notification.service';
 import { Permission } from '@prisma/client';
 import logger from '../utils/logger';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
   // Verify ownership
@@ -12,7 +13,7 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
   });
 
   if (!note || note.userId !== ownerId) {
-    throw new Error('Note not found or access denied');
+    throw new NotFoundError('Note not found or access denied');
   }
 
   // Find target user
@@ -21,11 +22,11 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
   });
 
   if (!targetUser) {
-    throw new Error('User not found');
+    throw new NotFoundError('User not found');
   }
 
   if (targetUser.id === ownerId) {
-    throw new Error('Cannot share with yourself');
+    throw new BadRequestError('Cannot share with yourself');
   }
 
   // Create Check (don't upsert directly if we want to handle re-invites differently?)
@@ -113,7 +114,7 @@ export const revokeNoteShare = async (ownerId: string, noteId: string, targetUse
   });
 
   if (!note || note.userId !== ownerId) {
-    throw new Error('Note not found or access denied');
+    throw new NotFoundError('Note not found or access denied');
   }
 
   return prisma.sharedNote.delete({
@@ -139,8 +140,8 @@ export const autoShareNoteForBoard = async (
   boardTitle: string
 ): Promise<void> => {
   const note = await prisma.note.findUnique({ where: { id: noteId }, select: { title: true, userId: true } });
-  if (!note) throw new Error('Note not found');
-  if (note.userId !== ownerId) throw new Error('Only the note owner can share it');
+  if (!note) throw new NotFoundError('Note not found');
+  if (note.userId !== ownerId) throw new ForbiddenError('Only the note owner can share it');
 
   const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { name: true, email: true } });
   const sharerName = owner?.name || owner?.email || '?';
@@ -251,7 +252,7 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
   });
 
   if (!notebook || notebook.userId !== ownerId) {
-    throw new Error('Notebook not found or access denied');
+    throw new NotFoundError('Notebook not found or access denied');
   }
 
   // Find target user
@@ -260,11 +261,11 @@ export const shareNotebook = async (ownerId: string, notebookId: string, targetE
   });
 
   if (!targetUser) {
-    throw new Error('User not found');
+    throw new NotFoundError('User not found');
   }
 
   if (targetUser.id === ownerId) {
-    throw new Error('Cannot share with yourself');
+    throw new BadRequestError('Cannot share with yourself');
   }
 
   const sharedNotebook = await prisma.sharedNotebook.upsert({
@@ -345,7 +346,7 @@ export const revokeNotebookShare = async (ownerId: string, notebookId: string, t
   });
 
   if (!notebook || notebook.userId !== ownerId) {
-    throw new Error('Notebook not found or access denied');
+    throw new NotFoundError('Notebook not found or access denied');
   }
 
   return prisma.sharedNotebook.delete({
@@ -388,7 +389,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
     const existing = await prisma.sharedNote.findUnique({
       where: { noteId_userId: { noteId: itemId, userId } }
     });
-    if (!existing) throw new Error('Invitation not found');
+    if (!existing) throw new NotFoundError('Invitation not found');
     if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
     result = await prisma.sharedNote.update({
@@ -405,7 +406,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
     const existing = await prisma.sharedNotebook.findUnique({
       where: { notebookId_userId: { notebookId: itemId, userId } }
     });
-    if (!existing) throw new Error('Invitation not found');
+    if (!existing) throw new NotFoundError('Invitation not found');
     if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
     result = await prisma.sharedNotebook.update({
@@ -422,7 +423,7 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
     const existing = await prisma.sharedKanbanBoard.findUnique({
       where: { boardId_userId: { boardId: itemId, userId } }
     });
-    if (!existing) throw new Error('Invitation not found');
+    if (!existing) throw new NotFoundError('Invitation not found');
     if (existing.status !== 'PENDING') return { success: true, status: existing.status };
 
     result = await prisma.sharedKanbanBoard.update({
@@ -515,12 +516,12 @@ export const shareKanbanBoard = async (
     where: { id: boardId },
     select: { title: true, ownerId: true },
   });
-  if (!board) throw new Error('Board not found');
-  if (board.ownerId !== ownerId) throw new Error('Not the owner');
+  if (!board) throw new NotFoundError('Board not found');
+  if (board.ownerId !== ownerId) throw new ForbiddenError('Not the owner');
 
   const targetUser = await prisma.user.findUnique({ where: { email } });
-  if (!targetUser) throw new Error('User not found');
-  if (targetUser.id === ownerId) throw new Error('Cannot share with yourself');
+  if (!targetUser) throw new NotFoundError('User not found');
+  if (targetUser.id === ownerId) throw new BadRequestError('Cannot share with yourself');
 
   const share = await prisma.sharedKanbanBoard.upsert({
     where: { boardId_userId: { boardId, userId: targetUser.id } },
@@ -574,8 +575,8 @@ export const revokeKanbanBoardShare = async (
     where: { id: boardId },
     select: { ownerId: true },
   });
-  if (!board) throw new Error('Board not found');
-  if (board.ownerId !== ownerId) throw new Error('Not the owner');
+  if (!board) throw new NotFoundError('Board not found');
+  if (board.ownerId !== ownerId) throw new ForbiddenError('Not the owner');
 
   try {
     await prisma.sharedKanbanBoard.delete({
@@ -643,7 +644,7 @@ export const resendShareInvitation = async (
   shareId: string
 ) => {
   const owner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
-  if (!owner) throw new Error('User not found');
+  if (!owner) throw new NotFoundError('User not found');
   const sharerName = owner.name || owner.email;
 
   let targetEmail: string;
@@ -658,8 +659,8 @@ export const resendShareInvitation = async (
       where: { id: shareId },
       include: { user: { select: { email: true, locale: true } }, note: { select: { title: true, userId: true } } },
     });
-    if (!share || share.note.userId !== userId) throw new Error('Share not found');
-    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    if (!share || share.note.userId !== userId) throw new NotFoundError('Share not found');
+    if (share.status !== 'PENDING') throw new BadRequestError('Only pending shares can be resent');
     targetEmail = share.user.email;
     targetLocale = share.user.locale;
     itemName = share.note.title;
@@ -670,8 +671,8 @@ export const resendShareInvitation = async (
       where: { id: shareId },
       include: { user: { select: { email: true, locale: true } }, notebook: { select: { name: true, userId: true } } },
     });
-    if (!share || share.notebook.userId !== userId) throw new Error('Share not found');
-    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    if (!share || share.notebook.userId !== userId) throw new NotFoundError('Share not found');
+    if (share.status !== 'PENDING') throw new BadRequestError('Only pending shares can be resent');
     targetEmail = share.user.email;
     targetLocale = share.user.locale;
     itemName = share.notebook.name;
@@ -682,8 +683,8 @@ export const resendShareInvitation = async (
       where: { id: shareId },
       include: { user: { select: { email: true, locale: true } }, taskList: { select: { title: true, userId: true } } },
     });
-    if (!share || share.taskList.userId !== userId) throw new Error('Share not found');
-    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    if (!share || share.taskList.userId !== userId) throw new NotFoundError('Share not found');
+    if (share.status !== 'PENDING') throw new BadRequestError('Only pending shares can be resent');
     targetEmail = share.user.email;
     targetLocale = share.user.locale;
     itemName = share.taskList.title;
@@ -694,8 +695,8 @@ export const resendShareInvitation = async (
       where: { id: shareId },
       include: { user: { select: { email: true, locale: true } }, board: { select: { title: true, ownerId: true } } },
     });
-    if (!share || share.board.ownerId !== userId) throw new Error('Share not found');
-    if (share.status !== 'PENDING') throw new Error('Only pending shares can be resent');
+    if (!share || share.board.ownerId !== userId) throw new NotFoundError('Share not found');
+    if (share.status !== 'PENDING') throw new BadRequestError('Only pending shares can be resent');
     targetEmail = share.user.email;
     targetLocale = share.user.locale;
     itemName = share.board.title;

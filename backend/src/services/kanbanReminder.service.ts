@@ -1,5 +1,6 @@
 import prisma from '../plugins/prisma';
 import logger from '../utils/logger';
+import { NotFoundError, ForbiddenError } from '../utils/errors';
 
 /**
  * Get all board participant user IDs (owner + ACCEPTED shares).
@@ -161,8 +162,8 @@ export async function toggleReminderDone(
     where: { id: reminderId },
     select: { userId: true },
   });
-  if (!reminder) throw new Error('Reminder not found');
-  if (reminder.userId !== userId) throw new Error('Access denied');
+  if (!reminder) throw new NotFoundError('Reminder not found');
+  if (reminder.userId !== userId) throw new ForbiddenError('Access denied');
 
   await prisma.kanbanReminder.update({
     where: { id: reminderId },

@@ -1,4 +1,5 @@
 import prisma from '../plugins/prisma';
+import { NotFoundError, ForbiddenError } from '../utils/errors';
 
 export async function assertBoardAccess(
   boardId: string,
@@ -9,16 +10,16 @@ export async function assertBoardAccess(
     where: { id: boardId },
     select: { ownerId: true },
   });
-  if (!board) throw new Error('Board not found');
+  if (!board) throw new NotFoundError('Board not found');
   if (board.ownerId === userId) return { isOwner: true };
 
   const share = await prisma.sharedKanbanBoard.findUnique({
     where: { boardId_userId: { boardId, userId } },
     select: { permission: true, status: true },
   });
-  if (!share || share.status !== 'ACCEPTED') throw new Error('Access denied');
+  if (!share || share.status !== 'ACCEPTED') throw new ForbiddenError('Access denied');
   if (requiredPermission === 'WRITE' && share.permission !== 'WRITE') {
-    throw new Error('Write access required');
+    throw new ForbiddenError('Write access required');
   }
   return { isOwner: false };
 }
@@ -32,7 +33,7 @@ export async function getColumnWithAccess(
     where: { id: columnId },
     select: { boardId: true },
   });
-  if (!column) throw new Error('Column not found');
+  if (!column) throw new NotFoundError('Column not found');
   const access = await assertBoardAccess(column.boardId, userId, requiredPermission);
   return { boardId: column.boardId, ...access };
 }
@@ -46,7 +47,7 @@ export async function getCardWithAccess(
     where: { id: cardId },
     select: { columnId: true, column: { select: { boardId: true } } },
   });
-  if (!card) throw new Error('Card not found');
+  if (!card) throw new NotFoundError('Card not found');
   const access = await assertBoardAccess(card.column.boardId, userId, requiredPermission);
   return { boardId: card.column.boardId, columnId: card.columnId, ...access };
 }

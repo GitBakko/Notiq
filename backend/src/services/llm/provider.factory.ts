@@ -1,6 +1,7 @@
 import type { LLMProvider } from './types';
 import { AnthropicProvider } from './anthropic.provider';
 import { getSetting } from '../settings.service';
+import { BadRequestError } from '../../utils/errors';
 
 let cachedProvider: LLMProvider | null = null;
 let cachedKey: string | null = null;
@@ -9,7 +10,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
   const apiKey = await getSetting('ai_api_key', '');
 
   if (!apiKey) {
-    throw new Error('AI API key not configured');
+    throw new BadRequestError('AI API key not configured');
   }
 
   // Cache provider instance (recreate if key changed)
@@ -25,7 +26,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
       cachedKey = apiKey;
       return cachedProvider;
     default:
-      throw new Error(`Unsupported AI provider: ${provider}`);
+      throw new BadRequestError(`Unsupported AI provider: ${provider}`);
   }
 }
 

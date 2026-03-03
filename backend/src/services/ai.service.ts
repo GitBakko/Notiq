@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma';
 import { getLLMProvider } from './llm/provider.factory';
 import { getSetting, getBooleanSetting } from './settings.service';
 import type { LLMMessage, LLMStreamCallbacks } from './llm/types';
+import { NotFoundError, BadRequestError } from '../utils/errors';
 
 // --- System prompts per operation ---
 const SYSTEM_PROMPTS: Record<string, string> = {
@@ -41,8 +42,8 @@ export const streamAiResponse = async (
     select: { title: true, searchText: true, content: true, isEncrypted: true },
   });
 
-  if (!note) throw new Error('Note not found');
-  if (note.isEncrypted) throw new Error('AI cannot process encrypted notes');
+  if (!note) throw new NotFoundError('Note not found');
+  if (note.isEncrypted) throw new BadRequestError('AI cannot process encrypted notes');
 
   // Use searchText (plain text) for context, truncate to 50k chars
   const noteContext = (note.searchText || '').substring(0, 50000);

@@ -1,6 +1,7 @@
 
 import prisma from '../plugins/prisma';
 import crypto from 'crypto';
+import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 
 const generateSecureCode = (): string => {
   return crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6);
@@ -8,12 +9,12 @@ const generateSecureCode = (): string => {
 
 export const generateInvite = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error('User not found');
+  if (!user) throw new NotFoundError('User not found');
 
   // SuperAdmin has infinite invites, but we still generate codes.
   // Regular users need invitesAvailable > 0.
   if (user.role !== 'SUPERADMIN' && user.invitesAvailable <= 0) {
-    throw new Error('No invites available');
+    throw new BadRequestError('No invites available');
   }
 
   let code = '';
@@ -41,11 +42,11 @@ export const validateInvite = async (code: string) => {
   });
 
   if (!invite) {
-    throw new Error('Invalid invitation code');
+    throw new BadRequestError('Invalid invitation code');
   }
 
   if (invite.status !== 'PENDING') {
-    throw new Error('Invitation code already used');
+    throw new ConflictError('Invitation code already used');
   }
 
   return invite;
@@ -63,8 +64,8 @@ export const getUserInvites = async (userId: string) => {
 
 export const sendInviteEmail = async (code: string, userId: string, email: string, name: string, locale: string) => {
   const invite = await prisma.invitation.findUnique({ where: { code } });
-  if (!invite || invite.creatorId !== userId) throw new Error('Invalid invite');
-  if (invite.status !== 'PENDING') throw new Error('Invite already used');
+  if (!invite || invite.creatorId !== userId) throw new NotFoundError('Invalid invite');
+  if (invite.status !== 'PENDING') throw new ConflictError('Invite already used');
 
   const sender = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -102,7 +103,7 @@ export const getInvitationRequests = async () => {
 
 export const approveInvitationRequest = async (requestId: string, adminId: string) => {
   const req = await prisma.invitationRequest.findUnique({ where: { id: requestId } });
-  if (!req) throw new Error('Request not found');
+  if (!req) throw new NotFoundError('Request not found');
 
   // Generate Invite Code (Force logic reuse or duplicate?)
   // Reusing logic via new call? simpler to duplicate for slightly different context (admin gen)
@@ -144,7 +145,7 @@ export const approveInvitationRequest = async (requestId: string, adminId: strin
 
 export const rejectInvitationRequest = async (requestId: string) => {
   const req = await prisma.invitationRequest.findUnique({ where: { id: requestId } });
-  if (!req) throw new Error('Request not found');
+  if (!req) throw new NotFoundError('Request not found');
 
   await prisma.invitationRequest.update({
     where: { id: requestId },

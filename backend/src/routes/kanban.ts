@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyReply } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
@@ -60,49 +60,6 @@ const paginationSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(50),
 });
 
-// ─── Error handler helper ───────────────────────────────────
-
-function handleKanbanError(error: unknown, reply: FastifyReply) {
-  const msg = error instanceof Error ? error.message : 'Unknown error';
-  if (
-    msg === 'Board not found' ||
-    msg === 'Column not found' ||
-    msg === 'Card not found' ||
-    msg === 'Comment not found' ||
-    msg === 'Reminder not found' ||
-    msg === 'TaskList not found'
-  ) {
-    return reply.status(404).send({ message: msg });
-  }
-  if (
-    msg === 'Access denied' ||
-    msg === 'Write access required' ||
-    msg === 'Not your comment' ||
-    msg === 'Only the note owner can link this note' ||
-    msg === 'Only the user who linked the note can unlink it' ||
-    msg === 'Only the user who linked the task list can unlink it'
-  ) {
-    return reply.status(403).send({ message: msg });
-  }
-  if (
-    msg === 'Card is not archived'
-  ) {
-    return reply.status(400).send({ message: msg });
-  }
-  if (
-    msg === 'Column has cards' ||
-    msg === 'Board already has a linked note' ||
-    msg === 'Board has no linked note' ||
-    msg === 'Card already has a linked note' ||
-    msg === 'Card has no linked note' ||
-    msg === 'Board already has a linked task list' ||
-    msg === 'Board has no linked task list'
-  ) {
-    return reply.status(409).send({ message: msg });
-  }
-  throw error;
-}
-
 // ─── Upload helpers ─────────────────────────────────────────
 
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
@@ -139,16 +96,12 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     isDone: z.boolean(),
   });
 
-  fastify.put('/reminders/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const { isDone } = updateReminderSchema.parse(request.body);
-      const { toggleReminderDone } = await import('../services/kanbanReminder.service');
-      await toggleReminderDone(id, request.user.id, isDone);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.put('/reminders/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const { isDone } = updateReminderSchema.parse(request.body);
+    const { toggleReminderDone } = await import('../services/kanbanReminder.service');
+    await toggleReminderDone(id, request.user.id, isDone);
+    return { success: true };
   });
 
   // ── Boards ──────────────────────────────────────────────
@@ -157,13 +110,9 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     return kanbanService.listBoards(request.user.id);
   });
 
-  fastify.post('/boards', async (request, reply) => {
-    try {
-      const { title, description } = createBoardSchema.parse(request.body);
-      return await kanbanService.createBoard(request.user.id, title, description);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/boards', async (request) => {
+    const { title, description } = createBoardSchema.parse(request.body);
+    return await kanbanService.createBoard(request.user.id, title, description);
   });
 
   // Create board from task list
@@ -171,226 +120,194 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     taskListId: z.string().uuid(),
   });
 
-  fastify.post('/boards/from-tasklist', async (request, reply) => {
-    try {
-      const { taskListId } = fromTaskListSchema.parse(request.body);
-      return await kanbanService.createBoardFromTaskList(request.user.id, taskListId);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/boards/from-tasklist', async (request) => {
+    const { taskListId } = fromTaskListSchema.parse(request.body);
+    return await kanbanService.createBoardFromTaskList(request.user.id, taskListId);
   });
 
-  fastify.get('/boards/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'READ');
-      return await kanbanService.getBoard(id, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/boards/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'READ');
+    return await kanbanService.getBoard(id, request.user.id);
   });
 
-  fastify.put('/boards/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      const data = updateBoardSchema.parse(request.body);
-      return await kanbanService.updateBoard(id, data);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.put('/boards/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    const data = updateBoardSchema.parse(request.body);
+    return await kanbanService.updateBoard(id, data);
   });
 
   fastify.delete('/boards/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const { isOwner } = await assertBoardAccess(id, request.user.id, 'WRITE');
-      if (!isOwner) {
-        return reply.status(403).send({ message: 'Only the owner can delete a board' });
-      }
-      await kanbanService.deleteBoard(id);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
+    const { id } = request.params as { id: string };
+    const { isOwner } = await assertBoardAccess(id, request.user.id, 'WRITE');
+    if (!isOwner) {
+      return reply.status(403).send({ message: 'Only the owner can delete a board' });
     }
+    await kanbanService.deleteBoard(id);
+    return { success: true };
   });
 
   // ── Cover Image ───────────────────────────────────────────
 
   fastify.post('/boards/:id/cover', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
 
-      const data = await request.file();
-      if (!data) {
-        return reply.status(400).send({ message: 'No file uploaded' });
-      }
-      if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
-        return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
-      }
-
-      // Read file into buffer and check size
-      const chunks: Buffer[] = [];
-      let totalSize = 0;
-      for await (const chunk of data.file) {
-        totalSize += chunk.length;
-        if (totalSize > MAX_COVER_SIZE) {
-          return reply.status(400).send({ message: 'File too large (max 5MB)' });
-        }
-        chunks.push(chunk);
-      }
-      const buffer = Buffer.concat(chunks);
-
-      // Ensure directory exists
-      if (!fs.existsSync(KANBAN_UPLOADS_DIR)) {
-        fs.mkdirSync(KANBAN_UPLOADS_DIR, { recursive: true });
-      }
-
-      // Delete old cover if present
-      const currentBoard = await prisma.kanbanBoard.findUnique({
-        where: { id },
-        select: { coverImage: true },
-      });
-      if (currentBoard?.coverImage) {
-        const oldFile = path.join(UPLOADS_DIR, currentBoard.coverImage.replace(/^\/uploads\//, ''));
-        if (fs.existsSync(oldFile)) {
-          fs.unlinkSync(oldFile);
-        }
-      }
-
-      // Save new file
-      const ext = path.extname(data.filename || '.jpg').toLowerCase();
-      const filename = `${randomUUID()}${ext}`;
-      const filepath = path.join(KANBAN_UPLOADS_DIR, filename);
-      fs.writeFileSync(filepath, buffer);
-
-      const coverUrl = `/uploads/kanban/${filename}`;
-      await prisma.kanbanBoard.update({
-        where: { id },
-        data: { coverImage: coverUrl },
-      });
-
-      return { coverImage: coverUrl };
-    } catch (error) {
-      return handleKanbanError(error, reply);
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ message: 'No file uploaded' });
     }
+    if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
+      return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
+    }
+
+    // Read file into buffer and check size
+    const chunks: Buffer[] = [];
+    let totalSize = 0;
+    for await (const chunk of data.file) {
+      totalSize += chunk.length;
+      if (totalSize > MAX_COVER_SIZE) {
+        return reply.status(400).send({ message: 'File too large (max 5MB)' });
+      }
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+
+    // Ensure directory exists
+    if (!fs.existsSync(KANBAN_UPLOADS_DIR)) {
+      fs.mkdirSync(KANBAN_UPLOADS_DIR, { recursive: true });
+    }
+
+    // Delete old cover if present
+    const currentBoard = await prisma.kanbanBoard.findUnique({
+      where: { id },
+      select: { coverImage: true },
+    });
+    if (currentBoard?.coverImage) {
+      const oldFile = path.join(UPLOADS_DIR, currentBoard.coverImage.replace(/^\/uploads\//, ''));
+      if (fs.existsSync(oldFile)) {
+        fs.unlinkSync(oldFile);
+      }
+    }
+
+    // Save new file
+    const ext = path.extname(data.filename || '.jpg').toLowerCase();
+    const filename = `${randomUUID()}${ext}`;
+    const filepath = path.join(KANBAN_UPLOADS_DIR, filename);
+    fs.writeFileSync(filepath, buffer);
+
+    const coverUrl = `/uploads/kanban/${filename}`;
+    await prisma.kanbanBoard.update({
+      where: { id },
+      data: { coverImage: coverUrl },
+    });
+
+    return { coverImage: coverUrl };
   });
 
-  fastify.delete('/boards/:id/cover', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
+  fastify.delete('/boards/:id/cover', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
 
-      const board = await prisma.kanbanBoard.findUnique({
-        where: { id },
-        select: { coverImage: true },
-      });
-      if (board?.coverImage) {
-        const oldFile = path.join(UPLOADS_DIR, board.coverImage.replace(/^\/uploads\//, ''));
-        if (fs.existsSync(oldFile)) {
-          fs.unlinkSync(oldFile);
-        }
+    const board = await prisma.kanbanBoard.findUnique({
+      where: { id },
+      select: { coverImage: true },
+    });
+    if (board?.coverImage) {
+      const oldFile = path.join(UPLOADS_DIR, board.coverImage.replace(/^\/uploads\//, ''));
+      if (fs.existsSync(oldFile)) {
+        fs.unlinkSync(oldFile);
       }
-
-      await prisma.kanbanBoard.update({
-        where: { id },
-        data: { coverImage: null },
-      });
-
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
     }
+
+    await prisma.kanbanBoard.update({
+      where: { id },
+      data: { coverImage: null },
+    });
+
+    return { success: true };
   });
 
   // ── Board Avatar ──────────────────────────────────────────
 
   fastify.post('/boards/:id/avatar', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
 
-      const data = await request.file();
-      if (!data) {
-        return reply.status(400).send({ message: 'No file uploaded' });
-      }
-      if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
-        return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
-      }
-
-      // Read file into buffer and check size
-      const chunks: Buffer[] = [];
-      let totalSize = 0;
-      for await (const chunk of data.file) {
-        totalSize += chunk.length;
-        if (totalSize > MAX_AVATAR_SIZE) {
-          return reply.status(400).send({ message: 'File too large (max 2MB)' });
-        }
-        chunks.push(chunk);
-      }
-      const buffer = Buffer.concat(chunks);
-
-      // Ensure directory exists
-      if (!fs.existsSync(KANBAN_AVATARS_DIR)) {
-        fs.mkdirSync(KANBAN_AVATARS_DIR, { recursive: true });
-      }
-
-      // Delete old avatar if present
-      const currentBoard = await prisma.kanbanBoard.findUnique({
-        where: { id },
-        select: { avatarUrl: true },
-      });
-      if (currentBoard?.avatarUrl) {
-        const oldFile = path.join(UPLOADS_DIR, currentBoard.avatarUrl.replace(/^\/uploads\//, ''));
-        if (fs.existsSync(oldFile)) {
-          fs.unlinkSync(oldFile);
-        }
-      }
-
-      // Save new file
-      const ext = path.extname(data.filename || '.jpg').toLowerCase();
-      const filename = `${randomUUID()}${ext}`;
-      const filepath = path.join(KANBAN_AVATARS_DIR, filename);
-      fs.writeFileSync(filepath, buffer);
-
-      const avatarUrl = `/uploads/kanban/avatars/${filename}`;
-      await prisma.kanbanBoard.update({
-        where: { id },
-        data: { avatarUrl },
-      });
-
-      return { avatarUrl };
-    } catch (error) {
-      return handleKanbanError(error, reply);
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ message: 'No file uploaded' });
     }
+    if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
+      return reply.status(400).send({ message: 'Only JPEG, PNG, GIF, WebP images are allowed' });
+    }
+
+    // Read file into buffer and check size
+    const chunks: Buffer[] = [];
+    let totalSize = 0;
+    for await (const chunk of data.file) {
+      totalSize += chunk.length;
+      if (totalSize > MAX_AVATAR_SIZE) {
+        return reply.status(400).send({ message: 'File too large (max 2MB)' });
+      }
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+
+    // Ensure directory exists
+    if (!fs.existsSync(KANBAN_AVATARS_DIR)) {
+      fs.mkdirSync(KANBAN_AVATARS_DIR, { recursive: true });
+    }
+
+    // Delete old avatar if present
+    const currentBoard = await prisma.kanbanBoard.findUnique({
+      where: { id },
+      select: { avatarUrl: true },
+    });
+    if (currentBoard?.avatarUrl) {
+      const oldFile = path.join(UPLOADS_DIR, currentBoard.avatarUrl.replace(/^\/uploads\//, ''));
+      if (fs.existsSync(oldFile)) {
+        fs.unlinkSync(oldFile);
+      }
+    }
+
+    // Save new file
+    const ext = path.extname(data.filename || '.jpg').toLowerCase();
+    const filename = `${randomUUID()}${ext}`;
+    const filepath = path.join(KANBAN_AVATARS_DIR, filename);
+    fs.writeFileSync(filepath, buffer);
+
+    const avatarUrl = `/uploads/kanban/avatars/${filename}`;
+    await prisma.kanbanBoard.update({
+      where: { id },
+      data: { avatarUrl },
+    });
+
+    return { avatarUrl };
   });
 
-  fastify.delete('/boards/:id/avatar', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
+  fastify.delete('/boards/:id/avatar', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
 
-      const board = await prisma.kanbanBoard.findUnique({
-        where: { id },
-        select: { avatarUrl: true },
-      });
-      if (board?.avatarUrl) {
-        const oldFile = path.join(UPLOADS_DIR, board.avatarUrl.replace(/^\/uploads\//, ''));
-        if (fs.existsSync(oldFile)) {
-          fs.unlinkSync(oldFile);
-        }
+    const board = await prisma.kanbanBoard.findUnique({
+      where: { id },
+      select: { avatarUrl: true },
+    });
+    if (board?.avatarUrl) {
+      const oldFile = path.join(UPLOADS_DIR, board.avatarUrl.replace(/^\/uploads\//, ''));
+      if (fs.existsSync(oldFile)) {
+        fs.unlinkSync(oldFile);
       }
-
-      await prisma.kanbanBoard.update({
-        where: { id },
-        data: { avatarUrl: null },
-      });
-
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
     }
+
+    await prisma.kanbanBoard.update({
+      where: { id },
+      data: { avatarUrl: null },
+    });
+
+    return { success: true };
   });
 
   // ── Board Note Linking ─────────────────────────────────────
@@ -400,36 +317,24 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     shareWithUserIds: z.array(z.string().uuid()).optional(),
   });
 
-  fastify.get('/boards/:id/check-note-sharing', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'READ');
-      const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.query);
-      return await kanbanService.checkNoteSharingForBoard(noteId, id, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/boards/:id/check-note-sharing', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'READ');
+    const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.query);
+    return await kanbanService.checkNoteSharingForBoard(noteId, id, request.user.id);
   });
 
-  fastify.post('/boards/:id/link-note', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      const { noteId, shareWithUserIds } = boardLinkNoteSchema.parse(request.body);
-      return await kanbanService.linkNoteToBoard(id, noteId, request.user.id, shareWithUserIds);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/boards/:id/link-note', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    const { noteId, shareWithUserIds } = boardLinkNoteSchema.parse(request.body);
+    return await kanbanService.linkNoteToBoard(id, noteId, request.user.id, shareWithUserIds);
   });
 
-  fastify.delete('/boards/:id/link-note', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      return await kanbanService.unlinkNoteFromBoard(id, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.delete('/boards/:id/link-note', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    return await kanbanService.unlinkNoteFromBoard(id, request.user.id);
   });
 
   // ── SSE ─────────────────────────────────────────────────
@@ -438,11 +343,9 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const userId = request.user.id;
 
-    try {
-      await assertBoardAccess(id, userId, 'READ');
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+    // assertBoardAccess throws typed errors handled by global error handler
+    // (called before SSE headers are written, so Fastify can still send JSON error)
+    await assertBoardAccess(id, userId, 'READ');
 
     // Fetch user info for presence
     const user = await prisma.user.findUnique({
@@ -472,39 +375,27 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
   // ── Board Chat ────────────────────────────────────────────
 
-  fastify.get('/boards/:id/chat', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'READ');
-      const { page, limit } = paginationSchema.parse(request.query);
-      return await kanbanService.getBoardChat(id, page, limit);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/boards/:id/chat', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'READ');
+    const { page, limit } = paginationSchema.parse(request.query);
+    return await kanbanService.getBoardChat(id, page, limit);
   });
 
-  fastify.post('/boards/:id/chat', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'READ'); // Any participant can chat
-      const { content } = chatMessageSchema.parse(request.body);
-      return await kanbanService.createBoardChatMessage(id, request.user.id, content);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/boards/:id/chat', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'READ'); // Any participant can chat
+    const { content } = chatMessageSchema.parse(request.body);
+    return await kanbanService.createBoardChatMessage(id, request.user.id, content);
   });
 
   // ── Columns ─────────────────────────────────────────────
 
-  fastify.post('/boards/:id/columns', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      const { title } = createColumnSchema.parse(request.body);
-      return await kanbanService.createColumn(id, title);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/boards/:id/columns', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    const { title } = createColumnSchema.parse(request.body);
+    return await kanbanService.createColumn(id, title);
   });
 
   const updateColumnSchema = z.object({
@@ -512,132 +403,88 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     isCompleted: z.boolean().optional(),
   });
 
-  fastify.put('/columns/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getColumnWithAccess(id, request.user.id, 'WRITE');
-      const data = updateColumnSchema.parse(request.body);
-      return await kanbanService.updateColumn(id, data);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.put('/columns/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await getColumnWithAccess(id, request.user.id, 'WRITE');
+    const data = updateColumnSchema.parse(request.body);
+    return await kanbanService.updateColumn(id, data);
   });
 
-  fastify.put('/boards/:id/columns/reorder', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      const { columns } = reorderColumnsSchema.parse(request.body);
-      await kanbanService.reorderColumns(id, columns);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.put('/boards/:id/columns/reorder', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    const { columns } = reorderColumnsSchema.parse(request.body);
+    await kanbanService.reorderColumns(id, columns);
+    return { success: true };
   });
 
-  fastify.delete('/columns/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getColumnWithAccess(id, request.user.id, 'WRITE');
-      await kanbanService.deleteColumn(id);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.delete('/columns/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await getColumnWithAccess(id, request.user.id, 'WRITE');
+    await kanbanService.deleteColumn(id);
+    return { success: true };
   });
 
   // ── Cards ───────────────────────────────────────────────
 
-  fastify.post('/columns/:id/cards', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getColumnWithAccess(id, request.user.id, 'WRITE');
-      const { title, description } = createCardSchema.parse(request.body);
-      return await kanbanService.createCard(id, title, description, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/columns/:id/cards', async (request) => {
+    const { id } = request.params as { id: string };
+    await getColumnWithAccess(id, request.user.id, 'WRITE');
+    const { title, description } = createCardSchema.parse(request.body);
+    return await kanbanService.createCard(id, title, description, request.user.id);
   });
 
-  fastify.put('/cards/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      const data = updateCardSchema.parse(request.body);
-      return await kanbanService.updateCard(id, data, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.put('/cards/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    const data = updateCardSchema.parse(request.body);
+    return await kanbanService.updateCard(id, data, request.user.id);
   });
 
-  fastify.put('/cards/:id/move', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      const { toColumnId, position } = moveCardSchema.parse(request.body);
-      await kanbanService.moveCard(id, toColumnId, position, request.user.id);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.put('/cards/:id/move', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    const { toColumnId, position } = moveCardSchema.parse(request.body);
+    await kanbanService.moveCard(id, toColumnId, position, request.user.id);
+    return { success: true };
   });
 
-  fastify.delete('/cards/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      await kanbanService.deleteCard(id);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.delete('/cards/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    await kanbanService.deleteCard(id);
+    return { success: true };
   });
 
   // ── Card Activities ─────────────────────────────────────
 
-  fastify.get('/cards/:id/activities', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'READ');
-      const { page, limit } = paginationSchema.parse(request.query);
-      return await kanbanService.getCardActivities(id, page, limit);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/cards/:id/activities', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'READ');
+    const { page, limit } = paginationSchema.parse(request.query);
+    return await kanbanService.getCardActivities(id, page, limit);
   });
 
   // ── Comments ────────────────────────────────────────────
 
-  fastify.get('/cards/:id/comments', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'READ');
-      const { page, limit } = paginationSchema.parse(request.query);
-      return await kanbanService.getComments(id, page, limit);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/cards/:id/comments', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'READ');
+    const { page, limit } = paginationSchema.parse(request.query);
+    return await kanbanService.getComments(id, page, limit);
   });
 
-  fastify.post('/cards/:id/comments', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      const { content } = createCommentSchema.parse(request.body);
-      return await kanbanService.createComment(id, request.user.id, content);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/cards/:id/comments', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    const { content } = createCommentSchema.parse(request.body);
+    return await kanbanService.createComment(id, request.user.id, content);
   });
 
-  fastify.delete('/comments/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await kanbanService.deleteComment(id, request.user.id);
-      return { success: true };
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.delete('/comments/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    await kanbanService.deleteComment(id, request.user.id);
+    return { success: true };
   });
 
   // ─── Note Linking ────────────────────────────────────────
@@ -648,80 +495,52 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   });
 
   // Check note sharing gap relative to board participants
-  fastify.get('/cards/:id/check-note-sharing', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.query);
-      const { boardId } = await getCardWithAccess(id, request.user.id, 'READ');
-      return await kanbanService.checkNoteSharingForBoard(noteId, boardId, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/cards/:id/check-note-sharing', async (request) => {
+    const { id } = request.params as { id: string };
+    const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.query);
+    const { boardId } = await getCardWithAccess(id, request.user.id, 'READ');
+    return await kanbanService.checkNoteSharingForBoard(noteId, boardId, request.user.id);
   });
 
   // Link a note to a card (optionally auto-share with users)
-  fastify.post('/cards/:id/link-note', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      const { noteId, shareWithUserIds } = linkNoteSchema.parse(request.body);
-      return await kanbanService.linkNoteToCard(id, noteId, request.user.id, shareWithUserIds);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/cards/:id/link-note', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    const { noteId, shareWithUserIds } = linkNoteSchema.parse(request.body);
+    return await kanbanService.linkNoteToCard(id, noteId, request.user.id, shareWithUserIds);
   });
 
   // Unlink a note from a card (only by linker)
-  fastify.delete('/cards/:id/link-note', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      return await kanbanService.unlinkNoteFromCard(id, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.delete('/cards/:id/link-note', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    return await kanbanService.unlinkNoteFromCard(id, request.user.id);
   });
 
   // Search user's notes for the note picker
-  fastify.get('/notes/search', async (request, reply) => {
-    try {
-      const { q } = z.object({ q: z.string().optional().default('') }).parse(request.query);
-      return await kanbanService.searchUserNotes(request.user.id, q);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/notes/search', async (request) => {
+    const { q } = z.object({ q: z.string().optional().default('') }).parse(request.query);
+    return await kanbanService.searchUserNotes(request.user.id, q);
   });
 
   // Get boards linked to a note (for quick-link in note editor)
-  fastify.get('/notes/:noteId/linked-boards', async (request, reply) => {
-    try {
-      const { noteId } = request.params as { noteId: string };
-      return await kanbanService.getLinkedBoardsForNote(noteId, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/notes/:noteId/linked-boards', async (request) => {
+    const { noteId } = request.params as { noteId: string };
+    return await kanbanService.getLinkedBoardsForNote(noteId, request.user.id);
   });
 
   // ── Archived Cards ────────────────────────────────────────
 
-  fastify.get('/boards/:id/archived', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'READ');
-      return await kanbanService.getArchivedCards(id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/boards/:id/archived', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'READ');
+    return await kanbanService.getArchivedCards(id);
   });
 
-  fastify.post('/cards/:id/unarchive', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await getCardWithAccess(id, request.user.id, 'WRITE');
-      return await kanbanService.unarchiveCard(id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/cards/:id/unarchive', async (request) => {
+    const { id } = request.params as { id: string };
+    await getCardWithAccess(id, request.user.id, 'WRITE');
+    return await kanbanService.unarchiveCard(id);
   });
 
   // ── Task List Linking ─────────────────────────────────────
@@ -730,34 +549,22 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     taskListId: z.string().uuid(),
   });
 
-  fastify.post('/boards/:id/link-tasklist', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      const { taskListId } = linkTaskListSchema.parse(request.body);
-      return await kanbanService.linkTaskListToBoard(id, taskListId, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.post('/boards/:id/link-tasklist', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    const { taskListId } = linkTaskListSchema.parse(request.body);
+    return await kanbanService.linkTaskListToBoard(id, taskListId, request.user.id);
   });
 
-  fastify.delete('/boards/:id/link-tasklist', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      await assertBoardAccess(id, request.user.id, 'WRITE');
-      return await kanbanService.unlinkTaskListFromBoard(id, request.user.id);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.delete('/boards/:id/link-tasklist', async (request) => {
+    const { id } = request.params as { id: string };
+    await assertBoardAccess(id, request.user.id, 'WRITE');
+    return await kanbanService.unlinkTaskListFromBoard(id, request.user.id);
   });
 
   // Search user's task lists for the task list picker
-  fastify.get('/tasklists/search', async (request, reply) => {
-    try {
-      const { q } = z.object({ q: z.string().optional().default('') }).parse(request.query);
-      return await kanbanService.searchUserTaskLists(request.user.id, q);
-    } catch (error) {
-      return handleKanbanError(error, reply);
-    }
+  fastify.get('/tasklists/search', async (request) => {
+    const { q } = z.object({ q: z.string().optional().default('') }).parse(request.query);
+    return await kanbanService.searchUserTaskLists(request.user.id, q);
   });
 }

@@ -43,18 +43,9 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
   });
 
   // Get single task list
-  fastify.get('/:id', async (request, reply) => {
+  fastify.get('/:id', async (request) => {
     const { id } = request.params as { id: string };
-
-    try {
-      return await taskListService.getTaskList(request.user.id, id);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'TaskList not found') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      throw error;
-    }
+    return taskListService.getTaskList(request.user.id, id);
   });
 
   // Create task list
@@ -64,106 +55,43 @@ export default async function taskListRoutes(fastify: FastifyInstance) {
   });
 
   // Update task list
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', async (request) => {
     const { id } = request.params as { id: string };
     const data = updateTaskListSchema.parse(request.body);
-
-    try {
-      return await taskListService.updateTaskList(request.user.id, id, data);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      throw error;
-    }
+    return taskListService.updateTaskList(request.user.id, id, data);
   });
 
   // Delete task list (soft delete)
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', async (request) => {
     const { id } = request.params as { id: string };
-
-    try {
-      await taskListService.deleteTaskList(request.user.id, id);
-      return { success: true };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      throw error;
-    }
+    await taskListService.deleteTaskList(request.user.id, id);
+    return { success: true };
   });
 
   // Add task item
-  fastify.post('/:id/items', async (request, reply) => {
+  fastify.post('/:id/items', async (request) => {
     const { id } = request.params as { id: string };
     const data = createTaskItemSchema.parse(request.body);
-
-    try {
-      return await taskListService.addTaskItem(request.user.id, id, data);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied' || msg === 'TaskList not found') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      throw error;
-    }
+    return taskListService.addTaskItem(request.user.id, id, data);
   });
 
   // Update task item
-  fastify.put('/:id/items/:itemId', async (request, reply) => {
+  fastify.put('/:id/items/:itemId', async (request) => {
     const { id, itemId } = request.params as { id: string; itemId: string };
     const data = updateTaskItemSchema.parse(request.body);
-
-    try {
-      return await taskListService.updateTaskItem(request.user.id, id, itemId, data);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied' || msg === 'TaskList not found') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      if (msg === 'TaskItem not found') {
-        return reply.status(404).send({ message: 'TaskItem not found' });
-      }
-      if (msg === 'Only the user who checked this item can uncheck it') {
-        return reply.status(403).send({ message: msg });
-      }
-      throw error;
-    }
+    return taskListService.updateTaskItem(request.user.id, id, itemId, data);
   });
 
   // Delete task item
-  fastify.delete('/:id/items/:itemId', async (request, reply) => {
+  fastify.delete('/:id/items/:itemId', async (request) => {
     const { id, itemId } = request.params as { id: string; itemId: string };
-
-    try {
-      return await taskListService.deleteTaskItem(request.user.id, id, itemId);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied' || msg === 'TaskList not found') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      if (msg === 'TaskItem not found') {
-        return reply.status(404).send({ message: 'TaskItem not found' });
-      }
-      throw error;
-    }
+    return taskListService.deleteTaskItem(request.user.id, id, itemId);
   });
 
   // Reorder task items
-  fastify.put('/:id/items/reorder', async (request, reply) => {
+  fastify.put('/:id/items/reorder', async (request) => {
     const { id } = request.params as { id: string };
     const { items } = reorderSchema.parse(request.body);
-
-    try {
-      return await taskListService.reorderTaskItems(request.user.id, id, items);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied' || msg === 'TaskList not found') {
-        return reply.status(404).send({ message: 'TaskList not found' });
-      }
-      throw error;
-    }
+    return taskListService.reorderTaskItems(request.user.id, id, items);
   });
 }

@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { MultipartFile } from '@fastify/multipart';
+import { NotFoundError, ForbiddenError, BadRequestError, ConflictError } from '../utils/errors';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const GROUP_AVATAR_DIR = path.join(process.cwd(), 'uploads', 'groups');
@@ -60,9 +61,9 @@ export const getGroup = async (groupId: string, requesterId: string) => {
       pendingInvites: { select: { id: true, email: true, createdAt: true } },
     },
   });
-  if (!group) throw new Error('Group not found');
+  if (!group) throw new NotFoundError('Group not found');
   const isMember = group.members.some((m) => m.userId === requesterId);
-  if (group.ownerId !== requesterId && !isMember) throw new Error('Access denied');
+  if (group.ownerId !== requesterId && !isMember) throw new ForbiddenError('Access denied');
   return group;
 };
 
@@ -72,7 +73,7 @@ export const updateGroup = async (
   data: { name?: string; description?: string }
 ) => {
   const group = await prisma.group.findUnique({ where: { id: groupId } });
-  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+  if (!group || group.ownerId !== ownerId) throw new ForbiddenError('Not found or access denied');
   return prisma.group.update({
     where: { id: groupId },
     data: { name: data.name, description: data.description },
@@ -85,7 +86,7 @@ export const updateGroup = async (
 
 export const deleteGroup = async (groupId: string, ownerId: string) => {
   const group = await prisma.group.findUnique({ where: { id: groupId } });
-  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+  if (!group || group.ownerId !== ownerId) throw new ForbiddenError('Not found or access denied');
   // Clean up avatar file if exists
   if (group.avatarUrl) {
     const oldFile = path.join(process.cwd(), group.avatarUrl.replace(/^\//, ''));
@@ -104,9 +105,9 @@ export const uploadGroupAvatar = async (
   file: MultipartFile
 ) => {
   const group = await prisma.group.findUnique({ where: { id: groupId } });
-  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+  if (!group || group.ownerId !== ownerId) throw new ForbiddenError('Not found or access denied');
 
-  if (!AVATAR_MIME_TYPES.has(file.mimetype)) throw new Error('Only image files allowed');
+  if (!AVATAR_MIME_TYPES.has(file.mimetype)) throw new BadRequestError('Only image files allowed');
 
   if (!fs.existsSync(GROUP_AVATAR_DIR)) fs.mkdirSync(GROUP_AVATAR_DIR, { recursive: true });
 
@@ -138,12 +139,12 @@ export const addMember = async (groupId: string, ownerId: string, email: string)
     where: { id: groupId },
     include: { owner: { select: { id: true, name: true, email: true, locale: true } } },
   });
-  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+  if (!group || group.ownerId !== ownerId) throw new ForbiddenError('Not found or access denied');
 
   const ownerName = group.owner.name || group.owner.email;
   const ownerLocale = group.owner.locale || 'en';
 
-  if (group.owner.email === email) throw new Error('Cannot add yourself to a group');
+  if (group.owner.email === email) throw new BadRequestError('Cannot add yourself to a group');
 
   const targetUser = await prisma.user.findUnique({ where: { email } });
 
@@ -151,7 +152,7 @@ export const addMember = async (groupId: string, ownerId: string, email: string)
     const existing = await prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: targetUser.id } },
     });
-    if (existing) throw new Error('User is already a member');
+    if (existing) throw new ConflictError('User is already a member');
 
     await prisma.groupMember.create({ data: { groupId, userId: targetUser.id } });
 
@@ -200,14 +201,14 @@ export const removeMember = async (groupId: string, ownerId: string, targetUserI
     where: { id: groupId },
     include: { owner: { select: { id: true, name: true, email: true } } },
   });
-  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
-  if (targetUserId === ownerId) throw new Error('Cannot remove yourself as owner');
+  if (!group || group.ownerId !== ownerId) throw new ForbiddenError('Not found or access denied');
+  if (targetUserId === ownerId) throw new BadRequestError('Cannot remove yourself as owner');
 
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId: targetUserId } },
     include: { user: { select: { email: true, name: true, locale: true } } },
   });
-  if (!member) throw new Error('Member not found');
+  if (!member) throw new NotFoundError('Member not found');
 
   await prisma.groupMember.delete({
     where: { groupId_userId: { groupId, userId: targetUserId } },
@@ -238,7 +239,7 @@ export const removeMember = async (groupId: string, ownerId: string, targetUserI
 
 export const removePendingInvite = async (groupId: string, ownerId: string, email: string) => {
   const group = await prisma.group.findUnique({ where: { id: groupId } });
-  if (!group || group.ownerId !== ownerId) throw new Error('Not found or access denied');
+  if (!group || group.ownerId !== ownerId) throw new ForbiddenError('Not found or access denied');
   await prisma.pendingGroupInvite.deleteMany({ where: { groupId, email } });
 };
 

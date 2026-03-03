@@ -4,6 +4,7 @@ import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
 import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractText';
+import { NotFoundError, BadRequestError } from '../utils/errors';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
   const note = await prisma.note.findUnique({
@@ -44,7 +45,7 @@ export const createNote = async (
       targetNotebookId = anyNotebook.id;
     } else {
       // Create a default notebook? For now throw
-      throw new Error('Notebook not found');
+      throw new NotFoundError('Notebook not found');
     }
   }
 
@@ -186,7 +187,7 @@ export const updateNote = async (userId: string, id: string, data: {
 }) => {
   // Verify ownership first
   const note = await prisma.note.findFirst({ where: { id, userId } });
-  if (!note) throw new Error('Note not found');
+  if (!note) throw new NotFoundError('Note not found');
 
   const { tags, ...rest } = data;
 
@@ -237,10 +238,10 @@ export const updateNote = async (userId: string, id: string, data: {
 
 export const toggleShare = async (userId: string, id: string) => {
   const note = await prisma.note.findFirst({ where: { id, userId } });
-  if (!note) throw new Error('Note not found');
+  if (!note) throw new NotFoundError('Note not found');
 
   if (note.isVault) {
-    throw new Error('Vault notes cannot be shared');
+    throw new BadRequestError('Vault notes cannot be shared');
   }
 
   const isPublic = !note.isPublic;
@@ -264,7 +265,7 @@ export const getPublicNote = async (shareId: string) => {
 
 export const getNoteSizeBreakdown = async (userId: string, noteId: string) => {
   const access = await checkNoteAccess(userId, noteId);
-  if (!access) throw new Error('Note not found');
+  if (!access) throw new NotFoundError('Note not found');
 
   const [note, attachments, chatMessages, aiConversations] = await Promise.all([
     prisma.note.findUnique({
@@ -285,7 +286,7 @@ export const getNoteSizeBreakdown = async (userId: string, noteId: string) => {
     }),
   ]);
 
-  if (!note) throw new Error('Note not found');
+  if (!note) throw new NotFoundError('Note not found');
 
   const noteSize =
     Buffer.byteLength(note.title || '', 'utf8') +
@@ -318,7 +319,7 @@ export const deleteNote = async (userId: string, id: string) => {
   return prisma.$transaction(async (tx) => {
     // Check ownership FIRST before deleting any relations
     const note = await tx.note.findFirst({ where: { id, userId } });
-    if (!note) throw new Error('Note not found');
+    if (!note) throw new NotFoundError('Note not found');
 
     await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
     await tx.attachment.deleteMany({ where: { noteId: id } });

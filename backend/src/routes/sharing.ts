@@ -44,67 +44,32 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ message: 'Invalid type' });
     }
 
-    try {
-      const result = await sharingService.resendShareInvitation(
-        request.user.id,
-        type.toUpperCase() as 'NOTE' | 'NOTEBOOK' | 'TASKLIST' | 'KANBAN',
-        id
-      );
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Share not found') return reply.status(404).send({ message: msg });
-      if (msg === 'Only pending shares can be resent') return reply.status(400).send({ message: msg });
-      throw error;
-    }
+    const result = await sharingService.resendShareInvitation(
+      request.user.id,
+      type.toUpperCase() as 'NOTE' | 'NOTEBOOK' | 'TASKLIST' | 'KANBAN',
+      id
+    );
+    return result;
   });
 
   // Respond to Share by ID (Directly from dashboard)
-  fastify.post('/respond-id', async (request, reply) => {
+  fastify.post('/respond-id', async (request) => {
     const { itemId, type, action } = respondByIdSchema.parse(request.body);
 
-    try {
-      if (type === 'TASKLIST') {
-        const result = await taskListSharingService.respondToTaskListShareById(request.user.id, itemId, action);
-        return result;
-      }
-      if (type === 'KANBAN') {
-        const result = await sharingService.respondToShareById(request.user.id, itemId, 'KANBAN', action);
-        return result;
-      }
-      const result = await sharingService.respondToShareById(request.user.id, itemId, type, action);
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Invitation not found') {
-        return reply.status(404).send({ message: 'Invitation not found' });
-      }
-      throw error;
+    if (type === 'TASKLIST') {
+      return taskListSharingService.respondToTaskListShareById(request.user.id, itemId, action);
     }
+    if (type === 'KANBAN') {
+      return sharingService.respondToShareById(request.user.id, itemId, 'KANBAN', action);
+    }
+    return sharingService.respondToShareById(request.user.id, itemId, type, action);
   });
 
   // Share Note
-  fastify.post('/notes/:id', async (request, reply) => {
+  fastify.post('/notes/:id', async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
-
-    try {
-      const result = await sharingService.shareNote(request.user.id, id, email, permission);
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'User not found') {
-        return reply.status(404).send({ message: 'User not found' });
-      }
-      if (msg === 'Note not found or access denied') {
-        return reply.status(403).send({ message: 'Access denied' });
-      }
-      if (msg === 'Cannot share with yourself') {
-        return reply.status(400).send({ message: 'Cannot share with yourself' });
-      }
-      request.log.error(error, 'Share Note Error');
-      return reply.status(500).send({ message: 'An internal error occurred' });
-    }
+    return sharingService.shareNote(request.user.id, id, email, permission);
   });
 
   // Revoke Note Share
@@ -115,11 +80,11 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       await sharingService.revokeNoteShare(request.user.id, id, userId);
       return { success: true };
     } catch (error: unknown) {
-      if (error instanceof Object && 'code' in error && error.code === 'P2025') { // Record to delete does not exist
+      // Prisma P2025: record already deleted — treat as idempotent success
+      if (error instanceof Object && 'code' in error && error.code === 'P2025') {
         return { success: true };
       }
-      request.log.error(error, 'Revoke Share Error');
-      return reply.status(500).send({ message: 'An internal error occurred' });
+      throw error;
     }
   });
 
@@ -135,27 +100,10 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Notebook
-  fastify.post('/notebooks/:id', async (request, reply) => {
+  fastify.post('/notebooks/:id', async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
-
-    try {
-      const result = await sharingService.shareNotebook(request.user.id, id, email, permission);
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'User not found') {
-        return reply.status(404).send({ message: 'User not found' });
-      }
-      if (msg === 'Notebook not found or access denied') {
-        return reply.status(403).send({ message: 'Access denied' });
-      }
-      if (msg === 'Cannot share with yourself') {
-        return reply.status(400).send({ message: 'Cannot share with yourself' });
-      }
-      request.log.error(error, 'Share Notebook Error');
-      return reply.status(500).send({ message: 'An internal error occurred' });
-    }
+    return sharingService.shareNotebook(request.user.id, id, email, permission);
   });
 
   // Revoke Notebook Share
@@ -180,89 +128,60 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Note with Group
-  fastify.post('/notes/:id/group', async (request, reply) => {
+  fastify.post('/notes/:id/group', async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
       permission: z.nativeEnum(Permission).optional().default('READ'),
     }).parse(request.body);
 
-    try {
-      const group = await groupService.getGroup(groupId, request.user.id);
-      const results = [];
-      const errors = [];
-      for (const member of group.members) {
-        if (member.userId === request.user.id) continue;
-        try {
-          const r = await sharingService.shareNote(request.user.id, id, member.user.email, permission);
-          results.push(r);
-        } catch (e: unknown) {
-          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
-        }
+    const group = await groupService.getGroup(groupId, request.user.id);
+    const results = [];
+    const errors = [];
+    for (const member of group.members) {
+      if (member.userId === request.user.id) continue;
+      try {
+        // Per-member catch: collect individual failures for partial success response
+        const r = await sharingService.shareNote(request.user.id, id, member.user.email, permission);
+        results.push(r);
+      } catch (e: unknown) {
+        errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
       }
-      return { shared: results.length, errors };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      return reply.status(500).send({ message: 'An internal error occurred' });
     }
+    return { shared: results.length, errors };
   });
 
   // Share Notebook with Group
-  fastify.post('/notebooks/:id/group', async (request, reply) => {
+  fastify.post('/notebooks/:id/group', async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
       permission: z.nativeEnum(Permission).optional().default('READ'),
     }).parse(request.body);
 
-    try {
-      const group = await groupService.getGroup(groupId, request.user.id);
-      const results = [];
-      const errors = [];
-      for (const member of group.members) {
-        if (member.userId === request.user.id) continue;
-        try {
-          const r = await sharingService.shareNotebook(request.user.id, id, member.user.email, permission);
-          results.push(r);
-        } catch (e: unknown) {
-          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
-        }
+    const group = await groupService.getGroup(groupId, request.user.id);
+    const results = [];
+    const errors = [];
+    for (const member of group.members) {
+      if (member.userId === request.user.id) continue;
+      try {
+        // Per-member catch: collect individual failures for partial success response
+        const r = await sharingService.shareNotebook(request.user.id, id, member.user.email, permission);
+        results.push(r);
+      } catch (e: unknown) {
+        errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
       }
-      return { shared: results.length, errors };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      return reply.status(500).send({ message: 'An internal error occurred' });
     }
+    return { shared: results.length, errors };
   });
 
   // ── Task List Sharing ─────────────────────────────────────────
 
   // Share Task List
-  fastify.post('/tasklists/:id', async (request, reply) => {
+  fastify.post('/tasklists/:id', async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
-
-    try {
-      const result = await taskListSharingService.shareTaskList(request.user.id, id, email, permission);
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'User not found') {
-        return reply.status(404).send({ message: 'User not found' });
-      }
-      if (msg === 'TaskList not found or access denied') {
-        return reply.status(403).send({ message: 'Access denied' });
-      }
-      if (msg === 'Cannot share with yourself') {
-        return reply.status(400).send({ message: 'Cannot share with yourself' });
-      }
-      request.log.error(error, 'Share TaskList Error');
-      return reply.status(500).send({ message: 'An internal error occurred' });
-    }
+    return taskListSharingService.shareTaskList(request.user.id, id, email, permission);
   });
 
   // Revoke Task List Share
@@ -291,52 +210,36 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Task List with Group
-  fastify.post('/tasklists/:id/group', async (request, reply) => {
+  fastify.post('/tasklists/:id/group', async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
       permission: z.nativeEnum(Permission).optional().default('READ'),
     }).parse(request.body);
 
-    try {
-      const group = await groupService.getGroup(groupId, request.user.id);
-      const results = [];
-      const errors = [];
-      for (const member of group.members) {
-        if (member.userId === request.user.id) continue;
-        try {
-          const r = await taskListSharingService.shareTaskList(request.user.id, id, member.user.email, permission);
-          results.push(r);
-        } catch (e: unknown) {
-          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
-        }
+    const group = await groupService.getGroup(groupId, request.user.id);
+    const results = [];
+    const errors = [];
+    for (const member of group.members) {
+      if (member.userId === request.user.id) continue;
+      try {
+        // Per-member catch: collect individual failures for partial success response
+        const r = await taskListSharingService.shareTaskList(request.user.id, id, member.user.email, permission);
+        results.push(r);
+      } catch (e: unknown) {
+        errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
       }
-      return { shared: results.length, errors };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      return reply.status(500).send({ message: 'An internal error occurred' });
     }
+    return { shared: results.length, errors };
   });
 
   // ── Kanban Board Sharing ────────────────────────────────────
 
   // Share Kanban Board
-  fastify.post('/kanbans/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const { email, permission } = shareSchema.parse(request.body);
-      const result = await sharingService.shareKanbanBoard(request.user.id, id, email, permission);
-      return result;
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Board not found') return reply.status(404).send({ message: msg });
-      if (msg === 'Not the owner') return reply.status(403).send({ message: msg });
-      if (msg === 'User not found') return reply.status(404).send({ message: msg });
-      if (msg === 'Cannot share with yourself') return reply.status(400).send({ message: msg });
-      throw error;
-    }
+  fastify.post('/kanbans/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const { email, permission } = shareSchema.parse(request.body);
+    return sharingService.shareKanbanBoard(request.user.id, id, email, permission);
   });
 
   // Revoke Kanban Board Share
@@ -347,33 +250,27 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Kanban Board with Group
-  fastify.post('/kanbans/:id/group', async (request, reply) => {
+  fastify.post('/kanbans/:id/group', async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
       permission: z.nativeEnum(Permission).optional().default('READ'),
     }).parse(request.body);
 
-    try {
-      const group = await groupService.getGroup(groupId, request.user.id);
-      const results = [];
-      const errors = [];
-      for (const member of group.members) {
-        if (member.userId === request.user.id) continue;
-        try {
-          const r = await sharingService.shareKanbanBoard(request.user.id, id, member.user.email, permission);
-          results.push(r);
-        } catch (e: unknown) {
-          errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
-        }
+    const group = await groupService.getGroup(groupId, request.user.id);
+    const results = [];
+    const errors = [];
+    for (const member of group.members) {
+      if (member.userId === request.user.id) continue;
+      try {
+        // Per-member catch: collect individual failures for partial success response
+        const r = await sharingService.shareKanbanBoard(request.user.id, id, member.user.email, permission);
+        results.push(r);
+      } catch (e: unknown) {
+        errors.push({ userId: member.userId, error: e instanceof Error ? e.message : 'Unknown error' });
       }
-      return { shared: results.length, errors };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : '';
-      if (msg === 'Access denied') return reply.status(403).send({ message: 'Access denied' });
-      if (msg === 'Group not found') return reply.status(404).send({ message: 'Group not found' });
-      return reply.status(500).send({ message: 'An internal error occurred' });
     }
+    return { shared: results.length, errors };
   });
 
   // Get Accepted Shared Kanban Boards (for sync)

@@ -1,4 +1,5 @@
 import prisma from '../../plugins/prisma';
+import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
 
 // ─── Column CRUD ────────────────────────────────────────────
@@ -71,8 +72,8 @@ export async function deleteColumn(columnId: string) {
     where: { id: columnId },
     select: { boardId: true, _count: { select: { cards: true } } },
   });
-  if (!column) throw new Error('Column not found');
-  if (column._count.cards > 0) throw new Error('Column has cards');
+  if (!column) throw new NotFoundError('Column not found');
+  if (column._count.cards > 0) throw new BadRequestError('Column has cards');
 
   await prisma.kanbanColumn.delete({ where: { id: columnId } });
 

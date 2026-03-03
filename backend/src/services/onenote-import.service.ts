@@ -8,6 +8,7 @@ import { JSDOM } from 'jsdom';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import logger from '../utils/logger';
 import AdmZip from 'adm-zip';
+import { BadRequestError } from '../utils/errors';
 
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
@@ -226,7 +227,7 @@ export async function importFromOneNote(
   isVault: boolean = false
 ): Promise<{ importedCount: number; totalFound: number }> {
   if (fileBuffer.length > MAX_IMPORT_SIZE) {
-    throw new Error('Import file exceeds maximum size limit (50MB)');
+    throw new BadRequestError('Import file exceeds maximum size limit (50MB)');
   }
 
   const lowerFilename = originalFilename.toLowerCase();
@@ -272,7 +273,7 @@ export async function importFromOneNote(
     const title = path.basename(originalFilename, path.extname(originalFilename));
     htmlFiles.push({ title, html });
   } else {
-    throw new Error('Unsupported file format. Please provide an .mht, .html, or .zip file.');
+    throw new BadRequestError('Unsupported file format. Please provide an .mht, .html, or .zip file.');
   }
 
   let importedCount = 0;

@@ -6,6 +6,7 @@ import { sendEmail, sendNotificationEmail } from './email.service';
 import * as inviteService from './invite.service';
 import * as settingsService from './settings.service';
 import * as groupService from './group.service';
+import { BadRequestError, UnauthorizedError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -25,7 +26,7 @@ export const registerUser = async (data: { email: string; password: string; name
   // 1. Check if user exists
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
-    throw new Error('auth.errors.userExists');
+    throw new ConflictError('auth.errors.userExists');
   }
 
   // 2. Check Invitation System
@@ -36,7 +37,7 @@ export const registerUser = async (data: { email: string; password: string; name
       // Allow registration without invite code if the email has a pending group invite
       const hasPendingGroupInvite = await groupService.hasPendingGroupInvite(email);
       if (!hasPendingGroupInvite) {
-        throw new Error('auth.errors.invitationRequired');
+        throw new BadRequestError('auth.errors.invitationRequired');
       }
     } else {
       await inviteService.validateInvite(invitationCode);
@@ -125,7 +126,7 @@ export const registerUser = async (data: { email: string; password: string; name
 export const loginUser = async (email: string, password: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
-    throw new Error('Invalid credentials');
+    throw new UnauthorizedError('Invalid credentials');
   }
 
   const validPassword = await bcrypt.compare(password, user.password);
@@ -137,14 +138,14 @@ export const loginUser = async (email: string, password: string) => {
         details: { email, reason: 'Invalid Password' }
       }
     });
-    throw new Error('Invalid credentials');
+    throw new UnauthorizedError('Invalid credentials');
   }
 
   if (!user.isVerified) {
     await prisma.auditLog.create({
       data: { userId: user.id, event: 'LOGIN_FAILURE', details: { reason: 'Unverified' } }
     });
-    throw new Error('auth.errors.unverified');
+    throw new UnauthorizedError('auth.errors.unverified');
   }
 
   await prisma.auditLog.create({
@@ -167,7 +168,7 @@ export const verifyEmail = async (token: string) => {
   });
 
   if (!user) {
-    throw new Error('Invalid or expired token');
+    throw new UnauthorizedError('Invalid or expired token');
   }
 
   const updatedUser = await prisma.user.update({
@@ -244,7 +245,7 @@ export const resetPassword = async (token: string, newPassword: string) => {
   });
 
   if (!user) {
-    throw new Error('Invalid or expired token');
+    throw new UnauthorizedError('Invalid or expired token');
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -269,23 +270,23 @@ export const resendVerificationForInvite = async (inviteCode: string, requesterI
   });
 
   if (!invite) {
-    throw new Error('Invite not found');
+    throw new NotFoundError('Invite not found');
   }
 
   if (invite.creatorId !== requesterId) {
     const requester = await prisma.user.findUnique({ where: { id: requesterId } });
     if (requester?.role !== 'SUPERADMIN') {
-      throw new Error('Not authorized to manage this invite');
+      throw new ForbiddenError('Not authorized to manage this invite');
     }
   }
 
   if (invite.status !== 'USED' || !invite.usedBy) {
-    throw new Error('Invite has not been used yet');
+    throw new BadRequestError('Invite has not been used yet');
   }
 
   const user = invite.usedBy;
   if (user.isVerified) {
-    throw new Error('User is already verified');
+    throw new BadRequestError('User is already verified');
   }
 
   const verificationToken = crypto.randomBytes(32).toString('hex');

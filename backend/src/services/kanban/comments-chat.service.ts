@@ -1,4 +1,5 @@
 import prisma from '../../plugins/prisma';
+import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { broadcast, getPresenceUsers } from '../kanbanSSE';
 import { notifyBoardUsersTiered, boardChatEmailDebounce, BOARD_CHAT_EMAIL_DEBOUNCE_MS } from './notifications';
 
@@ -42,7 +43,7 @@ export async function createComment(
       column: { select: { boardId: true } },
     },
   });
-  if (!card) throw new Error('Card not found');
+  if (!card) throw new NotFoundError('Card not found');
 
   const comment = await prisma.kanbanComment.create({
     data: { cardId, authorId, content },
@@ -102,8 +103,8 @@ export async function deleteComment(commentId: string, userId: string) {
       author: { select: { name: true, email: true } },
     },
   });
-  if (!comment) throw new Error('Comment not found');
-  if (comment.authorId !== userId) throw new Error('Not your comment');
+  if (!comment) throw new NotFoundError('Comment not found');
+  if (comment.authorId !== userId) throw new ForbiddenError('Not your comment');
 
   await prisma.kanbanComment.delete({ where: { id: commentId } });
 

@@ -6,6 +6,7 @@ import util from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { MultipartFile } from '@fastify/multipart';
 import crypto from 'crypto';
+import { BadRequestError } from '../utils/errors';
 
 const pump = util.promisify(pipeline);
 const UPLOAD_DIR = path.join(__dirname, '../../uploads');
@@ -26,8 +27,8 @@ const BLOCKED_EXTENSIONS = new Set(['.exe', '.bat', '.cmd', '.sh', '.html', '.ht
 export const saveAttachment = async (file: MultipartFile, noteId: string) => {
   // Validate file type
   const ext = path.extname(file.filename).toLowerCase();
-  if (BLOCKED_EXTENSIONS.has(ext)) throw new Error('File type not allowed');
-  if (!ALLOWED_MIME_TYPES.has(file.mimetype)) throw new Error('MIME type not allowed');
+  if (BLOCKED_EXTENSIONS.has(ext)) throw new BadRequestError('File type not allowed');
+  if (!ALLOWED_MIME_TYPES.has(file.mimetype)) throw new BadRequestError('MIME type not allowed');
 
   // Check Quota
   const QUOTA_MB = parseInt(process.env.NOTE_ATTACHMENT_QUOTA_MB || '10');
