@@ -1,5 +1,6 @@
 import prisma from '../plugins/prisma';
-import { NotFoundError } from '../utils/errors';
+import { NotFoundError, ForbiddenError } from '../utils/errors';
+import { checkNoteAccess } from './note.service';
 
 export const createTag = async (userId: string, name: string, isVault: boolean = false, id?: string) => {
   return prisma.tag.create({
@@ -23,11 +24,10 @@ export const getTags = async (userId: string, isVault?: boolean) => {
       _count: {
         select: {
           notes: {
-            where: { note: { isVault: isVault ?? undefined } } // If undefined, count all notes? Or match tag's vault status?
-            // If we are fetching ALL tags, we probably want the count to match the tag's type roughly?
-            // But if we fetch all, we might mix them.
-            // Actually, for Sync, we only need the Tag object. The `_count` is for display.
-            // If isVault is undefined, we probably don't care about precise count filtering for Sync.
+            where: {
+              userId,
+              ...(isVault !== undefined ? { note: { isVault } } : {}),
+            }
           }
         }
       }
@@ -49,27 +49,26 @@ export const deleteTag = async (userId: string, id: string) => {
 };
 
 export const addTagToNote = async (userId: string, noteId: string, tagId: string) => {
-  // Verify ownership
-  const note = await prisma.note.findFirst({ where: { id: noteId, userId } });
+  // Verify note access (owner or WRITE shared)
+  const access = await checkNoteAccess(userId, noteId);
+  if (!access || access === 'READ') throw new ForbiddenError('errors.tags.noWriteAccess');
+
+  // Verify tag belongs to the requesting user
   const tag = await prisma.tag.findFirst({ where: { id: tagId, userId } });
+  if (!tag) throw new NotFoundError('errors.tags.noteOrTagNotFound');
 
-  if (!note || !tag) throw new NotFoundError('errors.tags.noteOrTagNotFound');
-
-  return prisma.tagsOnNotes.create({
-    data: {
-      noteId,
-      tagId,
+  return prisma.tagsOnNotes.upsert({
+    where: {
+      noteId_tagId_userId: { noteId, tagId, userId },
     },
+    update: {},
+    create: { noteId, tagId, userId },
   });
 };
 
 export const removeTagFromNote = async (userId: string, noteId: string, tagId: string) => {
-  // Verify ownership implicitly via deleteMany
+  // Users can only remove their own tag associations
   return prisma.tagsOnNotes.deleteMany({
-    where: {
-      noteId,
-      tagId,
-      note: { userId }, // Ensure note belongs to user
-    }
+    where: { noteId, tagId, userId },
   });
 };

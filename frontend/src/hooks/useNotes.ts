@@ -27,9 +27,11 @@ export function useNotes(notebookId?: string, search?: string, tagId?: string, o
         // Exclude vault notes
         if (note.isVault) return false;
 
-        // Notebook filter (only for owned notes)
+        // Notebook filter
         if (notebookId) {
-          if (note.ownership === 'shared') return false;
+          if (note.ownership === 'shared') {
+            return note.recipientNotebookId === notebookId;
+          }
           return note.notebookId === notebookId;
         }
         return true;

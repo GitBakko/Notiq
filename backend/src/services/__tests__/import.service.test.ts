@@ -279,7 +279,7 @@ describe('importFromEnex', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           tags: {
-            create: [{ tag: { connect: { id: 'tag-1' } } }],
+            create: [{ tag: { connect: { id: 'tag-1' } }, user: { connect: { id: 'user-1' } } }],
           },
         }),
       })

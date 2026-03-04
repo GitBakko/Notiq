@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, KanbanSquare, Share2, MoreVertical, Trash2, Users, Kanban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -31,7 +31,7 @@ interface TaskListCardProps {
   onViewShares?: (taskListId: string) => void;
 }
 
-export default function TaskListCard({ taskList, readOnly, onShareClick, onViewShares }: TaskListCardProps) {
+export default memo(function TaskListCard({ taskList, readOnly, onShareClick, onViewShares }: TaskListCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -306,4 +306,4 @@ export default function TaskListCard({ taskList, readOnly, onShareClick, onViewS
       />
     </div>
   );
-}
+});

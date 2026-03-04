@@ -327,7 +327,7 @@ const processEnexNote = async (enexNote: EnexNote, userId: string, targetNoteboo
       createdAt: enexNote.created ? formatEnexDate(enexNote.created) : new Date(),
       updatedAt: enexNote.updated ? formatEnexDate(enexNote.updated) : new Date(),
       tags: {
-        create: noteTags.map(tagId => ({ tag: { connect: { id: tagId } } }))
+        create: noteTags.map(tagId => ({ tag: { connect: { id: tagId } }, user: { connect: { id: userId } } }))
       },
       attachments: {
         create: createdAttachments

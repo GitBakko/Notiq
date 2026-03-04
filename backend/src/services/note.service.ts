@@ -115,7 +115,7 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
       createdAt: true,
       updatedAt: true,
       searchText: true,
-      tags: { include: { tag: true } },
+      tags: { where: { userId }, include: { tag: true } },
       attachments: {
         where: { isLatest: true },
         select: { id: true, filename: true, mimeType: true, size: true }
@@ -147,7 +147,7 @@ export const getNote = async (userId: string, id: string) => {
       ]
     },
     include: {
-      tags: { include: { tag: true } },
+      tags: { where: { userId }, include: { tag: true } },
       attachments: {
         where: { isLatest: true }
       },
@@ -193,13 +193,14 @@ export const updateNote = async (userId: string, id: string, data: {
 
   return prisma.$transaction(async (tx) => {
     if (tags !== undefined) {
-      // Replace tags
-      await tx.tagsOnNotes.deleteMany({ where: { noteId: id } });
+      // Replace tags FOR THIS USER ONLY (not other users' tag associations)
+      await tx.tagsOnNotes.deleteMany({ where: { noteId: id, userId } });
       if (tags.length > 0) {
         await tx.tagsOnNotes.createMany({
           data: tags.map(t => ({
             noteId: id,
-            tagId: t.tag.id
+            tagId: t.tag.id,
+            userId,
           }))
         });
       }

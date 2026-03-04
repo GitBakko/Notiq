@@ -99,6 +99,35 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     return sharingService.getAcceptedSharedNotes(request.user.id);
   });
 
+  // Update recipient's metadata for a shared note (notebook assignment)
+  fastify.put('/notes/:noteId/metadata', async (request, reply) => {
+    const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.params);
+    const { recipientNotebookId } = z.object({
+      recipientNotebookId: z.string().uuid().nullable(),
+    }).parse(request.body);
+
+    const share = await prisma.sharedNote.findUnique({
+      where: { noteId_userId: { noteId, userId: request.user.id } },
+    });
+    if (!share || share.status !== 'ACCEPTED') {
+      return reply.status(404).send({ message: 'errors.sharing.notFound' });
+    }
+
+    if (recipientNotebookId) {
+      const notebook = await prisma.notebook.findFirst({
+        where: { id: recipientNotebookId, userId: request.user.id },
+      });
+      if (!notebook) {
+        return reply.status(404).send({ message: 'errors.notebooks.notFound' });
+      }
+    }
+
+    return prisma.sharedNote.update({
+      where: { noteId_userId: { noteId, userId: request.user.id } },
+      data: { recipientNotebookId },
+    });
+  });
+
   // Share Notebook
   fastify.post('/notebooks/:id', async (request) => {
     const { id } = request.params as { id: string };

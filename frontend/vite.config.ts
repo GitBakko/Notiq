@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'path'
 
 // https://vitejs.dev/config/
@@ -75,8 +76,39 @@ export default defineConfig({
           }
         }]
       }
-    })
+    }),
+    ...(process.env.ANALYZE ? [visualizer({
+      filename: 'dist/stats.html',
+      open: true,
+      gzipSize: true,
+      brotliSize: true,
+    })] : []),
   ],
+  build: {
+    chunkSizeWarningLimit: 1000, // ganttExport (exceljs) is ~945KB but lazy-loaded
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-data': ['zustand', '@tanstack/react-query', 'axios', 'dexie', 'dexie-react-hooks', 'i18next', 'react-i18next'],
+          'vendor-tiptap': [
+            '@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-collaboration',
+            '@tiptap/extension-collaboration-cursor', '@tiptap/extension-font-family',
+            '@tiptap/extension-image', '@tiptap/extension-link', '@tiptap/extension-table',
+            '@tiptap/extension-table-cell', '@tiptap/extension-table-header',
+            '@tiptap/extension-table-row', '@tiptap/extension-text-align',
+            '@tiptap/extension-text-style', '@tiptap/extension-underline',
+          ],
+          'vendor-yjs': ['yjs', 'y-prosemirror', '@hocuspocus/provider'],
+          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'vendor-recharts': ['recharts'],
+          'vendor-date': ['date-fns'],
+          'vendor-crypto': ['crypto-js'],
+          'vendor-ui': ['lucide-react', 'react-hot-toast', 'clsx'],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

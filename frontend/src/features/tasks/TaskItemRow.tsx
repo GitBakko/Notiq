@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, GripVertical, Calendar, Circle, CheckCircle2, Maximize2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -18,7 +18,7 @@ interface TaskItemRowProps {
   onDelete: (id: string) => void;
 }
 
-export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDelete }: TaskItemRowProps) {
+export default memo(function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDelete }: TaskItemRowProps) {
   const { t } = useTranslation();
   const currentUserId = useAuthStore((s) => s.user?.id);
   const isMobile = useIsMobile();
@@ -282,4 +282,4 @@ export default function TaskItemRow({ item, readOnly, onToggle, onUpdate, onDele
       />
     </div>
   );
-}
+});

@@ -85,7 +85,7 @@ export default function ShareBoardModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('kanban.share.title')}>
+    <Modal isOpen={isOpen} onClose={onClose} title={t('kanban.share.title')} size="lg">
       <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400 truncate">
         {boardTitle}
       </p>

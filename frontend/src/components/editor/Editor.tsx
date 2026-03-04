@@ -207,7 +207,27 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           };
         },
       }),
-      Link.configure({
+      Link.extend({
+        addProseMirrorPlugins() {
+          return [
+            ...this.parent?.() ?? [],
+            new Plugin({
+              key: new PluginKey('linkCtrlClick'),
+              props: {
+                handleClick(view, pos, event) {
+                  if (!(event.ctrlKey || event.metaKey)) return false;
+                  const attrs = view.state.doc.resolve(pos).marks().find(m => m.type.name === 'link')?.attrs;
+                  if (attrs?.href) {
+                    window.open(attrs.href, '_blank', 'noopener,noreferrer');
+                    return true;
+                  }
+                  return false;
+                },
+              },
+            }),
+          ];
+        },
+      }).configure({
         openOnClick: false,
         autolink: true,
       }),

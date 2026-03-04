@@ -200,6 +200,7 @@ export const getAcceptedSharedNotes = async (userId: string) => {
     where: { userId, status: 'ACCEPTED' },
     select: {
       permission: true,
+      recipientNotebookId: true,
       note: {
         select: {
           id: true, title: true, content: true, searchText: true,
@@ -208,7 +209,7 @@ export const getAcceptedSharedNotes = async (userId: string) => {
           isPublic: true, isVault: true, shareId: true,
           reminderDate: true, isReminderDone: true,
           createdAt: true, updatedAt: true,
-          tags: { include: { tag: true } },
+          tags: { where: { userId }, include: { tag: true } },
           attachments: {
             where: { isLatest: true },
             select: { id: true, filename: true, mimeType: true, size: true }
@@ -221,7 +222,11 @@ export const getAcceptedSharedNotes = async (userId: string) => {
       }
     }
   });
-  return shared.map(sn => ({ ...sn.note, _sharedPermission: sn.permission }));
+  return shared.map(sn => ({
+    ...sn.note,
+    _sharedPermission: sn.permission,
+    _recipientNotebookId: sn.recipientNotebookId,
+  }));
 };
 
 export const getSharedNotes = async (userId: string) => {

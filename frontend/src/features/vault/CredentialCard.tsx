@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyRound, Globe } from 'lucide-react';
 import clsx from 'clsx';
@@ -12,7 +12,7 @@ interface CredentialCardProps {
   onClick: () => void;
 }
 
-export default function CredentialCard({ note, isSelected, onClick }: CredentialCardProps) {
+export default memo(function CredentialCard({ note, isSelected, onClick }: CredentialCardProps) {
   const { t } = useTranslation();
   const { pin } = useVaultStore();
   const [imgError, setImgError] = useState(false);
@@ -107,4 +107,4 @@ export default function CredentialCard({ note, isSelected, onClick }: Credential
       </div>
     </button>
   );
-}
+});

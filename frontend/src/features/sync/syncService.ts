@@ -131,7 +131,7 @@ export const syncPull = async () => {
 
     // Pull Shared Notes (ACCEPTED only)
     try {
-      const sharedRes = await api.get<(Note & { _sharedPermission: 'READ' | 'WRITE' })[]>('/share/notes/accepted');
+      const sharedRes = await api.get<(Note & { _sharedPermission: 'READ' | 'WRITE'; _recipientNotebookId?: string | null })[]>('/share/notes/accepted');
 
       await db.transaction('rw', db.notes, async () => {
         const localShared = await db.notes.where('ownership').equals('shared').toArray();
@@ -143,6 +143,7 @@ export const syncPull = async () => {
           ownership: 'shared' as const,
           sharedPermission: n._sharedPermission,
           sharedByUser: n.user || null,
+          recipientNotebookId: n._recipientNotebookId || null,
           syncStatus: 'synced' as const,
         }));
         const serverSharedIds = new Set(serverShared.map(n => n.id));

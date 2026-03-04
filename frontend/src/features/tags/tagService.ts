@@ -1,5 +1,6 @@
 import { db } from '../../lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import api from '../../lib/api';
 
 export interface Tag {
   id: string;
@@ -74,19 +75,22 @@ export const deleteTag = async (id: string) => {
 };
 
 export const addTagToNote = async (noteId: string, tagId: string) => {
-  // For local DB, we update the note's tags array
   const note = await db.notes.get(noteId);
   const tag = await db.tags.get(tagId);
+  if (!note || !tag) return;
 
-  if (note && tag) {
-    // Check if tag is already associated
-    if (note.tags?.some(t => t.tag.id === tagId)) {
-      return; // Already associated
-    }
+  // Check if tag is already associated
+  if (note.tags?.some(t => t.tag.id === tagId)) return;
 
-    const updatedTags = [...(note.tags || []), { tag: { id: tag.id, name: tag.name } }];
+  const updatedTags = [...(note.tags || []), { tag: { id: tag.id, name: tag.name } }];
+
+  if (note.ownership === 'shared') {
+    // Shared notes: call API directly (not through sync queue)
+    await api.post('/tags/note', { noteId, tagId });
+    await db.notes.update(noteId, { tags: updatedTags });
+  } else {
+    // Owned notes: offline-first flow via sync queue
     await db.notes.update(noteId, { tags: updatedTags, syncStatus: 'updated' });
-
     const userId = useAuthStore.getState().user?.id || 'current-user';
     await db.syncQueue.add({
       type: 'UPDATE',
@@ -101,10 +105,17 @@ export const addTagToNote = async (noteId: string, tagId: string) => {
 
 export const removeTagFromNote = async (noteId: string, tagId: string) => {
   const note = await db.notes.get(noteId);
-  if (note) {
-    const updatedTags = note.tags.filter(t => t.tag.id !== tagId);
+  if (!note) return;
+
+  const updatedTags = note.tags.filter(t => t.tag.id !== tagId);
+
+  if (note.ownership === 'shared') {
+    // Shared notes: call API directly
+    await api.delete('/tags/note', { data: { noteId, tagId } });
+    await db.notes.update(noteId, { tags: updatedTags });
+  } else {
+    // Owned notes: offline-first flow
     await db.notes.update(noteId, { tags: updatedTags, syncStatus: 'updated' });
-    // Queue update
     const userId = useAuthStore.getState().user?.id || 'current-user';
     await db.syncQueue.add({
       type: 'UPDATE',

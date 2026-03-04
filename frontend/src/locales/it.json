@@ -825,6 +825,13 @@
       "emailNotificationI18n": "Corrette email di notifica senza lingua — Tutte le email di condivisione e risposta ora inviate nella lingua del destinatario",
       "missingNotificationKeys": "Corrette traduzioni mancanti per notifiche chat board e messaggi diretti",
       "brandedReadme": "README GitHub Brandizzato — Il repository ora mostra il logo Notiq, i colori del brand e l'anteprima social",
+      "sharedNoteTags": "Tag Note Condivise — I destinatari con permesso di scrittura possono taggare le note condivise indipendentemente (tag per utente)",
+      "sharedNoteNotebooks": "Taccuini Note Condivise — I destinatari possono organizzare le note condivise nei propri taccuini",
+      "lazyLoadPages": "Caricamento Lazy — Tutte le pagine vengono caricate su richiesta per un avvio più rapido",
+      "reactMemoListItems": "Ottimizzazione Render — I componenti lista usano React.memo per evitare re-render non necessari",
+      "bundleSplitting": "Suddivisione Bundle — Le librerie vendor sono separate in chunk per un caching migliore",
+      "ctrlClickLinks": "Ctrl+Click Link — Gli URL rilevati automaticamente nelle note sono ora cliccabili con Ctrl+click (Cmd+click su Mac)",
+      "shareBoardModalOverflow": "Corretto overflow della riga input nella modale di condivisione board su schermi più piccoli",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -1351,7 +1358,8 @@
     },
     "tags": {
       "noteOrTagNotFound": "Nota o tag non trovato",
-      "alreadyExists": "Il tag esiste già"
+      "alreadyExists": "Il tag esiste già",
+      "noWriteAccess": "Serve il permesso di scrittura per gestire i tag su questa nota"
     },
     "user": {
       "notFound": "Utente non trovato",

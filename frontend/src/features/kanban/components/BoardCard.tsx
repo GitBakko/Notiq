@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { timeAgo } from '../../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
 import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban, Users } from 'lucide-react';
@@ -15,7 +15,7 @@ interface BoardCardProps {
   onViewShares?: (boardId: string) => void;
 }
 
-export default function BoardCard({ board, onSelect, onShare, onDelete, onViewShares }: BoardCardProps) {
+export default memo(function BoardCard({ board, onSelect, onShare, onDelete, onViewShares }: BoardCardProps) {
   const { t, i18n } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -188,4 +188,4 @@ export default function BoardCard({ board, onSelect, onShare, onDelete, onViewSh
       />
     </div>
   );
-}
+});

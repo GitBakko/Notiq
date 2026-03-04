@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical } from 'lucide-react';
 import Editor, { type EditorHandle } from '../../components/editor/Editor';
-import { revokeShare, updateNoteLocalOnly, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
+import { revokeShare, updateNoteLocalOnly, updateSharedNoteNotebook, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
 import clsx from 'clsx';
@@ -392,19 +392,30 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         )}
                     </div>
 
-                    {!isSharedNote && (
+                    {(!isSharedNote || note.sharedPermission === 'WRITE') && (
                         <div className="flex items-center gap-2">
-                            <NotebookSelector
-                                notebooks={notebooks || []}
-                                selectedNotebookId={note.notebookId}
-                                onSelect={(notebookId) => {
-                                    saveNote({ notebookId });
-                                    queryClient.setQueryData(queryKeys.notes.detail(note.id), (old: Record<string, unknown> | undefined) =>
-                                        old ? { ...old, notebookId } : old
-                                    );
-                                    queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
-                                }}
-                            />
+                            {isSharedNote ? (
+                                <NotebookSelector
+                                    notebooks={notebooks || []}
+                                    selectedNotebookId={note.recipientNotebookId || ''}
+                                    onSelect={async (notebookId) => {
+                                        await updateSharedNoteNotebook(note.id, notebookId || null);
+                                        queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
+                                    }}
+                                />
+                            ) : (
+                                <NotebookSelector
+                                    notebooks={notebooks || []}
+                                    selectedNotebookId={note.notebookId}
+                                    onSelect={(notebookId) => {
+                                        saveNote({ notebookId });
+                                        queryClient.setQueryData(queryKeys.notes.detail(note.id), (old: Record<string, unknown> | undefined) =>
+                                            old ? { ...old, notebookId } : old
+                                        );
+                                        queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
+                                    }}
+                                />
+                            )}
                             <TagSelector
                                 noteId={note.id}
                                 noteTags={note.tags || []}

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -30,7 +30,7 @@ function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
   return 'default';
 }
 
-export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, isInCompletedColumn, allColumns, currentColumnId, onMoveToColumn }: KanbanCardProps) {
+export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighted, isInCompletedColumn, allColumns, currentColumnId, onMoveToColumn }: KanbanCardProps) {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
@@ -306,4 +306,4 @@ export default function KanbanCard({ card, onSelect, readOnly, isHighlighted, is
       )}
     </>
   );
-}
+});

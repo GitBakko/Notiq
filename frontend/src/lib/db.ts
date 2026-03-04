@@ -39,6 +39,7 @@ export interface LocalNote {
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
   sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
+  recipientNotebookId?: string | null;
   syncStatus: 'synced' | 'created' | 'updated';
 }
 

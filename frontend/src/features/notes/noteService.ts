@@ -26,6 +26,7 @@ export interface Note {
   noteType?: 'NOTE' | 'CREDENTIAL';
   ownership?: 'owned' | 'shared';
   sharedPermission?: 'READ' | 'WRITE' | null;
+  recipientNotebookId?: string | null;
   sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   sharedWith?: {
     id: string;
@@ -185,6 +186,11 @@ export const updateNoteLocalOnly = async (id: string, data: Partial<Note>) => {
   );
 
   return db.notes.get(id);
+};
+
+export const updateSharedNoteNotebook = async (noteId: string, recipientNotebookId: string | null) => {
+  await api.put(`/share/notes/${noteId}/metadata`, { recipientNotebookId });
+  await db.notes.update(noteId, { recipientNotebookId });
 };
 
 export const deleteNote = async (id: string) => {

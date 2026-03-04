@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { timeAgo } from '../../utils/format';
 import { it as itLocale, enUS } from 'date-fns/locale';
 import { Share2, Info, Calendar, Trash2, Check, Orbit, MessageSquare, ListChecks, Kanban } from 'lucide-react';
@@ -125,7 +126,7 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   return args;
 }
 
-export default function NotificationItem({ notification, onRead, onDelete, onClose }: NotificationItemProps) {
+export default memo(function NotificationItem({ notification, onRead, onDelete, onClose }: NotificationItemProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const dateLocale = i18n.language?.startsWith('it') ? itLocale : enUS;
@@ -242,4 +243,4 @@ export default function NotificationItem({ notification, onRead, onDelete, onClo
       </div>
     </div>
   );
-}
+});

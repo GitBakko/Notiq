@@ -11,6 +11,19 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.7.4',
+    date: '2026-03-04',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.sharedNoteTags' },
+      { type: 'feature', titleKey: 'whatsNew.entries.sharedNoteNotebooks' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.lazyLoadPages' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.reactMemoListItems' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.bundleSplitting' },
+      { type: 'fix', titleKey: 'whatsNew.entries.ctrlClickLinks' },
+      { type: 'fix', titleKey: 'whatsNew.entries.shareBoardModalOverflow' },
+    ],
+  },
+  {
     version: '1.7.3',
     date: '2026-03-02',
     entries: [

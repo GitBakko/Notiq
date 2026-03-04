@@ -69,6 +69,7 @@ model User {
   kanbanLinkedBoards   KanbanBoard[]        @relation("KanbanBoardNoteLinker")
   kanbanReminders      KanbanReminder[]     @relation("KanbanReminderUser")
   kanbanBoardTaskListLinks KanbanBoard[]    @relation("KanbanBoardTaskListLinker")
+  tagAssociations          TagsOnNotes[]    @relation("TagAssociationUser")
 }
 
 enum Role {
@@ -106,6 +107,7 @@ model Notebook {
   user      User     @relation(fields: [userId], references: [id])
   notes     Note[]
   sharedWith SharedNotebook[]
+  sharedNoteAssignments SharedNote[] @relation("RecipientNotebooks")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -160,10 +162,12 @@ model Tag {
 model TagsOnNotes {
   noteId String
   tagId  String
+  userId String
   note   Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
   tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  user   User @relation("TagAssociationUser", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([noteId, tagId])
+  @@id([noteId, tagId, userId])
 }
 
 model Attachment {
@@ -200,14 +204,16 @@ enum Permission {
 }
 
 model SharedNote {
-  id         String     @id @default(uuid())
-  noteId     String
-  note       Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  permission Permission @default(READ)
-  status     ShareStatus @default(PENDING)
-  createdAt  DateTime   @default(now())
+  id                  String     @id @default(uuid())
+  noteId              String
+  note                Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission          Permission @default(READ)
+  status              ShareStatus @default(PENDING)
+  recipientNotebookId String?
+  recipientNotebook   Notebook?  @relation("RecipientNotebooks", fields: [recipientNotebookId], references: [id], onDelete: SetNull)
+  createdAt           DateTime   @default(now())
 
   @@unique([noteId, userId])
   @@index([userId, status])
