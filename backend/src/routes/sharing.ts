@@ -37,7 +37,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Resend share invitation email
-  fastify.post('/resend/:type/:id', async (request, reply) => {
+  fastify.post('/resend/:type/:id', { config: { rateLimit: { max: 3, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const { type, id } = request.params as { type: string; id: string };
     const validTypes = ['NOTE', 'NOTEBOOK', 'TASKLIST', 'KANBAN'];
     if (!validTypes.includes(type.toUpperCase())) {
@@ -66,7 +66,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Note
-  fastify.post('/notes/:id', async (request) => {
+  fastify.post('/notes/:id', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
     return sharingService.shareNote(request.user.id, id, email, permission);
@@ -129,7 +129,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Notebook
-  fastify.post('/notebooks/:id', async (request) => {
+  fastify.post('/notebooks/:id', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
     return sharingService.shareNotebook(request.user.id, id, email, permission);
@@ -157,7 +157,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Note with Group
-  fastify.post('/notes/:id/group', async (request) => {
+  fastify.post('/notes/:id/group', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
@@ -181,7 +181,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Notebook with Group
-  fastify.post('/notebooks/:id/group', async (request) => {
+  fastify.post('/notebooks/:id/group', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
@@ -207,7 +207,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   // ── Task List Sharing ─────────────────────────────────────────
 
   // Share Task List
-  fastify.post('/tasklists/:id', async (request) => {
+  fastify.post('/tasklists/:id', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
     return taskListSharingService.shareTaskList(request.user.id, id, email, permission);
@@ -239,7 +239,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Task List with Group
-  fastify.post('/tasklists/:id/group', async (request) => {
+  fastify.post('/tasklists/:id/group', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),
@@ -265,7 +265,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   // ── Kanban Board Sharing ────────────────────────────────────
 
   // Share Kanban Board
-  fastify.post('/kanbans/:id', async (request) => {
+  fastify.post('/kanbans/:id', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { email, permission } = shareSchema.parse(request.body);
     return sharingService.shareKanbanBoard(request.user.id, id, email, permission);
@@ -279,7 +279,7 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
   });
 
   // Share Kanban Board with Group
-  fastify.post('/kanbans/:id/group', async (request) => {
+  fastify.post('/kanbans/:id/group', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     const { groupId, permission } = z.object({
       groupId: z.string(),

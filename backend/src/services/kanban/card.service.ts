@@ -11,7 +11,8 @@ export async function createCard(
   columnId: string,
   title: string,
   description?: string,
-  actorId?: string
+  actorId?: string,
+  id?: string
 ) {
   const column = await prisma.kanbanColumn.findUnique({
     where: { id: columnId },
@@ -26,7 +27,7 @@ export async function createCard(
   const position = (maxPos._max.position ?? -1) + 1;
 
   const card = await prisma.kanbanCard.create({
-    data: { columnId, title, description, position },
+    data: { ...(id ? { id } : {}), columnId, title, description, position },
     select: cardWithAssigneeSelect,
   });
 

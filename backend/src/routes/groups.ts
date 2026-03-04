@@ -20,7 +20,7 @@ export default async function groupRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   // Create group
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const data = createGroupSchema.parse(request.body);
     const group = await groupService.createGroup(request.user.id, data);
     return reply.status(201).send(group);

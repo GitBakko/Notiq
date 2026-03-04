@@ -12,7 +12,7 @@ import ShareBoardModal from './components/ShareBoardModal';
 import SharedUsersModal from '../../components/sharing/SharedUsersModal';
 import type { SharedUserInfo, SharedOwnerInfo } from '../../components/sharing/SharedUsersModal';
 import KanbanBoardPage from './KanbanBoardPage';
-import type { KanbanBoardListItem } from './types';
+import type { LocalKanbanBoard } from '../../lib/db';
 import { useAuthStore } from '../../store/authStore';
 import Skeleton from '../../components/ui/Skeleton';
 
@@ -44,18 +44,17 @@ export default function KanbanPage() {
     ? boards?.find((b) => b.id === viewSharesBoardId)
     : null;
   const viewSharesUsers: SharedUserInfo[] = viewSharesBoard?.shares
-    ?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
-    .map(s => ({
+    ?.map(s => ({
       id: s.user.id,
       name: s.user.name,
       email: s.user.email,
-      avatarUrl: s.user.avatarUrl,
+      avatarUrl: s.user.avatarUrl ?? undefined,
       permission: s.permission,
-      status: s.status as 'ACCEPTED' | 'PENDING',
+      status: 'ACCEPTED' as const,
     })) || [];
   const viewSharesOwner: SharedOwnerInfo | null = viewSharesBoard
     ? (viewSharesBoard.owner
-        ? { id: viewSharesBoard.owner.id, name: viewSharesBoard.owner.name, email: viewSharesBoard.owner.email, avatarUrl: viewSharesBoard.owner.avatarUrl }
+        ? { id: viewSharesBoard.owner.id, name: viewSharesBoard.owner.name, email: viewSharesBoard.owner.email, avatarUrl: viewSharesBoard.owner.avatarUrl ?? undefined }
         : user ? { id: user.id, name: user.name || null, email: user.email, avatarUrl: user.avatarUrl } : null)
     : null;
 
@@ -116,7 +115,7 @@ export default function KanbanPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {boards.map((board: KanbanBoardListItem) => (
+            {boards.map((board: LocalKanbanBoard) => (
               <BoardCard
                 key={board.id}
                 board={board}

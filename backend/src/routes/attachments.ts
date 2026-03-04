@@ -9,7 +9,7 @@ import prisma from '../plugins/prisma';
 
 export async function attachmentRoutes(app: FastifyInstance) {
   // POST /api/attachments?noteId=... - Upload attachment
-  app.post('/', { preValidation: [app.authenticate] }, async (request, reply) => {
+  app.post('/', { preValidation: [app.authenticate], config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });

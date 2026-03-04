@@ -123,6 +123,7 @@ export interface LocalKanbanColumn {
   title: string;
   position: number;
   boardId: string;
+  isCompleted: boolean;
   syncStatus: 'synced' | 'created' | 'updated';
 }
 

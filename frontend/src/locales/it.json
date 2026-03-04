@@ -832,6 +832,11 @@
       "bundleSplitting": "Suddivisione Bundle — Le librerie vendor sono separate in chunk per un caching migliore",
       "ctrlClickLinks": "Ctrl+Click Link — Gli URL rilevati automaticamente nelle note sono ora cliccabili con Ctrl+click (Cmd+click su Mac)",
       "shareBoardModalOverflow": "Corretto overflow della riga input nella modale di condivisione board su schermi più piccoli",
+      "kanbanOfflineFirst": "Kanban Offline — Board, colonne e card funzionano offline con sincronizzazione automatica alla riconnessione",
+      "encryptedBlockPBKDF2": "Sicurezza Blocchi Cifrati — I blocchi cifrati inline ora usano PBKDF2 (100k iterazioni) per la derivazione chiave",
+      "kanbanColumnI18nDefault": "Colonne Kanban Localizzate — I nomi predefiniti delle colonne (Da fare, In corso, Completato) ora nella tua lingua",
+      "performanceIndexes": "Prestazioni Database — Aggiunti 5 indici per query più veloci su note, sottoscrizioni e promemoria",
+      "perRouteRateLimits": "Rate Limiting — Limiti di frequenza mirati su condivisione, chat, upload e creazione board",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -937,6 +942,11 @@
     "sharedBoard": "Condivisa",
     "columns": "colonne",
     "cards": "card",
+    "defaultColumns": {
+      "todo": "Da fare",
+      "inProgress": "In corso",
+      "done": "Completato"
+    },
     "column": {
       "todo": "Da fare",
       "inProgress": "In corso",

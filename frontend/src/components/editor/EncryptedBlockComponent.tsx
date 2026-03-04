@@ -1,10 +1,10 @@
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { useState, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
 import { Lock, Unlock, Eye, EyeOff, KeyRound, Save, AlertTriangle, Clock, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
+import { encryptContent, decryptContent } from '../../utils/crypto';
 import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Dialog } from '../ui/Dialog';
@@ -47,8 +47,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
     }
 
     try {
-      const dataToEncrypt = VALIDATION_PREFIX + content;
-      const ciphertext = CryptoJS.AES.encrypt(dataToEncrypt, pin).toString();
+      const ciphertext = encryptContent(VALIDATION_PREFIX + content, pin);
       updateAttributes({ ciphertext });
       setMode('LOCKED');
       setPin('');
@@ -65,10 +64,9 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
     if (!pin) return;
 
     try {
-      const bytes = CryptoJS.AES.decrypt(node.attrs.ciphertext, pin);
-      const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+      const decryptedData = decryptContent(node.attrs.ciphertext, pin);
 
-      if (decryptedData.startsWith(VALIDATION_PREFIX)) {
+      if (decryptedData && decryptedData.startsWith(VALIDATION_PREFIX)) {
         setContent(decryptedData.substring(VALIDATION_PREFIX.length));
         setMode('UNLOCKED');
         setError('');
@@ -76,8 +74,7 @@ export default function EncryptedBlockComponent({ node, updateAttributes, delete
       } else {
         setError(t('encryption.wrongPin', 'Incorrect PIN'));
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError(t('encryption.wrongPin', 'Incorrect PIN'));
     }
   };

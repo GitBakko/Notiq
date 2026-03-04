@@ -5,10 +5,10 @@ import { MoreVertical, Share2, Trash2, Columns3, CreditCard, Kanban, Users } fro
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import type { KanbanBoardListItem } from '../types';
+import type { LocalKanbanBoard } from '../../../lib/db';
 
 interface BoardCardProps {
-  board: KanbanBoardListItem;
+  board: LocalKanbanBoard;
   onSelect: (boardId: string) => void;
   onShare: (boardId: string) => void;
   onDelete: (boardId: string) => void;

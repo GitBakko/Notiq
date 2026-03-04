@@ -795,6 +795,11 @@
     "sharedBoard": "Shared",
     "columns": "columns",
     "cards": "cards",
+    "defaultColumns": {
+      "todo": "To Do",
+      "inProgress": "In Progress",
+      "done": "Done"
+    },
     "column": {
       "todo": "To Do",
       "inProgress": "In Progress",
@@ -1148,6 +1153,11 @@
       "bundleSplitting": "Bundle Splitting — Vendor libraries split into separate chunks for better caching",
       "ctrlClickLinks": "Ctrl+Click Links — Auto-detected URLs in notes are now clickable with Ctrl+click (Cmd+click on Mac)",
       "shareBoardModalOverflow": "Fixed share board modal input row overflowing on smaller screens",
+      "kanbanOfflineFirst": "Kanban Offline Mode — Boards, columns, and cards now work offline with automatic sync when reconnected",
+      "encryptedBlockPBKDF2": "Encrypted Block Security — Inline encrypted blocks now use PBKDF2 key derivation (100k iterations)",
+      "kanbanColumnI18nDefault": "Kanban Column Localization — Default column names (To Do, In Progress, Done) now display in your language",
+      "performanceIndexes": "Database Performance — Added 5 indexes for faster queries on notes, subscriptions, and reminders",
+      "perRouteRateLimits": "Rate Limiting — Targeted per-route rate limits on sharing, chat, uploads, and board creation endpoints",
       "initialRelease": "Initial release with full feature set"
     }
   },

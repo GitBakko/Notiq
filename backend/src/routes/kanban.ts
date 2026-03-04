@@ -10,9 +10,17 @@ import prisma from '../plugins/prisma';
 
 // ─── Zod schemas ────────────────────────────────────────────
 
+const columnTitlesSchema = z.object({
+  todo: z.string().min(1).max(100),
+  inProgress: z.string().min(1).max(100),
+  done: z.string().min(1).max(100),
+}).optional();
+
 const createBoardSchema = z.object({
+  id: z.string().uuid().optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
+  columnTitles: columnTitlesSchema,
 });
 
 const updateBoardSchema = z.object({
@@ -21,6 +29,7 @@ const updateBoardSchema = z.object({
 });
 
 const createColumnSchema = z.object({
+  id: z.string().uuid().optional(),
   title: z.string().min(1).max(100),
 });
 
@@ -29,6 +38,7 @@ const reorderColumnsSchema = z.object({
 });
 
 const createCardSchema = z.object({
+  id: z.string().uuid().optional(),
   title: z.string().min(1).max(500),
   description: z.string().max(5000).optional(),
 });
@@ -110,19 +120,23 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     return kanbanService.listBoards(request.user.id);
   });
 
-  fastify.post('/boards', async (request) => {
-    const { title, description } = createBoardSchema.parse(request.body);
-    return await kanbanService.createBoard(request.user.id, title, description);
+  fastify.post('/boards', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
+    const { id, title, description, columnTitles } = createBoardSchema.parse(request.body);
+    return await kanbanService.createBoard(request.user.id, title, description, columnTitles, id);
   });
 
   // Create board from task list
   const fromTaskListSchema = z.object({
     taskListId: z.string().uuid(),
+    columnTitles: z.object({
+      todo: z.string().min(1).max(100),
+      done: z.string().min(1).max(100),
+    }).optional(),
   });
 
   fastify.post('/boards/from-tasklist', async (request) => {
-    const { taskListId } = fromTaskListSchema.parse(request.body);
-    return await kanbanService.createBoardFromTaskList(request.user.id, taskListId);
+    const { taskListId, columnTitles } = fromTaskListSchema.parse(request.body);
+    return await kanbanService.createBoardFromTaskList(request.user.id, taskListId, columnTitles);
   });
 
   fastify.get('/boards/:id', async (request) => {
@@ -382,7 +396,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     return await kanbanService.getBoardChat(id, page, limit);
   });
 
-  fastify.post('/boards/:id/chat', async (request) => {
+  fastify.post('/boards/:id/chat', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     await assertBoardAccess(id, request.user.id, 'READ'); // Any participant can chat
     const { content } = chatMessageSchema.parse(request.body);
@@ -394,8 +408,8 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   fastify.post('/boards/:id/columns', async (request) => {
     const { id } = request.params as { id: string };
     await assertBoardAccess(id, request.user.id, 'WRITE');
-    const { title } = createColumnSchema.parse(request.body);
-    return await kanbanService.createColumn(id, title);
+    const { id: clientId, title } = createColumnSchema.parse(request.body);
+    return await kanbanService.createColumn(id, title, clientId);
   });
 
   const updateColumnSchema = z.object({
@@ -427,11 +441,11 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
   // ── Cards ───────────────────────────────────────────────
 
-  fastify.post('/columns/:id/cards', async (request) => {
+  fastify.post('/columns/:id/cards', { config: { rateLimit: { max: 50, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };
     await getColumnWithAccess(id, request.user.id, 'WRITE');
-    const { title, description } = createCardSchema.parse(request.body);
-    return await kanbanService.createCard(id, title, description, request.user.id);
+    const { id: clientId, title, description } = createCardSchema.parse(request.body);
+    return await kanbanService.createCard(id, title, description, request.user.id, clientId);
   });
 
   fastify.put('/cards/:id', async (request) => {

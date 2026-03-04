@@ -136,7 +136,10 @@ export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList
     setIsCreating(true);
     try {
       await syncPush();
-      const board = await createBoardFromTaskList(taskList.id);
+      const board = await createBoardFromTaskList(taskList.id, {
+        todo: t('kanban.defaultColumns.todo'),
+        done: t('kanban.defaultColumns.done'),
+      });
       queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
       toast.success(t('taskLists.convertedToKanban'));
       setConvertedBoardId(board.id);

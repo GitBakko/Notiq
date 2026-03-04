@@ -1,10 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '../../../lib/queryKeys';
-import { listBoards } from '../kanbanService';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../../lib/db';
+import type { LocalKanbanBoard } from '../../../lib/db';
 
 export function useKanbanBoards() {
-  return useQuery({
-    queryKey: queryKeys.kanban.boards,
-    queryFn: listBoards,
+  const boards = useLiveQuery(async () => {
+    return db.kanbanBoards.orderBy('updatedAt').reverse().toArray();
   });
+
+  return {
+    data: boards,
+    isLoading: boards === undefined,
+  };
 }
+
+export type { LocalKanbanBoard };

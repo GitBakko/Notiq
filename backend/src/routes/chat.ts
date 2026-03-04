@@ -11,7 +11,7 @@ const createMessageSchema = z.object({
 export default async function chatRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { noteId, content } = createMessageSchema.parse(request.body);
     const access = await checkNoteAccess(request.user.id, noteId);
     if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });

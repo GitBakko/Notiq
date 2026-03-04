@@ -16,6 +16,11 @@ export const changelog: VersionEntry[] = [
     entries: [
       { type: 'feature', titleKey: 'whatsNew.entries.sharedNoteTags' },
       { type: 'feature', titleKey: 'whatsNew.entries.sharedNoteNotebooks' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanOfflineFirst' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.encryptedBlockPBKDF2' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanColumnI18nDefault' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.performanceIndexes' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.perRouteRateLimits' },
       { type: 'improvement', titleKey: 'whatsNew.entries.lazyLoadPages' },
       { type: 'improvement', titleKey: 'whatsNew.entries.reactMemoListItems' },
       { type: 'improvement', titleKey: 'whatsNew.entries.bundleSplitting' },

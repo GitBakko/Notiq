@@ -347,6 +347,7 @@ export const syncPull = async () => {
                 title: col.title,
                 position: col.position,
                 boardId: fullBoard.id,
+                isCompleted: col.isCompleted ?? false,
                 syncStatus: 'synced' as const,
               }));
 
@@ -432,6 +433,7 @@ export const syncPull = async () => {
               title: col.title,
               position: col.position,
               boardId: board.id,
+              isCompleted: col.isCompleted ?? false,
               syncStatus: 'synced' as const,
             }));
             if (columns.length > 0) await db.kanbanColumns.bulkPut(columns);
@@ -545,7 +547,36 @@ export const syncPush = async () => {
             continue;
           }
           if (item.type === 'CREATE') {
-            await api.post('/kanban/boards', { ...item.data, id: item.entityId });
+            const boardData = item.data as Record<string, unknown>;
+            const localColumnIds = (boardData._localColumnIds as string[] | undefined) || [];
+            // Don't send internal metadata to the API
+            const { _localColumnIds, ...apiData } = boardData;
+            void _localColumnIds; // suppress unused lint
+            const res = await api.post('/kanban/boards', { ...apiData, id: item.entityId });
+            // Reconcile local column IDs with server-generated column IDs (by position)
+            if (localColumnIds.length > 0 && res.data?.columns) {
+              const serverColumns = (res.data.columns as { id: string; position: number }[])
+                .sort((a, b) => a.position - b.position);
+              const sortedLocalIds = [...localColumnIds]; // already in position order (0, 1, 2)
+              await db.transaction('rw', db.kanbanColumns, db.kanbanCards, async () => {
+                for (let i = 0; i < Math.min(sortedLocalIds.length, serverColumns.length); i++) {
+                  const localId = sortedLocalIds[i];
+                  const serverId = serverColumns[i].id;
+                  if (localId === serverId) continue;
+                  // Update any cards referencing the local column ID
+                  const cardsInCol = await db.kanbanCards.where('columnId').equals(localId).toArray();
+                  for (const card of cardsInCol) {
+                    await db.kanbanCards.update(card.id, { columnId: serverId });
+                  }
+                  // Replace local column with server column
+                  const localCol = await db.kanbanColumns.get(localId);
+                  if (localCol) {
+                    await db.kanbanColumns.delete(localId);
+                    await db.kanbanColumns.put({ ...localCol, id: serverId, syncStatus: 'synced' });
+                  }
+                }
+              });
+            }
           } else if (item.type === 'UPDATE') {
             await api.put(`/kanban/boards/${item.entityId}`, item.data);
           } else if (item.type === 'DELETE') {

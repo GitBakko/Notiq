@@ -111,19 +111,23 @@ export async function listBoards(userId: string) {
 export async function createBoard(
   userId: string,
   title: string,
-  description?: string
+  description?: string,
+  columnTitles?: { todo: string; inProgress: string; done: string },
+  id?: string
 ) {
+  const cols = columnTitles || { todo: 'TODO', inProgress: 'IN_PROGRESS', done: 'DONE' };
   return prisma.$transaction(async (tx) => {
     const board = await tx.kanbanBoard.create({
       data: {
+        ...(id ? { id } : {}),
         title,
         description,
         ownerId: userId,
         columns: {
           create: [
-            { title: 'TODO', position: 0 },
-            { title: 'IN_PROGRESS', position: 1 },
-            { title: 'DONE', position: 2, isCompleted: true },
+            { title: cols.todo, position: 0 },
+            { title: cols.inProgress, position: 1 },
+            { title: cols.done, position: 2, isCompleted: true },
           ],
         },
       },
@@ -270,7 +274,7 @@ export async function deleteBoard(boardId: string) {
 
 // ─── Create Board from Task List ────────────────────────────
 
-export async function createBoardFromTaskList(userId: string, taskListId: string) {
+export async function createBoardFromTaskList(userId: string, taskListId: string, columnTitles?: { todo: string; done: string }) {
   // Fetch the task list with items
   const taskList = await prisma.taskList.findUnique({
     where: { id: taskListId },
@@ -318,8 +322,8 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
         taskListLinkedById: userId,
         columns: {
           create: [
-            { title: 'TODO', position: 0 },
-            { title: 'DONE', position: 1, isCompleted: true },
+            { title: columnTitles?.todo || 'TODO', position: 0 },
+            { title: columnTitles?.done || 'DONE', position: 1, isCompleted: true },
           ],
         },
       },

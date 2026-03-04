@@ -9,7 +9,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   // Fetch page title + favicon from a URL
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { url } = querySchema.parse(request.query);
 
     try {
@@ -90,7 +90,7 @@ export default async function (fastify: FastifyInstance) {
   });
 
   // Proxy screenshot from thum.io — returns base64 image
-  fastify.get('/screenshot', async (request, reply) => {
+  fastify.get('/screenshot', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { url } = querySchema.parse(request.query);
 
     try {

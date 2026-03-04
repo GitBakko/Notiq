@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../../lib/queryKeys';
 import * as kanbanService from '../kanbanService';
-import type { KanbanBoardListItem, KanbanCardPriority } from '../types';
+import { syncPush } from '../../sync/syncService';
+import type { KanbanCardPriority } from '../types';
 
 export function useKanbanMutations(boardId?: string) {
   const queryClient = useQueryClient();
@@ -10,70 +11,78 @@ export function useKanbanMutations(boardId?: string) {
     if (boardId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
     }
-    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
+  }
+
+  // Trigger sync after Dexie write (fire-and-forget)
+  function flushSync(): void {
+    syncPush().catch(() => {});
   }
 
   const createBoard = useMutation({
     mutationFn: kanbanService.createBoard,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards }),
+    onSuccess: () => flushSync(),
   });
 
   const deleteBoard = useMutation({
     mutationFn: kanbanService.deleteBoard,
-    onMutate: async (deletedId) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.kanban.boards });
-      const previousBoards = queryClient.getQueryData<KanbanBoardListItem[]>(queryKeys.kanban.boards);
-      queryClient.setQueryData<KanbanBoardListItem[]>(queryKeys.kanban.boards, (old) =>
-        old ? old.filter((b) => b.id !== deletedId) : [],
-      );
-      return { previousBoards };
-    },
-    onError: (_err, _deletedId, context) => {
-      if (context?.previousBoards) {
-        queryClient.setQueryData(queryKeys.kanban.boards, context.previousBoards);
-      }
-    },
-    onSettled: (_data, _error, deletedId) => {
-      // Remove stale individual board queries to prevent 404 refetches
+    onSuccess: (_data, deletedId) => {
+      flushSync();
       queryClient.removeQueries({ queryKey: queryKeys.kanban.board(deletedId) });
       queryClient.removeQueries({ queryKey: queryKeys.kanban.boardChat(deletedId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
     },
   });
 
   const updateBoard = useMutation({
     mutationFn: ({ id, ...data }: { id: string; title?: string; description?: string | null }) =>
       kanbanService.updateBoard(id, data),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const createColumn = useMutation({
     mutationFn: ({ boardId: bid, title }: { boardId: string; title: string }) =>
       kanbanService.createColumn(bid, title),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const updateColumn = useMutation({
     mutationFn: ({ columnId, ...data }: { columnId: string; title?: string; isCompleted?: boolean }) =>
       kanbanService.updateColumn(columnId, data),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const deleteColumn = useMutation({
     mutationFn: kanbanService.deleteColumn,
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const reorderColumns = useMutation({
     mutationFn: ({ boardId: bid, columns }: { boardId: string; columns: { id: string; position: number }[] }) =>
       kanbanService.reorderColumns(bid, columns),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const createCard = useMutation({
     mutationFn: ({ columnId, ...data }: { columnId: string; title: string; description?: string }) =>
       kanbanService.createCard(columnId, data),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const updateCard = useMutation({
@@ -88,20 +97,30 @@ export function useKanbanMutations(boardId?: string) {
       dueDate?: string | null;
       priority?: KanbanCardPriority | null;
     }) => kanbanService.updateCard(cardId, data),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const moveCard = useMutation({
     mutationFn: ({ cardId, toColumnId, position }: { cardId: string; toColumnId: string; position: number }) =>
       kanbanService.moveCard(cardId, toColumnId, position),
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
   const deleteCard = useMutation({
     mutationFn: kanbanService.deleteCard,
-    onSuccess: invalidateBoard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
   });
 
+  // Server-only mutations (no Dexie, no syncPush)
   const uploadCover = useMutation({
     mutationFn: ({ bid, file }: { bid: string; file: File }) =>
       kanbanService.uploadCoverImage(bid, file),

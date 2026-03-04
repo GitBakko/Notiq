@@ -29,7 +29,15 @@ export default function CreateBoardModal({ isOpen, onClose }: CreateBoardModalPr
     if (!title.trim()) return;
 
     createBoard.mutate(
-      { title: title.trim(), description: description.trim() || undefined },
+      {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        columnTitles: {
+          todo: t('kanban.defaultColumns.todo'),
+          inProgress: t('kanban.defaultColumns.inProgress'),
+          done: t('kanban.defaultColumns.done'),
+        },
+      },
       {
         onSuccess: () => {
           setTitle('');

@@ -4,7 +4,7 @@ import { broadcast } from '../kanbanSSE';
 
 // ─── Column CRUD ────────────────────────────────────────────
 
-export async function createColumn(boardId: string, title: string) {
+export async function createColumn(boardId: string, title: string, id?: string) {
   const maxPos = await prisma.kanbanColumn.aggregate({
     where: { boardId },
     _max: { position: true },
@@ -12,7 +12,7 @@ export async function createColumn(boardId: string, title: string) {
   const position = (maxPos._max.position ?? -1) + 1;
 
   const column = await prisma.kanbanColumn.create({
-    data: { boardId, title, position },
+    data: { ...(id ? { id } : {}), boardId, title, position },
   });
 
   broadcast(boardId, { type: 'column:created', boardId, column });
