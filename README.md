@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.3-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.7.4-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Version" />
   <img src="https://img.shields.io/badge/react-19-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="React 19" />
   <img src="https://img.shields.io/badge/fastify-5-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Fastify 5" />
   <img src="https://img.shields.io/badge/prisma-7-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Prisma 7" />
@@ -167,7 +167,7 @@ Notiq/
       plugins/       # Prisma client singleton
       scripts/       # CLI tools (admin, backup, migration)
     prisma/
-      schema.prisma  # 30 models, 20 migrations
+      schema.prisma  # 30 models, 21 migrations
   frontend/
     src/
       components/    # Reusable UI (editor/, layout/, sharing/, ui/)
