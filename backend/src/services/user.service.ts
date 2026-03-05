@@ -5,6 +5,7 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import { MultipartFile } from '@fastify/multipart';
 import { BadRequestError, NotFoundError } from '../utils/errors';
+import { logEvent } from './audit.service';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads/avatars');
 
@@ -96,9 +97,13 @@ export const changePassword = async (userId: string, oldPassword: string, newPas
   if (!valid) throw new BadRequestError('errors.user.invalidOldPassword');
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
-  return prisma.user.update({
+  const result = await prisma.user.update({
     where: { id: userId },
     data: { password: hashedPassword, tokenVersion: { increment: 1 } },
     select: { id: true, email: true, name: true },
   });
+
+  logEvent(userId, 'PASSWORD_CHANGED');
+
+  return result;
 };

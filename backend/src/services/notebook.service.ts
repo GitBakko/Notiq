@@ -1,5 +1,6 @@
 import prisma from '../plugins/prisma';
 import { ConflictError, NotFoundError } from '../utils/errors';
+import { logEvent } from './audit.service';
 
 export const createNotebook = async (userId: string, name: string, id?: string) => {
   const existing = await prisma.notebook.findFirst({
@@ -60,7 +61,7 @@ export const updateNotebook = async (userId: string, id: string, name: string) =
 };
 
 export const deleteNotebook = async (userId: string, id: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const notebook = await tx.notebook.findFirst({ where: { id, userId } });
     if (!notebook) throw new NotFoundError('errors.notebooks.notFound');
 
@@ -83,4 +84,8 @@ export const deleteNotebook = async (userId: string, id: string) => {
 
     return tx.notebook.delete({ where: { id } });
   });
+
+  logEvent(userId, 'NOTEBOOK_DELETED', { notebookId: id });
+
+  return result;
 };

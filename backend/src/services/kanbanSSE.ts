@@ -17,6 +17,14 @@ interface BoardConnection {
 
 const boardConnections = new Map<string, Map<ServerResponse, BoardConnection>>();
 
+export function getSSEConnectionCount(): number {
+  let count = 0;
+  for (const conns of boardConnections.values()) {
+    count += conns.size;
+  }
+  return count;
+}
+
 export type KanbanEvent =
   | { type: 'card:moved'; boardId: string; cardId: string; toColumnId: string; position: number }
   | { type: 'card:created'; boardId: string; card: Record<string, unknown> }

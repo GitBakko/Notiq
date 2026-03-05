@@ -198,17 +198,9 @@ export async function getUsers(page = 1, limit = 10, search = '') {
 }
 
 export async function getAuditLogs(page = 1, limit = 20) {
-  const skip = (page - 1) * limit;
-  const [logs, total] = await Promise.all([
-    prisma.auditLog.findMany({
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true } } }
-    }),
-    prisma.auditLog.count()
-  ]);
-  return { logs, total, pages: Math.ceil(total / limit) };
+  // Legacy wrapper — delegates to audit.service for backward compat
+  const { getAuditLogFiltered } = await import('./audit.service');
+  return getAuditLogFiltered(page, limit);
 }
 
 export async function updateUser(userId: string, data: { role?: 'USER' | 'SUPERADMIN'; isVerified?: boolean; }) {

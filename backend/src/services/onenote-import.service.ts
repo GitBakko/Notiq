@@ -9,6 +9,7 @@ import { extractTextFromTipTapJson } from '../utils/extractText';
 import logger from '../utils/logger';
 import AdmZip from 'adm-zip';
 import { BadRequestError } from '../utils/errors';
+import { logEvent } from './audit.service';
 
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
@@ -288,6 +289,8 @@ export async function importFromOneNote(
       logger.error(e, 'Failed to import OneNote note: %s', file.title);
     }
   }
+
+  logEvent(userId, 'IMPORT_ONENOTE', { notesCount: importedCount });
 
   return { importedCount, totalFound: htmlFiles.length };
 }

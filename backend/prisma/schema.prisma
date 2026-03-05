@@ -311,6 +311,7 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([event, createdAt])
 }
 
 enum RequestStatus {

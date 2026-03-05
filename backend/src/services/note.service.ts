@@ -5,6 +5,7 @@ import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
 import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractText';
 import { NotFoundError, BadRequestError } from '../utils/errors';
+import { logEvent } from './audit.service';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
   const note = await prisma.note.findUnique({
@@ -317,7 +318,7 @@ export const getNoteSizeBreakdown = async (userId: string, noteId: string) => {
 };
 
 export const deleteNote = async (userId: string, id: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // Check ownership FIRST before deleting any relations
     const note = await tx.note.findFirst({ where: { id, userId } });
     if (!note) throw new NotFoundError('errors.notes.notFound');
@@ -329,4 +330,8 @@ export const deleteNote = async (userId: string, id: string) => {
 
     return tx.note.delete({ where: { id } });
   });
+
+  logEvent(userId, 'NOTE_DELETED', { noteId: id });
+
+  return result;
 };

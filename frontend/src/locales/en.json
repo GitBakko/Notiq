@@ -1158,6 +1158,12 @@
       "kanbanColumnI18nDefault": "Kanban Column Localization — Default column names (To Do, In Progress, Done) now display in your language",
       "performanceIndexes": "Database Performance — Added 5 indexes for faster queries on notes, subscriptions, and reminders",
       "perRouteRateLimits": "Rate Limiting — Targeted per-route rate limits on sharing, chat, uploads, and board creation endpoints",
+      "systemHealthTab": "System Health Dashboard — Real-time monitoring with uptime, memory, DB status, WebSocket/SSE connections, request timeline, and slowest routes",
+      "requestMetrics": "Request Metrics — In-memory rolling 60-minute performance collector with per-route breakdown (avg/max/p95 response times)",
+      "auditExpansion": "Audit Event Expansion — 15+ new audit events covering auth, sharing, data deletion, imports, and admin actions",
+      "auditTabEnhanced": "Enhanced Audit Logs — Filterable by event type and date range, with event distribution badges, daily timeline chart, and CSV export",
+      "adminRefactor": "Admin Dashboard Refactor — Split 800-line monolith into 6 focused tab components with shared types",
+      "healthCheckExpanded": "Enhanced Health Check — /health endpoint now reports memory usage and server uptime alongside DB status",
       "initialRelease": "Initial release with full feature set"
     }
   },
@@ -1239,7 +1245,47 @@
       "maxTokens": "Max Tokens",
       "temperature": "Temperature",
       "saved": "AI configuration saved"
-    }
+    },
+    "monitoring": {
+      "tab": "System Health",
+      "title": "System Health",
+      "uptime": "Uptime",
+      "memory": "Memory",
+      "database": "Database",
+      "connections": "Connections",
+      "healthy": "Healthy",
+      "error": "Error",
+      "requestsPerMin": "Requests/min",
+      "errorRate": "Error Rate",
+      "avgResponse": "Avg Response",
+      "refreshIn": "Refresh in {{seconds}}s",
+      "requestTimeline": "Requests / Minute (60 min)",
+      "totalRequests": "Total Requests",
+      "errors": "Errors",
+      "avgMs": "Avg",
+      "requests": "Requests",
+      "slowestRoutes": "Slowest Routes",
+      "route": "Route",
+      "method": "Method",
+      "count": "Count",
+      "systemHealthy": "System Healthy"
+    },
+    "audit": {
+      "title": "System Audit Log",
+      "eventTimeline": "Audit Events (30 days)",
+      "eventDistribution": "Event Distribution",
+      "filters": "Filters",
+      "allEvents": "All Events",
+      "from": "From",
+      "to": "To",
+      "reset": "Reset",
+      "totalEntries": "{{count}} entries",
+      "page": "Page {{page}}",
+      "noLogs": "No logs found."
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "noRequests": "No pending requests."
   },
   "search": {
     "noResults": "No results found",

@@ -7,6 +7,7 @@ import * as inviteService from './invite.service';
 import * as settingsService from './settings.service';
 import * as groupService from './group.service';
 import { BadRequestError, UnauthorizedError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors';
+import { logEvent } from './audit.service';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -111,6 +112,9 @@ export const registerUser = async (data: { email: string; password: string; name
   // 8. Send Verification Email
   await sendNotificationEmail(email, 'VERIFY_EMAIL', { token: verificationToken, locale: user.locale || 'en' });
 
+  // Audit: successful registration
+  logEvent(user.id, 'REGISTER', { email: data.email });
+
   // 9. Audit Log (Registration Pending)
   await prisma.auditLog.create({
     data: {
@@ -189,6 +193,9 @@ export const verifyEmail = async (token: string) => {
     data: { userId: user.id, event: 'REGISTRATION_COMPLETED', details: { email: user.email } }
   });
 
+  // Audit: email verified
+  logEvent(updatedUser.id, 'EMAIL_VERIFIED');
+
   // Process pending group invites for this user
   await groupService.processPendingGroupInvites(updatedUser.id, updatedUser.email);
 
@@ -229,6 +236,9 @@ export const requestPasswordReset = async (email: string) => {
   // Actually, sendEmail is exported.
   await sendEmail(email, 'Reset your Notiq password', `Click here to reset: ${resetLink}`);
 
+  // Audit: password reset requested
+  logEvent(user.id, 'PASSWORD_RESET_REQUEST');
+
   return true;
 };
 
@@ -259,6 +269,9 @@ export const resetPassword = async (token: string, newPassword: string) => {
       tokenVersion: { increment: 1 },
     },
   });
+
+  // Audit: password reset completed
+  logEvent(user.id, 'PASSWORD_RESET');
 
   return true;
 };

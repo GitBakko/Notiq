@@ -11,6 +11,18 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.8.0',
+    date: '2026-03-05',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.systemHealthTab' },
+      { type: 'feature', titleKey: 'whatsNew.entries.requestMetrics' },
+      { type: 'feature', titleKey: 'whatsNew.entries.auditExpansion' },
+      { type: 'feature', titleKey: 'whatsNew.entries.auditTabEnhanced' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.adminRefactor' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.healthCheckExpanded' },
+    ],
+  },
+  {
     version: '1.7.4',
     date: '2026-03-04',
     entries: [

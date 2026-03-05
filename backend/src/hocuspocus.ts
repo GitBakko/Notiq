@@ -202,6 +202,10 @@ export const extensions = [
 
 
 
+export function getWsConnectionCount(): number {
+  return hocuspocus.hocuspocus.getConnectionsCount();
+}
+
 export const hocuspocus = new Server({
   // port: 1234, // Removed to prevent standalone listening
   extensions: [

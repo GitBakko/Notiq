@@ -837,6 +837,12 @@
       "kanbanColumnI18nDefault": "Colonne Kanban Localizzate — I nomi predefiniti delle colonne (Da fare, In corso, Completato) ora nella tua lingua",
       "performanceIndexes": "Prestazioni Database — Aggiunti 5 indici per query più veloci su note, sottoscrizioni e promemoria",
       "perRouteRateLimits": "Rate Limiting — Limiti di frequenza mirati su condivisione, chat, upload e creazione board",
+      "systemHealthTab": "Dashboard Stato Sistema — Monitoraggio in tempo reale con uptime, memoria, stato DB, connessioni WebSocket/SSE, timeline richieste e route più lente",
+      "requestMetrics": "Metriche Richieste — Raccolta performance in memoria con finestra scorrevole di 60 minuti e dettaglio per route (tempi medi/max/p95)",
+      "auditExpansion": "Espansione Eventi Audit — 15+ nuovi eventi di audit per autenticazione, condivisione, eliminazione dati, importazioni e azioni admin",
+      "auditTabEnhanced": "Log Audit Potenziati — Filtrabile per tipo evento e intervallo date, con badge distribuzione, grafico timeline giornaliero ed esportazione CSV",
+      "adminRefactor": "Refactoring Dashboard Admin — Monolite da 800 righe diviso in 6 componenti tab dedicati con tipi condivisi",
+      "healthCheckExpanded": "Health Check Potenziato — L'endpoint /health ora riporta uso memoria e uptime server oltre allo stato DB",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -1239,7 +1245,47 @@
       "maxTokens": "Token Massimi",
       "temperature": "Temperatura",
       "saved": "Configurazione AI salvata"
-    }
+    },
+    "monitoring": {
+      "tab": "Stato Sistema",
+      "title": "Stato Sistema",
+      "uptime": "Uptime",
+      "memory": "Memoria",
+      "database": "Database",
+      "connections": "Connessioni",
+      "healthy": "Funzionante",
+      "error": "Errore",
+      "requestsPerMin": "Richieste/min",
+      "errorRate": "Tasso Errori",
+      "avgResponse": "Risposta Media",
+      "refreshIn": "Aggiornamento tra {{seconds}}s",
+      "requestTimeline": "Richieste / Minuto (60 min)",
+      "totalRequests": "Richieste Totali",
+      "errors": "Errori",
+      "avgMs": "Media",
+      "requests": "Richieste",
+      "slowestRoutes": "Route Più Lente",
+      "route": "Route",
+      "method": "Metodo",
+      "count": "Conteggio",
+      "systemHealthy": "Sistema Funzionante"
+    },
+    "audit": {
+      "title": "Log di Audit",
+      "eventTimeline": "Eventi Audit (30 giorni)",
+      "eventDistribution": "Distribuzione Eventi",
+      "filters": "Filtri",
+      "allEvents": "Tutti gli Eventi",
+      "from": "Da",
+      "to": "A",
+      "reset": "Reset",
+      "totalEntries": "{{count}} voci",
+      "page": "Pagina {{page}}",
+      "noLogs": "Nessun log trovato."
+    },
+    "approve": "Approva",
+    "reject": "Rifiuta",
+    "noRequests": "Nessuna richiesta in attesa."
   },
   "search": {
     "noResults": "Nessun risultato trovato",

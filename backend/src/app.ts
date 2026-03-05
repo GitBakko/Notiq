@@ -7,6 +7,7 @@ import jwt from '@fastify/jwt';
 import fastifyMultipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 
+import { metrics } from './utils/metrics';
 import authRoutes from './routes/auth';
 import notebookRoutes from './routes/notebooks';
 import noteRoutes from './routes/notes';
@@ -142,6 +143,13 @@ server.addHook('onRequest', async (request: FastifyRequest) => {
       }); // fire-and-forget
     }
   }
+});
+
+// Request metrics collection (in-memory, rolling 60-min window)
+server.addHook('onResponse', (request, reply, done) => {
+  const route = request.routeOptions?.url || request.url;
+  metrics.recordRequest(route, request.method, reply.statusCode, reply.elapsedTime);
+  done();
 });
 
 // Routes

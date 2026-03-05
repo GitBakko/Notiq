@@ -10,6 +10,7 @@ import { JSDOM } from 'jsdom';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import logger from '../utils/logger';
 import { BadRequestError } from '../utils/errors';
+import { logEvent } from './audit.service';
 
 // --- DOM polyfill for generateJSON (requires window.DOMParser) ---
 function withDomEnvironment<T>(fn: () => T): T {
@@ -89,6 +90,8 @@ export const importFromEnex = async (fileBuffer: Buffer, userId: string, targetN
       logger.error(e, 'Failed to import note: %s', enexNote.title);
     }
   }
+
+  logEvent(userId, 'IMPORT_EVERNOTE', { notesCount: importedCount });
 
   return { importedCount, totalFound: notes.length };
 };

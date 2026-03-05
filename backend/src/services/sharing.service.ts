@@ -117,7 +117,7 @@ export const revokeNoteShare = async (ownerId: string, noteId: string, targetUse
     throw new NotFoundError('errors.notes.notFoundOrDenied');
   }
 
-  return prisma.sharedNote.delete({
+  const deleted = await prisma.sharedNote.delete({
     where: {
       noteId_userId: {
         noteId,
@@ -125,6 +125,10 @@ export const revokeNoteShare = async (ownerId: string, noteId: string, targetUse
       },
     },
   });
+
+  auditService.logEvent(ownerId, 'SHARE_REVOKED', { shareId: deleted.id, type: 'note' });
+
+  return deleted;
 };
 
 /**
@@ -354,7 +358,7 @@ export const revokeNotebookShare = async (ownerId: string, notebookId: string, t
     throw new NotFoundError('errors.notebooks.notFoundOrDenied');
   }
 
-  return prisma.sharedNotebook.delete({
+  const deleted = await prisma.sharedNotebook.delete({
     where: {
       notebookId_userId: {
         notebookId,
@@ -362,6 +366,10 @@ export const revokeNotebookShare = async (ownerId: string, notebookId: string, t
       },
     },
   });
+
+  auditService.logEvent(ownerId, 'SHARE_REVOKED', { shareId: deleted.id, type: 'notebook' });
+
+  return deleted;
 };
 
 export const getSharedNotebooks = async (userId: string) => {
@@ -453,6 +461,14 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
     }
   }
 
+  // Audit log
+  const auditType = type === 'NOTE' ? 'note' : type === 'NOTEBOOK' ? 'notebook' : 'kanban';
+  if (action === 'accept') {
+    auditService.logEvent(userId, 'SHARE_ACCEPTED', { shareId: itemId, type: auditType });
+  } else {
+    auditService.logEvent(userId, 'SHARE_DECLINED', { shareId: itemId, type: auditType });
+  }
+
   // Notify Owner
   if (result) {
     let owner: { id: string; email: string; name: string | null; locale?: string | null } | undefined;
@@ -535,6 +551,9 @@ export const shareKanbanBoard = async (
     include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
 
+  // Audit Log
+  auditService.logEvent(ownerId, 'SHARE_SENT', { boardId, targetEmail: email, permission });
+
   const sharer = await prisma.user.findUnique({
     where: { id: ownerId },
     select: { name: true, email: true },
@@ -584,9 +603,10 @@ export const revokeKanbanBoardShare = async (
   if (board.ownerId !== ownerId) throw new ForbiddenError('errors.common.notTheOwner');
 
   try {
-    await prisma.sharedKanbanBoard.delete({
+    const deleted = await prisma.sharedKanbanBoard.delete({
       where: { boardId_userId: { boardId, userId: targetUserId } },
     });
+    auditService.logEvent(ownerId, 'SHARE_REVOKED', { shareId: deleted.id, type: 'kanban' });
   } catch {
     // Record may not exist — treat as success
   }
