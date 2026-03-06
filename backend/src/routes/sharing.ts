@@ -128,6 +128,52 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // Save shared note content/title (REST fallback for when Hocuspocus doesn't persist in time)
+  fastify.put('/notes/:noteId/content', async (request, reply) => {
+    const { noteId } = z.object({ noteId: z.string().uuid() }).parse(request.params);
+    const { content, title } = z.object({
+      content: z.string().optional(),
+      title: z.string().optional(),
+    }).parse(request.body);
+
+    if (!content && !title) {
+      return reply.status(400).send({ message: 'errors.validation.required' });
+    }
+
+    const share = await prisma.sharedNote.findUnique({
+      where: { noteId_userId: { noteId, userId: request.user.id } },
+    });
+    if (!share || share.status !== 'ACCEPTED' || share.permission !== 'WRITE') {
+      return reply.status(403).send({ message: 'errors.sharing.forbidden' });
+    }
+
+    const note = await prisma.note.findUnique({ where: { id: noteId }, select: { content: true, title: true } });
+    if (!note) return reply.status(404).send({ message: 'errors.notes.notFound' });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateData: any = { updatedAt: new Date() };
+
+    if (content && note.content !== content) {
+      const { extractTextFromTipTapJson } = await import('../utils/extractText');
+      updateData.content = content;
+      updateData.searchText = extractTextFromTipTapJson(content);
+      // Clear ydocState so Hocuspocus fetch falls through to content field.
+      // The stale Yjs binary would otherwise take priority over updated content.
+      updateData.ydocState = null;
+    }
+
+    if (title && note.title !== title) {
+      updateData.title = title;
+    }
+
+    // Only write if something actually changed
+    if (Object.keys(updateData).length > 1) {
+      await prisma.note.update({ where: { id: noteId }, data: updateData });
+    }
+
+    return { ok: true };
+  });
+
   // Share Notebook
   fastify.post('/notebooks/:id', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const { id } = request.params as { id: string };

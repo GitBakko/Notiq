@@ -741,6 +741,8 @@
     "kanbanCardMoved_TITLE": "Card Moved",
     "kanbanBoardChat": "{{senderName}} sent a message in board \"{{boardTitle}}\"",
     "kanbanBoardChat_TITLE": "Board Chat",
+    "kanbanBulkMove": "{{actorName}} moved {{count}} cards on {{boardTitle}}: {{summary}}",
+    "kanbanBulkMove_TITLE": "Cards Moved",
     "chatMessage": "{{senderName}} sent you a message",
     "chatMessage_TITLE": "New Message"
   },
@@ -828,7 +830,25 @@
       "deleteConfirm": "Delete this card permanently?",
       "deleteCard": "Delete card",
       "priority": "Priority",
-      "moveToColumn": "Move to column"
+      "moveToColumn": "Move to column",
+      "contextMenu": {
+        "moveTo": "Move to",
+        "assignTo": "Assign to",
+        "priority": "Priority",
+        "setDueDate": "Set due date",
+        "clearDueDate": "Clear due date",
+        "linkNote": "Link note",
+        "duplicate": "Duplicate",
+        "delete": "Delete",
+        "unassigned": "Unassigned",
+        "noPriority": "No priority"
+      },
+      "bulkMove": {
+        "title": "{{count}} cards selected",
+        "moveTo": "Move to:",
+        "move": "Move",
+        "cancel": "Cancel"
+      }
     },
     "priority": {
       "STANDBY": "Standby",
@@ -1164,6 +1184,13 @@
       "auditTabEnhanced": "Enhanced Audit Logs — Filterable by event type and date range, with event distribution badges, daily timeline chart, and CSV export",
       "adminRefactor": "Admin Dashboard Refactor — Split 800-line monolith into 6 focused tab components with shared types",
       "healthCheckExpanded": "Enhanced Health Check — /health endpoint now reports memory usage and server uptime alongside DB status",
+      "kanbanContextMenu": "Card Context Menu — Right-click any Kanban card to move, assign, set priority, due date, link note, duplicate, or delete",
+      "kanbanMarqueeSelection": "Marquee Selection — Drag from the board background to select multiple cards across columns",
+      "kanbanBulkMove": "Bulk Move — Move all selected cards to another column in one action with a single grouped notification",
+      "kanbanDuplicateCard": "Duplicate Card — Quickly duplicate any Kanban card from the context menu",
+      "sharedNoteContentFix": "Fixed shared note edits reverting when navigating away (Yjs binary state priority issue)",
+      "sharedNoteTitleFix": "Fixed shared note title changes not visible to the note owner",
+      "kanbanThreeDotMenuFix": "Fixed three-dot menu not appearing on hover on Kanban cards",
       "initialRelease": "Initial release with full feature set"
     }
   },
@@ -1206,7 +1233,8 @@
       "notesGrowth": "Notes Created",
       "sharingActivity": "Sharing Activity",
       "sharedItems": "Shared Items",
-      "storageBreakdown": "Storage Breakdown"
+      "storageBreakdown": "Storage Breakdown",
+      "noStorageData": "No attachments uploaded yet"
     },
     "users": {
       "searchPlaceholder": "Search users...",
@@ -1220,9 +1248,19 @@
       "manualVerification": "Manual Verification",
       "promote": "Promote",
       "demote": "Demote",
+      "delete": "Delete",
+      "deleted": "User deleted",
+      "deleteTitle": "Delete User",
+      "deleteMessage": "This will permanently delete this user and all their data. This action cannot be undone.",
       "previous": "Previous",
       "next": "Next",
-      "pageOf": "Page {{page}} of {{total}}"
+      "pageOf": "Page {{page}} of {{total}}",
+      "cleanupTestUsers": "Cleanup test users",
+      "cleanupTitle": "Cleanup Test Users",
+      "cleanupMessage": "This will permanently delete all users with @example.com email addresses and all their data. This action cannot be undone.",
+      "cleanupDone": "Deleted {{count}} test users",
+      "cleaningUp": "Deleting test users...",
+      "deletingUser": "Deleting user..."
     },
     "recentUsers": {
       "title": "Recent Registrations",

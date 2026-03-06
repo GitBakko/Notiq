@@ -843,6 +843,13 @@
       "auditTabEnhanced": "Log Audit Potenziati — Filtrabile per tipo evento e intervallo date, con badge distribuzione, grafico timeline giornaliero ed esportazione CSV",
       "adminRefactor": "Refactoring Dashboard Admin — Monolite da 800 righe diviso in 6 componenti tab dedicati con tipi condivisi",
       "healthCheckExpanded": "Health Check Potenziato — L'endpoint /health ora riporta uso memoria e uptime server oltre allo stato DB",
+      "kanbanContextMenu": "Menu Contestuale Card — Click destro su qualsiasi card Kanban per spostare, assegnare, impostare priorita', scadenza, collegare nota, duplicare o eliminare",
+      "kanbanMarqueeSelection": "Selezione Marquee — Trascina dallo sfondo della board per selezionare piu' card tra le colonne",
+      "kanbanBulkMove": "Spostamento Multiplo — Sposta tutte le card selezionate in un'altra colonna con una singola notifica raggruppata",
+      "kanbanDuplicateCard": "Duplica Card — Duplica rapidamente qualsiasi card Kanban dal menu contestuale",
+      "sharedNoteContentFix": "Risolto problema modifiche note condivise perse alla navigazione (priorita' stato binario Yjs)",
+      "sharedNoteTitleFix": "Risolto problema titolo note condivise non visibile al proprietario",
+      "kanbanThreeDotMenuFix": "Risolto menu tre puntini non visibile al passaggio del mouse sulle card Kanban",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -894,6 +901,8 @@
     "kanbanCardMoved_TITLE": "Card Spostata",
     "kanbanBoardChat": "{{senderName}} ha inviato un messaggio nella board \"{{boardTitle}}\"",
     "kanbanBoardChat_TITLE": "Chat Board",
+    "kanbanBulkMove": "{{actorName}} ha spostato {{count}} card su {{boardTitle}}: {{summary}}",
+    "kanbanBulkMove_TITLE": "Card Spostate",
     "chatMessage": "{{senderName}} ti ha inviato un messaggio",
     "chatMessage_TITLE": "Nuovo Messaggio"
   },
@@ -981,7 +990,25 @@
       "deleteConfirm": "Eliminare questa card?",
       "deleteCard": "Elimina card",
       "priority": "Priorità",
-      "moveToColumn": "Sposta nella colonna"
+      "moveToColumn": "Sposta nella colonna",
+      "contextMenu": {
+        "moveTo": "Sposta in",
+        "assignTo": "Assegna a",
+        "priority": "Priorità",
+        "setDueDate": "Imposta scadenza",
+        "clearDueDate": "Rimuovi scadenza",
+        "linkNote": "Collega nota",
+        "duplicate": "Duplica",
+        "delete": "Elimina",
+        "unassigned": "Non assegnato",
+        "noPriority": "Nessuna priorità"
+      },
+      "bulkMove": {
+        "title": "{{count}} card selezionate",
+        "moveTo": "Sposta in:",
+        "move": "Sposta",
+        "cancel": "Annulla"
+      }
     },
     "priority": {
       "STANDBY": "In standby",
@@ -1206,7 +1233,8 @@
       "notesGrowth": "Note Create",
       "sharingActivity": "Attività di Condivisione",
       "sharedItems": "Elementi Condivisi",
-      "storageBreakdown": "Distribuzione Spazio"
+      "storageBreakdown": "Distribuzione Spazio",
+      "noStorageData": "Nessun allegato caricato"
     },
     "users": {
       "searchPlaceholder": "Cerca utenti...",
@@ -1220,9 +1248,19 @@
       "manualVerification": "Verifica Manuale",
       "promote": "Promuovi",
       "demote": "Declassa",
+      "delete": "Elimina",
+      "deleted": "Utente eliminato",
+      "deleteTitle": "Elimina Utente",
+      "deleteMessage": "Questo eliminerà permanentemente l'utente e tutti i suoi dati. Questa azione non può essere annullata.",
       "previous": "Precedente",
       "next": "Successivo",
-      "pageOf": "Pagina {{page}} di {{total}}"
+      "pageOf": "Pagina {{page}} di {{total}}",
+      "cleanupTestUsers": "Pulizia utenti di test",
+      "cleanupTitle": "Pulizia Utenti di Test",
+      "cleanupMessage": "Questo eliminerà permanentemente tutti gli utenti con email @example.com e tutti i loro dati. Questa azione non può essere annullata.",
+      "cleanupDone": "Eliminati {{count}} utenti di test",
+      "cleaningUp": "Eliminazione utenti di test...",
+      "deletingUser": "Eliminazione utente..."
     },
     "recentUsers": {
       "title": "Registrazioni Recenti",

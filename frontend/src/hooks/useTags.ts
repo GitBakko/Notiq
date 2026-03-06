@@ -22,9 +22,9 @@ export function useTags(isVault: boolean = false) {
     // Calculate counts
     const counts = new Map<string, number>();
 
-    // Filter notes also by isVault AND userId
+    // Filter notes by isVault AND (owned by user OR shared with user)
     const allNotes = await db.notes
-      .filter(n => n.userId === user.id && !n.isTrashed && !!n.isVault === isVault)
+      .filter(n => !n.isTrashed && !!n.isVault === isVault && (n.userId === user.id || n.ownership === 'shared'))
       .toArray();
 
     for (const note of allNotes) {

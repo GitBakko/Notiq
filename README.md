@@ -40,7 +40,7 @@ PBKDF2-derived AES-encrypted notes and credentials behind PIN protection.
 <td width="50%">
 
 **Kanban Boards**
-Drag-and-drop boards with columns, cards, comments, assignees, due dates, priority levels, note linking with smart sharing, activity history, board chat, cover images, completion tracking, auto-archiving, task list linking, and real-time SSE updates.
+Drag-and-drop boards with columns, cards, comments, assignees, due dates, priority levels, note linking with smart sharing, activity history, board chat, cover images, completion tracking, auto-archiving, task list linking, right-click context menu, marquee multi-card selection, bulk move with grouped notifications, and real-time SSE updates.
 
 **Task Lists**
 Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking.

@@ -49,9 +49,10 @@ export const deleteTag = async (userId: string, id: string) => {
 };
 
 export const addTagToNote = async (userId: string, noteId: string, tagId: string) => {
-  // Verify note access (owner or WRITE shared)
+  // Tags are per-user metadata (PK: noteId+tagId+userId), not content modifications.
+  // Any user with access (owner or any accepted share) can manage their own tags.
   const access = await checkNoteAccess(userId, noteId);
-  if (!access || access === 'READ') throw new ForbiddenError('errors.tags.noWriteAccess');
+  if (!access) throw new ForbiddenError('errors.tags.noWriteAccess');
 
   // Verify tag belongs to the requesting user
   const tag = await prisma.tag.findFirst({ where: { id: tagId, userId } });

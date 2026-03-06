@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
-import { Search, Check } from 'lucide-react';
+import { Search, Check, Trash2, FlaskConical } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../../../lib/api';
 import { Button } from '../../../components/ui/Button';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import LoadingOverlay from '../../../components/ui/LoadingOverlay';
 import type { UserData } from '../types';
 
 export default function UsersTab() {
@@ -29,6 +31,11 @@ export default function UsersTab() {
     return () => clearTimeout(timer);
   }, [userSearch]);
 
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+
   const updateUserRole = async (userId: string, action: string) => {
     try {
       const payload = action === 'VERIFY' ? { isVerified: true } : { role: action };
@@ -36,6 +43,30 @@ export default function UsersTab() {
       toast.success(t('admin.users.updated', 'User updated'));
       fetchUsers();
     } catch { toast.error(t('admin.updateFailed')); }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUserId) return;
+    setIsDeleting(true);
+    try {
+      await api.delete(`/admin/users/${deleteUserId}`);
+      toast.success(t('admin.users.deleted', 'User deleted'));
+      setDeleteUserId(null);
+      fetchUsers();
+    } catch { toast.error(t('admin.updateFailed')); }
+    setIsDeleting(false);
+  };
+
+  const handleCleanupTestUsers = async () => {
+    setIsCleaningUp(true);
+    try {
+      const res = await api.delete('/admin/users/cleanup/test-users');
+      const { deleted } = res.data;
+      toast.success(t('admin.users.cleanupDone', { count: deleted, defaultValue: `Deleted ${deleted} test users` }));
+      setShowCleanupConfirm(false);
+      fetchUsers();
+    } catch { toast.error(t('admin.updateFailed')); }
+    setIsCleaningUp(false);
   };
 
   return (
@@ -51,6 +82,10 @@ export default function UsersTab() {
             onChange={(e) => setUserSearch(e.target.value)}
           />
         </div>
+        <Button size="sm" variant="secondary" className="text-amber-600 gap-2" onClick={() => setShowCleanupConfirm(true)}>
+          <FlaskConical size={14} />
+          {t('admin.users.cleanupTestUsers', 'Cleanup test users')}
+        </Button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden dark:bg-neutral-800 dark:border-neutral-700/40">
@@ -98,6 +133,9 @@ export default function UsersTab() {
                         {t('admin.users.demote')}
                       </Button>
                     )}
+                    <Button size="sm" variant="secondary" className="text-red-500" onClick={() => setDeleteUserId(user.id)} title={t('admin.users.delete', 'Delete')}>
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -119,6 +157,28 @@ export default function UsersTab() {
           </Button>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteUserId}
+        onClose={() => setDeleteUserId(null)}
+        onConfirm={handleDeleteUser}
+        title={t('admin.users.deleteTitle', 'Delete User')}
+        message={t('admin.users.deleteMessage', 'This will permanently delete this user and all their data. This action cannot be undone.')}
+        confirmText={t('common.delete', 'Delete')}
+        variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={showCleanupConfirm}
+        onClose={() => setShowCleanupConfirm(false)}
+        onConfirm={handleCleanupTestUsers}
+        title={t('admin.users.cleanupTitle', 'Cleanup Test Users')}
+        message={t('admin.users.cleanupMessage', 'This will permanently delete all users with @example.com email addresses and all their data. This action cannot be undone.')}
+        confirmText={isCleaningUp ? t('common.loading', 'Loading...') : t('common.delete', 'Delete')}
+        variant="danger"
+      />
+
+      <LoadingOverlay isVisible={isDeleting || isCleaningUp} message={isCleaningUp ? t('admin.users.cleaningUp', 'Deleting test users...') : t('admin.users.deletingUser', 'Deleting user...')} />
     </div>
   );
 }

@@ -12,14 +12,21 @@ export interface VersionEntry {
 export const changelog: VersionEntry[] = [
   {
     version: '1.8.0',
-    date: '2026-03-05',
+    date: '2026-03-06',
     entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanContextMenu' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanMarqueeSelection' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanBulkMove' },
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanDuplicateCard' },
       { type: 'feature', titleKey: 'whatsNew.entries.systemHealthTab' },
       { type: 'feature', titleKey: 'whatsNew.entries.requestMetrics' },
       { type: 'feature', titleKey: 'whatsNew.entries.auditExpansion' },
       { type: 'feature', titleKey: 'whatsNew.entries.auditTabEnhanced' },
       { type: 'improvement', titleKey: 'whatsNew.entries.adminRefactor' },
       { type: 'improvement', titleKey: 'whatsNew.entries.healthCheckExpanded' },
+      { type: 'fix', titleKey: 'whatsNew.entries.sharedNoteContentFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.sharedNoteTitleFix' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanThreeDotMenuFix' },
     ],
   },
   {

@@ -101,7 +101,7 @@ export default function ShareBoardModal({
             <select
               value={selectedGroupId}
               onChange={(e) => setSelectedGroupId(e.target.value)}
-              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
+              className="flex-1 min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
             >
               <option value="">{t('sharing.selectGroup')}</option>
               {groups.map((g) => (
@@ -150,7 +150,7 @@ export default function ShareBoardModal({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t('kanban.share.emailPlaceholder')}
-            className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
+            className="flex-1 min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
             required
           />
           <select

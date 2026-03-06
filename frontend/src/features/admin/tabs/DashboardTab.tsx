@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import {
-  Users, Activity, HardDrive, TrendingUp, Share2, Lock, Tag, Book
+  Users, Activity, HardDrive, TrendingUp, Share2, Lock, Tag, Book,
+  Clock, Zap, AlertTriangle, Gauge
 } from 'lucide-react';
 import {
   Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell,
@@ -8,6 +9,21 @@ import {
 } from 'recharts';
 import type { DashboardStats, SystemHealth } from '../types';
 import { COLORS, formatBytes } from '../types';
+
+// Dark-mode aware tooltip styles for Recharts
+const useTooltipStyles = () => {
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  return {
+    contentStyle: {
+      backgroundColor: isDark ? '#262626' : '#fff',
+      borderColor: isDark ? '#404040' : '#e5e7eb',
+      borderRadius: 8,
+      color: isDark ? '#f5f5f5' : '#111827',
+    },
+    labelStyle: { color: isDark ? '#d4d4d4' : '#6b7280' },
+    itemStyle: { color: isDark ? '#f5f5f5' : '#111827' },
+  };
+};
 
 const StatCard = ({ title, value, icon: Icon, subValue, color }: {
   title: string;
@@ -37,36 +53,17 @@ interface DashboardTabProps {
 
 export default function DashboardTab({ stats, systemHealth }: DashboardTabProps) {
   const { t } = useTranslation();
+  const tooltipStyles = useTooltipStyles();
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Mini System Overview */}
       {systemHealth && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg p-4 border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('admin.monitoring.uptime')}</p>
-            <p className="text-lg font-bold text-neutral-900 dark:text-white mt-1">
-              {formatUptime(systemHealth.uptime)}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('admin.monitoring.requestsPerMin')}</p>
-            <p className="text-lg font-bold text-neutral-900 dark:text-white mt-1">
-              {systemHealth.metrics.requestsPerMinute}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('admin.monitoring.errorRate')}</p>
-            <p className={`text-lg font-bold mt-1 ${systemHealth.metrics.errorRate > 0.05 ? 'text-red-600' : 'text-emerald-600'}`}>
-              {(systemHealth.metrics.errorRate * 100).toFixed(1)}%
-            </p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('admin.monitoring.avgResponse')}</p>
-            <p className="text-lg font-bold text-neutral-900 dark:text-white mt-1">
-              {systemHealth.metrics.avgResponseMs}ms
-            </p>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard title={t('admin.monitoring.uptime')} value={formatUptime(systemHealth.uptime)} icon={Clock} color="text-blue-500 bg-blue-500" />
+          <StatCard title={t('admin.monitoring.requestsPerMin')} value={systemHealth.metrics.requestsPerMinute} icon={Zap} color="text-amber-500 bg-amber-500" />
+          <StatCard title={t('admin.monitoring.errorRate')} value={`${(systemHealth.metrics.errorRate * 100).toFixed(1)}%`} icon={AlertTriangle} color={systemHealth.metrics.errorRate > 0.05 ? 'text-red-500 bg-red-500' : 'text-emerald-500 bg-emerald-500'} />
+          <StatCard title={t('admin.monitoring.avgResponse')} value={`${systemHealth.metrics.avgResponseMs}ms`} icon={Gauge} color="text-purple-500 bg-purple-500" />
         </div>
       )}
 
@@ -117,7 +114,7 @@ export default function DashboardTab({ stats, systemHealth }: DashboardTabProps)
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
-                <Tooltip />
+                <Tooltip {...tooltipStyles} />
                 <Area type="monotone" dataKey="count" stroke="#2563eb" fill="url(#colorUsers)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -132,7 +129,7 @@ export default function DashboardTab({ stats, systemHealth }: DashboardTabProps)
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip cursor={{ fill: 'transparent' }} />
+                <Tooltip cursor={{ fill: 'transparent' }} {...tooltipStyles} />
                 <Legend />
                 <Bar dataKey="count" name={t('admin.charts.sharedItems')} fill="#06b6d4" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -142,26 +139,37 @@ export default function DashboardTab({ stats, systemHealth }: DashboardTabProps)
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-100 dark:bg-neutral-800 dark:border-neutral-700/40">
           <h3 className="font-semibold mb-4 text-neutral-900 dark:text-white">{t('admin.charts.storageBreakdown')}</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stats?.charts.storageByType} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {stats?.charts.storageByType.map((_entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatBytes(Number(value ?? 0))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex justify-center gap-4 mt-2 flex-wrap">
-            {stats?.charts.storageByType.map((entry, index) => (
-              <div key={index} className="flex items-center gap-1 text-xs text-neutral-500">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                {entry.name}
+          {stats?.charts.storageByType && stats.charts.storageByType.length > 0 ? (
+            <>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={stats.charts.storageByType} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                      {stats.charts.storageByType.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatBytes(Number(value ?? 0))} {...tooltipStyles} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="flex justify-center gap-4 mt-2 flex-wrap">
+                {stats.charts.storageByType.map((entry, index) => (
+                  <div key={index} className="flex items-center gap-1 text-xs text-neutral-500">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                    {entry.name}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-neutral-400 dark:text-neutral-500">
+              <div className="text-center">
+                <HardDrive className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">{t('admin.charts.noStorageData', 'No attachments uploaded yet')}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

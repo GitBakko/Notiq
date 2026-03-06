@@ -298,7 +298,10 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
 
   const editor = useEditor({
     extensions,
-    content: parsedInitialContent,
+    // CRITICAL: When collaboration is active, content MUST be undefined.
+    // The Yjs document (via Collaboration extension) is the sole content source.
+    // Passing content alongside Collaboration causes Yjs to merge both → duplication.
+    content: (collaboration?.enabled && provider) ? undefined : parsedInitialContent,
     editable,
     onUpdate: ({ editor }) => {
       isUpdating.current = true;
@@ -425,6 +428,61 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
       return () => { provider.off('synced', handleSync); };
     }
   }, [provider, editor, collaboration?.enabled]);
+
+  // -- Cursor idle detection: fade remote cursors after inactivity --
+  // Each client broadcasts lastActive in awareness; receiver-side CSS fades stale cursors.
+  const CURSOR_IDLE_MS = 10_000; // 10 seconds
+
+  useEffect(() => {
+    if (!editor || !provider?.awareness || !collaboration?.enabled) return;
+    const awareness = provider.awareness;
+
+    // Throttle awareness updates to reduce network traffic (once per 2s)
+    let lastBroadcast = 0;
+    const broadcastActive = () => {
+      const now = Date.now();
+      if (now - lastBroadcast < 2000) return;
+      lastBroadcast = now;
+      awareness.setLocalStateField('user', { ...collaboration?.user, lastActive: now });
+    };
+
+    editor.on('update', broadcastActive);
+    editor.on('selectionUpdate', broadcastActive);
+    const editorDom = editor.view.dom;
+    editorDom.addEventListener('keydown', broadcastActive);
+    broadcastActive(); // initial
+
+    // Periodic check: hide stale remote cursors via CSS class
+    const fadeInterval = setInterval(() => {
+      const now = Date.now();
+      const states = awareness.getStates();
+      const localClientId = awareness.clientID;
+      states.forEach((state, clientId) => {
+        if (clientId === localClientId) return;
+        const lastActive = state.user?.lastActive;
+        const isStale = !lastActive || (now - lastActive > CURSOR_IDLE_MS);
+        // Find cursor DOM elements by color (each user has unique color)
+        const color = state.user?.color;
+        if (!color) return;
+        const carets = editorDom.closest('.ProseMirror')
+          ?.parentElement?.querySelectorAll('.collaboration-cursor__caret');
+        carets?.forEach(caret => {
+          const el = caret as HTMLElement;
+          if (el.style.borderColor === color || el.getAttribute('style')?.includes(color)) {
+            el.style.transition = 'opacity 0.5s';
+            el.style.opacity = isStale ? '0' : '1';
+          }
+        });
+      });
+    }, 3000);
+
+    return () => {
+      clearInterval(fadeInterval);
+      editor.off('update', broadcastActive);
+      editor.off('selectionUpdate', broadcastActive);
+      editorDom.removeEventListener('keydown', broadcastActive);
+    };
+  }, [editor, provider, collaboration?.enabled, collaboration?.user]);
 
   // -- Editor stats for status bar --
   const [editorStats, setEditorStats] = useState({ characters: 0, lines: 0, cursorLine: 1, cursorColumn: 1 });

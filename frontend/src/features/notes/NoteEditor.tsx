@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical } from 'lucide-react';
 import Editor, { type EditorHandle } from '../../components/editor/Editor';
-import { revokeShare, updateNoteLocalOnly, updateSharedNoteNotebook, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
+import { revokeShare, updateNoteLocalOnly, updateSharedNoteNotebook, saveSharedNoteData, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
 import clsx from 'clsx';
@@ -41,8 +41,14 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const { updateTitle, updateContent, saveNote } = useNoteController(note);
 
     // -- Shared note detection --
-    const isSharedNote = note.ownership === 'shared';
-    const isReadOnly = isSharedNote && note.sharedPermission === 'READ';
+    // Must check both: ownership (from Dexie/syncPull) AND userId mismatch (from server GET /notes/:id
+    // which returns shared notes but doesn't set ownership field)
+    const isSharedNote = note.ownership === 'shared' || (!!user?.id && note.userId !== user.id);
+    // For server-fetched notes, permission and recipientNotebookId are inside sharedWith[]
+    const myShare = isSharedNote ? note.sharedWith?.find(s => s.userId === user?.id) : undefined;
+    const sharedPermission = note.sharedPermission || myShare?.permission;
+    const sharedRecipientNotebookId = note.recipientNotebookId ?? myShare?.recipientNotebookId ?? null;
+    const isReadOnly = isSharedNote && sharedPermission === 'READ';
 
     // -- Local State for Inputs --
     const [titleInput, setTitleInput] = useState(note.title);
@@ -107,26 +113,39 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         if (debouncedTitle !== note.title) {
             if (isSharedNote) {
                 updateNoteLocalOnly(note.id, { title: debouncedTitle });
+                // Persist title to server so the owner (and other recipients) see it
+                if (sharedPermission === 'WRITE') {
+                    saveSharedNoteData(note.id, { title: debouncedTitle }).catch(() => {});
+                }
             } else {
                 updateTitle(debouncedTitle);
             }
         }
-    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, isReadOnly]);
+    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, sharedPermission, isReadOnly]);
 
     useEffect(() => {
         if (note.isTrashed) return; // Don't save if trashed
 
         if (debouncedContent !== note.content) {
-            if (provider) {
-                // If Hocuspocus is active, we update Local DB ONLY (for UI preview),
-                // and rely on Hocuspocus for Server Sync.
-                // We SKIP the standard updateContent which triggers REST Sync Push.
+            if (provider || isSharedNote) {
+                // Shared notes OR Hocuspocus active: update Local DB ONLY for UI.
+                // We SKIP updateContent which triggers REST syncQueue (fails for shared notes).
                 updateNoteLocalOnly(note.id, { content: debouncedContent });
+
+                // For shared notes: also persist to server via REST immediately.
+                // Hocuspocus store is debounced and may NOT fire if the last connection
+                // closes before the timer (e.g. user navigates away while owner is offline).
+                // This REST save ensures the DB always has the latest content.
+                if (isSharedNote && sharedPermission === 'WRITE') {
+                    saveSharedNoteData(note.id, { content: debouncedContent }).catch(() => {
+                        // Non-critical: Hocuspocus store or next edit will retry
+                    });
+                }
             } else {
                 updateContent(debouncedContent);
             }
         }
-    }, [debouncedContent, note.id, provider, note.isTrashed, updateContent]);
+    }, [debouncedContent, note.id, provider, note.isTrashed, isSharedNote, sharedPermission, updateContent]);
 
 
     // -- Hocuspocus / Chat Logic --
@@ -392,38 +411,44 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         )}
                     </div>
 
-                    {(!isSharedNote || note.sharedPermission === 'WRITE') && (
-                        <div className="flex items-center gap-2">
-                            {isSharedNote ? (
-                                <NotebookSelector
-                                    notebooks={notebooks || []}
-                                    selectedNotebookId={note.recipientNotebookId || ''}
-                                    onSelect={async (notebookId) => {
+                    {/* Notebook + Tag selectors: always show for shared notes (per-user metadata) and owned notes */}
+                    <div className="flex items-center gap-2">
+                        {isSharedNote ? (
+                            <NotebookSelector
+                                notebooks={notebooks || []}
+                                selectedNotebookId={sharedRecipientNotebookId || ''}
+                                onSelect={async (notebookId) => {
+                                    try {
                                         await updateSharedNoteNotebook(note.id, notebookId || null);
-                                        queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
-                                    }}
-                                />
-                            ) : (
-                                <NotebookSelector
-                                    notebooks={notebooks || []}
-                                    selectedNotebookId={note.notebookId}
-                                    onSelect={(notebookId) => {
-                                        saveNote({ notebookId });
                                         queryClient.setQueryData(queryKeys.notes.detail(note.id), (old: Record<string, unknown> | undefined) =>
-                                            old ? { ...old, notebookId } : old
+                                            old ? { ...old, recipientNotebookId: notebookId || null } : old
                                         );
                                         queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
-                                    }}
-                                />
-                            )}
-                            <TagSelector
-                                noteId={note.id}
-                                noteTags={note.tags || []}
-                                onUpdate={() => queryClient.invalidateQueries({ queryKey: queryKeys.notes.all })}
-                                isVault={note.isVault}
+                                    } catch {
+                                        toast.error(t('admin.updateFailed'));
+                                    }
+                                }}
                             />
-                        </div>
-                    )}
+                        ) : (
+                            <NotebookSelector
+                                notebooks={notebooks || []}
+                                selectedNotebookId={note.notebookId}
+                                onSelect={(notebookId) => {
+                                    saveNote({ notebookId });
+                                    queryClient.setQueryData(queryKeys.notes.detail(note.id), (old: Record<string, unknown> | undefined) =>
+                                        old ? { ...old, notebookId } : old
+                                    );
+                                    queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
+                                }}
+                            />
+                        )}
+                        <TagSelector
+                            noteId={note.id}
+                            noteTags={note.tags || []}
+                            onUpdate={() => queryClient.invalidateQueries({ queryKey: queryKeys.notes.all })}
+                            isVault={note.isVault}
+                        />
+                    </div>
 
                     <button
                         onClick={() => setIsSizeModalOpen(true)}

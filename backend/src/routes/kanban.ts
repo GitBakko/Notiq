@@ -459,7 +459,24 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     await getCardWithAccess(id, request.user.id, 'WRITE');
     const { toColumnId, position } = moveCardSchema.parse(request.body);
-    await kanbanService.moveCard(id, toColumnId, position, request.user.id);
+    const silent = (request.query as { silent?: string }).silent === 'true';
+    await kanbanService.moveCard(id, toColumnId, position, request.user.id, silent);
+    return { success: true };
+  });
+
+  const bulkMoveNotifySchema = z.object({
+    moves: z.array(z.object({
+      cardId: z.string(),
+      fromColumnId: z.string(),
+      toColumnId: z.string(),
+    })),
+  });
+
+  fastify.post('/boards/:boardId/bulk-move-notify', async (request) => {
+    const { boardId } = request.params as { boardId: string };
+    const { moves } = bulkMoveNotifySchema.parse(request.body);
+    await assertBoardAccess(boardId, request.user.id, 'WRITE');
+    await kanbanService.bulkMoveNotify(boardId, moves, request.user.id);
     return { success: true };
   });
 

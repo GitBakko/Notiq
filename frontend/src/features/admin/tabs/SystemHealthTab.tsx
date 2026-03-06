@@ -11,6 +11,21 @@ import { formatBytes } from '../types';
 
 const AUTO_REFRESH_SEC = 30;
 
+// Dark-mode aware tooltip styles for Recharts
+const useTooltipStyles = () => {
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  return {
+    contentStyle: {
+      backgroundColor: isDark ? '#262626' : '#fff',
+      borderColor: isDark ? '#404040' : '#e5e7eb',
+      borderRadius: 8,
+      color: isDark ? '#f5f5f5' : '#111827',
+    },
+    labelStyle: { color: isDark ? '#d4d4d4' : '#6b7280' },
+    itemStyle: { color: isDark ? '#f5f5f5' : '#111827' },
+  };
+};
+
 export default function SystemHealthTab() {
   const { t } = useTranslation();
   const [health, setHealth] = useState<SystemHealth | null>(null);
@@ -43,6 +58,8 @@ export default function SystemHealthTab() {
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [fetchData]);
+
+  const tooltipStyles = useTooltipStyles();
 
   if (!health) {
     return (
@@ -168,6 +185,7 @@ export default function SystemHealthTab() {
                   labelFormatter={(v) => new Date(v as string).toLocaleTimeString()}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={((value: any, name: any) => [value ?? 0, name === 'requests' ? t('admin.monitoring.requests') : t('admin.monitoring.errors')]) as any}
+                  {...tooltipStyles}
                 />
                 <Area type="monotone" dataKey="requests" stroke="#10b981" fill="url(#colorReqs)" />
                 <Line type="monotone" dataKey="errors" stroke="#ef4444" strokeWidth={2} dot={false} />

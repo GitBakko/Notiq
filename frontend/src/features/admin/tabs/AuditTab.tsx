@@ -28,6 +28,20 @@ const EVENT_COLORS: Record<string, string> = {
   IMPORT_ONENOTE: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
 };
 
+const useTooltipStyles = () => {
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  return {
+    contentStyle: {
+      backgroundColor: isDark ? '#262626' : '#fff',
+      borderColor: isDark ? '#404040' : '#e5e7eb',
+      borderRadius: 8,
+      color: isDark ? '#f5f5f5' : '#111827',
+    },
+    labelStyle: { color: isDark ? '#d4d4d4' : '#6b7280' },
+    itemStyle: { color: isDark ? '#f5f5f5' : '#111827' },
+  };
+};
+
 export default function AuditTab() {
   const { t } = useTranslation();
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -38,6 +52,7 @@ export default function AuditTab() {
   const [filterEvent, setFilterEvent] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const tooltipStyles = useTooltipStyles();
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -91,7 +106,7 @@ export default function AuditTab() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip />
+                <Tooltip {...tooltipStyles} />
                 <Bar dataKey="count" fill="#10b981" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

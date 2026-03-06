@@ -86,6 +86,46 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     return { message: 'User updated' };
   });
 
+  fastify.delete('/users/:id', async (request, reply) => {
+    const { id } = userIdParamSchema.parse(request.params);
+    if (!await requireSuperAdmin(fastify, request)) return reply.status(403).send({ message: 'errors.common.forbidden' });
+
+    // Prevent self-deletion
+    if (id === request.user.id) {
+      return reply.status(400).send({ message: 'errors.admin.cannotDeleteSelf' });
+    }
+
+    await adminService.deleteUser(id);
+    auditService.logEvent(request.user.id, 'ADMIN_USER_DELETE', { targetUserId: id });
+    return { message: 'User deleted' };
+  });
+
+  // Cleanup test/e2e users (emails matching @example.com)
+  fastify.delete('/users/cleanup/test-users', async (request, reply) => {
+    if (!await requireSuperAdmin(fastify, request)) return reply.status(403).send({ message: 'errors.common.forbidden' });
+
+    const testUsers = await prisma.user.findMany({
+      where: {
+        email: { endsWith: '@example.com' },
+        id: { not: request.user.id }, // Never delete self
+      },
+      select: { id: true, email: true },
+    });
+
+    let deleted = 0;
+    for (const testUser of testUsers) {
+      try {
+        await adminService.deleteUser(testUser.id);
+        deleted++;
+      } catch (e) {
+        request.log.warn({ userId: testUser.id, email: testUser.email, err: e }, 'Failed to delete test user');
+      }
+    }
+
+    auditService.logEvent(request.user.id, 'ADMIN_CLEANUP_TEST_USERS', { count: deleted });
+    return { deleted, total: testUsers.length };
+  });
+
   // Enhanced audit-logs with filters
   fastify.get('/audit-logs', async (request, reply) => {
     const { page, limit, event, userId, dateFrom, dateTo } = auditLogQuerySchema.parse(request.query);

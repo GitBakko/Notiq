@@ -87,7 +87,8 @@ export const addTagToNote = async (noteId: string, tagId: string) => {
   if (note.ownership === 'shared') {
     // Shared notes: call API directly (not through sync queue)
     await api.post('/tags/note', { noteId, tagId });
-    await db.notes.update(noteId, { tags: updatedTags });
+    // _localMetaUpdatedAt prevents syncPull race condition from overwriting this change
+    await db.notes.update(noteId, { tags: updatedTags, _localMetaUpdatedAt: Date.now() });
   } else {
     // Owned notes: offline-first flow via sync queue
     await db.notes.update(noteId, { tags: updatedTags, syncStatus: 'updated' });
@@ -112,7 +113,8 @@ export const removeTagFromNote = async (noteId: string, tagId: string) => {
   if (note.ownership === 'shared') {
     // Shared notes: call API directly
     await api.delete('/tags/note', { data: { noteId, tagId } });
-    await db.notes.update(noteId, { tags: updatedTags });
+    // _localMetaUpdatedAt prevents syncPull race condition from overwriting this change
+    await db.notes.update(noteId, { tags: updatedTags, _localMetaUpdatedAt: Date.now() });
   } else {
     // Owned notes: offline-first flow
     await db.notes.update(noteId, { tags: updatedTags, syncStatus: 'updated' });

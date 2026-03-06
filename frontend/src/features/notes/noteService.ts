@@ -33,6 +33,7 @@ export interface Note {
     userId: string;
     permission: 'READ' | 'WRITE';
     status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+    recipientNotebookId?: string | null;
     user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }[];
   user?: { id: string; name: string | null; email: string; avatarUrl?: string | null };
@@ -190,7 +191,18 @@ export const updateNoteLocalOnly = async (id: string, data: Partial<Note>) => {
 
 export const updateSharedNoteNotebook = async (noteId: string, recipientNotebookId: string | null) => {
   await api.put(`/share/notes/${noteId}/metadata`, { recipientNotebookId });
-  await db.notes.update(noteId, { recipientNotebookId });
+  // Transaction ensures mutation event fires cleanly after commit,
+  // triggering all useLiveQuery subscribers (useNotebooks, useNotes, etc.)
+  await db.transaction('rw', db.notes, async () => {
+    const note = await db.notes.get(noteId);
+    if (note) {
+      await db.notes.put({ ...note, recipientNotebookId, _localMetaUpdatedAt: Date.now() });
+    }
+  });
+};
+
+export const saveSharedNoteData = async (noteId: string, data: { content?: string; title?: string }) => {
+  await api.put(`/share/notes/${noteId}/content`, data);
 };
 
 export const deleteNote = async (id: string) => {

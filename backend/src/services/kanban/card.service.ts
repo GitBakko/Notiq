@@ -176,7 +176,8 @@ export async function moveCard(
   cardId: string,
   toColumnId: string,
   newPosition: number,
-  actorId?: string
+  actorId?: string,
+  skipNotification: boolean = false
 ) {
   const card = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
@@ -269,45 +270,47 @@ export async function moveCard(
     }
 
     // Notify all board participants about cross-column move (tiered)
-    const actor = await prisma.user.findUnique({
-      where: { id: actorId },
-      select: { name: true, email: true },
-    });
-    const actorName = actor?.name || actor?.email || 'Someone';
+    if (!skipNotification) {
+      const actor = await prisma.user.findUnique({
+        where: { id: actorId },
+        select: { name: true, email: true },
+      });
+      const actorName = actor?.name || actor?.email || 'Someone';
 
-    await notifyBoardUsersTiered(
-      actorId,
-      boardId,
-      'KANBAN_CARD_MOVED',
-      'Card Moved',
-      `${actorName} moved "${card.title}" from "${card.column.title}" to "${targetColumn.title}"`,
-      {
+      await notifyBoardUsersTiered(
+        actorId,
         boardId,
-        cardId,
-        cardTitle: card.title,
-        actorName,
-        fromColumn: card.column.title,
-        toColumn: targetColumn.title,
-        localizationKey: 'notifications.kanbanCardMoved',
-        localizationArgs: {
-          actorName,
-          cardTitle: card.title,
-          fromColumn: card.column.title,
-          toColumn: targetColumn.title,
-        },
-      },
-      {
-        type: 'KANBAN_CARD_MOVED',
-        data: (_email, locale) => ({
-          actorName,
-          cardTitle: card.title,
-          fromColumn: card.column.title,
-          toColumn: targetColumn.title,
+        'KANBAN_CARD_MOVED',
+        'Card Moved',
+        `${actorName} moved "${card.title}" from "${card.column.title}" to "${targetColumn.title}"`,
+        {
           boardId,
-          locale,
-        }),
-      }
-    );
+          cardId,
+          cardTitle: card.title,
+          actorName,
+          fromColumn: card.column.title,
+          toColumn: targetColumn.title,
+          localizationKey: 'notifications.kanbanCardMoved',
+          localizationArgs: {
+            actorName,
+            cardTitle: card.title,
+            fromColumn: card.column.title,
+            toColumn: targetColumn.title,
+          },
+        },
+        {
+          type: 'KANBAN_CARD_MOVED',
+          data: (_email, locale) => ({
+            actorName,
+            cardTitle: card.title,
+            fromColumn: card.column.title,
+            toColumn: targetColumn.title,
+            boardId,
+            locale,
+          }),
+        }
+      );
+    }
 
     // Auto-complete reminders when card moves to a completed column
     if (targetColumn.isCompleted) {
@@ -442,4 +445,75 @@ export async function unarchiveCard(cardId: string) {
   });
 
   return { success: true };
+}
+
+// ─── Bulk Move Notify ───────────────────────────────────────
+
+export async function bulkMoveNotify(
+  boardId: string,
+  moves: { cardId: string; fromColumnId: string; toColumnId: string }[],
+  actorId: string,
+) {
+  if (moves.length === 0) return;
+
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { title: true, columns: { select: { id: true, title: true } } },
+  });
+  if (!board) return;
+
+  const actor = await prisma.user.findUnique({
+    where: { id: actorId },
+    select: { name: true, email: true },
+  });
+  const actorName = actor?.name || actor?.email || 'Unknown';
+
+  const columnMap = new Map(board.columns.map(c => [c.id, c.title]));
+
+  // Group moves by fromColumn -> toColumn
+  const groups = new Map<string, number>();
+  for (const move of moves) {
+    const from = columnMap.get(move.fromColumnId) || '?';
+    const to = columnMap.get(move.toColumnId) || '?';
+    const key = `${from} \u2192 ${to}`;
+    groups.set(key, (groups.get(key) || 0) + 1);
+  }
+
+  const summary = Array.from(groups.entries())
+    .map(([key, count]) => `${count} \u00d7 ${key}`)
+    .join(', ');
+
+  const totalCount = moves.length;
+
+  await notifyBoardUsersTiered(
+    actorId,
+    boardId,
+    'KANBAN_CARD_MOVED',
+    'Cards Moved',
+    `${actorName} moved ${totalCount} cards on ${board.title}: ${summary}`,
+    {
+      boardId,
+      actorName,
+      count: totalCount,
+      summary,
+      boardTitle: board.title,
+      localizationKey: 'notifications.kanbanBulkMove',
+      localizationArgs: {
+        actorName,
+        count: String(totalCount),
+        boardTitle: board.title,
+        summary,
+      },
+    },
+    {
+      type: 'KANBAN_CARD_MOVED',
+      data: (_email: string, locale: string) => ({
+        actorName,
+        count: String(totalCount),
+        summary,
+        boardTitle: board.title,
+        locale,
+      }),
+    }
+  );
 }

@@ -373,6 +373,64 @@ export async function deleteCard(cardId: string): Promise<void> {
   });
 }
 
+export async function duplicateCard(cardId: string): Promise<LocalKanbanCard> {
+  const userId = getUserId();
+  const original = await db.kanbanCards.get(cardId);
+  if (!original) throw new Error('Card not found');
+
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  const cardsInColumn = await db.kanbanCards.where('columnId').equals(original.columnId).toArray();
+  const newPosition = original.position + 1;
+
+  const card: LocalKanbanCard = {
+    id,
+    title: `Copy of ${original.title}`,
+    description: original.description,
+    position: newPosition,
+    columnId: original.columnId,
+    boardId: original.boardId,
+    assigneeId: null,
+    assignee: null,
+    dueDate: null,
+    priority: original.priority,
+    noteId: null,
+    noteLinkedById: null,
+    note: null,
+    commentCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    syncStatus: 'created',
+  };
+
+  await db.transaction('rw', db.kanbanCards, db.kanbanBoards, db.syncQueue, async () => {
+    for (const c of cardsInColumn) {
+      if (c.position >= newPosition) {
+        await db.kanbanCards.update(c.id, { position: c.position + 1 });
+      }
+    }
+
+    await db.kanbanCards.add(card);
+
+    const board = await db.kanbanBoards.get(original.boardId);
+    if (board) {
+      await db.kanbanBoards.update(original.boardId, { cardCount: (board.cardCount || 0) + 1 });
+    }
+
+    await db.syncQueue.add({
+      type: 'CREATE',
+      entity: 'KANBAN_CARD',
+      entityId: id,
+      userId,
+      data: { id, columnId: original.columnId, title: card.title, description: card.description, priority: card.priority },
+      createdAt: Date.now(),
+    });
+  });
+
+  return card;
+}
+
 // ── Comments (server-only) ──────────────────────────────────────────────
 
 export async function getComments(cardId: string): Promise<KanbanComment[]> {

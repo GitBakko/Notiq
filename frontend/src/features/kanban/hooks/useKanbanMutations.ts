@@ -120,6 +120,14 @@ export function useKanbanMutations(boardId?: string) {
     },
   });
 
+  const duplicateCard = useMutation({
+    mutationFn: kanbanService.duplicateCard,
+    onSuccess: () => {
+      flushSync();
+      invalidateBoard();
+    },
+  });
+
   // Server-only mutations (no Dexie, no syncPush)
   const uploadCover = useMutation({
     mutationFn: ({ bid, file }: { bid: string; file: File }) =>
@@ -193,6 +201,7 @@ export function useKanbanMutations(boardId?: string) {
     updateCard,
     moveCard,
     deleteCard,
+    duplicateCard,
     uploadCover,
     deleteCover,
     linkNote,

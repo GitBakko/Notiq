@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -36,6 +36,11 @@ import KanbanFilterBar, {
 } from './components/KanbanFilterBar';
 import ArchivedCardsModal from './components/ArchivedCardsModal';
 import TaskListLinkPicker from './components/TaskListLinkPicker';
+import { useMarqueeSelection } from './hooks/useMarqueeSelection';
+import CardContextMenu from './components/CardContextMenu';
+import BulkMoveMenu from './components/BulkMoveMenu';
+import type { PriorityLevel } from '../../utils/priorityConfig';
+import api from '../../lib/api';
 // ganttExport loaded lazily on demand (exceljs ~500KB)
 
 interface KanbanBoardPageProps {
@@ -104,6 +109,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [boardContainerEl, setBoardContainerEl] = useState<HTMLDivElement | null>(null);
 
   const [filters, setFilters] = useState<KanbanFilters>(defaultKanbanFilters);
   const [boardSharingCheck, setBoardSharingCheck] = useState<NoteSharingCheck | null>(null);
@@ -113,6 +119,16 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const isOwner = board?.ownerId === user?.id;
   const readOnly = !isOwner && board?.shares?.every((s) => s.permission === 'READ');
   const isShared = board && (board.shares?.some((s) => s.status === 'ACCEPTED') || false);
+
+  // ── Marquee selection (desktop only) ──
+  const marquee = useMarqueeSelection({
+    containerEl: boardContainerEl,
+    enabled: !readOnly,
+  });
+
+  // ── Context menu state ──
+  const [contextMenu, setContextMenu] = useState<{ card: import('./types').KanbanCard; columnId: string; position: { x: number; y: number } } | null>(null);
+  const [noteLinkCardId, setNoteLinkCardId] = useState<string | null>(null);
 
   // Find selected card across all columns
   const selectedCard = useMemo(() => {
@@ -271,6 +287,74 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     );
     e.target.value = '';
   }
+
+  // ── Context menu handler ──
+  const handleCardContextMenu = useCallback((cardId: string, e: React.MouseEvent) => {
+    if (readOnly) return;
+    const card = board?.columns.flatMap(c => c.cards).find(c => c.id === cardId);
+    const col = board?.columns.find(c => c.cards.some(ca => ca.id === cardId));
+    if (!card || !col) return;
+    setContextMenu({ card, columnId: col.id, position: { x: e.clientX, y: e.clientY } });
+  }, [board, readOnly]);
+
+  // ── Context menu action handlers ──
+  const handleContextAssign = useCallback((cardId: string, assigneeId: string | null) => {
+    mutations.updateCard.mutate({ cardId, assigneeId });
+  }, [mutations]);
+
+  const handleContextPriority = useCallback((cardId: string, priority: PriorityLevel | null) => {
+    mutations.updateCard.mutate({ cardId, priority });
+  }, [mutations]);
+
+  const handleContextDueDate = useCallback((cardId: string, dueDate: string | null) => {
+    mutations.updateCard.mutate({ cardId, dueDate });
+  }, [mutations]);
+
+  const handleContextLinkNote = useCallback((cardId: string) => {
+    setNoteLinkCardId(cardId);
+  }, []);
+
+  const handleContextDuplicate = useCallback((cardId: string) => {
+    mutations.duplicateCard.mutate(cardId);
+  }, [mutations]);
+
+  const handleContextDelete = useCallback((cardId: string) => {
+    mutations.deleteCard.mutate(cardId);
+  }, [mutations]);
+
+  // ── Bulk move handler ──
+  const handleBulkMove = useCallback(async (targetColumnId: string) => {
+    if (!board) return;
+
+    const moves: { cardId: string; fromColumnId: string; toColumnId: string }[] = [];
+    for (const cardId of marquee.selectedCardIds) {
+      const col = board.columns.find(c => c.cards.some(ca => ca.id === cardId));
+      if (col && col.id !== targetColumnId) {
+        moves.push({ cardId, fromColumnId: col.id, toColumnId: targetColumnId });
+      }
+    }
+
+    if (moves.length === 0) {
+      marquee.clearSelection();
+      return;
+    }
+
+    // Optimistic UI + silent REST calls (bypass sync queue notifications)
+    for (const move of moves) {
+      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId);
+    }
+    for (const move of moves) {
+      api.put(`/kanban/cards/${move.cardId}/move?silent=true`, {
+        toColumnId: move.toColumnId,
+        position: 999,
+      }).catch(() => {});
+    }
+
+    // Grouped notification
+    api.post(`/kanban/boards/${board.id}/bulk-move-notify`, { moves }).catch(() => {});
+
+    marquee.clearSelection();
+  }, [marquee, board, dnd]);
 
   if (isLoading) {
     return (
@@ -798,7 +882,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           </div>
         ) : (
           // Desktop: multi-column layout with DnD
-          <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div ref={setBoardContainerEl} className="flex-1 overflow-x-auto overflow-y-hidden">
             <DndContext
               sensors={dnd.sensors}
               collisionDetection={dnd.kanbanCollisionDetection}
@@ -822,6 +906,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       highlightedCardIds={highlightedCardIds}
                       allColumns={displayColumns}
                       onMoveCardToColumn={dnd.handleMoveCardToColumn}
+                      selectedCardIds={marquee.selectedCardIds}
+                      onCardContextMenu={handleCardContextMenu}
                     />
                   ))}
                 </SortableContext>
@@ -890,6 +976,60 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 ) : null}
               </DragOverlay>
             </DndContext>
+
+            {/* Marquee selection rectangle */}
+            {marquee.marqueeRect && (
+              <div
+                className="fixed pointer-events-none border border-blue-500/50 bg-blue-500/10 rounded-sm z-50"
+                style={{
+                  left: marquee.marqueeRect.x,
+                  top: marquee.marqueeRect.y,
+                  width: marquee.marqueeRect.width,
+                  height: marquee.marqueeRect.height,
+                }}
+              />
+            )}
+
+            {/* Bulk move menu after marquee selection */}
+            {marquee.menuPosition && marquee.selectedCardIds.size > 0 && board && (
+              <BulkMoveMenu
+                selectedCount={marquee.selectedCardIds.size}
+                position={marquee.menuPosition}
+                columns={board.columns}
+                onMove={handleBulkMove}
+                onCancel={marquee.clearSelection}
+              />
+            )}
+
+            {/* Card context menu (right-click) */}
+            {contextMenu && board && (
+              <CardContextMenu
+                card={contextMenu.card}
+                position={contextMenu.position}
+                board={board}
+                currentColumnId={contextMenu.columnId}
+                onClose={() => setContextMenu(null)}
+                onMoveToColumn={dnd.handleMoveCardToColumn}
+                onAssign={handleContextAssign}
+                onSetPriority={handleContextPriority}
+                onSetDueDate={handleContextDueDate}
+                onLinkNote={handleContextLinkNote}
+                onDuplicate={handleContextDuplicate}
+                onDelete={handleContextDelete}
+              />
+            )}
+
+            {/* NoteLinkPicker for context menu "Link note" action */}
+            {noteLinkCardId && (
+              <NoteLinkPicker
+                isOpen={!!noteLinkCardId}
+                onClose={() => setNoteLinkCardId(null)}
+                onSelect={(note) => {
+                  mutations.linkNote.mutate({ cardId: noteLinkCardId, noteId: note.id });
+                  setNoteLinkCardId(null);
+                }}
+              />
+            )}
           </div>
         )}
 

@@ -17,10 +17,12 @@ interface KanbanCardProps {
   onSelect: (cardId: string) => void;
   readOnly?: boolean;
   isHighlighted?: boolean;
+  isSelected?: boolean;
   isInCompletedColumn?: boolean;
   allColumns?: KanbanColumn[];
   currentColumnId?: string;
   onMoveToColumn?: (cardId: string, targetColumnId: string) => void;
+  onContextMenu?: (cardId: string, e: React.MouseEvent) => void;
 }
 
 function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
@@ -30,7 +32,7 @@ function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
   return 'default';
 }
 
-export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighted, isInCompletedColumn, allColumns, currentColumnId, onMoveToColumn }: KanbanCardProps) {
+export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighted, isSelected, isInCompletedColumn, allColumns, currentColumnId, onMoveToColumn, onContextMenu }: KanbanCardProps) {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
@@ -126,12 +128,20 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
       <div
         ref={setNodeRef}
         style={style}
+        data-kanban-card={card.id}
+        onContextMenu={(e) => {
+          if (onContextMenu) {
+            e.preventDefault();
+            onContextMenu(card.id, e);
+          }
+        }}
         className={clsx(
-          'rounded-lg bg-white dark:bg-neutral-800 p-3 shadow-sm',
+          'group rounded-lg bg-white dark:bg-neutral-800 p-3 shadow-sm',
           'border border-neutral-200/60 dark:border-neutral-700/40',
           'hover:shadow-md transition-all cursor-pointer hover-lift',
           isDragging && 'opacity-50 shadow-lg z-50',
-          isHighlighted && 'ring-2 ring-emerald-400 dark:ring-emerald-500 animate-pulse shadow-md shadow-emerald-100 dark:shadow-emerald-900/30'
+          isHighlighted && 'ring-2 ring-emerald-400 dark:ring-emerald-500 animate-pulse shadow-md shadow-emerald-100 dark:shadow-emerald-900/30',
+          isSelected && 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-[1.02]'
         )}
       >
         <div className="flex gap-2">

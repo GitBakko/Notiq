@@ -131,28 +131,49 @@ export const syncPull = async () => {
 
     // Pull Shared Notes (ACCEPTED only)
     try {
+      // Record pull start time BEFORE fetch — used to detect race conditions with local metadata updates
+      const sharedPullStartTime = Date.now();
       const sharedRes = await api.get<(Note & { _sharedPermission: 'READ' | 'WRITE'; _recipientNotebookId?: string | null })[]>('/share/notes/accepted');
 
       await db.transaction('rw', db.notes, async () => {
         const localShared = await db.notes.where('ownership').equals('shared').toArray();
+        const localSharedMap = new Map(localShared.map(n => [n.id, n]));
 
-        const serverShared = sharedRes.data.map(n => ({
-          ...n,
-          tags: n.tags || [],
-          attachments: n.attachments || [],
-          ownership: 'shared' as const,
-          sharedPermission: n._sharedPermission,
-          sharedByUser: n.user || null,
-          recipientNotebookId: n._recipientNotebookId || null,
-          syncStatus: 'synced' as const,
-        }));
+        const serverShared = sharedRes.data.map(n => {
+          const mapped = {
+            ...n,
+            tags: n.tags || [],
+            attachments: n.attachments || [],
+            ownership: 'shared' as const,
+            sharedPermission: n._sharedPermission,
+            sharedByUser: n.user || null,
+            recipientNotebookId: n._recipientNotebookId || null,
+            syncStatus: 'synced' as const,
+          };
+
+          // Race condition guard: if per-user metadata (tags, recipientNotebookId) was updated
+          // locally DURING this pull (i.e., after the fetch started but before it completed),
+          // preserve the local values — the server response contains stale data for these fields.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const local = localSharedMap.get(n.id) as (typeof mapped & { _localMetaUpdatedAt?: number }) | undefined;
+          if (local?._localMetaUpdatedAt && local._localMetaUpdatedAt >= sharedPullStartTime) {
+            return {
+              ...mapped,
+              recipientNotebookId: local.recipientNotebookId,
+              tags: local.tags,
+              _localMetaUpdatedAt: local._localMetaUpdatedAt,
+            };
+          }
+
+          return mapped;
+        });
         const serverSharedIds = new Set(serverShared.map(n => n.id));
 
         // Remove notes no longer shared with us (revoked/declined)
         const toRemove = localShared.filter(n => !serverSharedIds.has(n.id)).map(n => n.id);
         if (toRemove.length > 0) await db.notes.bulkDelete(toRemove);
 
-        // Upsert — server always wins for shared notes
+        // Upsert — server wins for shared notes (except per-user metadata during race)
         if (serverShared.length > 0) await db.notes.bulkPut(serverShared);
       });
     } catch (error) {

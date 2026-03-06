@@ -40,6 +40,7 @@ export interface LocalNote {
   sharedPermission?: 'READ' | 'WRITE' | null;
   sharedByUser?: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   recipientNotebookId?: string | null;
+  _localMetaUpdatedAt?: number;
   syncStatus: 'synced' | 'created' | 'updated';
 }
 

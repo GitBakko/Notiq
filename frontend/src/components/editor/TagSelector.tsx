@@ -61,6 +61,13 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
   const handleAddTag = async (tagId: string) => {
     try {
       await addTagToNote(noteId, tagId);
+      // Optimistically update React Query detail cache (NotesPage prefers fetchedNote over Dexie)
+      const addedTag = tags?.find(tg => tg.id === tagId);
+      if (addedTag) {
+        queryClient.setQueryData(queryKeys.notes.detail(noteId), (old: Record<string, unknown> | undefined) =>
+          old ? { ...old, tags: [...((old.tags as { tag: { id: string; name: string } }[]) || []), { tag: { id: addedTag.id, name: addedTag.name } }] } : old
+        );
+      }
       onUpdate();
       setSearch('');
       setIsOpen(false); // Close after adding
@@ -74,6 +81,10 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
     try {
       const newTag = await createTag(search.trim(), isVault);
       await addTagToNote(noteId, newTag.id);
+      // Optimistically update React Query detail cache
+      queryClient.setQueryData(queryKeys.notes.detail(noteId), (old: Record<string, unknown> | undefined) =>
+        old ? { ...old, tags: [...((old.tags as { tag: { id: string; name: string } }[]) || []), { tag: { id: newTag.id, name: newTag.name } }] } : old
+      );
       queryClient.invalidateQueries({ queryKey: queryKeys.tags.all });
       onUpdate();
       setSearch('');
@@ -88,6 +99,10 @@ export default function TagSelector({ noteId, noteTags = [], onUpdate, isVault =
   const handleRemoveTag = async (tagId: string) => {
     try {
       await removeTagFromNote(noteId, tagId);
+      // Optimistically update React Query detail cache (NotesPage prefers fetchedNote over Dexie)
+      queryClient.setQueryData(queryKeys.notes.detail(noteId), (old: Record<string, unknown> | undefined) =>
+        old ? { ...old, tags: ((old.tags as { tag: { id: string } }[]) || []).filter(t => t.tag.id !== tagId) } : old
+      );
       onUpdate();
     } catch {
       toast.error(t('tags.removeFailed'));
