@@ -23,6 +23,7 @@ interface KanbanCardProps {
   currentColumnId?: string;
   onMoveToColumn?: (cardId: string, targetColumnId: string) => void;
   onContextMenu?: (cardId: string, e: React.MouseEvent) => void;
+  isArchivePreview?: boolean;
 }
 
 function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
@@ -32,7 +33,7 @@ function getDueDateStatus(dueDate: string): 'default' | 'today' | 'overdue' {
   return 'default';
 }
 
-export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighted, isSelected, isInCompletedColumn, allColumns, currentColumnId, onMoveToColumn, onContextMenu }: KanbanCardProps) {
+export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighted, isSelected, isInCompletedColumn, allColumns, currentColumnId, onMoveToColumn, onContextMenu, isArchivePreview }: KanbanCardProps) {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const dateLocale = i18n.language.startsWith('it') ? itLocale : enUS;
@@ -141,7 +142,8 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
           'hover:shadow-md transition-all cursor-pointer hover-lift',
           isDragging && 'opacity-50 shadow-lg z-50',
           isHighlighted && 'ring-2 ring-emerald-400 dark:ring-emerald-500 animate-pulse shadow-md shadow-emerald-100 dark:shadow-emerald-900/30',
-          isSelected && 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-[1.02]'
+          isSelected && 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-[1.02]',
+          isArchivePreview && 'ring-2 ring-amber-400 dark:ring-amber-500 animate-pulse bg-amber-50 dark:bg-amber-900/20 shadow-md shadow-amber-100 dark:shadow-amber-900/30'
         )}
       >
         <div className="flex gap-2">

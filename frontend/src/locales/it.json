@@ -850,6 +850,8 @@
       "sharedNoteContentFix": "Risolto problema modifiche note condivise perse alla navigazione (priorita' stato binario Yjs)",
       "sharedNoteTitleFix": "Risolto problema titolo note condivise non visibile al proprietario",
       "kanbanThreeDotMenuFix": "Risolto menu tre puntini non visibile al passaggio del mouse sulle card Kanban",
+      "kanbanBulkArchive": "Archiviazione massiva: il proprietario puo' archiviare card completate piu' vecchie di X giorni con anteprima evidenziata",
+      "kanbanCardMoveFix": "Risolto drag & drop e spostamento da menu che non persistevano (card tornava alla colonna originale)",
       "initialRelease": "Rilascio iniziale con tutte le funzionalita'"
     }
   },
@@ -1155,6 +1157,17 @@
       "empty": "Nessuna card archiviata",
       "unarchive": "Ripristina",
       "archivedOn": "Archiviata il {{date}}"
+    },
+    "bulkArchive": {
+      "title": "Archiviazione massiva",
+      "description": "Archivia tutte le card nelle colonne completate che non sono state aggiornate da un numero specificato di giorni.",
+      "olderThan": "Più vecchie di",
+      "days": "giorni",
+      "preview": "Anteprima card da archiviare",
+      "noCards": "Nessuna card corrisponde ai criteri.",
+      "found": "{{count}} card verranno archiviate:",
+      "archive": "Archivia {{count}} card",
+      "menuItem": "Archiviazione massiva"
     },
     "linking": {
       "linkTaskList": "Collega Task List",

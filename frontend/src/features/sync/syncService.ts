@@ -617,7 +617,16 @@ export const syncPush = async () => {
             const columnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
             await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
-            await api.put(`/kanban/cards/${item.entityId}`, item.data);
+            const cardData = item.data as Record<string, unknown> | undefined;
+            if (cardData?.columnId) {
+              // Move operation — route to dedicated move endpoint
+              await api.put(`/kanban/cards/${item.entityId}/move`, {
+                toColumnId: cardData.columnId,
+                position: cardData.position ?? 0,
+              });
+            } else {
+              await api.put(`/kanban/cards/${item.entityId}`, item.data);
+            }
           } else if (item.type === 'DELETE') {
             await api.delete(`/kanban/cards/${item.entityId}`);
           }

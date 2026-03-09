@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import clsx from 'clsx';
-import { CheckCircle2, GripVertical, MoreVertical, Plus, Trash2 } from 'lucide-react';
+import { Archive, CheckCircle2, GripVertical, MoreVertical, Plus, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import KanbanCard from './KanbanCard';
@@ -23,6 +23,8 @@ interface KanbanColumnProps {
   allColumns?: KanbanColumnType[];
   onMoveCardToColumn?: (cardId: string, targetColumnId: string) => void;
   onCardContextMenu?: (cardId: string, e: React.MouseEvent) => void;
+  onBulkArchive?: () => void;
+  bulkArchivePreviewIds?: Set<string>;
 }
 
 export default function KanbanColumn({
@@ -38,6 +40,8 @@ export default function KanbanColumn({
   allColumns,
   onMoveCardToColumn,
   onCardContextMenu,
+  onBulkArchive,
+  bulkArchivePreviewIds,
 }: KanbanColumnProps) {
   const { t } = useTranslation();
 
@@ -200,6 +204,18 @@ export default function KanbanColumn({
                         : t('kanban.column.markCompleted')}
                     </button>
                   )}
+                  {column.isCompleted && hasCards && onBulkArchive && (
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onBulkArchive();
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                    >
+                      <Archive size={14} />
+                      {t('kanban.bulkArchive.menuItem')}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowMenu(false);
@@ -250,6 +266,7 @@ export default function KanbanColumn({
               currentColumnId={column.id}
               onMoveToColumn={onMoveCardToColumn}
               onContextMenu={onCardContextMenu}
+              isArchivePreview={bulkArchivePreviewIds?.has(card.id)}
             />
           ))}
         </SortableContext>

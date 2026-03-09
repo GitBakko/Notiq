@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
   DragOverlay,
@@ -39,7 +40,9 @@ import TaskListLinkPicker from './components/TaskListLinkPicker';
 import { useMarqueeSelection } from './hooks/useMarqueeSelection';
 import CardContextMenu from './components/CardContextMenu';
 import BulkMoveMenu from './components/BulkMoveMenu';
+import BulkArchiveDialog from './components/BulkArchiveDialog';
 import type { PriorityLevel } from '../../utils/priorityConfig';
+import { queryKeys } from '../../lib/queryKeys';
 import api from '../../lib/api';
 // ganttExport loaded lazily on demand (exceljs ~500KB)
 
@@ -54,6 +57,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const { toggleSidebar } = useUIStore();
   const user = useAuthStore((s) => s.user);
 
+  const queryClient = useQueryClient();
   const { data: board, isLoading, isError } = useKanbanBoard(boardId);
   const mutations = useKanbanMutations(boardId);
 
@@ -129,6 +133,10 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   // ── Context menu state ──
   const [contextMenu, setContextMenu] = useState<{ card: import('./types').KanbanCard; columnId: string; position: { x: number; y: number } } | null>(null);
   const [noteLinkCardId, setNoteLinkCardId] = useState<string | null>(null);
+
+  // ── Bulk archive state ──
+  const [showBulkArchive, setShowBulkArchive] = useState(false);
+  const [bulkArchivePreviewIds, setBulkArchivePreviewIds] = useState<Set<string>>(new Set());
 
   // Find selected card across all columns
   const selectedCard = useMemo(() => {
@@ -908,6 +916,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                       onMoveCardToColumn={dnd.handleMoveCardToColumn}
                       selectedCardIds={marquee.selectedCardIds}
                       onCardContextMenu={handleCardContextMenu}
+                      onBulkArchive={isOwner ? () => setShowBulkArchive(true) : undefined}
+                      bulkArchivePreviewIds={bulkArchivePreviewIds}
                     />
                   ))}
                 </SortableContext>
@@ -1118,6 +1128,17 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
         confirmText={t('common.delete')}
         variant="danger"
       />
+
+      {/* Bulk archive dialog (owner-only) */}
+      {isOwner && (
+        <BulkArchiveDialog
+          isOpen={showBulkArchive}
+          onClose={() => setShowBulkArchive(false)}
+          boardId={boardId}
+          onPreview={setBulkArchivePreviewIds}
+          onArchived={() => queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) })}
+        />
+      )}
 
       {/* Archived cards modal */}
       <ArchivedCardsModal

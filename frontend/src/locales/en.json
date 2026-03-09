@@ -996,6 +996,17 @@
       "unarchive": "Unarchive",
       "archivedOn": "Archived on {{date}}"
     },
+    "bulkArchive": {
+      "title": "Bulk Archive",
+      "description": "Archive all cards in completed columns that haven't been updated for a specified number of days.",
+      "olderThan": "Older than",
+      "days": "days",
+      "preview": "Preview cards to archive",
+      "noCards": "No cards match the criteria.",
+      "found": "{{count}} card(s) will be archived:",
+      "archive": "Archive {{count}} card(s)",
+      "menuItem": "Bulk Archive"
+    },
     "linking": {
       "linkTaskList": "Link Task List",
       "unlinkTaskList": "Unlink Task List",
@@ -1191,6 +1202,8 @@
       "sharedNoteContentFix": "Fixed shared note edits reverting when navigating away (Yjs binary state priority issue)",
       "sharedNoteTitleFix": "Fixed shared note title changes not visible to the note owner",
       "kanbanThreeDotMenuFix": "Fixed three-dot menu not appearing on hover on Kanban cards",
+      "kanbanBulkArchive": "Bulk archive: owner can mass-archive completed cards older than X days with preview highlighting",
+      "kanbanCardMoveFix": "Fixed card drag & drop and menu move not persisting (card snapping back to original column)",
       "initialRelease": "Initial release with full feature set"
     }
   },

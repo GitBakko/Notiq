@@ -447,6 +447,58 @@ export async function unarchiveCard(cardId: string) {
   return { success: true };
 }
 
+// ─── Bulk Archive (owner-only) ──────────────────────────────
+
+/**
+ * Preview which cards in completed columns are older than N days.
+ * Returns card IDs + titles for frontend highlight.
+ */
+export async function previewBulkArchive(boardId: string, olderThanDays: number) {
+  const cutoffDate = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+  const completedColumns = await prisma.kanbanColumn.findMany({
+    where: { boardId, isCompleted: true },
+    select: { id: true },
+  });
+
+  if (completedColumns.length === 0) return [];
+
+  const cards = await prisma.kanbanCard.findMany({
+    where: {
+      columnId: { in: completedColumns.map((c) => c.id) },
+      archivedAt: null,
+      updatedAt: { lte: cutoffDate },
+    },
+    select: { id: true, title: true, updatedAt: true },
+    orderBy: { updatedAt: 'asc' },
+  });
+
+  return cards;
+}
+
+/**
+ * Archive cards by IDs (owner-only). Returns count of archived cards.
+ */
+export async function executeBulkArchive(boardId: string, cardIds: string[]) {
+  if (cardIds.length === 0) return 0;
+
+  // Only archive cards that belong to this board and are not already archived
+  const result = await prisma.kanbanCard.updateMany({
+    where: {
+      id: { in: cardIds },
+      column: { boardId },
+      archivedAt: null,
+    },
+    data: { archivedAt: new Date() },
+  });
+
+  if (result.count > 0) {
+    logger.info({ boardId, count: result.count }, 'Bulk-archived cards by owner');
+  }
+
+  return result.count;
+}
+
 // ─── Bulk Move Notify ───────────────────────────────────────
 
 export async function bulkMoveNotify(

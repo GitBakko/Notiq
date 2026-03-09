@@ -11,6 +11,14 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.8.1',
+    date: '2026-03-09',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.kanbanBulkArchive' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanCardMoveFix' },
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-03-06',
     entries: [

@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import * as kanbanService from '../services/kanban/index';
 import { assertBoardAccess, getColumnWithAccess, getCardWithAccess } from '../services/kanbanPermissions';
 import { addConnection } from '../services/kanbanSSE';
+import { ForbiddenError } from '../utils/errors';
 import prisma from '../plugins/prisma';
 
 // ─── Zod schemas ────────────────────────────────────────────
@@ -572,6 +573,29 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     await getCardWithAccess(id, request.user.id, 'WRITE');
     return await kanbanService.unarchiveCard(id);
+  });
+
+  // Bulk archive preview (owner-only): returns cards matching criteria
+  const bulkArchiveSchema = z.object({ olderThanDays: z.number().int().min(0).max(365) });
+
+  fastify.post('/boards/:id/bulk-archive-preview', async (request) => {
+    const { id } = request.params as { id: string };
+    const { isOwner } = await assertBoardAccess(id, request.user.id, 'WRITE');
+    if (!isOwner) throw new ForbiddenError('errors.kanban.ownerOnly');
+    const { olderThanDays } = bulkArchiveSchema.parse(request.body);
+    return await kanbanService.previewBulkArchive(id, olderThanDays);
+  });
+
+  // Bulk archive execute (owner-only): archive specific card IDs
+  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()) });
+
+  fastify.post('/boards/:id/bulk-archive', async (request) => {
+    const { id } = request.params as { id: string };
+    const { isOwner } = await assertBoardAccess(id, request.user.id, 'WRITE');
+    if (!isOwner) throw new ForbiddenError('errors.kanban.ownerOnly');
+    const { cardIds } = bulkArchiveExecSchema.parse(request.body);
+    const count = await kanbanService.executeBulkArchive(id, cardIds);
+    return { archived: count };
   });
 
   // ── Task List Linking ─────────────────────────────────────
