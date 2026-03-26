@@ -31,6 +31,9 @@ const ResetPasswordPage = lazy(() => import('./features/auth/ResetPasswordPage')
 const VerifyEmailPage = lazy(() => import('./features/auth/VerifyEmailPage'));
 const RequestInvitePage = lazy(() => import('./features/auth/RequestInvitePage'));
 
+// Announcements
+const AnnouncementHistoryPage = lazy(() => import('./features/announcements/AnnouncementHistoryPage'));
+
 // Admin
 const AdminPage = lazy(() => import('./features/admin/AdminPage'));
 
@@ -66,6 +69,7 @@ function App() {
             <Route path="vault" element={<VaultPage />} />
             <Route path="shared" element={<SharedWithMePage />} />
             <Route path="groups" element={<GroupsPage />} />
+            <Route path="announcements" element={<AnnouncementHistoryPage />} />
           </Route>
 
           {/* Public Routes */}

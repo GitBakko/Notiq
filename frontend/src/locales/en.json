@@ -1486,5 +1486,49 @@
       "screenshotTimeout": "Screenshot timed out",
       "blockedUrl": "URL blocked for security reasons"
     }
+  },
+  "announcements": {
+    "view": "View",
+    "dismiss": "Dismiss announcement",
+    "history": {
+      "title": "Announcement History",
+      "empty": "No announcements yet",
+      "active": "Active",
+      "inactive": "Inactive",
+      "by": "by",
+      "previous": "Previous",
+      "next": "Next",
+      "pageOf": "Page {{page}} of {{total}}"
+    },
+    "category": {
+      "URGENT": "Urgent",
+      "MAINTENANCE": "Maintenance",
+      "FEATURE": "Feature"
+    },
+    "admin": {
+      "title": "Announcements",
+      "new": "New Announcement",
+      "empty": "No announcements yet",
+      "created": "Announcement published",
+      "createFailed": "Failed to publish announcement",
+      "deactivated": "Announcement deactivated",
+      "deactivateFailed": "Failed to deactivate announcement",
+      "deleted": "Announcement deleted",
+      "deleteFailed": "Failed to delete announcement",
+      "active": "Active",
+      "inactive": "Inactive",
+      "deactivate": "Deactivate",
+      "dismissals": "{{count}} dismissals",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Announcement title...",
+      "categoryLabel": "Category",
+      "contentLabel": "Content",
+      "publish": "Publish",
+      "deleteTitle": "Delete Announcement",
+      "deleteMessage": "Are you sure you want to permanently delete this announcement? This action cannot be undone.",
+      "bold": "Bold",
+      "italic": "Italic",
+      "link": "Link"
+    }
   }
 }

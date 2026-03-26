@@ -1486,5 +1486,49 @@
       "screenshotTimeout": "Timeout nello screenshot",
       "blockedUrl": "URL bloccato per motivi di sicurezza"
     }
+  },
+  "announcements": {
+    "view": "Vedi",
+    "dismiss": "Nascondi annuncio",
+    "history": {
+      "title": "Storico Annunci",
+      "empty": "Nessun annuncio ancora",
+      "active": "Attivo",
+      "inactive": "Inattivo",
+      "by": "di",
+      "previous": "Precedente",
+      "next": "Successivo",
+      "pageOf": "Pagina {{page}} di {{total}}"
+    },
+    "category": {
+      "URGENT": "Urgente",
+      "MAINTENANCE": "Manutenzione",
+      "FEATURE": "Novit\u00e0"
+    },
+    "admin": {
+      "title": "Annunci",
+      "new": "Nuovo Annuncio",
+      "empty": "Nessun annuncio ancora",
+      "created": "Annuncio pubblicato",
+      "createFailed": "Pubblicazione annuncio fallita",
+      "deactivated": "Annuncio disattivato",
+      "deactivateFailed": "Disattivazione annuncio fallita",
+      "deleted": "Annuncio eliminato",
+      "deleteFailed": "Eliminazione annuncio fallita",
+      "active": "Attivo",
+      "inactive": "Inattivo",
+      "deactivate": "Disattiva",
+      "dismissals": "{{count}} chiusure",
+      "titleLabel": "Titolo",
+      "titlePlaceholder": "Titolo dell'annuncio...",
+      "categoryLabel": "Categoria",
+      "contentLabel": "Contenuto",
+      "publish": "Pubblica",
+      "deleteTitle": "Elimina Annuncio",
+      "deleteMessage": "Sei sicuro di voler eliminare permanentemente questo annuncio? Questa azione non pu\u00f2 essere annullata.",
+      "bold": "Grassetto",
+      "italic": "Corsivo",
+      "link": "Link"
+    }
   }
 }

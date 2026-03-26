@@ -70,6 +70,10 @@ model User {
   kanbanReminders      KanbanReminder[]     @relation("KanbanReminderUser")
   kanbanBoardTaskListLinks KanbanBoard[]    @relation("KanbanBoardTaskListLinker")
   tagAssociations          TagsOnNotes[]    @relation("TagAssociationUser")
+
+  // Announcements
+  announcements            Announcement[]            @relation("AnnouncementCreator")
+  announcementDismissals   AnnouncementDismissal[]   @relation("AnnouncementDismissals")
 }
 
 enum Role {
@@ -592,4 +596,36 @@ model KanbanReminder {
   @@index([userId, isDone])
   @@index([boardId])
   @@index([dueDate])
+}
+
+// ─── Announcements ──────────────────────────────────────────
+
+enum AnnouncementCategory {
+  MAINTENANCE
+  FEATURE
+  URGENT
+}
+
+model Announcement {
+  id          String                @id @default(uuid())
+  title       String
+  content     String                // TipTap JSON (rich text)
+  category    AnnouncementCategory
+  isActive    Boolean               @default(true)
+  createdById String
+  createdBy   User                  @relation("AnnouncementCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  dismissals  AnnouncementDismissal[]
+  createdAt   DateTime              @default(now())
+
+  @@index([isActive, createdAt])
+}
+
+model AnnouncementDismissal {
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("AnnouncementDismissals", fields: [userId], references: [id], onDelete: Cascade)
+  dismissedAt    DateTime     @default(now())
+
+  @@id([announcementId, userId])
 }

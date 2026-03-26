@@ -28,6 +28,7 @@ import urlMetadataRoutes from './routes/url-metadata';
 import taskListRoutes from './routes/tasklists';
 import kanbanRoutes from './routes/kanban';
 import healthRoutes from './routes/health';
+import announcementRoutes, { adminAnnouncementRoutes } from './routes/announcements';
 
 
 // ... ensure start
@@ -214,6 +215,8 @@ server.register(groupRoutes, { prefix: '/api/groups' });
 server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
 server.register(taskListRoutes, { prefix: '/api/tasklists' });
 server.register(kanbanRoutes, { prefix: '/api/kanban' });
+server.register(announcementRoutes, { prefix: '/api/announcements' });
+server.register(adminAnnouncementRoutes, { prefix: '/api/admin/announcements' });
 server.register(healthRoutes);
 
 // Uploads base directory — consistent with attachment.service.ts

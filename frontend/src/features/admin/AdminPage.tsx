@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
 import {
   Shield, LayoutDashboard, Users, History, Settings, Mail,
-  HeartPulse, LogOut
+  HeartPulse, LogOut, Megaphone
 } from 'lucide-react';
 import api from '../../lib/api';
 import type { DashboardStats, SystemHealth } from './types';
@@ -15,8 +15,9 @@ import AuditTab from './tabs/AuditTab';
 import SettingsTab from './tabs/SettingsTab';
 import RequestsTab from './tabs/RequestsTab';
 import SystemHealthTab from './tabs/SystemHealthTab';
+import AnnouncementsTab from './tabs/AnnouncementsTab';
 
-type TabId = 'dashboard' | 'users' | 'audit' | 'settings' | 'requests' | 'health';
+type TabId = 'dashboard' | 'users' | 'audit' | 'settings' | 'requests' | 'health' | 'announcements';
 
 const TABS: { id: TabId; icon: typeof LayoutDashboard; label: string }[] = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -25,6 +26,7 @@ const TABS: { id: TabId; icon: typeof LayoutDashboard; label: string }[] = [
   { id: 'audit', icon: History, label: 'Audit Logs' },
   { id: 'settings', icon: Settings, label: 'Settings' },
   { id: 'requests', icon: Mail, label: 'Requests' },
+  { id: 'announcements', icon: Megaphone, label: 'Announcements' },
 ];
 
 export default function AdminPage() {
@@ -105,6 +107,7 @@ export default function AdminPage() {
         {activeTab === 'audit' && <AuditTab />}
         {activeTab === 'settings' && <SettingsTab />}
         {activeTab === 'requests' && <RequestsTab />}
+        {activeTab === 'announcements' && <AnnouncementsTab />}
       </div>
     </div>
   );
