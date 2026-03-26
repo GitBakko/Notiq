@@ -40,6 +40,12 @@ export const subscribeUser = async (userId: string, subscription: PushSubscripti
   });
 };
 
+export const unsubscribeUser = async (userId: string, endpoint: string) => {
+  await prisma.pushSubscription.deleteMany({
+    where: { userId, endpoint },
+  });
+};
+
 export const sendPushNotification = async (userId: string, payload: PushPayload) => {
   if (!publicVapidKey || !privateVapidKey) return;
 

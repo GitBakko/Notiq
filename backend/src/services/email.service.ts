@@ -1,5 +1,5 @@
 
-// @ts-ignore
+// @ts-ignore — nodemailer types incomplete for CJS import
 import nodemailer from 'nodemailer';
 import logger from '../utils/logger';
 
@@ -230,7 +230,7 @@ export const sendNotificationEmail = async (
       }
       break;
 
-    case 'SHARE_RESPONSE':
+    case 'SHARE_RESPONSE': {
       const actionEn = data.action === 'accepted' ? 'accepted' : 'declined';
       const actionIt = data.action === 'accepted' ? 'accettato' : 'rifiutato';
       const color = data.action === 'accepted' ? '#10b981' : '#ef4444';
@@ -255,6 +255,7 @@ export const sendNotificationEmail = async (
         `;
       }
       break;
+    }
 
     case 'GROUP_MEMBER_ADDED':
       if (isIt) {
@@ -370,7 +371,7 @@ export const sendNotificationEmail = async (
       }
       break;
 
-    case 'VERIFY_EMAIL':
+    case 'VERIFY_EMAIL': {
       const verifyLink = `${FRONTEND_URL}/verify-email?token=${data.token}`;
       if (isIt) {
         subject = 'Verifica la tua email - Notiq';
@@ -394,6 +395,7 @@ export const sendNotificationEmail = async (
         `;
       }
       break;
+    }
 
     case 'KANBAN_COMMENT': {
       const authorName = escapeHtml(data.authorName || '');

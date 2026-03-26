@@ -677,7 +677,7 @@ export const resendShareInvitation = async (
   let itemType: string;
   let tab: string;
 
-  let targetLocale: string | null = null;
+  let targetLocale: string | null;
 
   if (type === 'NOTE') {
     const share = await prisma.sharedNote.findUnique({

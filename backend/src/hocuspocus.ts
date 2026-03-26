@@ -246,7 +246,7 @@ export const hocuspocus = new Server({
         if (note.content) {
           try {
             const json = JSON.parse(note.content);
-            // @ts-ignore
+            // @ts-ignore — TiptapTransformer API types incomplete
             const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
             const state = Y.encodeStateAsUpdate(doc);
             return state;
@@ -258,7 +258,7 @@ export const hocuspocus = new Server({
                 type: 'doc',
                 content: [{ type: 'paragraph', content: [{ type: 'text', text: text || ' ' }] }],
               };
-              // @ts-ignore
+              // @ts-ignore — TiptapTransformer API types incomplete
               const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
               return Y.encodeStateAsUpdate(tiptapDoc);
             } catch (err) {
@@ -273,7 +273,7 @@ export const hocuspocus = new Server({
         const doc = new Y.Doc();
         Y.applyUpdate(doc, new Uint8Array(state));
 
-        // @ts-ignore
+        // @ts-ignore — TiptapTransformer API types incomplete
         const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
         const contentStr = JSON.stringify(json);
 
@@ -359,8 +359,8 @@ export const hocuspocus = new Server({
         readOnly,
       };
 
-    } catch (err) {
-      throw new Error('Not authorized');
+    } catch (_err) {
+      throw new Error('Not authorized'); // Intentionally generic — don't expose auth details to WS client
     }
   },
 

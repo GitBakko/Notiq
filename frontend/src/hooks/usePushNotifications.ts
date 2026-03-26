@@ -58,8 +58,10 @@ export const usePushNotifications = () => {
     if (!subscription) return;
 
     try {
+      const endpoint = subscription.endpoint;
       await subscription.unsubscribe();
-      // Optionally notify backend to remove subscription
+      // Notify backend to remove orphaned subscription record
+      await api.post('/notifications/unsubscribe', { endpoint }).catch(() => { /* best-effort */ });
       setSubscription(null);
       setIsSubscribed(false);
     } catch (error) {
