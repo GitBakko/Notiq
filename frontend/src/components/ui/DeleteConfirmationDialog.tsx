@@ -53,6 +53,7 @@ export function DeleteConfirmationDialog({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder={itemName}
+            aria-label={t('common.typeToConfirm', { name: itemName })}
             className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 dark:bg-neutral-800 dark:border-neutral-600 dark:text-white transition-all duration-200"
             autoFocus
           />

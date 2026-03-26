@@ -99,7 +99,7 @@ export default function AiSidebar({ noteId, editor, onClose }: AiSidebarProps) {
   };
 
   return (
-    <div className="w-[350px] h-full border-l border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-900 flex flex-col">
+    <div className="w-full sm:w-[350px] h-full border-l border-neutral-200/60 dark:border-neutral-700/40 bg-white dark:bg-neutral-900 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200/60 dark:border-neutral-700/40">
         <div className="flex items-center gap-2">

@@ -739,7 +739,7 @@ export default function Sidebar() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={toggleNotificationPanel}
-                  className="relative p-2 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 rounded-lg dark:hover:bg-neutral-800 transition-colors"
+                  className="relative p-2.5 sm:p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 rounded-lg dark:hover:bg-neutral-800 transition-colors"
                   title={t('notifications.title')}
                   aria-label={t('notifications.title')}
                 >
@@ -750,7 +750,7 @@ export default function Sidebar() {
                 </button>
                 <button
                   onClick={toggleTheme}
-                  className="p-2 text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
+                  className="p-2.5 sm:p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
                   title={t('common.theme')}
                   aria-label={t('sidebar.toggleTheme')}
                 >
@@ -758,7 +758,7 @@ export default function Sidebar() {
                 </button>
                 <Link
                   to="/settings"
-                  className="p-2 text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
+                  className="p-2.5 sm:p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
                   title={t('sidebar.settings')}
                   aria-label={t('sidebar.settings')}
                 >
@@ -766,7 +766,7 @@ export default function Sidebar() {
                 </Link>
                 <button
                   onClick={logout}
-                  className="p-2 text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
+                  className="p-2.5 sm:p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center text-neutral-500 hover:bg-neutral-100 rounded-lg dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
                   title={t('auth.logout')}
                   aria-label={t('auth.logout')}
                 >

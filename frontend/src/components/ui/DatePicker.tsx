@@ -5,6 +5,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import * as Popover from '@radix-ui/react-popover';
 import { clsx } from 'clsx';
+import { useUIStore } from '../../store/uiStore';
 import 'react-day-picker/style.css';
 
 interface DatePickerProps {
@@ -18,6 +19,8 @@ interface DatePickerProps {
 export default function DatePicker({ date, onSelect, placeholder = "Pick a date", className, disabled }: DatePickerProps) {
   const { i18n } = useTranslation();
   const currentLocale = i18n.language.startsWith('it') ? it : enUS;
+  const theme = useUIStore(s => s.theme);
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
     <Popover.Root>
@@ -45,8 +48,8 @@ export default function DatePicker({ date, onSelect, placeholder = "Pick a date"
             fromYear={1900}
             toYear={new Date().getFullYear()}
             style={{
-              '--rdp-accent-color': '#059669', // emerald-600
-              '--rdp-background-color': '#ecfdf5', // emerald-50
+              '--rdp-accent-color': isDark ? '#10b981' : '#059669', // emerald-500 dark, emerald-600 light
+              '--rdp-background-color': isDark ? '#064e3b' : '#ecfdf5', // emerald-900 dark, emerald-50 light
             } as React.CSSProperties}
             modifiersClassNames={{
               selected: 'bg-emerald-600 text-white hover:bg-emerald-700',

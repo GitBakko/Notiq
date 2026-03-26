@@ -144,7 +144,7 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
   }
 
   return (
-    <div className="w-[350px] border-l border-neutral-200/60 dark:border-neutral-800/40 bg-white dark:bg-neutral-900 flex flex-col fixed right-0 top-[60px] bottom-0 z-20 shadow-xl print:hidden">
+    <div className="w-full sm:w-[350px] border-l border-neutral-200/60 dark:border-neutral-800/40 bg-white dark:bg-neutral-900 flex flex-col fixed right-0 top-[60px] bottom-0 z-20 shadow-xl print:hidden">
       <div className="p-4 border-b border-neutral-200/60 dark:border-neutral-800/40 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800">
         <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
           <MessageSquare size={18} />
