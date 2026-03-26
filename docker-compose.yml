@@ -19,7 +19,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-notiq}
       PORT: 3001
-      JWT_SECRET: ${JWT_SECRET:-supersecretkey_change_me_in_production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env or environment}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
     ports:
       - "3001:3001"

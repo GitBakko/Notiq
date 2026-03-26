@@ -65,7 +65,7 @@ export const getUserInvites = async (userId: string) => {
 
 export const sendInviteEmail = async (code: string, userId: string, email: string, name: string, locale: string) => {
   const invite = await prisma.invitation.findUnique({ where: { code } });
-  if (!invite || invite.creatorId !== userId) throw new NotFoundError('errors.invites.notFound');
+  if (!invite || !invite.creatorId || invite.creatorId !== userId) throw new NotFoundError('errors.invites.notFound');
   if (invite.status !== 'PENDING') throw new ConflictError('errors.invites.alreadyUsed');
 
   const sender = await prisma.user.findUnique({ where: { id: userId } });

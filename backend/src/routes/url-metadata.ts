@@ -5,12 +5,34 @@ const querySchema = z.object({
   url: z.string().url(),
 });
 
+// SSRF protection: block requests to internal/private networks
+const BLOCKED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254']);
+const PRIVATE_IP_PREFIXES = ['10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.',
+  '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.',
+  '192.168.', '0.', 'fd', 'fe80:'];
+
+function isInternalUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (BLOCKED_HOSTNAMES.has(parsed.hostname)) return true;
+    if (PRIVATE_IP_PREFIXES.some(prefix => parsed.hostname.startsWith(prefix))) return true;
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 export default async function (fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   // Fetch page title + favicon from a URL
   fastify.get('/', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { url } = querySchema.parse(request.query);
+
+    if (isInternalUrl(url)) {
+      return reply.status(400).send({ message: 'errors.urlMetadata.blockedUrl' });
+    }
 
     try {
       const controller = new AbortController();
@@ -67,7 +89,8 @@ export default async function (fastify: FastifyInstance) {
       if (iconMatch?.[1]) {
         // Resolve relative URLs using URL API (handles ./relative, //protocol, /absolute, etc.)
         try {
-          faviconUrl = new URL(iconMatch[1], url).href;
+          const resolved = new URL(iconMatch[1], url).href;
+          faviconUrl = isInternalUrl(resolved) ? null : resolved;
         } catch {
           faviconUrl = null;
         }
@@ -92,6 +115,10 @@ export default async function (fastify: FastifyInstance) {
   // Proxy screenshot from thum.io — returns base64 image
   fastify.get('/screenshot', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { url } = querySchema.parse(request.query);
+
+    if (isInternalUrl(url)) {
+      return reply.status(400).send({ message: 'errors.urlMetadata.blockedUrl' });
+    }
 
     try {
       const thumbUrl = `https://image.thum.io/get/width/400/crop/600/wait/5/noanimate/${url}`;

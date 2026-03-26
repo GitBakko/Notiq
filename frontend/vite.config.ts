@@ -85,6 +85,7 @@ export default defineConfig({
     })] : []),
   ],
   build: {
+    sourcemap: false, // Don't expose source code in production builds
     chunkSizeWarningLimit: 1000, // ganttExport (exceljs) is ~945KB but lazy-loaded
     rollupOptions: {
       output: {

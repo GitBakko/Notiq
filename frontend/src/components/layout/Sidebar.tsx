@@ -145,6 +145,16 @@ export default function Sidebar() {
   }, []);
 
   // Focus rename input when it appears
+  // Cleanup long-press timer on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (renamingNotebookId && renameInputRef.current) {
       renameInputRef.current.focus();

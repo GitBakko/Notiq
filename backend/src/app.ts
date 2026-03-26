@@ -52,6 +52,19 @@ server.addHook('onSend', (request, reply, payload, done) => {
   reply.header('X-Content-Type-Options', 'nosniff');
   reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   reply.header('X-XSS-Protection', '1; mode=block');
+  reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  reply.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  reply.header('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",       // Tailwind + TipTap inject styles
+    "img-src 'self' data: https: blob:",       // avatars, inline images, external link previews
+    "font-src 'self'",
+    "connect-src 'self' wss: ws:",             // WebSocket for Hocuspocus collab
+    "media-src 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+  ].join('; '));
   done();
 });
 
@@ -101,6 +114,32 @@ server.register(rateLimit, {
 
 import path from 'path';
 import fs from 'fs';
+
+// Safe MIME type map — prevents MIME injection via malicious file extensions
+const IMAGE_MIME_MAP: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+};
+const ATTACHMENT_MIME_MAP: Record<string, string> = {
+  ...IMAGE_MIME_MAP,
+  pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv',
+};
+
+function safeImageType(filename: string): string {
+  const ext = path.extname(filename).slice(1).toLowerCase();
+  return IMAGE_MIME_MAP[ext] || 'application/octet-stream';
+}
+
+function serveFile(filepath: string, contentType: string, request: FastifyRequest, reply: FastifyReply) {
+  const stream = fs.createReadStream(filepath);
+  stream.on('error', (err) => {
+    request.log.warn({ err, filepath }, 'File stream error');
+    if (!reply.raw.headersSent) {
+      reply.code(404).send({ message: 'errors.common.notFound' });
+    }
+  });
+  return reply.type(contentType).send(stream);
+}
 
 server.register(fastifyMultipart, {
   limits: {
@@ -183,13 +222,10 @@ const UPLOADS_DIR = path.join(__dirname, '../uploads');
 // Public avatar serving (no auth required)
 server.get('/uploads/avatars/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
-  const safeName = path.basename(filename); // prevent path traversal
+  const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'avatars', safeName);
-  if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'errors.common.notFound' });
-  }
-  const stream = fs.createReadStream(filepath);
-  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
+  return serveFile(filepath, safeImageType(safeName), request, reply);
 });
 
 // Public group avatar serving (no auth required)
@@ -197,11 +233,8 @@ server.get('/uploads/groups/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'groups', safeName);
-  if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'errors.common.notFound' });
-  }
-  const stream = fs.createReadStream(filepath);
-  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
+  return serveFile(filepath, safeImageType(safeName), request, reply);
 });
 
 // Public kanban board avatar serving (no auth required)
@@ -209,11 +242,8 @@ server.get('/uploads/kanban/avatars/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'kanban', 'avatars', safeName);
-  if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'errors.common.notFound' });
-  }
-  const stream = fs.createReadStream(filepath);
-  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
+  return serveFile(filepath, safeImageType(safeName), request, reply);
 });
 
 // Public kanban board cover serving (no auth required)
@@ -221,30 +251,19 @@ server.get('/uploads/kanban/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'kanban', safeName);
-  if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'errors.common.notFound' });
-  }
-  const stream = fs.createReadStream(filepath);
-  return reply.type('image/' + path.extname(safeName).slice(1)).send(stream);
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
+  return serveFile(filepath, safeImageType(safeName), request, reply);
 });
 
 // Attachment file serving (note attachments stored in uploads root)
 server.get('/uploads/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
-  const safeName = path.basename(filename); // prevent path traversal
+  const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, safeName);
-  if (!fs.existsSync(filepath)) {
-    return reply.code(404).send({ message: 'errors.common.notFound' });
-  }
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
   const ext = path.extname(safeName).slice(1).toLowerCase();
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
-    webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf',
-    txt: 'text/plain', csv: 'text/csv',
-  };
-  const contentType = mimeMap[ext] || 'application/octet-stream';
-  const stream = fs.createReadStream(filepath);
-  return reply.type(contentType).send(stream);
+  const contentType = ATTACHMENT_MIME_MAP[ext] || 'application/octet-stream';
+  return serveFile(filepath, contentType, request, reply);
 });
 
 import { hocuspocus } from './hocuspocus';
@@ -272,6 +291,22 @@ const start = async () => {
     process.exit(1);
   }
 };
+
+// Graceful shutdown — close connections before exit
+async function shutdown(signal: string) {
+  server.log.info(`${signal} received, shutting down gracefully`);
+  try {
+    await server.close();           // stop accepting new requests, finish in-flight
+    await prisma.$disconnect();     // close DB connection pool
+    server.log.info('Shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    server.log.error({ err }, 'Error during shutdown');
+    process.exit(1);
+  }
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 server.log.info('Starting server...');
 start();

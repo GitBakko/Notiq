@@ -1,5 +1,6 @@
 {
   "common": {
+    "deletedUser": "Utente eliminato",
     "loading": "Caricamento...",
     "save": "Salva",
     "saving": "Salvataggio...",
@@ -1481,7 +1482,8 @@
       "fetchTimeout": "Timeout nel recupero dell'URL",
       "screenshotFailed": "Impossibile recuperare lo screenshot",
       "screenshotTooLarge": "Screenshot troppo grande",
-      "screenshotTimeout": "Timeout nello screenshot"
+      "screenshotTimeout": "Timeout nello screenshot",
+      "blockedUrl": "URL bloccato per motivi di sicurezza"
     }
   }
 }

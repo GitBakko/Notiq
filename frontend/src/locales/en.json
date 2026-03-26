@@ -1,5 +1,6 @@
 {
   "common": {
+    "deletedUser": "Deleted user",
     "loading": "Loading...",
     "save": "Save",
     "saving": "Saving...",
@@ -1481,7 +1482,8 @@
       "fetchTimeout": "URL fetch timed out",
       "screenshotFailed": "Failed to fetch screenshot",
       "screenshotTooLarge": "Screenshot too large",
-      "screenshotTimeout": "Screenshot timed out"
+      "screenshotTimeout": "Screenshot timed out",
+      "blockedUrl": "URL blocked for security reasons"
     }
   }
 }

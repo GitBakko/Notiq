@@ -489,10 +489,41 @@ export const syncPull = async () => {
 import { useAuthStore } from '../../store/authStore';
 
 let isSyncing = false;
+let syncPushScheduled = false;
+
+// Retry backoff: track failures per queue item to avoid tight retry loops
+const failureCounts = new Map<number, { count: number; nextRetryAt: number }>();
+const MAX_RETRIES = 5;
+
+function shouldRetry(itemId: number | undefined): boolean {
+  if (!itemId) return true;
+  const info = failureCounts.get(itemId);
+  if (!info) return true;
+  if (info.count >= MAX_RETRIES) return false;
+  return Date.now() >= info.nextRetryAt;
+}
+
+function recordFailure(itemId: number | undefined): void {
+  if (!itemId) return;
+  const info = failureCounts.get(itemId) || { count: 0, nextRetryAt: 0 };
+  info.count += 1;
+  // Exponential backoff: 5s, 15s, 45s, 135s, 405s
+  info.nextRetryAt = Date.now() + Math.min(5000 * Math.pow(3, info.count - 1), 5 * 60 * 1000);
+  failureCounts.set(itemId, info);
+}
+
+function clearFailure(itemId: number | undefined): void {
+  if (itemId) failureCounts.delete(itemId);
+}
 
 export const syncPush = async () => {
-  if (isSyncing) return;
+  if (isSyncing) {
+    // Instead of silently dropping, schedule a follow-up push
+    syncPushScheduled = true;
+    return;
+  }
   isSyncing = true;
+  syncPushScheduled = false;
   try {
     const currentUserId = useAuthStore.getState().user?.id;
     if (!currentUserId) return; // Cannot sync if not logged in
@@ -504,12 +535,16 @@ export const syncPush = async () => {
     const queue = allQueue.filter(item => item.userId === currentUserId);
 
     for (const item of queue) {
+      // Skip items in backoff period
+      if (!shouldRetry(item.id)) continue;
+
       try {
         if (item.entity === 'NOTE') {
           // Safety: never push shared notes to REST API
           const localNote = await db.notes.get(item.entityId);
           if (localNote?.ownership === 'shared') {
             if (item.id) await db.syncQueue.delete(item.id);
+            clearFailure(item.id);
             continue;
           }
           if (item.type === 'CREATE') {
@@ -632,8 +667,9 @@ export const syncPush = async () => {
           }
         }
 
-        // If successful, remove from queue
+        // If successful, remove from queue and clear backoff
         if (item.id) await db.syncQueue.delete(item.id);
+        clearFailure(item.id);
 
         // Update syncStatus of the entity ONLY if there are no more pending items for this entity
         if (item.type !== 'DELETE') {
@@ -711,13 +747,20 @@ export const syncPush = async () => {
           // Resource no longer exists on server — remove from queue to stop infinite retries
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
           if (item.id) await db.syncQueue.delete(item.id);
+          clearFailure(item.id);
         } else {
+          recordFailure(item.id);
           console.error('Sync Push Failed for item:', item, error);
         }
       }
     }
   } finally {
     isSyncing = false;
+    // If a push was requested while we were busy, run it now
+    if (syncPushScheduled) {
+      syncPushScheduled = false;
+      setTimeout(() => syncPush(), 1000);
+    }
   }
 };
 

@@ -28,6 +28,23 @@ interface JwtPayload {
   tokenVersion?: number;
 }
 
+// Per-user WebSocket connection limiter
+const MAX_WS_CONNECTIONS_PER_USER = 10;
+const userWsConnections = new Map<string, number>();
+
+function trackWsConnect(userId: string): boolean {
+  const current = userWsConnections.get(userId) ?? 0;
+  if (current >= MAX_WS_CONNECTIONS_PER_USER) return false;
+  userWsConnections.set(userId, current + 1);
+  return true;
+}
+
+function trackWsDisconnect(userId: string): void {
+  const current = userWsConnections.get(userId) ?? 1;
+  if (current <= 1) userWsConnections.delete(userId);
+  else userWsConnections.set(userId, current - 1);
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
@@ -321,6 +338,11 @@ export const hocuspocus = new Server({
 
       const readOnly = !isOwner && share?.permission === 'READ';
 
+      // Per-user connection limit
+      if (!userId || !trackWsConnect(userId)) {
+        throw new Error('Too many concurrent connections');
+      }
+
       // Fetch user details for awareness (color + avatar)
       const userDetails = await prisma.user.findUnique({
         where: { id: userId },
@@ -340,5 +362,10 @@ export const hocuspocus = new Server({
     } catch (err) {
       throw new Error('Not authorized');
     }
+  },
+
+  async onDisconnect(data) {
+    const userId = data.context?.user?.id;
+    if (userId) trackWsDisconnect(userId);
   },
 });

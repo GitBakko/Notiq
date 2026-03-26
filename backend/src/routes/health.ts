@@ -3,7 +3,7 @@ import prisma from '../plugins/prisma';
 import { metrics } from '../utils/metrics';
 
 export default async function healthRoutes(fastify: FastifyInstance) {
-  fastify.get('/health', async (request, reply) => {
+  fastify.get('/health', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     let dbStatus = 'up';
     try {
       await prisma.$queryRaw`SELECT 1`;

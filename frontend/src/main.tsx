@@ -10,11 +10,22 @@ import './index.css'
 // Auto-reload when a new service worker takes control (new app version deployed)
 let refreshing = false;
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
-    }
+  navigator.serviceWorker.addEventListener('controllerchange', async () => {
+    if (refreshing) return;
+    refreshing = true;
+
+    // Guard against data loss: if there are unsynced items, delay reload briefly to let sync finish
+    try {
+      const { db } = await import('./lib/db');
+      const pendingCount = await db.syncQueue.count();
+      if (pendingCount > 0) {
+        // Give sync a chance to push pending items (max 3s wait)
+        const { syncPush } = await import('./features/sync/syncService');
+        await Promise.race([syncPush(), new Promise(r => setTimeout(r, 3000))]);
+      }
+    } catch { /* proceed with reload even if check fails */ }
+
+    window.location.reload();
   });
 
   // iOS standalone mode (home screen shortcut) reuses a frozen page snapshot on launch

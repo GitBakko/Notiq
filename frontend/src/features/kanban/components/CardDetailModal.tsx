@@ -608,9 +608,9 @@ export default function CardDetailModal({
                 <div key={activity.id} className="flex gap-2 items-start">
                   <span
                     className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0 mt-0.5 overflow-hidden relative"
-                    style={{ backgroundColor: activity.user.color || '#6b7280' }}
+                    style={{ backgroundColor: activity.user?.color || '#6b7280' }}
                   >
-                    {activity.user.avatarUrl && (
+                    {activity.user?.avatarUrl && (
                       <img
                         src={activity.user.avatarUrl}
                         alt=""
@@ -618,13 +618,13 @@ export default function CardDetailModal({
                       />
                     )}
                     <span className="relative z-10" style={{ textShadow: '0 0 3px rgba(0,0,0,0.6)' }}>
-                      {(activity.user.name || activity.user.email).charAt(0).toUpperCase()}
+                      {(activity.user?.name || activity.user?.email || '?').charAt(0).toUpperCase()}
                     </span>
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-neutral-600 dark:text-neutral-300">
                       <span className="font-medium text-neutral-800 dark:text-white">
-                        {activity.user.name || activity.user.email.split('@')[0]}
+                        {activity.user?.name || activity.user?.email?.split('@')[0] || t('common.deletedUser')}
                       </span>
                       {' '}
                       {getActivityText(activity)}

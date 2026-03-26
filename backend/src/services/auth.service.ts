@@ -88,21 +88,23 @@ export const registerUser = async (data: { email: string; password: string; name
       include: { creator: true }
     });
 
-    // 7. Audit Log (Invite Used)
-    await prisma.auditLog.create({
-      data: {
-        userId: invite.creatorId,
-        event: 'INVITE_USED',
-        details: { code: invitationCode, usedBy: user.email },
-      }
-    });
+    // 7. Audit Log (Invite Used) — creatorId may be null if creator was deleted
+    if (invite.creatorId) {
+      await prisma.auditLog.create({
+        data: {
+          userId: invite.creatorId,
+          event: 'INVITE_USED',
+          details: { code: invitationCode, usedBy: user.email },
+        }
+      });
+    }
 
     // Decrement invites available for creator (unless SuperAdmin)
-    if (invite.creator.role !== 'SUPERADMIN') {
+    if (invite.creator && invite.creator.role !== 'SUPERADMIN') {
       const currentInvites = invite.creator.invitesAvailable ?? 0;
       if (currentInvites > 0) {
         await prisma.user.update({
-          where: { id: invite.creatorId },
+          where: { id: invite.creatorId! },
           data: { invitesAvailable: currentInvites - 1 }
         });
       }
@@ -286,7 +288,7 @@ export const resendVerificationForInvite = async (inviteCode: string, requesterI
     throw new NotFoundError('errors.invites.notFound');
   }
 
-  if (invite.creatorId !== requesterId) {
+  if (!invite.creatorId || invite.creatorId !== requesterId) {
     const requester = await prisma.user.findUnique({ where: { id: requesterId } });
     if (requester?.role !== 'SUPERADMIN') {
       throw new ForbiddenError('errors.invites.notAuthorized');

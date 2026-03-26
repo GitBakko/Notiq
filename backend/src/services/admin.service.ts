@@ -211,61 +211,21 @@ export async function updateUser(userId: string, data: { role?: 'USER' | 'SUPERA
 }
 
 export async function deleteUser(userId: string) {
-  // Delete all related data in correct order (respecting FK constraints)
+  // Most related data is now auto-deleted via ON DELETE CASCADE/SET NULL in the schema.
+  // Only manual cleanup needed for: PendingGroupInvite.invitedBy (plain String, no FK).
+  // CASCADE chain: User → Notebook → Note → (TagsOnNotes, Attachment, SharedNote, ChatMessage, AiConversation)
+  //                User → Tag, TaskList → (TaskItem, SharedTaskList)
+  //                User → KanbanBoard → KanbanColumn → KanbanCard → (KanbanComment, KanbanCardActivity)
+  //                User → KanbanComment(author), KanbanBoardChat(author)
+  //                User → Group → (GroupMember, PendingGroupInvite via groupId)
+  //                User → Notification, PushSubscription, AuditLog, SharedNote/Notebook/TaskList/KanbanBoard(recipient)
+  // SET NULL:      Invitation(creatorId, usedById), KanbanCard(assigneeId, noteLinkedById),
+  //                KanbanBoard(noteLinkedById, taskListLinkedById), KanbanCardActivity(userId)
   await prisma.$transaction(async (tx) => {
-    // Delete kanban-related data (cascade covers reminders, activities, comments from cards/boards)
-    await tx.kanbanReminder.deleteMany({ where: { userId } });
-    await tx.kanbanCardActivity.deleteMany({ where: { userId } });
-    await tx.kanbanComment.deleteMany({ where: { authorId: userId } });
-    await tx.kanbanBoardChat.deleteMany({ where: { authorId: userId } });
-    // Delete cards owned by user's boards (via columns)
-    const userBoards = await tx.kanbanBoard.findMany({ where: { ownerId: userId }, select: { id: true } });
-    const boardIds = userBoards.map(b => b.id);
-    if (boardIds.length > 0) {
-      const userColumns = await tx.kanbanColumn.findMany({ where: { boardId: { in: boardIds } }, select: { id: true } });
-      const columnIds = userColumns.map(c => c.id);
-      if (columnIds.length > 0) {
-        await tx.kanbanCard.deleteMany({ where: { columnId: { in: columnIds } } });
-      }
-      await tx.kanbanColumn.deleteMany({ where: { boardId: { in: boardIds } } });
-    }
-    await tx.sharedKanbanBoard.deleteMany({ where: { OR: [{ boardId: { in: boardIds } }, { userId }] } });
-    await tx.kanbanBoard.deleteMany({ where: { ownerId: userId } });
-
-    // Delete task-related data
-    await tx.taskItem.deleteMany({ where: { taskList: { userId } } });
-    await tx.sharedTaskList.deleteMany({ where: { OR: [{ taskList: { userId } }, { userId }] } });
-    await tx.taskList.deleteMany({ where: { userId } });
-
-    // Delete sharing data
-    await tx.sharedNote.deleteMany({ where: { OR: [{ note: { userId } }, { userId }] } });
-    await tx.sharedNotebook.deleteMany({ where: { OR: [{ notebook: { userId } }, { userId }] } });
-
-    // Delete notes and related
-    await tx.tagsOnNotes.deleteMany({ where: { note: { userId } } });
-    await tx.attachment.deleteMany({ where: { note: { userId } } });
-    await tx.chatMessage.deleteMany({ where: { userId } });
-    await tx.note.deleteMany({ where: { userId } });
-
-    // Delete notebooks
-    await tx.notebook.deleteMany({ where: { userId } });
-
-    // Delete tags
-    await tx.tag.deleteMany({ where: { userId } });
-
-    // Delete groups
+    // PendingGroupInvite.invitedBy is a plain String field (no FK) — must be cleaned manually
     await tx.pendingGroupInvite.deleteMany({ where: { invitedBy: userId } });
-    await tx.groupMember.deleteMany({ where: { OR: [{ group: { ownerId: userId } }, { userId }] } });
-    await tx.group.deleteMany({ where: { ownerId: userId } });
 
-    // Delete other user data
-    await tx.notification.deleteMany({ where: { userId } });
-    await tx.pushSubscription.deleteMany({ where: { userId } });
-    await tx.aiConversation.deleteMany({ where: { userId } });
-    await tx.auditLog.deleteMany({ where: { userId } });
-    await tx.invitation.deleteMany({ where: { creatorId: userId } });
-
-    // Finally delete the user
+    // Delete user — CASCADE handles all related data automatically
     await tx.user.delete({ where: { id: userId } });
   });
 }
