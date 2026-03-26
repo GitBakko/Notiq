@@ -128,24 +128,6 @@ export default function NotesPage() {
   };
 
   const renderNoteList = () => {
-    // const showEmptyState = !selectedNotebookId && !selectedTagId && !searchQuery;
-
-    // if (showEmptyState) {
-    //   return (
-    //     <div className={clsx("flex flex-col bg-white h-full dark:bg-neutral-900 items-center justify-center text-center p-8", isMobile ? "w-full" : "w-80 border-r border-neutral-200/60 dark:border-neutral-800/40")}>
-    //       <div className="mb-4 p-4 bg-emerald-50 rounded-full dark:bg-emerald-900/30">
-    //         <Book size={32} className="text-emerald-600 dark:text-emerald-400" />
-    //       </div>
-    //       <h3 className="text-lg font-medium text-neutral-900 dark:text-white mb-2">
-    //         {t('notes.noNotebookSelectedTitle')}
-    //       </h3>
-    //       <p className="text-sm text-neutral-500 dark:text-neutral-400">
-    //         {t('notes.noNotebookSelectedDescription')}
-    //       </p>
-    //     </div>
-    //   );
-    // }
-
     return (
       <div className={clsx("flex flex-col bg-white h-full dark:bg-neutral-950", isMobile ? "w-full" : "w-80 border-r border-neutral-200/60 dark:border-neutral-800/40")}>
         <div className="p-4 border-b border-neutral-200/60 dark:border-neutral-800/40">

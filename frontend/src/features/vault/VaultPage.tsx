@@ -30,7 +30,7 @@ type TypeFilter = 'all' | 'note' | 'credential';
 
 export default function VaultPage() {
   const { t } = useTranslation();
-  const { isSetup, isUnlocked, lockVault, pin } = useVaultStore();
+  const { isSetup, isUnlocked, lockVault, pin, touchVault } = useVaultStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [showCreateMenu, setShowCreateMenu] = useState(false);
@@ -42,6 +42,18 @@ export default function VaultPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectedNoteId = searchParams.get('noteId');
+
+  // Reset vault auto-lock timer on any user interaction while vault is open
+  useEffect(() => {
+    if (!isUnlocked) return;
+    const resetTimer = () => touchVault();
+    document.addEventListener('click', resetTimer);
+    document.addEventListener('keydown', resetTimer);
+    return () => {
+      document.removeEventListener('click', resetTimer);
+      document.removeEventListener('keydown', resetTimer);
+    };
+  }, [isUnlocked, touchVault]);
 
   const setSelectedNoteId = (id: string | null) => {
     const newParams = new URLSearchParams(searchParams);
