@@ -50,7 +50,7 @@ export default function Modal({ isOpen, onClose, title, size = 'md', noPadding =
           <button
             onClick={onClose}
             aria-label={t('common.close')}
-            className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
           >
             <X size={20} />
           </button>

@@ -165,10 +165,15 @@ export default function Sidebar() {
   const confirmEmptyTrash = async () => {
     if (!trashedNotes || trashedNotes.length === 0) return;
     try {
-      for (const note of trashedNotes) {
-        await permanentlyDeleteNote(note.id);
+      const results = await Promise.allSettled(
+        trashedNotes.map(note => permanentlyDeleteNote(note.id))
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        toast.error(t('trash.emptyPartialFailed', { count: failed }));
+      } else {
+        toast.success(t('trash.emptied', 'Trash emptied'));
       }
-      toast.success(t('trash.emptied', 'Trash emptied'));
     } catch {
       toast.error(t('trash.emptyFailed', 'Failed to empty trash'));
     }

@@ -197,6 +197,7 @@
     "deleteTitle": "Delete Forever",
     "deleteConfirm": "Are you sure? This cannot be undone.",
     "emptied": "Trash emptied",
+    "emptyPartialFailed": "Failed to delete {{count}} note(s)",
     "emptyFailed": "Failed to empty trash"
   },
   "tasks": {

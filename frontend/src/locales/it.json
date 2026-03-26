@@ -197,6 +197,7 @@
     "deleteTitle": "Elimina Definitivamente",
     "deleteConfirm": "Sei sicuro? Questa azione non può essere annullata.",
     "emptied": "Cestino svuotato",
+    "emptyPartialFailed": "Impossibile eliminare {{count}} nota/e",
     "emptyFailed": "Impossibile svuotare il cestino"
   },
   "notes": {

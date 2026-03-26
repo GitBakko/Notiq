@@ -314,7 +314,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm focus:outline-none min-h-[500px] px-8 py-4 dark:prose-invert max-w-none w-full break-words',
+        class: 'prose prose-sm focus:outline-none min-h-[300px] sm:min-h-[500px] px-4 sm:px-8 py-4 dark:prose-invert max-w-none w-full break-words',
       },
       handleKeyDown: (view, event) => {
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'V' || event.key === 'v')) {
