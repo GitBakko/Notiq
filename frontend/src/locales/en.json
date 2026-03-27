@@ -1075,7 +1075,30 @@
     "typing": "{{name}} is typing",
     "typingMany": "{{count}} people are typing",
     "noConversations": "No conversations yet",
-    "noMessages": "No messages yet"
+    "noMessages": "No messages yet",
+    "newGroup": "New Group",
+    "groupName": "Group Name",
+    "selectParticipants": "Select Participants",
+    "groupCreated": "Group created",
+    "selected": "{{count}} selected",
+    "createGroup": "Create Group",
+    "next": "Next",
+    "startChat": "Start Chat",
+    "typeMessage": "Type a message...",
+    "offlineMessage": "You're offline"
+  },
+  "friends": {
+    "title": "Friends",
+    "findFriends": "Find Friends",
+    "received": "Received",
+    "sent": "Sent",
+    "addFriend": "Add Friend",
+    "requestSent": "Friend request sent",
+    "requestAccepted": "Friend request accepted",
+    "requestDeclined": "Request declined",
+    "pending": "Pending",
+    "noSuggestions": "No friend suggestions",
+    "searchPlaceholder": "Search by name or email..."
   },
   "network": {
     "offline": "Offline",

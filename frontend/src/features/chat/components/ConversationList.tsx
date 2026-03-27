@@ -3,13 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../store/authStore';
 import { getConversations, type ConversationSummary, type ChatUser } from '../chatService';
-import { Plus, Search, MessageCircle } from 'lucide-react';
+import { Plus, Search, MessageCircle, Users } from 'lucide-react';
 import clsx from 'clsx';
 
 interface ConversationListProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onNewChat?: () => void;
+  onNewGroup?: () => void;
 }
 
 function getOtherUser(conv: ConversationSummary, currentUserId: string): ChatUser | null {
@@ -42,7 +43,7 @@ function formatTime(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-export default function ConversationList({ selectedId, onSelect, onNewChat }: ConversationListProps) {
+export default function ConversationList({ selectedId, onSelect, onNewChat, onNewGroup }: ConversationListProps) {
   const { t } = useTranslation();
   const user = useAuthStore(s => s.user);
   const [search, setSearch] = useState('');
@@ -66,11 +67,18 @@ export default function ConversationList({ selectedId, onSelect, onNewChat }: Co
       {/* Header - hidden on mobile (ChatPage handles it) */}
       <div className="hidden sm:flex items-center justify-between px-4 py-3 border-b border-neutral-200/60 dark:border-neutral-800/40">
         <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">{t('chat.title')}</h2>
-        {onNewChat && (
-          <button onClick={onNewChat} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300" aria-label={t('chat.newChat')}>
-            <Plus size={20} />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {onNewGroup && (
+            <button onClick={onNewGroup} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300" aria-label={t('chat.newGroup')}>
+              <Users size={18} />
+            </button>
+          )}
+          {onNewChat && (
+            <button onClick={onNewChat} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300" aria-label={t('chat.newChat')}>
+              <Plus size={20} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search */}

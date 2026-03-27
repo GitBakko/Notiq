@@ -7,6 +7,7 @@ import { useIsMobile } from '../../../hooks/useIsMobile';
 import { getMessages, getConversations, searchMessages, type DirectMessageDTO, type ConversationSummary } from '../chatService';
 import { useChatWebSocket, type ChatWsEvent } from '../useChatWebSocket';
 import MessageBubble from './MessageBubble';
+import MessageInput from './MessageInput';
 
 interface ConversationViewProps {
   conversationId: string;
@@ -44,7 +45,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [inputText, setInputText] = useState('');
+  const [replyTo, setReplyTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DirectMessageDTO[] | null>(null);
@@ -250,7 +251,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     setSearchQuery('');
     setSearchResults(null);
     setTypingUsers(new Map());
-    setInputText('');
+    setReplyTo(null);
   }, [conversationId]);
 
   // ─── Search ────────────────────────────────────────────
@@ -270,10 +271,8 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     return () => clearTimeout(timer);
   }, [searchQuery, searchMode, conversationId]);
 
-  // ─── Typing indicator send ─────────────────────────────
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputText(e.target.value);
-    // Throttle typing indicator to once per 2s
+  // ─── Typing indicator send (throttled) ─────────────────
+  const handleTyping = useCallback(() => {
     const now = Date.now();
     if (now - lastTypingSentRef.current > 2000) {
       send({ type: 'typing:start', conversationId });
@@ -282,21 +281,24 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   }, [conversationId, send]);
 
   // ─── Send message ─────────────────────────────────────
-  const handleSend = useCallback(() => {
-    if (!inputText.trim()) return;
+  const handleSend = useCallback((content: string, replyToId?: string) => {
     send({
       type: 'message:send',
       conversationId,
-      content: inputText.trim(),
+      content,
+      replyToId,
       tempId: crypto.randomUUID(),
     });
-    setInputText('');
     shouldAutoScrollRef.current = true;
-  }, [inputText, conversationId, send]);
+  }, [conversationId, send]);
 
   // ─── Message action handlers ──────────────────────────
-  const handleReply = useCallback((_message: DirectMessageDTO) => {
-    // Will be implemented with MessageInput component
+  const handleReply = useCallback((message: DirectMessageDTO) => {
+    setReplyTo({
+      id: message.id,
+      content: message.content,
+      senderName: message.sender.name || message.sender.email,
+    });
   }, []);
 
   const handleReact = useCallback((_messageId: string) => {
@@ -500,24 +502,15 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ─── Input area (temporary) ──────────────────────── */}
-      <div className="p-3 border-t border-neutral-200/60 dark:border-neutral-800/40 bg-white dark:bg-neutral-950 shrink-0 safe-area-bottom">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder={t('chat.messagePlaceholder')}
-            className="flex-1 px-4 py-2.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-sm border-0 focus:ring-2 focus:ring-emerald-500/40 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
-            value={inputText}
-            onChange={handleInputChange}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && inputText.trim()) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-        </div>
-      </div>
+      {/* ─── Input area ──────────────────────────────────── */}
+      <MessageInput
+        conversationId={conversationId}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+        onSend={handleSend}
+        onTyping={handleTyping}
+        disabled={!isConnected}
+      />
     </div>
   );
 }

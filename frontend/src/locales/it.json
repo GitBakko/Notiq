@@ -723,7 +723,30 @@
     "typing": "{{name}} sta scrivendo",
     "typingMany": "{{count}} persone stanno scrivendo",
     "noConversations": "Nessuna conversazione",
-    "noMessages": "Nessun messaggio"
+    "noMessages": "Nessun messaggio",
+    "newGroup": "Nuovo Gruppo",
+    "groupName": "Nome Gruppo",
+    "selectParticipants": "Seleziona Partecipanti",
+    "groupCreated": "Gruppo creato",
+    "selected": "{{count}} selezionati",
+    "createGroup": "Crea Gruppo",
+    "next": "Avanti",
+    "startChat": "Inizia Chat",
+    "typeMessage": "Scrivi un messaggio...",
+    "offlineMessage": "Sei offline"
+  },
+  "friends": {
+    "title": "Amici",
+    "findFriends": "Trova Amici",
+    "received": "Ricevute",
+    "sent": "Inviate",
+    "addFriend": "Aggiungi Amico",
+    "requestSent": "Richiesta di amicizia inviata",
+    "requestAccepted": "Richiesta di amicizia accettata",
+    "requestDeclined": "Richiesta rifiutata",
+    "pending": "In attesa",
+    "noSuggestions": "Nessun suggerimento di amicizia",
+    "searchPlaceholder": "Cerca per nome o email..."
   },
   "network": {
     "offline": "Offline",

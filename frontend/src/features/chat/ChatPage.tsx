@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Menu, Search } from 'lucide-react';
+import { MessageCircle, Menu, UserPlus, Users } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import ConversationView from './components/ConversationView';
-
 import ConversationList from './components/ConversationList';
+import FriendRequestModal from './components/FriendRequestModal';
+import GroupChatModal from './components/GroupChatModal';
 
 function EmptyState() {
   const { t } = useTranslation();
@@ -22,6 +23,12 @@ export default function ChatPage() {
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [showFriendModal, setShowFriendModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+
+  const handleStartChat = (conversationId: string) => {
+    setSelectedConversationId(conversationId);
+  };
 
   if (isMobile) {
     return (
@@ -40,10 +47,18 @@ export default function ChatPage() {
               {t('chat.title')}
             </h1>
             <button
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center -mr-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 active:bg-neutral-200 dark:active:bg-neutral-700"
-              aria-label={t('common.search')}
+              onClick={() => setShowGroupModal(true)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 active:bg-neutral-200 dark:active:bg-neutral-700"
+              aria-label={t('chat.newGroup')}
             >
-              <Search size={20} />
+              <Users size={20} />
+            </button>
+            <button
+              onClick={() => setShowFriendModal(true)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center -mr-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 active:bg-neutral-200 dark:active:bg-neutral-700"
+              aria-label={t('friends.findFriends')}
+            >
+              <UserPlus size={20} />
             </button>
           </div>
         )}
@@ -58,8 +73,21 @@ export default function ChatPage() {
           <ConversationList
             selectedId={null}
             onSelect={setSelectedConversationId}
+            onNewChat={() => setShowFriendModal(true)}
+            onNewGroup={() => setShowGroupModal(true)}
           />
         )}
+
+        <FriendRequestModal
+          isOpen={showFriendModal}
+          onClose={() => setShowFriendModal(false)}
+          onStartChat={handleStartChat}
+        />
+        <GroupChatModal
+          isOpen={showGroupModal}
+          onClose={() => setShowGroupModal(false)}
+          onCreated={handleStartChat}
+        />
       </div>
     );
   }
@@ -72,6 +100,7 @@ export default function ChatPage() {
         <ConversationList
           selectedId={selectedConversationId}
           onSelect={setSelectedConversationId}
+          onNewChat={() => setShowFriendModal(true)}
         />
       </div>
       {/* Right: Conversation view or empty state */}
@@ -85,6 +114,17 @@ export default function ChatPage() {
           <EmptyState />
         )}
       </div>
+
+      <FriendRequestModal
+        isOpen={showFriendModal}
+        onClose={() => setShowFriendModal(false)}
+        onStartChat={handleStartChat}
+      />
+      <GroupChatModal
+        isOpen={showGroupModal}
+        onClose={() => setShowGroupModal(false)}
+        onCreated={handleStartChat}
+      />
     </div>
   );
 }
