@@ -5,11 +5,11 @@
 <h1 align="center">Notiq</h1>
 
 <p align="center">
-  <strong>Offline-first note-taking PWA</strong> with real-time collaboration, encrypted vault, and invitation-based authentication.
+  <strong>Offline-first note-taking PWA</strong> with real-time collaboration, encrypted vault, dedicated chat, and invitation-based authentication.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.0-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.9.0-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Version" />
   <img src="https://img.shields.io/badge/react-19-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="React 19" />
   <img src="https://img.shields.io/badge/fastify-5-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Fastify 5" />
   <img src="https://img.shields.io/badge/prisma-7-white?style=flat-square&labelColor=2A9D8F&color=264653" alt="Prisma 7" />
@@ -28,34 +28,34 @@
 TipTap v2 with tables, code blocks, task lists, images, audio recording, live status bar, and list-to-Kanban/TaskList transform.
 
 **Real-time Collaboration**
-Yjs + Hocuspocus WebSocket server with persistent user colors and avatar presence indicators.
+Yjs + Hocuspocus WebSocket server with persistent user colors, avatar presence indicators, and live title sync via awareness.
 
 **Offline-first**
-Dexie.js (IndexedDB) with background sync queue. Works without internet, syncs when reconnected.
+Dexie.js (IndexedDB) with background sync queue and exponential backoff. Works without internet, syncs when reconnected.
 
 **Encrypted Vault**
-PBKDF2-derived AES-encrypted notes and credentials behind PIN protection.
+PBKDF2-derived AES-encrypted notes and credentials behind PIN protection with 10-min auto-lock.
 
 </td>
 <td width="50%">
 
+**Dedicated Chat System**
+WhatsApp-like 1:1 and group conversations with real-time WebSocket messaging, emoji reactions (emoji-mart), message replies with quotes, file sharing with thumbnails, read receipts, typing indicators, online presence dots, and 3-tier notifications (in-chat / sound / push with anti-spam).
+
 **Kanban Boards**
-Drag-and-drop boards with columns, cards, comments, assignees, due dates, priority levels, note linking with smart sharing, activity history, board chat, cover images, completion tracking, auto-archiving, task list linking, right-click context menu, marquee multi-card selection, bulk move with grouped notifications, and real-time SSE updates.
+Drag-and-drop boards with columns, cards, comments, assignees, due dates, priority levels, note linking with smart sharing, activity history, board chat, cover images, completion tracking, auto-archiving, context menu, marquee selection, and real-time SSE updates.
 
-**Task Lists**
-Collaborative task/shopping lists with checkable items, priority levels, sharing with real-time notifications, and check ownership tracking.
+**Friend System & Groups**
+Auto-friend on share accept, friend requests, blocking. User groups with invitation management. Friends tab in Sharing Center with direct chat launch.
 
-**Sharing & Groups**
-Note, notebook, task list, and kanban sharing with granular permissions. User groups with invitation management and member visibility.
-
-**AI Chat & Import**
-Per-note AI assistant (AWS Bedrock). Evernote (.enex) and OneNote (.mht, .html, .zip) import with attachment support.
+**Admin Announcements**
+Broadcast messages with customizable color/icon banners, push notifications, rich text editor, category-based styling (Urgent/Maintenance/Feature), dismissal tracking, and history page.
 
 </td>
 </tr>
 </table>
 
-**Also:** Reminders, PWA with push notifications, multi-language (EN/IT), collapsible sidebar with icon rail, admin panel with audit logs.
+**Also:** Task lists, reminders, PWA with push notifications, multi-language (EN/IT), collapsible sidebar with icon rail, admin panel with audit logs and chat file management, network status indicator, AI assistant, Evernote/OneNote import.
 
 ---
 
@@ -63,8 +63,8 @@ Per-note AI assistant (AWS Bedrock). Evernote (.enex) and OneNote (.mht, .html, 
 
 | Layer | Technologies |
 |:------|:------------|
-| **Frontend** | React 19, Vite 7, TipTap v2, Zustand, TanStack Query v5, Dexie.js v4, TailwindCSS 3, i18next |
-| **Backend** | Node.js 20+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3, Zod v4, Pino, Nodemailer, web-push |
+| **Frontend** | React 19, Vite 7, TipTap v2, Zustand, TanStack Query v5, Dexie.js v4, TailwindCSS 3, i18next, emoji-mart |
+| **Backend** | Node.js 20+, Fastify 5, Prisma 7, PostgreSQL 15, Hocuspocus v3, Zod v4, Pino, Nodemailer, web-push, sharp |
 | **Infra** | Docker Compose, IIS + ARR (production), PWA via vite-plugin-pwa |
 
 ---
@@ -73,23 +73,27 @@ Per-note AI assistant (AWS Bedrock). Evernote (.enex) and OneNote (.mht, .html, 
 
 ```
 Frontend (React SPA)
-  ├── Dexie (IndexedDB)       ← offline storage
-  ├── SyncService              ← background sync queue
-  ├── TipTap Editor            ← rich text editing
-  └── HocuspocusProvider       ← real-time collaboration (WebSocket)
-       │
-       ▼
+  ├── Dexie (IndexedDB)       <- offline storage
+  ├── SyncService              <- background sync queue
+  ├── TipTap Editor            <- rich text editing
+  ├── HocuspocusProvider       <- real-time collaboration (WebSocket /ws)
+  └── ChatWebSocket            <- real-time messaging (WebSocket /chat-ws)
+       |
+       v
 Backend (Fastify)
   ├── Routes (Zod validation)
   ├── Services (business logic)
-  ├── Prisma ORM ──────────── → PostgreSQL
-  ├── Hocuspocus Server        → Yjs WebSocket
-  └── Pino                     → structured logging
+  ├── Prisma ORM (40 models) --> PostgreSQL
+  ├── Hocuspocus Server        -> Yjs WebSocket
+  ├── Chat WebSocket Server    -> messaging, presence, typing
+  └── Pino                     -> structured logging
 ```
 
-**Data flow:** User types → Dexie write (instant) → SyncQueue → REST API → Prisma
+**Data flow:** User types -> Dexie write (instant) -> SyncQueue -> REST API -> Prisma
 
-**Collab flow:** TipTap → Yjs → HocuspocusProvider → WebSocket → Hocuspocus Server → Prisma
+**Collab flow:** TipTap -> Yjs -> HocuspocusProvider -> WebSocket -> Hocuspocus Server -> Prisma
+
+**Chat flow:** MessageInput -> WebSocket /chat-ws -> Chat Server -> broadcast to participants + push for offline
 
 ---
 
@@ -163,15 +167,17 @@ Notiq/
     src/
       routes/        # Fastify route plugins (Zod-validated)
       services/      # Business logic layer
-      utils/         # Logger, text extraction
+      utils/         # Logger, text extraction, errors
       plugins/       # Prisma client singleton
       scripts/       # CLI tools (admin, backup, migration)
+      chatWebSocket.ts  # Chat WS server (/chat-ws)
+      hocuspocus.ts     # Collab WS server (/ws)
     prisma/
-      schema.prisma  # 30 models, 21 migrations
+      schema.prisma  # 40 models, 26 migrations
   frontend/
     src/
       components/    # Reusable UI (editor/, layout/, sharing/, ui/)
-      features/      # Domain modules (auth, notes, vault, groups, tasks, kanban)
+      features/      # Domain modules (auth, notes, vault, groups, tasks, kanban, chat, announcements)
       store/         # Zustand stores (auth, vault, ui)
       lib/           # API client, Dexie DB, i18n
       locales/       # en.json, it.json
@@ -185,12 +191,15 @@ Notiq/
 
 - JWT authentication with token expiration and version-based invalidation
 - Zod input validation on all API routes
+- CSP, HSTS, Permissions-Policy security headers
 - CORS whitelist (configurable per environment)
 - Per-route rate limiting on sensitive endpoints
+- SSRF protection on URL metadata fetching
 - XSS sanitization on user-generated content
 - IDOR protection on all resource endpoints
-- Structured logging (no sensitive data in logs)
-- Import file size limits and XXE protection
+- Graceful shutdown (SIGTERM/SIGINT)
+- Per-user WebSocket connection limits
+- Production source maps disabled
 
 ---
 
