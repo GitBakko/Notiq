@@ -5,7 +5,8 @@ import { ArrowLeft, Search, X, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { getMessages, getConversations, searchMessages, type DirectMessageDTO, type ConversationSummary } from '../chatService';
-import { useChatWebSocket, type ChatWsEvent } from '../useChatWebSocket';
+import { useChatContext } from '../ChatContext';
+import type { ChatWsEvent } from '../useChatWebSocket';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 
@@ -38,7 +39,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   const isMobile = useIsMobile();
   const currentUser = useAuthStore(s => s.user);
   const queryClient = useQueryClient();
-  const { isConnected, send, on, off } = useChatWebSocket();
+  const { isConnected, send, on, off } = useChatContext();
 
   // ─── State ─────────────────────────────────────────────
   const [allMessages, setAllMessages] = useState<DirectMessageDTO[]>([]);
@@ -159,6 +160,9 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
         next.delete(msg.senderId);
         return next;
       });
+
+      // Refresh conversation list (last message, unread count)
+      queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     };
 
     const handleEditMessage = (event: ChatWsEvent) => {
@@ -214,6 +218,20 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
       queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     };
 
+    // Handle own message acknowledgement (sender sees their message appear)
+    const handleAck = (event: ChatWsEvent) => {
+      const msg = event.message as DirectMessageDTO;
+      if (!msg || msg.conversationId !== conversationId) return;
+      setAllMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      shouldAutoScrollRef.current = true;
+      // Refresh conversation list (last message, updatedAt)
+      queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    };
+
+    on('message:ack', handleAck);
     on('message:new', handleNewMessage);
     on('message:edited', handleEditMessage);
     on('message:deleted', handleDeleteMessage);
@@ -222,6 +240,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     on('read:receipt', handleReadReceipt);
 
     return () => {
+      off('message:ack', handleAck);
       off('message:new', handleNewMessage);
       off('message:edited', handleEditMessage);
       off('message:deleted', handleDeleteMessage);
