@@ -24,7 +24,7 @@ function getNotificationUrl(notification: Notification): string | null {
     case 'SHARE_NOTEBOOK':
       return data.notebookId ? `/shared?tab=notebooks&highlight=${data.notebookId}` : '/shared';
     case 'CHAT_MESSAGE':
-      return data.noteId ? `/notes?noteId=${data.noteId}` : null;
+      return data.conversationId ? `/chat` : (data.noteId ? `/notes?noteId=${data.noteId}` : null);
     case 'GROUP_INVITE':
     case 'GROUP_REMOVE':
       return '/groups';
@@ -42,6 +42,8 @@ function getNotificationUrl(notification: Notification): string | null {
     case 'KANBAN_CARD_MOVED':
       return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';
     case 'SYSTEM': {
+      // Friend requests → Chat page
+      if (data.localizationKey?.includes('friendRequest')) return '/chat';
       // Share responses
       if (data.localizationKey?.includes('shareResponse')) {
         if (data.type === 'NOTE' && data.itemId) return `/notes?noteId=${data.itemId}`;
@@ -113,6 +115,12 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
 
   // memberEmail — used by groupMemberJoined
   if (src.memberEmail) args.memberEmail = src.memberEmail;
+
+  // accepterName — used by friendRequestAccepted
+  if (src.accepterName) args.accepterName = src.accepterName;
+
+  // senderName — used by chatMessage, friendRequest
+  if (src.senderName) args.senderName = src.senderName;
 
   // Kanban — assignerName, cardTitle, boardTitle, authorName, actorName, fromColumn, toColumn
   if (src.assignerName) args.assignerName = src.assignerName;

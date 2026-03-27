@@ -12,6 +12,10 @@
     "back": "Back",
     "error": "Error",
     "success": "Success",
+    "menu": "Menu",
+    "next": "Next",
+    "previous": "Previous",
+    "genericError": "An error occurred",
     "actions": "Actions",
     "more": "More",
     "create": "Create",
@@ -747,7 +751,11 @@
     "kanbanBulkMove": "{{actorName}} moved {{count}} cards on {{boardTitle}}: {{summary}}",
     "kanbanBulkMove_TITLE": "Cards Moved",
     "chatMessage": "{{senderName}} sent you a message",
-    "chatMessage_TITLE": "New Message"
+    "chatMessage_TITLE": "New Message",
+    "friendRequest": "{{senderName}} sent you a friend request",
+    "friendRequest_TITLE": "Friend Request",
+    "friendRequestAccepted": "{{accepterName}} accepted your friend request",
+    "friendRequestAccepted_TITLE": "Friend Request Accepted"
   },
   "groups": {
     "title": "Groups",

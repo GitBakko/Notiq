@@ -105,9 +105,9 @@ export async function sendFriendRequest(fromId: string, toId: string) {
   await createNotification(
     toId,
     'SYSTEM',
-    'notifications.friendRequest',
     senderName,
-    { requestId: request.id, fromId }
+    'Friend request',
+    { requestId: request.id, fromId, localizationKey: 'notifications.friendRequest', localizationArgs: { senderName } }
   );
 
   logger.info({ fromId, toId, requestId: request.id }, 'Friend request sent');
@@ -146,9 +146,9 @@ export async function acceptFriendRequest(requestId: string, userId: string) {
   await createNotification(
     request.fromId,
     'SYSTEM',
-    'notifications.friendRequestAccepted',
     accepterName,
-    { friendshipId: friendship.id, userId }
+    'Friend request accepted',
+    { friendshipId: friendship.id, userId, localizationKey: 'notifications.friendRequestAccepted', localizationArgs: { accepterName } }
   );
 
   logger.info({ requestId, userId, friendId: request.fromId }, 'Friend request accepted');

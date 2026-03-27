@@ -12,6 +12,10 @@
     "back": "Indietro",
     "error": "Errore",
     "success": "Successo",
+    "menu": "Menu",
+    "next": "Avanti",
+    "previous": "Precedente",
+    "genericError": "Si è verificato un errore",
     "actions": "Azioni",
     "more": "Altro",
     "create": "Crea",
@@ -966,7 +970,11 @@
     "kanbanBulkMove": "{{actorName}} ha spostato {{count}} card su {{boardTitle}}: {{summary}}",
     "kanbanBulkMove_TITLE": "Card Spostate",
     "chatMessage": "{{senderName}} ti ha inviato un messaggio",
-    "chatMessage_TITLE": "Nuovo Messaggio"
+    "chatMessage_TITLE": "Nuovo Messaggio",
+    "friendRequest": "{{senderName}} ti ha inviato una richiesta di amicizia",
+    "friendRequest_TITLE": "Richiesta di Amicizia",
+    "friendRequestAccepted": "{{accepterName}} ha accettato la tua richiesta di amicizia",
+    "friendRequestAccepted_TITLE": "Richiesta Accettata"
   },
   "groups": {
     "title": "Gruppi",
