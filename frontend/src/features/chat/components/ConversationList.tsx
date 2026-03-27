@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../store/authStore';
 import { getConversations, type ConversationSummary, type ChatUser } from '../chatService';
+import { useChatContext } from '../ChatContext';
 import { Plus, Search, MessageCircle, Users } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -46,6 +47,7 @@ function formatTime(dateStr: string): string {
 export default function ConversationList({ selectedId, onSelect, onNewChat, onNewGroup }: ConversationListProps) {
   const { t } = useTranslation();
   const user = useAuthStore(s => s.user);
+  const { isUserOnline } = useChatContext();
   const [search, setSearch] = useState('');
 
   const { data: conversations } = useQuery({
@@ -128,6 +130,12 @@ export default function ConversationList({ selectedId, onSelect, onNewChat, onNe
                       <img src={avatar.avatarUrl} alt="" className="w-full h-full object-cover" />
                     ) : avatar.initial}
                   </div>
+                  {conv.type === 'DIRECT' && (() => {
+                    const other = getOtherUser(conv, user?.id || '');
+                    return other && isUserOnline(other.id) ? (
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-neutral-950" />
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Content */}

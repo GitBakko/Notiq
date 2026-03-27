@@ -2,6 +2,7 @@
 import jwt from 'jsonwebtoken';
 import logger from './utils/logger';
 import { sendMessage, editMessage, deleteMessage, setReaction, removeReaction, updateReadReceipt } from './services/chat-direct.service';
+import { createNotification } from './services/notification.service';
 import prisma from './plugins/prisma';
 
 // Use require to avoid DOM WebSocket type collision (dom lib in tsconfig)
@@ -173,6 +174,21 @@ async function handleMessage(ws: WsSocket, userId: string, data: any) {
         ws.send(JSON.stringify({ type: 'message:ack', tempId: data.tempId, message: msg }));
         // Broadcast to others
         await broadcastToConversation(data.conversationId, { type: 'message:new', message: msg }, userId);
+        // Push notifications for offline participants
+        try {
+          const senderName = msg.sender?.name || msg.sender?.email || 'Someone';
+          const participants = await prisma.conversationParticipant.findMany({
+            where: { conversationId: data.conversationId, userId: { not: userId } },
+            select: { userId: true },
+          });
+          for (const p of participants) {
+            if (!isUserOnline(p.userId)) {
+              createNotification(p.userId, 'CHAT_MESSAGE', senderName, (data.content as string).slice(0, 100), {
+                conversationId: data.conversationId, messageId: msg.id,
+              }).catch(() => {});
+            }
+          }
+        } catch (_e) { /* non-critical */ }
         break;
       }
       case 'message:edit': {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MessageCircle, Menu, UserPlus, Users } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { ChatProvider } from './ChatContext';
 import ConversationView from './components/ConversationView';
 import ConversationList from './components/ConversationList';
 import FriendRequestModal from './components/FriendRequestModal';
@@ -32,6 +33,7 @@ export default function ChatPage() {
 
   if (isMobile) {
     return (
+      <ChatProvider>
       <div className="flex flex-col h-full bg-white dark:bg-neutral-950">
         {/* Mobile header — only show when viewing conversation list */}
         {!selectedConversationId && (
@@ -89,11 +91,13 @@ export default function ChatPage() {
           onCreated={handleStartChat}
         />
       </div>
+      </ChatProvider>
     );
   }
 
   // Desktop layout
   return (
+    <ChatProvider>
     <div className="flex h-full">
       {/* Left: Conversation list */}
       <div className="w-80 border-r border-neutral-200/60 dark:border-neutral-800/40 flex flex-col bg-white dark:bg-neutral-950">
@@ -126,5 +130,6 @@ export default function ChatPage() {
         onCreated={handleStartChat}
       />
     </div>
+    </ChatProvider>
   );
 }

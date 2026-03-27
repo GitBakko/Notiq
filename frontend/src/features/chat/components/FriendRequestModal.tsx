@@ -8,6 +8,7 @@ import { Button } from '../../../components/ui/Button';
 import {
   getFriends,
   getFriendSuggestions,
+  searchUsers,
   getPendingRequests,
   getSentRequests,
   sendFriendRequest,
@@ -81,6 +82,12 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
     enabled: isOpen && activeTab === 'find',
   });
 
+  const { data: searchResults } = useQuery({
+    queryKey: ['friends', 'search', debouncedSearch],
+    queryFn: () => searchUsers(debouncedSearch),
+    enabled: isOpen && activeTab === 'find' && debouncedSearch.length >= 2,
+  });
+
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ['chat', 'pendingRequests'],
     queryFn: getPendingRequests,
@@ -95,13 +102,8 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
 
   const friendIds = new Set(friends.map(f => f.id));
 
-  // Filter suggestions by search
-  const filteredSuggestions = debouncedSearch.trim()
-    ? suggestions.filter(u => {
-        const q = debouncedSearch.toLowerCase();
-        return (u.name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-      })
-    : suggestions;
+  // Use search results when searching, suggestions when not
+  const displayUsers = debouncedSearch.length >= 2 ? (searchResults || []) : suggestions;
 
   const withLoading = async (id: string, fn: () => Promise<void>) => {
     setLoadingIds(prev => new Set(prev).add(id));
@@ -197,13 +199,13 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
 
             {/* Results */}
             <div className="px-2 pb-4">
-              {filteredSuggestions.length === 0 ? (
+              {displayUsers.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-neutral-400 dark:text-neutral-500">
                   <Users size={36} strokeWidth={1.5} />
                   <p className="text-sm mt-2">{t('friends.noSuggestions')}</p>
                 </div>
               ) : (
-                filteredSuggestions.map(user => {
+                displayUsers.map(user => {
                   const isFriend = friendIds.has(user.id);
                   const isLoading = loadingIds.has(user.id);
                   return (

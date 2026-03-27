@@ -67,6 +67,7 @@ export interface ConversationSummary {
 
 export const getFriends = () => api.get<ChatUser[]>('/friends').then(r => r.data);
 export const getFriendSuggestions = () => api.get<ChatUser[]>('/friends/suggestions').then(r => r.data);
+export const searchUsers = (query: string) => api.get<ChatUser[]>('/friends/search', { params: { q: query } }).then(r => r.data);
 export const getPendingRequests = () => api.get<FriendRequest[]>('/friends/requests').then(r => r.data);
 export const getSentRequests = () => api.get<FriendRequest[]>('/friends/requests/sent').then(r => r.data);
 export const sendFriendRequest = (userId: string) => api.post('/friends/request', { userId });

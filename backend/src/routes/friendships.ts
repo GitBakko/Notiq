@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import prisma from '../plugins/prisma';
 import {
   getFriends,
   sendFriendRequest,
@@ -69,6 +70,32 @@ export default async function friendshipRoutes(fastify: FastifyInstance) {
     const { id } = idParamSchema.parse(request.params);
     await unblockFriend(request.user.id, id);
     return { success: true };
+  });
+
+  // Search users (for friend requests)
+  fastify.get('/search', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request) => {
+    const { q } = z.object({ q: z.string().min(1).max(100) }).parse(request.query);
+    const userId = request.user.id;
+
+    const users = await prisma.user.findMany({
+      where: {
+        AND: [
+          { id: { not: userId } },
+          {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+        ],
+      },
+      select: { id: true, name: true, email: true, avatarUrl: true, color: true },
+      take: 20,
+    });
+
+    return users;
   });
 
   // Auto-friend candidates (suggestions)
