@@ -55,7 +55,8 @@
     "sending": "Invio...",
     "backToApp": "Torna all'App",
     "optional": "Opzionale",
-    "versionShort": "v0.1.0"
+    "versionShort": "v0.1.0",
+    "remove": "Rimuovi"
   },
   "actions": {
     "title": "Azioni",
@@ -733,7 +734,8 @@
     "next": "Avanti",
     "startChat": "Inizia Chat",
     "typeMessage": "Scrivi un messaggio...",
-    "offlineMessage": "Sei offline"
+    "offlineMessage": "Sei offline",
+    "attachFile": "Allega file"
   },
   "friends": {
     "title": "Amici",
@@ -1394,7 +1396,22 @@
     },
     "approve": "Approva",
     "reject": "Rifiuta",
-    "noRequests": "Nessuna richiesta in attesa."
+    "noRequests": "Nessuna richiesta in attesa.",
+    "chatFiles": {
+      "title": "File Chat",
+      "description": "Gestisci allegati chat",
+      "totalFiles": "File Totali",
+      "totalSize": "Dimensione Totale",
+      "filesByType": "File per Tipo",
+      "noFiles": "Nessun file chat",
+      "filename": "Nome File",
+      "sender": "Mittente",
+      "conversation": "Conversazione",
+      "size": "Dimensione",
+      "date": "Data",
+      "deleteFile": "Elimina File",
+      "deleteFileConfirm": "Sei sicuro di voler eliminare questo file?"
+    }
   },
   "search": {
     "noResults": "Nessun risultato trovato",

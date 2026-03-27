@@ -35,8 +35,51 @@ const groupConversationBodySchema = z.object({
   participantIds: z.array(z.string().uuid()).min(1),
 });
 
+const adminPaginationSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
 export default async function chatDirectRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
+
+  // ── Admin: Chat file stats ──
+  fastify.get('/admin/chat-files/stats', async (request, reply) => {
+    if (request.user.role !== 'SUPERADMIN') return reply.code(403).send({ message: 'errors.common.forbidden' });
+    const { getChatStorageStats } = await import('../services/chat-file.service');
+    return getChatStorageStats();
+  });
+
+  // ── Admin: List chat files (paginated) ──
+  fastify.get('/admin/chat-files', async (request, reply) => {
+    if (request.user.role !== 'SUPERADMIN') return reply.code(403).send({ message: 'errors.common.forbidden' });
+    const { page, limit } = adminPaginationSchema.parse(request.query);
+    const files = await prisma.chatFile.findMany({
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+      include: {
+        message: {
+          select: {
+            senderId: true,
+            sender: { select: { name: true, email: true } },
+            conversation: { select: { id: true, type: true, title: true } },
+          },
+        },
+      },
+    });
+    const total = await prisma.chatFile.count();
+    return { data: files, total };
+  });
+
+  // ── Admin: Delete chat file ──
+  fastify.delete('/admin/chat-files/:id', async (request, reply) => {
+    if (request.user.role !== 'SUPERADMIN') return reply.code(403).send({ message: 'errors.common.forbidden' });
+    const { id } = idParamSchema.parse(request.params);
+    const { deleteChatFile } = await import('../services/chat-file.service');
+    await deleteChatFile(id);
+    return { success: true };
+  });
 
   // List all conversations with last message + unread count
   fastify.get('/conversations', async (request) => {
