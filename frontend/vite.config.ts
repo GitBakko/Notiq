@@ -129,6 +129,10 @@ export default defineConfig({
         target: 'ws://localhost:3001',
         ws: true,
       },
+      '/chat-ws': {
+        target: 'ws://localhost:3001',
+        ws: true,
+      },
     },
   },
 })

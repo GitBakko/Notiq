@@ -765,6 +765,13 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "chatSystem": "Chat dedicata — conversazioni 1:1 e di gruppo con messaggistica in tempo reale",
+      "chatEmoji": "Supporto emoji completo con reazioni, risposte, modifica ed eliminazione messaggi",
+      "chatFileSharing": "Condivisione file in chat con miniature e anteprime inline",
+      "friendSystem": "Sistema amici — amicizia automatica su condivisioni, richieste, blocco",
+      "adminAnnouncements": "Annunci admin — messaggi broadcast con banner in-app e notifiche push",
+      "networkIndicator": "Indicatore stato rete — rilevamento offline/online nell'header",
+      "platformHardening": "Rafforzamento piattaforma — header sicurezza, resilienza sync, auto-lock vault, 80+ fix",
       "notificationSound": "Suoni notifica configurabili",
       "pushNotifications": "Notifiche push OS quando inattivo",
       "listAutoFormat": "Auto-formattazione liste (°, 1), 1-)",

@@ -11,6 +11,19 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.9.0',
+    date: '2026-03-27',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.chatSystem' },
+      { type: 'feature', titleKey: 'whatsNew.entries.chatEmoji' },
+      { type: 'feature', titleKey: 'whatsNew.entries.chatFileSharing' },
+      { type: 'feature', titleKey: 'whatsNew.entries.friendSystem' },
+      { type: 'feature', titleKey: 'whatsNew.entries.adminAnnouncements' },
+      { type: 'feature', titleKey: 'whatsNew.entries.networkIndicator' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.platformHardening' },
+    ],
+  },
+  {
     version: '1.8.1',
     date: '2026-03-09',
     entries: [

@@ -1117,6 +1117,13 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "chatSystem": "Dedicated chat — WhatsApp-like 1:1 and group conversations with real-time messaging",
+      "chatEmoji": "Full emoji support with reactions, replies, message editing and deletion",
+      "chatFileSharing": "File sharing in chat with thumbnails and inline previews",
+      "friendSystem": "Friend system — auto-friend on shared items, friend requests, blocking",
+      "adminAnnouncements": "Admin announcements — broadcast messages with in-app banner and push notifications",
+      "networkIndicator": "Network status indicator — offline/online detection in app header",
+      "platformHardening": "Platform hardening — security headers, sync resilience, vault auto-lock, 80+ fixes",
       "notificationSound": "Configurable notification sounds",
       "pushNotifications": "OS push notifications when inactive",
       "listAutoFormat": "Auto-format lists (°, 1), 1-)",
