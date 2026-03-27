@@ -34,7 +34,7 @@ export default function ReactionPicker({ onSelect, onOpenFull, onClose, position
   return (
     <div
       ref={ref}
-      className="fixed z-50 flex items-center gap-0.5 px-2 py-1.5 rounded-full bg-white dark:bg-neutral-800 shadow-lg border border-neutral-200/60 dark:border-neutral-700/40 animate-in zoom-in-95 duration-150"
+      className="fixed z-50 flex items-center gap-0.5 px-2.5 py-2 rounded-full bg-white dark:bg-neutral-800 shadow-xl shadow-neutral-900/10 dark:shadow-neutral-900/50 border border-neutral-200/60 dark:border-neutral-700/40 animate-in zoom-in-50 fade-in slide-in-from-bottom-2 duration-200"
       style={positionStyle}
     >
       {QUICK_REACTIONS.map((emoji) => (

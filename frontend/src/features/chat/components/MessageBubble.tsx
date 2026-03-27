@@ -16,7 +16,7 @@ interface MessageBubbleProps {
   isOwn: boolean;
   showSender: boolean;
   onReply: (message: DirectMessageDTO) => void;
-  onReact: (messageId: string) => void;
+  onReact: (messageId: string, position?: { x: number; y: number }) => void;
   onEdit?: (message: DirectMessageDTO) => void;
   onDelete?: (messageId: string) => void;
 }
@@ -210,7 +210,7 @@ export default function MessageBubble({
             {groupedReactions.map((r) => (
               <button
                 key={r.emoji}
-                onClick={() => onReact(message.id)}
+                onClick={(e) => onReact(message.id, { x: e.clientX, y: e.clientY })}
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 border border-neutral-200/60 dark:border-neutral-700/40 transition-colors"
               >
                 <span>{r.emoji}</span>
@@ -239,7 +239,7 @@ export default function MessageBubble({
           <ContextMenuItem
             icon={<SmilePlus size={16} />}
             label={t('chat.react')}
-            onClick={() => { onReact(message.id); setContextMenu(null); }}
+            onClick={() => { onReact(message.id, contextMenu ? { x: contextMenu.x, y: contextMenu.y } : undefined); setContextMenu(null); }}
           />
           <ContextMenuItem
             icon={<Copy size={16} />}

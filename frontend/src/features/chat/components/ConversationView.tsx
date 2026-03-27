@@ -55,6 +55,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   const [searchResults, setSearchResults] = useState<DirectMessageDTO[] | null>(null);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
   const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
+  const [reactionPosition, setReactionPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showFullEmojiForReaction, setShowFullEmojiForReaction] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -357,8 +358,9 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     });
   }, []);
 
-  const handleReact = useCallback((messageId: string) => {
+  const handleReact = useCallback((messageId: string, position?: { x: number; y: number }) => {
     setReactingMessageId(messageId);
+    if (position) setReactionPosition(position);
     setShowFullEmojiForReaction(false);
   }, []);
 
@@ -577,21 +579,29 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
         disabled={!isConnected}
       />
 
-      {/* Reaction picker overlay */}
+      {/* Reaction picker overlay — positioned near the message */}
       {reactingMessageId && !showFullEmojiForReaction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setReactingMessageId(null)}>
-          <div onClick={e => e.stopPropagation()} className="mb-20">
+        <div className="fixed inset-0 z-50" onClick={() => setReactingMessageId(null)}>
+          <div onClick={e => e.stopPropagation()}>
             <ReactionPicker
               onSelect={handleReactionSelect}
               onOpenFull={() => setShowFullEmojiForReaction(true)}
               onClose={() => setReactingMessageId(null)}
+              position={reactionPosition}
             />
           </div>
         </div>
       )}
       {reactingMessageId && showFullEmojiForReaction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => { setReactingMessageId(null); setShowFullEmojiForReaction(false); }}>
-          <div onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50" onClick={() => { setReactingMessageId(null); setShowFullEmojiForReaction(false); }}>
+          <div
+            className="fixed"
+            style={{
+              left: Math.min(reactionPosition.x - 150, window.innerWidth - 360),
+              top: Math.max(8, reactionPosition.y - 350),
+            }}
+            onClick={e => e.stopPropagation()}
+          >
             <EmojiPicker
               onSelect={handleReactionSelect}
               onClose={() => { setReactingMessageId(null); setShowFullEmojiForReaction(false); }}
