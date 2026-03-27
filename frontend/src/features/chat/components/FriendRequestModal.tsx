@@ -22,8 +22,7 @@ interface FriendRequestModalProps {
   onStartChat: (conversationId: string) => void;
 }
 
-type Tab = 'find' | 'received' | 'sent';
-// Note: "received" and "sent" tabs now redirect to Sharing Center
+type Tab = 'friends' | 'find' | 'received' | 'sent';
 
 function UserAvatar({ user, size = 'md' }: { user: ChatUser; size?: 'sm' | 'md' }) {
   const dim = size === 'sm' ? 'w-9 h-9' : 'w-10 h-10';
@@ -62,7 +61,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      setActiveTab('find');
+      setActiveTab('friends');
       setSearch('');
       setDebouncedSearch('');
       setLoadingIds(new Set());
@@ -123,6 +122,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
     });
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: 'friends', label: t('friends.title'), count: friends.length },
     { key: 'find', label: t('friends.findFriends') },
     { key: 'received', label: t('friends.received'), count: pendingRequests.length },
     { key: 'sent', label: t('friends.sent') },
@@ -158,6 +158,46 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
       </div>
 
       <div className="max-h-[60vh] overflow-y-auto">
+        {/* Friends list tab */}
+        {activeTab === 'friends' && (
+          <div className="px-2 py-3">
+            {friends.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-neutral-400 dark:text-neutral-500">
+                <Users size={36} strokeWidth={1.5} />
+                <p className="text-sm mt-2">{t('friends.noFriends')}</p>
+              </div>
+            ) : (
+              friends.map(friend => {
+                const isLoading = loadingIds.has(friend.id);
+                return (
+                  <div
+                    key={friend.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+                  >
+                    <UserAvatar user={friend} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">
+                        {friend.name || friend.email}
+                      </p>
+                      {friend.name && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{friend.email}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleStartChat(friend.id)}
+                      isLoading={isLoading}
+                    >
+                      <MessageCircle size={14} className="mr-1.5" />
+                      {t('chat.startChat')}
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
         {/* Find Friends tab */}
         {activeTab === 'find' && (
           <div>

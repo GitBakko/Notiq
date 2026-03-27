@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, FileText, Book, Menu, ListChecks, Columns3, Send, RefreshCw, X, UserPlus } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Users, FileText, Book, Menu, ListChecks, Columns3, Send, RefreshCw, X, UserPlus, MessageCircle } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { getSharedNotes } from '../notes/noteService';
 import { getSharedNotebooks } from '../notebooks/notebookService';
-import { getPendingRequests, getSentRequests, acceptFriendRequest, declineFriendRequest, getFriends, type ChatUser, type FriendRequest } from '../chat/chatService';
+import { getPendingRequests, getSentRequests, acceptFriendRequest, declineFriendRequest, getFriends, getOrCreateDirectConversation, type ChatUser, type FriendRequest } from '../chat/chatService';
 import clsx from 'clsx';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import api from '../../lib/api';
@@ -120,6 +120,16 @@ export default function SharedWithMePage() {
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
+  const navigate = useNavigate();
+
+  const handleStartChat = async (userId: string) => {
+    try {
+      await getOrCreateDirectConversation(userId);
+      navigate('/chat');
+    } catch {
+      toast.error(t('common.genericError'));
+    }
+  };
   const queryClient = useQueryClient();
 
   const { data: pendingFriendRequests = [] } = useQuery({
@@ -139,9 +149,28 @@ export default function SharedWithMePage() {
 
   const acceptMutation = useMutation({
     mutationFn: acceptFriendRequest,
-    onSuccess: () => {
+    onSuccess: (_data, requestId) => {
       queryClient.invalidateQueries({ queryKey: ['friends'] });
-      toast.success(t('friends.requestAccepted'));
+      // Find the request to get the sender ID for "Start Chat" action
+      const req = pendingFriendRequests.find((r: FriendRequest) => r.id === requestId);
+      if (req) {
+        toast.success(
+          (tObj) => (
+            <div className="flex items-center gap-3">
+              <span>{t('friends.requestAccepted')}</span>
+              <button
+                onClick={() => { toast.dismiss(tObj.id); handleStartChat(req.from.id); }}
+                className="px-2 py-1 text-xs font-medium bg-white/20 rounded hover:bg-white/30 whitespace-nowrap"
+              >
+                {t('chat.startChat')} →
+              </button>
+            </div>
+          ),
+          { duration: 5000 }
+        );
+      } else {
+        toast.success(t('friends.requestAccepted'));
+      }
     },
   });
 
@@ -616,9 +645,14 @@ export default function SharedWithMePage() {
                             <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{friend.name || friend.email}</p>
                             <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{friend.email}</p>
                           </div>
-                          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                            {t('friends.active')}
-                          </span>
+                          <button
+                            onClick={() => handleStartChat(friend.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                            aria-label={t('chat.startChat')}
+                          >
+                            <MessageCircle size={14} />
+                            {t('chat.startChat')}
+                          </button>
                         </div>
                       ))}
                     </div>
