@@ -32,13 +32,17 @@ export default function ReactionPicker({ onSelect, onOpenFull, onClose, position
     };
   }, [onClose]);
 
-  // Position ABOVE the click point (picker height ~48px + 8px gap)
+  // Position picker ABOVE or BELOW the click point, ensuring the message stays visible
+  const pickerWidth = 340;
   const pickerHeight = 52;
-  const pickerWidth = 320;
+  const spaceAbove = position ? position.y - pickerHeight - 16 : 0;
+  const showAbove = spaceAbove > 8; // enough room above?
   const positionStyle = position
     ? {
         left: Math.max(8, Math.min(position.x - pickerWidth / 2, window.innerWidth - pickerWidth - 8)),
-        top: Math.max(8, position.y - pickerHeight - 12),
+        top: showAbove
+          ? position.y - pickerHeight - 16 // above the click, with 16px gap
+          : position.y + 16,               // below the click, with 16px gap
       }
     : {};
 
@@ -49,10 +53,12 @@ export default function ReactionPicker({ onSelect, onOpenFull, onClose, position
       style={{
         ...positionStyle,
         boxShadow: '0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
-        transform: visible ? 'scale(1) translateY(0)' : 'scale(0.8) translateY(8px)',
+        transform: visible
+          ? 'scale(1) translateY(0)'
+          : `scale(0.85) translateY(${showAbove ? '6px' : '-6px'})`,
         opacity: visible ? 1 : 0,
         transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 150ms ease-out',
-        transformOrigin: 'center bottom',
+        transformOrigin: showAbove ? 'center bottom' : 'center top',
       }}
     >
       {QUICK_REACTIONS.map((emoji) => (
