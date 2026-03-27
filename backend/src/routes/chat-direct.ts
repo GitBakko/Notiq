@@ -7,7 +7,10 @@ import {
   getMessages,
   searchMessages,
   getUnreadCount,
+  sendMessage,
 } from '../services/chat-direct.service';
+import { uploadChatFile } from '../services/chat-file.service';
+import prisma from '../plugins/prisma';
 
 const idParamSchema = z.object({
   id: z.string().uuid(),
@@ -70,5 +73,33 @@ export default async function chatDirectRoutes(fastify: FastifyInstance) {
   fastify.get('/unread', async (request) => {
     const count = await getUnreadCount(request.user.id);
     return { count };
+  });
+
+  // Upload file with optional message text
+  fastify.post('/conversations/:id/files', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { id: conversationId } = idParamSchema.parse(request.params);
+    const userId = request.user.id;
+
+    // Verify participant
+    const participant = await prisma.conversationParticipant.findUnique({
+      where: { conversationId_userId: { conversationId, userId } },
+    });
+    if (!participant) return reply.code(403).send({ message: 'errors.chat.notParticipant' });
+
+    const data = await request.file();
+    if (!data) return reply.code(400).send({ message: 'errors.chat.noFile' });
+
+    const buffer = await data.toBuffer();
+    const messageText = (data.fields as Record<string, { value?: string }>)?.message?.value || '';
+
+    // Create message first
+    const message = await sendMessage(conversationId, userId, { content: messageText || data.filename });
+
+    // Upload file linked to message
+    const fileResult = await uploadChatFile(message.id, buffer, data.filename, data.mimetype);
+
+    return { message, file: fileResult };
   });
 }

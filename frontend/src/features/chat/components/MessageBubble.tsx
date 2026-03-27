@@ -9,6 +9,7 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import type { DirectMessageDTO } from '../chatService';
+import ChatFilePreview from './ChatFilePreview';
 
 interface MessageBubbleProps {
   message: DirectMessageDTO;
@@ -166,28 +167,9 @@ export default function MessageBubble({
 
           {/* File previews */}
           {message.files.length > 0 && (
-            <div className="mt-1.5 space-y-1">
+            <div className="space-y-1">
               {message.files.map((file) => (
-                <a
-                  key={file.id}
-                  href={file.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block text-xs px-2 py-1 rounded ${
-                    isOwn
-                      ? 'bg-emerald-700/40 hover:bg-emerald-700/60 text-emerald-100'
-                      : 'bg-neutral-100 dark:bg-neutral-700/50 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
-                  }`}
-                >
-                  <span className="truncate block">{file.filename}</span>
-                  <span className="opacity-70">
-                    {file.size < 1024
-                      ? `${file.size} B`
-                      : file.size < 1024 * 1024
-                        ? `${(file.size / 1024).toFixed(1)} KB`
-                        : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
-                  </span>
-                </a>
+                <ChatFilePreview key={file.id} file={file} compact />
               ))}
             </div>
           )}

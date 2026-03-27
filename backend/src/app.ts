@@ -262,6 +262,24 @@ server.get('/uploads/kanban/:filename', async (request, reply) => {
   return serveFile(filepath, safeImageType(safeName), request, reply);
 });
 
+// Chat file serving
+server.get('/uploads/chat/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename);
+  const filepath = path.join(UPLOADS_DIR, 'chat', safeName);
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
+  const ext = path.extname(safeName).slice(1).toLowerCase();
+  return serveFile(filepath, ATTACHMENT_MIME_MAP[ext] || 'application/octet-stream', request, reply);
+});
+
+server.get('/uploads/chat/thumbs/:filename', async (request, reply) => {
+  const { filename } = request.params as { filename: string };
+  const safeName = path.basename(filename);
+  const filepath = path.join(UPLOADS_DIR, 'chat', 'thumbs', safeName);
+  if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
+  return serveFile(filepath, safeImageType(safeName), request, reply);
+});
+
 // Attachment file serving (note attachments stored in uploads root)
 server.get('/uploads/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
