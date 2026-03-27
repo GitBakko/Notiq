@@ -7,7 +7,7 @@ interface ReactionPickerProps {
   onSelect: (emoji: string) => void;
   onOpenFull: () => void;
   onClose: () => void;
-  position: { x: number; y: number };
+  position?: { x: number; y: number };
 }
 
 export default function ReactionPicker({ onSelect, onOpenFull, onClose, position }: ReactionPickerProps) {
@@ -26,15 +26,16 @@ export default function ReactionPicker({ onSelect, onOpenFull, onClose, position
     };
   }, [onClose]);
 
-  // Clamp position to stay within viewport
-  const left = Math.min(position.x, window.innerWidth - 320);
-  const top = Math.max(8, position.y - 56);
+  // Clamp position to stay within viewport (when position is provided)
+  const positionStyle = position
+    ? { left: Math.min(position.x, window.innerWidth - 320), top: Math.max(8, position.y - 56) }
+    : {};
 
   return (
     <div
       ref={ref}
       className="fixed z-50 flex items-center gap-0.5 px-2 py-1.5 rounded-full bg-white dark:bg-neutral-800 shadow-lg border border-neutral-200/60 dark:border-neutral-700/40 animate-in zoom-in-95 duration-150"
-      style={{ left, top }}
+      style={positionStyle}
     >
       {QUICK_REACTIONS.map((emoji) => (
         <button

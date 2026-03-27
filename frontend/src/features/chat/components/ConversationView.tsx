@@ -10,6 +10,8 @@ import { useChatContext } from '../ChatContext';
 import type { ChatWsEvent } from '../useChatWebSocket';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
+import ReactionPicker from './ReactionPicker';
+import EmojiPicker from './EmojiPicker';
 
 interface ConversationViewProps {
   conversationId: string;
@@ -52,6 +54,8 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DirectMessageDTO[] | null>(null);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
+  const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
+  const [showFullEmojiForReaction, setShowFullEmojiForReaction] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -344,13 +348,21 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     });
   }, []);
 
-  const handleReact = useCallback((_messageId: string) => {
-    // Will be implemented with emoji picker
+  const handleReact = useCallback((messageId: string) => {
+    setReactingMessageId(messageId);
+    setShowFullEmojiForReaction(false);
   }, []);
 
-  const handleEdit = useCallback((_message: DirectMessageDTO) => {
-    // Will be implemented with MessageInput component
-  }, []);
+  const handleReactionSelect = useCallback((emoji: string) => {
+    if (!reactingMessageId) return;
+    send({ type: 'reaction:set', messageId: reactingMessageId, emoji });
+    setReactingMessageId(null);
+    setShowFullEmojiForReaction(false);
+  }, [reactingMessageId, send]);
+
+  const handleEdit = useCallback((message: DirectMessageDTO) => {
+    send({ type: 'message:edit', messageId: message.id, content: message.content });
+  }, [send]);
 
   const handleDelete = useCallback((messageId: string) => {
     send({ type: 'message:delete', conversationId, messageId });
@@ -555,6 +567,29 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
         onTyping={handleTyping}
         disabled={!isConnected}
       />
+
+      {/* Reaction picker overlay */}
+      {reactingMessageId && !showFullEmojiForReaction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setReactingMessageId(null)}>
+          <div onClick={e => e.stopPropagation()} className="mb-20">
+            <ReactionPicker
+              onSelect={handleReactionSelect}
+              onOpenFull={() => setShowFullEmojiForReaction(true)}
+              onClose={() => setReactingMessageId(null)}
+            />
+          </div>
+        </div>
+      )}
+      {reactingMessageId && showFullEmojiForReaction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => { setReactingMessageId(null); setShowFullEmojiForReaction(false); }}>
+          <div onClick={e => e.stopPropagation()}>
+            <EmojiPicker
+              onSelect={handleReactionSelect}
+              onClose={() => { setReactingMessageId(null); setShowFullEmojiForReaction(false); }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

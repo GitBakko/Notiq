@@ -262,14 +262,20 @@ server.get('/uploads/kanban/:filename', async (request, reply) => {
   return serveFile(filepath, safeImageType(safeName), request, reply);
 });
 
-// Chat file serving
+// Chat file serving — looks up original filename from DB for Content-Disposition
 server.get('/uploads/chat/:filename', async (request, reply) => {
   const { filename } = request.params as { filename: string };
   const safeName = path.basename(filename);
   const filepath = path.join(UPLOADS_DIR, 'chat', safeName);
   if (!fs.existsSync(filepath)) return reply.code(404).send({ message: 'errors.common.notFound' });
   const ext = path.extname(safeName).slice(1).toLowerCase();
-  return serveFile(filepath, ATTACHMENT_MIME_MAP[ext] || 'application/octet-stream', request, reply);
+  const contentType = ATTACHMENT_MIME_MAP[ext] || 'application/octet-stream';
+  // Look up original filename for proper download name
+  const chatFile = await prisma.chatFile.findFirst({ where: { url: `/uploads/chat/${safeName}` }, select: { filename: true } });
+  if (chatFile?.filename) {
+    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(chatFile.filename)}"`);
+  }
+  return serveFile(filepath, contentType, request, reply);
 });
 
 server.get('/uploads/chat/thumbs/:filename', async (request, reply) => {

@@ -27,7 +27,7 @@ export default function ChatFilePreview({ file, compact }: ChatFilePreviewProps)
   if (isImage) {
     return (
       <div className="mt-1.5 rounded-lg overflow-hidden max-w-[280px]">
-        <a href={file.url} target="_blank" rel="noopener noreferrer" className="block">
+        <a href={file.url} target="_blank" rel="noopener noreferrer" download={file.filename} className="block">
           <img
             src={file.thumbnailUrl || file.url}
             alt={file.filename}
@@ -52,6 +52,7 @@ export default function ChatFilePreview({ file, compact }: ChatFilePreviewProps)
       href={file.url}
       target="_blank"
       rel="noopener noreferrer"
+      download={file.filename}
       className="flex items-center gap-2.5 mt-1.5 p-2.5 rounded-lg bg-white/10 dark:bg-neutral-700/30 hover:bg-white/20 dark:hover:bg-neutral-700/50 transition-colors max-w-[280px]"
     >
       <div className="p-2 rounded-lg bg-emerald-500/20 dark:bg-emerald-400/20 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
