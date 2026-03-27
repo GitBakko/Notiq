@@ -74,6 +74,15 @@ model User {
   // Announcements
   announcements            Announcement[]            @relation("AnnouncementCreator")
   announcementDismissals   AnnouncementDismissal[]   @relation("AnnouncementDismissals")
+
+  // Chat System
+  friendshipsA           Friendship[]              @relation("FriendshipA")
+  friendshipsB           Friendship[]              @relation("FriendshipB")
+  friendRequestsSent     FriendRequest[]            @relation("FriendRequestsSent")
+  friendRequestsReceived FriendRequest[]            @relation("FriendRequestsReceived")
+  chatParticipations     ConversationParticipant[]  @relation("ChatParticipants")
+  chatMessagesSent       DirectMessage[]            @relation("ChatMessagesSent")
+  chatReactions          MessageReaction[]          @relation("ChatReactions")
 }
 
 enum Role {
@@ -628,4 +637,120 @@ model AnnouncementDismissal {
   dismissedAt    DateTime     @default(now())
 
   @@id([announcementId, userId])
+}
+
+// ─── Chat System ────────────────────────────────────────────
+
+enum FriendshipStatus {
+  ACTIVE
+  BLOCKED_BY_A
+  BLOCKED_BY_B
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+model Friendship {
+  id        String           @id @default(uuid())
+  userAId   String
+  userA     User             @relation("FriendshipA", fields: [userAId], references: [id], onDelete: Cascade)
+  userBId   String
+  userB     User             @relation("FriendshipB", fields: [userBId], references: [id], onDelete: Cascade)
+  status    FriendshipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model FriendRequest {
+  id        String              @id @default(uuid())
+  fromId    String
+  from      User                @relation("FriendRequestsSent", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        User                @relation("FriendRequestsReceived", fields: [toId], references: [id], onDelete: Cascade)
+  status    FriendRequestStatus @default(PENDING)
+  createdAt DateTime            @default(now())
+
+  @@unique([fromId, toId])
+  @@index([toId, status])
+}
+
+model Conversation {
+  id           String                   @id @default(uuid())
+  type         ConversationType
+  title        String?
+  avatarUrl    String?
+  participants ConversationParticipant[]
+  messages     DirectMessage[]
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@index([updatedAt])
+}
+
+model ConversationParticipant {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("ChatParticipants", fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime     @default(now())
+  joinedAt       DateTime     @default(now())
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id             String            @id @default(uuid())
+  conversationId String
+  conversation   Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User              @relation("ChatMessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  replyToId      String?
+  replyTo        DirectMessage?    @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        DirectMessage[]   @relation("MessageReplies")
+  reactions      MessageReaction[]
+  files          ChatFile[]
+  editedAt       DateTime?
+  isDeleted      Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model MessageReaction {
+  messageId String
+  message   DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation("ChatReactions", fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime      @default(now())
+
+  @@id([messageId, userId])
+}
+
+model ChatFile {
+  id           String        @id @default(uuid())
+  messageId    String
+  message      DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  url          String
+  thumbnailUrl String?
+  filename     String
+  mimeType     String
+  size         Int
+  createdAt    DateTime      @default(now())
+
+  @@index([messageId])
 }

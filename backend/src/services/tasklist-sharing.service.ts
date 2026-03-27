@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import * as notificationService from './notification.service';
 import * as emailService from './email.service';
 import { NotFoundError, BadRequestError } from '../utils/errors';
+import { createFriendship, getFriendship } from './friendship.service';
 
 export const shareTaskList = async (
   ownerId: string,
@@ -161,6 +162,20 @@ export const respondToTaskListShareById = async (
       user: true,
     },
   });
+
+  // Auto-create friendship on share accept
+  if (action === 'accept') {
+    const taskListOwnerId = result.taskList.user.id;
+    try {
+      const existing = await getFriendship(taskListOwnerId, userId);
+      if (!existing) {
+        await createFriendship(taskListOwnerId, userId);
+      }
+    } catch (e) {
+      // Non-critical — don't fail the accept if friendship creation fails
+      logger.warn({ err: e, ownerId: taskListOwnerId, userId }, 'Auto-friendship creation failed');
+    }
+  }
 
   // Notify owner
   const owner = result.taskList.user;

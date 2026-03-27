@@ -29,6 +29,8 @@ import taskListRoutes from './routes/tasklists';
 import kanbanRoutes from './routes/kanban';
 import healthRoutes from './routes/health';
 import announcementRoutes, { adminAnnouncementRoutes } from './routes/announcements';
+import friendshipRoutes from './routes/friendships';
+import chatDirectRoutes from './routes/chat-direct';
 
 
 // ... ensure start
@@ -212,6 +214,8 @@ server.register(importRoutes, { prefix: '/api/import' });
 server.register(searchRoutes, { prefix: '/api/search' });
 server.register(aiRoutes, { prefix: '/api/ai' });
 server.register(groupRoutes, { prefix: '/api/groups' });
+server.register(friendshipRoutes, { prefix: '/api/friends' });
+server.register(chatDirectRoutes, { prefix: '/api/chat-direct' });
 server.register(urlMetadataRoutes, { prefix: '/api/url-metadata' });
 server.register(taskListRoutes, { prefix: '/api/tasklists' });
 server.register(kanbanRoutes, { prefix: '/api/kanban' });
@@ -270,13 +274,14 @@ server.get('/uploads/:filename', async (request, reply) => {
 });
 
 import { hocuspocus } from './hocuspocus';
+import { chatWss, authenticateFromUrl } from './chatWebSocket';
 import type { WebSocket } from 'ws';
 
 const start = async () => {
   try {
     await server.listen({ port: 3001, host: '0.0.0.0' });
 
-    // Attach Hocuspocus to Fastify server
+    // Attach WebSocket servers to Fastify HTTP server
     server.server.on('upgrade', (request, socket, head) => {
       server.log.debug('Upgrade request received for: %s', request.url);
       if (request.url === '/ws' || request.url?.startsWith('/ws?')) {
@@ -284,11 +289,24 @@ const start = async () => {
         hocuspocus.webSocketServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
           hocuspocus.webSocketServer.emit('connection', ws, request);
         });
+      } else if (request.url === '/chat-ws' || request.url?.startsWith('/chat-ws?')) {
+        const userId = authenticateFromUrl(request.url);
+        if (!userId) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        chatWss.handleUpgrade(request, socket, head, (ws) => {
+          // Attach userId before emitting connection
+          (ws as any).__userId = userId;
+          chatWss.emit('connection', ws);
+        });
       }
     });
 
     server.log.info('Server running on port 3001');
     server.log.info('Hocuspocus attached to /ws');
+    server.log.info('Chat WebSocket attached to /chat-ws');
   } catch (err) {
     server.log.error(err);
     process.exit(1);

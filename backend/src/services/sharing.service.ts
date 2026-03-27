@@ -5,6 +5,7 @@ import * as notificationService from './notification.service';
 import { Permission } from '@prisma/client';
 import logger from '../utils/logger';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors';
+import { createFriendship, getFriendship } from './friendship.service';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
   // Verify ownership
@@ -467,6 +468,29 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
     auditService.logEvent(userId, 'SHARE_ACCEPTED', { shareId: itemId, type: auditType });
   } else {
     auditService.logEvent(userId, 'SHARE_DECLINED', { shareId: itemId, type: auditType });
+  }
+
+  // Auto-create friendship on share accept
+  if (action === 'accept' && result) {
+    let ownerId: string | undefined;
+    if (type === 'NOTE' && 'note' in result) {
+      ownerId = result.note.user.id;
+    } else if (type === 'NOTEBOOK' && 'notebook' in result) {
+      ownerId = result.notebook.user.id;
+    } else if ('board' in result) {
+      ownerId = result.board.owner.id;
+    }
+    if (ownerId) {
+      try {
+        const existing = await getFriendship(ownerId, userId);
+        if (!existing) {
+          await createFriendship(ownerId, userId);
+        }
+      } catch (e) {
+        // Non-critical — don't fail the accept if friendship creation fails
+        logger.warn({ err: e, ownerId, userId }, 'Auto-friendship creation failed');
+      }
+    }
   }
 
   // Notify Owner
