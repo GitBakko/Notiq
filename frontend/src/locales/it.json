@@ -739,7 +739,9 @@
     "startChat": "Inizia Chat",
     "typeMessage": "Scrivi un messaggio...",
     "offlineMessage": "Sei offline",
-    "attachFile": "Allega file"
+    "attachFile": "Allega file",
+    "fileTooLarge": "Il file è troppo grande (max 10MB)",
+    "blockedFileType": "Tipo di file non consentito"
   },
   "friends": {
     "title": "Amici",

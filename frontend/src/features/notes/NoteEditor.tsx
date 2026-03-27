@@ -120,8 +120,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             } else {
                 updateTitle(debouncedTitle);
             }
+            // Broadcast title change to collaborators via awareness
+            if (provider?.awareness) {
+                provider.awareness.setLocalStateField('title', debouncedTitle);
+            }
         }
-    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, sharedPermission, isReadOnly]);
+    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, sharedPermission, isReadOnly, provider]);
 
     useEffect(() => {
         if (note.isTrashed) return; // Don't save if trashed
@@ -168,7 +172,13 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 },
             });
             setProvider(newProvider);
-            return () => newProvider.destroy();
+            return () => {
+                // Clear awareness state before destroying to remove stale cursors
+                if (newProvider.awareness) {
+                    newProvider.awareness.setLocalState(null);
+                }
+                newProvider.destroy();
+            };
         } else {
             setProvider(null);
         }
@@ -190,6 +200,28 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             provider.off('awarenessUpdate', updateCollaborators);
         };
     }, [provider]);
+
+    // -- Sync remote title changes via awareness --
+    useEffect(() => {
+        const awareness = provider?.awareness;
+        if (!awareness) return;
+        const handleAwarenessChange = () => {
+            // Don't overwrite if the user is actively editing the title
+            if (document.activeElement === titleRef.current) return;
+            const states = awareness.getStates();
+            const localClientId = awareness.clientID;
+            for (const [clientId, state] of states.entries()) {
+                if (clientId === localClientId) continue;
+                const remoteTitle = (state as { title?: string }).title;
+                if (remoteTitle && remoteTitle !== titleInput) {
+                    setTitleInput(remoteTitle);
+                    break; // Take the first remote title update
+                }
+            }
+        };
+        awareness.on('change', handleAwarenessChange);
+        return () => { awareness.off('change', handleAwarenessChange); };
+    }, [provider, titleInput]);
 
     // -- Handlers --
 
