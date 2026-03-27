@@ -169,7 +169,7 @@ export default function MessageBubble({
           {message.files.length > 0 && (
             <div className="space-y-1">
               {message.files.map((file) => (
-                <ChatFilePreview key={file.id} file={file} compact />
+                <ChatFilePreview key={file.id} file={file} compact isOwn={isOwn} />
               ))}
             </div>
           )}
