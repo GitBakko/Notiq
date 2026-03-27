@@ -431,7 +431,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
 
   // -- Cursor idle detection: fade remote cursors after inactivity --
   // Each client broadcasts lastActive in awareness; receiver-side CSS fades stale cursors.
-  const CURSOR_IDLE_MS = 10_000; // 10 seconds
+  const CURSOR_IDLE_MS = 5_000; // 5 seconds
 
   useEffect(() => {
     if (!editor || !provider?.awareness || !collaboration?.enabled) return;
@@ -452,27 +452,42 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     editorDom.addEventListener('keydown', broadcastActive);
     broadcastActive(); // initial
 
-    // Periodic check: hide stale remote cursors via CSS class
+    // Periodic check: hide stale remote cursors
+    // Collect stale user names from awareness, then match cursor labels in DOM
     const fadeInterval = setInterval(() => {
       const now = Date.now();
       const states = awareness.getStates();
       const localClientId = awareness.clientID;
+
+      // Build set of stale user names
+      const staleNames = new Set<string>();
+      const activeNames = new Set<string>();
       states.forEach((state, clientId) => {
         if (clientId === localClientId) return;
+        const userName = state.user?.name;
+        if (!userName) return;
         const lastActive = state.user?.lastActive;
         const isStale = !lastActive || (now - lastActive > CURSOR_IDLE_MS);
-        // Find cursor DOM elements by color (each user has unique color)
-        const color = state.user?.color;
-        if (!color) return;
-        const carets = editorDom.closest('.ProseMirror')
-          ?.parentElement?.querySelectorAll('.collaboration-cursor__caret');
-        carets?.forEach(caret => {
-          const el = caret as HTMLElement;
-          if (el.style.borderColor === color || el.getAttribute('style')?.includes(color)) {
-            el.style.transition = 'opacity 0.5s';
-            el.style.opacity = isStale ? '0' : '1';
-          }
-        });
+        if (isStale) staleNames.add(userName);
+        else activeNames.add(userName);
+      });
+
+      // Find all cursor labels and match by text content
+      const container = editorDom.closest('.ProseMirror')?.parentElement;
+      if (!container) return;
+      const labels = container.querySelectorAll('.collaboration-cursor__label');
+      labels.forEach(label => {
+        const el = label as HTMLElement;
+        const caret = el.parentElement; // The caret is the parent of the label
+        if (!caret) return;
+        const name = el.textContent?.trim() || '';
+        const isStale = staleNames.has(name) && !activeNames.has(name);
+        caret.style.transition = 'opacity 0.5s';
+        caret.style.opacity = isStale ? '0' : '1';
+        // Also hide the selection highlight for stale users
+        if (isStale) {
+          caret.style.pointerEvents = 'none';
+        }
       });
     }, 3000);
 
