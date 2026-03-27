@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Search, X, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '../../../store/authStore';
 import { useIsMobile } from '../../../hooks/useIsMobile';
-import { getMessages, getConversations, searchMessages, type DirectMessageDTO, type ConversationSummary } from '../chatService';
+import { getMessages, getConversations, searchMessages, uploadChatFile, type DirectMessageDTO, type ConversationSummary } from '../chatService';
 import { useChatContext } from '../ChatContext';
 import type { ChatWsEvent } from '../useChatWebSocket';
 import MessageBubble from './MessageBubble';
@@ -311,6 +312,29 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     shouldAutoScrollRef.current = true;
   }, [conversationId, send]);
 
+  // ─── Send file via REST API ──────────────────────────
+  const handleSendFile = useCallback(async (file: File, message: string, _replyToId?: string) => {
+    try {
+      const msg = await uploadChatFile(conversationId, file, message || undefined);
+      setAllMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      shouldAutoScrollRef.current = true;
+      queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const serverMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      if (status === 400 && serverMsg?.includes('fileTooLarge')) {
+        toast.error(t('chat.fileTooLarge'));
+      } else if (status === 400 && serverMsg?.includes('blockedFileType')) {
+        toast.error(t('chat.blockedFileType'));
+      } else {
+        toast.error(t('common.genericError'));
+      }
+    }
+  }, [conversationId, queryClient, t]);
+
   // ─── Message action handlers ──────────────────────────
   const handleReply = useCallback((message: DirectMessageDTO) => {
     setReplyTo({
@@ -527,6 +551,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
         onSend={handleSend}
+        onSendFile={handleSendFile}
         onTyping={handleTyping}
         disabled={!isConnected}
       />

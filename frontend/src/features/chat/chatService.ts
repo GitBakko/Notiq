@@ -84,3 +84,12 @@ export const createGroupConversation = (title: string, participantIds: string[])
 export const getMessages = (conversationId: string, page: number = 1, limit: number = 50) => api.get<DirectMessageDTO[]>(`/chat-direct/conversations/${conversationId}/messages`, { params: { page, limit } }).then(r => r.data);
 export const searchMessages = (conversationId: string, query: string) => api.get<DirectMessageDTO[]>(`/chat-direct/conversations/${conversationId}/search`, { params: { q: query } }).then(r => r.data);
 export const getUnreadCount = () => api.get<{ count: number }>('/chat-direct/unread').then(r => r.data.count);
+
+export const uploadChatFile = (conversationId: string, file: File, message?: string) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (message) formData.append('message', message);
+  return api.post<{ message: DirectMessageDTO }>(`/chat-direct/conversations/${conversationId}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data.message);
+};

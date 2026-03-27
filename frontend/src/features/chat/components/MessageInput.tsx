@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Smile, SendHorizontal, X, Paperclip, File } from 'lucide-react';
+import toast from 'react-hot-toast';
 import EmojiPicker from './EmojiPicker';
+
+const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.sh', '.com', '.msi', '.scr', '.pif', '.vbs', '.js'];
+const MAX_FILE_SIZE_MB = 10; // Client-side default, server may have different limit
 
 interface MessageInputProps {
   conversationId: string;
@@ -168,7 +172,20 @@ export default function MessageInput({
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) setSelectedFile(file);
+            if (file) {
+              const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+              if (BLOCKED_EXTENSIONS.includes(ext)) {
+                toast.error(t('chat.blockedFileType'));
+                e.target.value = '';
+                return;
+              }
+              if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                toast.error(t('chat.fileTooLarge'));
+                e.target.value = '';
+                return;
+              }
+              setSelectedFile(file);
+            }
             e.target.value = '';
           }}
         />
