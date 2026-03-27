@@ -23,6 +23,8 @@ const createAnnouncementSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1),
   category: z.enum(['MAINTENANCE', 'FEATURE', 'URGENT']),
+  customColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
+  customIcon: z.string().max(50).optional().nullable(),
 });
 
 // User-facing routes (prefix: /api/announcements)

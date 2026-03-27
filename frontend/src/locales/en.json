@@ -16,6 +16,7 @@
     "next": "Next",
     "previous": "Previous",
     "genericError": "An error occurred",
+    "optional": "optional",
     "actions": "Actions",
     "more": "More",
     "create": "Create",
@@ -1621,7 +1622,12 @@
       "deleteMessage": "Are you sure you want to permanently delete this announcement? This action cannot be undone.",
       "bold": "Bold",
       "italic": "Italic",
-      "link": "Link"
+      "link": "Link",
+      "customColor": "Banner Color",
+      "defaultColor": "Default (from category)",
+      "pickColor": "Pick custom color",
+      "customIcon": "Banner Icon",
+      "defaultIcon": "Default (from category)"
     }
   }
 }

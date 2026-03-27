@@ -16,6 +16,7 @@
     "next": "Avanti",
     "previous": "Precedente",
     "genericError": "Si è verificato un errore",
+    "optional": "opzionale",
     "actions": "Azioni",
     "more": "Altro",
     "create": "Crea",
@@ -1621,7 +1622,12 @@
       "deleteMessage": "Sei sicuro di voler eliminare permanentemente questo annuncio? Questa azione non pu\u00f2 essere annullata.",
       "bold": "Grassetto",
       "italic": "Corsivo",
-      "link": "Link"
+      "link": "Link",
+      "customColor": "Colore Banner",
+      "defaultColor": "Predefinito (dalla categoria)",
+      "pickColor": "Scegli colore personalizzato",
+      "customIcon": "Icona Banner",
+      "defaultIcon": "Predefinita (dalla categoria)"
     }
   }
 }

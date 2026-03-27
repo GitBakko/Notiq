@@ -5,6 +5,8 @@ export interface Announcement {
   title: string;
   content: string; // TipTap JSON string
   category: 'MAINTENANCE' | 'FEATURE' | 'URGENT';
+  customColor: string | null; // Hex color override
+  customIcon: string | null;  // Lucide icon name override
   isActive: boolean;
   createdBy: { id: string; name: string | null; email: string };
   createdAt: string;
@@ -15,6 +17,8 @@ export interface CreateAnnouncementInput {
   title: string;
   content: string;
   category: 'MAINTENANCE' | 'FEATURE' | 'URGENT';
+  customColor?: string | null;
+  customIcon?: string | null;
 }
 
 export const getActiveAnnouncements = () =>

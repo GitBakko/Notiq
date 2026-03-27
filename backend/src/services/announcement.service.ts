@@ -40,13 +40,15 @@ function extractPlainText(content: string): string {
 
 export const createAnnouncement = async (
   createdById: string,
-  data: { title: string; content: string; category: 'MAINTENANCE' | 'FEATURE' | 'URGENT' }
+  data: { title: string; content: string; category: 'MAINTENANCE' | 'FEATURE' | 'URGENT'; customColor?: string | null; customIcon?: string | null }
 ) => {
   const announcement = await prisma.announcement.create({
     data: {
       title: data.title,
       content: data.content,
       category: data.category,
+      customColor: data.customColor || null,
+      customIcon: data.customIcon || null,
       createdById,
     },
   });

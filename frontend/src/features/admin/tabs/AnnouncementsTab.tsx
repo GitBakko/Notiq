@@ -8,7 +8,10 @@ import Link from '@tiptap/extension-link';
 import {
   Megaphone, Plus, Bold, Italic, Link as LinkIcon,
   PowerOff, Trash2, ChevronLeft, ChevronRight,
+  AlertTriangle, Wrench, Sparkles, Bell, Info, Shield, Zap, Heart, Star, Gift,
+  type LucideIcon,
 } from 'lucide-react';
+import clsx from 'clsx';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import Modal from '../../../components/ui/Modal';
@@ -21,6 +24,25 @@ import {
 } from '../../announcements/announcementService';
 
 type AnnouncementCategory = 'MAINTENANCE' | 'FEATURE' | 'URGENT';
+
+const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
+  { name: 'AlertTriangle', icon: AlertTriangle },
+  { name: 'Wrench', icon: Wrench },
+  { name: 'Sparkles', icon: Sparkles },
+  { name: 'Bell', icon: Bell },
+  { name: 'Info', icon: Info },
+  { name: 'Megaphone', icon: Megaphone },
+  { name: 'Shield', icon: Shield },
+  { name: 'Zap', icon: Zap },
+  { name: 'Heart', icon: Heart },
+  { name: 'Star', icon: Star },
+  { name: 'Gift', icon: Gift },
+];
+
+const COLOR_PRESETS = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981',
+  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899',
+];
 
 const CATEGORY_STYLES: Record<AnnouncementCategory, string> = {
   FEATURE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -40,6 +62,8 @@ export default function AnnouncementsTab() {
   // Form state
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<AnnouncementCategory>('FEATURE');
+  const [customColor, setCustomColor] = useState<string>('');
+  const [customIcon, setCustomIcon] = useState<string>('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'announcements', page],
@@ -60,6 +84,8 @@ export default function AnnouncementsTab() {
   const resetForm = useCallback(() => {
     setTitle('');
     setCategory('FEATURE');
+    setCustomColor('');
+    setCustomIcon('');
     editor?.commands.clearContent();
   }, [editor]);
 
@@ -71,6 +97,8 @@ export default function AnnouncementsTab() {
         title: title.trim(),
         content: JSON.stringify(editor.getJSON()),
         category,
+        customColor: customColor || null,
+        customIcon: customIcon || null,
       });
       toast.success(t('announcements.admin.created'));
       setShowCreateModal(false);
@@ -280,6 +308,86 @@ export default function AnnouncementsTab() {
               <option value="MAINTENANCE">{t('announcements.category.MAINTENANCE')}</option>
               <option value="URGENT">{t('announcements.category.URGENT')}</option>
             </select>
+          </div>
+
+          {/* Custom Color */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-900 dark:text-white mb-1.5">
+              {t('announcements.admin.customColor')}
+              <span className="text-xs font-normal text-neutral-400 ml-1">({t('common.optional')})</span>
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* None option */}
+              <button
+                type="button"
+                onClick={() => setCustomColor('')}
+                className={clsx(
+                  'w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs text-neutral-400 transition-all',
+                  !customColor ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-neutral-300 dark:border-neutral-600'
+                )}
+                title={t('announcements.admin.defaultColor')}
+              >
+                ✕
+              </button>
+              {COLOR_PRESETS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCustomColor(c)}
+                  className={clsx(
+                    'w-8 h-8 rounded-full border-2 transition-all',
+                    customColor === c ? 'border-neutral-900 dark:border-white ring-2 ring-offset-1' : 'border-transparent'
+                  )}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              {/* Custom hex input */}
+              <input
+                type="color"
+                value={customColor || '#10b981'}
+                onChange={e => setCustomColor(e.target.value)}
+                className="w-8 h-8 rounded-lg cursor-pointer border-0 p-0"
+                title={t('announcements.admin.pickColor')}
+              />
+            </div>
+          </div>
+
+          {/* Custom Icon */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-900 dark:text-white mb-1.5">
+              {t('announcements.admin.customIcon')}
+              <span className="text-xs font-normal text-neutral-400 ml-1">({t('common.optional')})</span>
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* None option (use category default) */}
+              <button
+                type="button"
+                onClick={() => setCustomIcon('')}
+                className={clsx(
+                  'w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-neutral-400 transition-all',
+                  !customIcon ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                )}
+                title={t('announcements.admin.defaultIcon')}
+              >
+                Auto
+              </button>
+              {ICON_OPTIONS.map(({ name, icon: IconComp }) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setCustomIcon(name)}
+                  className={clsx(
+                    'w-9 h-9 rounded-lg border flex items-center justify-center transition-all',
+                    customIcon === name
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                  )}
+                  title={name}
+                >
+                  <IconComp size={18} />
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Editor */}

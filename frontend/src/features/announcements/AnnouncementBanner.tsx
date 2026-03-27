@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Wrench, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Wrench, Sparkles, X, Bell, Info, Megaphone, Shield, Zap, Heart, Star, Gift, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { getActiveAnnouncements, dismissAnnouncement } from './announcementService';
 import type { Announcement } from './announcementService';
@@ -61,6 +61,27 @@ const categoryConfig = {
   },
 } as const;
 
+// Available icons for admin to choose from
+const ICON_MAP: Record<string, LucideIcon> = {
+  AlertTriangle, Wrench, Sparkles, Bell, Info, Megaphone, Shield, Zap, Heart, Star, Gift,
+};
+
+export const AVAILABLE_ICONS = Object.keys(ICON_MAP);
+
+function hexToTailwindClasses(hex: string) {
+  // For custom colors, use inline styles instead of Tailwind classes
+  return {
+    bg: '', border: '', iconColor: '', titleColor: '', textColor: '', dismissColor: '',
+    style: {
+      backgroundColor: hex + '12', // 7% opacity
+      borderColor: hex + '40', // 25% opacity
+    },
+    iconStyle: { color: hex },
+    textStyle: { color: hex },
+    titleStyle: { color: hex },
+  };
+}
+
 function AnnouncementItem({ announcement }: { announcement: Announcement }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -71,29 +92,44 @@ function AnnouncementItem({ announcement }: { announcement: Announcement }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['announcements', 'active'] }),
   });
 
+  const hasCustomColor = !!announcement.customColor;
   const config = categoryConfig[announcement.category];
-  const Icon = config.icon;
+  const customStyles = hasCustomColor ? hexToTailwindClasses(announcement.customColor!) : null;
+
+  // Resolve icon: custom icon name → lookup, or category default
+  const Icon = (announcement.customIcon && ICON_MAP[announcement.customIcon]) || config.icon;
   const preview = extractPreviewText(announcement.content);
 
   return (
     <div
       className={clsx(
-        'flex items-start gap-3 px-4 py-3 border-b',
-        config.bg,
-        config.border
+        'flex items-center gap-3 px-4 py-3 border-b',
+        !hasCustomColor && config.bg,
+        !hasCustomColor && config.border
       )}
+      style={hasCustomColor ? { ...customStyles!.style, borderBottomWidth: 1 } : undefined}
     >
       {/* Icon */}
-      <div className="flex-shrink-0 mt-0.5">
-        <Icon className={clsx('h-5 w-5', config.iconColor)} aria-hidden="true" />
+      <div className="flex-shrink-0">
+        <Icon
+          className={clsx('h-5 w-5', !hasCustomColor && config.iconColor)}
+          style={hasCustomColor ? customStyles!.iconStyle : undefined}
+          aria-hidden="true"
+        />
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-        <span className={clsx('font-semibold text-sm whitespace-nowrap', config.titleColor)}>
+        <span
+          className={clsx('font-semibold text-sm whitespace-nowrap', !hasCustomColor && config.titleColor)}
+          style={hasCustomColor ? customStyles!.titleStyle : undefined}
+        >
           {announcement.title}
         </span>
-        <span className={clsx('text-sm truncate', config.textColor)}>
+        <span
+          className={clsx('text-sm truncate', !hasCustomColor && config.textColor)}
+          style={hasCustomColor ? { color: announcement.customColor + 'cc' } : undefined}
+        >
           {preview}
         </span>
       </div>
@@ -105,8 +141,9 @@ function AnnouncementItem({ announcement }: { announcement: Announcement }) {
           onClick={() => navigate('/announcements')}
           className={clsx(
             'text-sm font-medium underline underline-offset-2',
-            config.dismissColor
+            !hasCustomColor && config.dismissColor
           )}
+          style={hasCustomColor ? customStyles!.textStyle : undefined}
         >
           {t('announcements.view')}
         </button>
@@ -116,8 +153,9 @@ function AnnouncementItem({ announcement }: { announcement: Announcement }) {
           disabled={dismissMutation.isPending}
           className={clsx(
             'p-1 rounded-md transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center',
-            config.dismissColor
+            !hasCustomColor && config.dismissColor
           )}
+          style={hasCustomColor ? customStyles!.textStyle : undefined}
           aria-label={t('announcements.dismiss')}
         >
           <X className="h-4 w-4" />

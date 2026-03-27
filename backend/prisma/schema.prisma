@@ -620,6 +620,8 @@ model Announcement {
   title       String
   content     String                // TipTap JSON (rich text)
   category    AnnouncementCategory
+  customColor String?               // Optional hex color override (e.g. #3b82f6)
+  customIcon  String?               // Optional lucide icon name override (e.g. "Bell")
   isActive    Boolean               @default(true)
   createdById String
   createdBy   User                  @relation("AnnouncementCreator", fields: [createdById], references: [id], onDelete: Cascade)
