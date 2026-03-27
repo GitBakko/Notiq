@@ -110,6 +110,9 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    include: ['@emoji-mart/react', 'emoji-mart'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
