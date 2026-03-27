@@ -19,6 +19,7 @@ const ProfilePage = lazy(() => import('./features/user/ProfilePage'));
 const VaultPage = lazy(() => import('./features/vault/VaultPage'));
 const SharedWithMePage = lazy(() => import('./features/sharing/SharedWithMePage'));
 const GroupsPage = lazy(() => import('./features/groups/GroupsPage'));
+const ChatPage = lazy(() => import('./features/chat/ChatPage'));
 
 // Public pages
 const PublicNotePage = lazy(() => import('./features/public/PublicNotePage'));
@@ -69,6 +70,7 @@ function App() {
             <Route path="vault" element={<VaultPage />} />
             <Route path="shared" element={<SharedWithMePage />} />
             <Route path="groups" element={<GroupsPage />} />
+            <Route path="chat" element={<ChatPage />} />
             <Route path="announcements" element={<AnnouncementHistoryPage />} />
           </Route>
 

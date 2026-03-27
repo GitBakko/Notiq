@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, FileText, Bell, ListChecks, Kanban, XCircle, UserPen, Pencil, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, ChevronDown, Book, Trash2, LogOut, Moon, Sun, Monitor, Star, Lock, Share2, Users, Orbit, FileText, Bell, ListChecks, Kanban, MessageCircle, XCircle, UserPen, Pencil, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useNotebooks } from '../../hooks/useNotebooks';
@@ -189,6 +189,7 @@ export default function Sidebar() {
     { icon: Bell, label: t('sidebar.reminders'), path: '/reminders' },
     { icon: ListChecks, label: t('sidebar.taskLists'), path: '/tasks' },
     { icon: Kanban, label: t('sidebar.kanban'), path: '/kanban' },
+    { icon: MessageCircle, label: t('chat.title'), path: '/chat' },
     // Notebooks is handled separately
     { icon: Users, label: t('sharing.title'), path: '/shared' },
     { icon: Orbit, label: t('groups.title'), path: '/groups' },
