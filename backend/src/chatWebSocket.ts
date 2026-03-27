@@ -33,6 +33,13 @@ const chatWss: WsServer = new WebSocketServer({ noServer: true });
 const userConnections = new Map<string, Set<WsSocket>>();
 const MAX_CONNECTIONS_PER_USER = 5;
 
+// Track which conversation each user is actively viewing (for notification tiers)
+const userActiveConversation = new Map<string, string>(); // userId → conversationId
+
+// Anti-spam: debounce push notifications per user (max 1 push per 30s per sender)
+const lastPushSent = new Map<string, number>(); // `${recipientId}:${senderId}` → timestamp
+const PUSH_DEBOUNCE_MS = 30_000; // 30 seconds
+
 // ─── Helpers ───────────────────────────────────────────────
 
 function getUserId(ws: WsSocket): string | undefined {
@@ -139,6 +146,7 @@ chatWss.on('connection', (ws: WsSocket) => {
     conns?.delete(ws);
     if (conns?.size === 0) {
       userConnections.delete(userId);
+      userActiveConversation.delete(userId);
       broadcastPresence(userId, false);
     }
   });
@@ -174,7 +182,7 @@ async function handleMessage(ws: WsSocket, userId: string, data: any) {
         ws.send(JSON.stringify({ type: 'message:ack', tempId: data.tempId, message: msg }));
         // Broadcast to others
         await broadcastToConversation(data.conversationId, { type: 'message:new', message: msg }, userId);
-        // Push notifications for offline participants
+        // Tiered notifications for participants
         try {
           const senderName = msg.sender?.name || msg.sender?.email || 'Someone';
           const participants = await prisma.conversationParticipant.findMany({
@@ -182,9 +190,24 @@ async function handleMessage(ws: WsSocket, userId: string, data: any) {
             select: { userId: true },
           });
           for (const p of participants) {
-            if (!isUserOnline(p.userId)) {
+            const activeConv = userActiveConversation.get(p.userId);
+            if (activeConv === data.conversationId) {
+              // Tier 1: User is viewing THIS conversation → no notification (they see it live)
+              continue;
+            }
+            if (isUserOnline(p.userId)) {
+              // Tier 2: User is online but in another chat/page → WS event handles sound+badge
+              // (the message:new broadcast already went out above — frontend handles the sound)
+              continue;
+            }
+            // Tier 3: User is offline → push notification with anti-spam debounce
+            const debounceKey = `${p.userId}:${userId}`;
+            const lastSent = lastPushSent.get(debounceKey) || 0;
+            if (Date.now() - lastSent > PUSH_DEBOUNCE_MS) {
+              lastPushSent.set(debounceKey, Date.now());
               createNotification(p.userId, 'CHAT_MESSAGE', senderName, (data.content as string).slice(0, 100), {
                 conversationId: data.conversationId, messageId: msg.id,
+                localizationKey: 'notifications.chatMessage', localizationArgs: { senderName },
               }).catch(() => {});
             }
           }
@@ -241,6 +264,18 @@ async function handleMessage(ws: WsSocket, userId: string, data: any) {
           userId,
           lastReadAt: new Date().toISOString(),
         }, userId);
+        break;
+      }
+      case 'conversation:focus': {
+        // Track which conversation the user is actively viewing
+        userActiveConversation.set(userId, data.conversationId as string);
+        break;
+      }
+      case 'conversation:blur': {
+        // User left the conversation view
+        if (userActiveConversation.get(userId) === data.conversationId) {
+          userActiveConversation.delete(userId);
+        }
         break;
       }
       default:

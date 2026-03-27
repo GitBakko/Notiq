@@ -143,6 +143,19 @@ export default async function chatDirectRoutes(fastify: FastifyInstance) {
     // Upload file linked to message
     const fileResult = await uploadChatFile(message.id, buffer, data.filename, data.mimetype);
 
-    return { message, file: fileResult };
+    // Return message with files included so sender sees the file
+    const fullMessage = {
+      ...message,
+      files: [{
+        id: '', // ChatFile id is inside chat-file.service, we return the relevant data
+        url: fileResult.url,
+        thumbnailUrl: fileResult.thumbnailUrl,
+        filename: fileResult.filename,
+        mimeType: fileResult.mimeType,
+        size: fileResult.size,
+      }],
+    };
+
+    return { message: fullMessage, file: fileResult };
   });
 }

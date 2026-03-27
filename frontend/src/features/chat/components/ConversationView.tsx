@@ -42,7 +42,7 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   const isMobile = useIsMobile();
   const currentUser = useAuthStore(s => s.user);
   const queryClient = useQueryClient();
-  const { isConnected, send, on, off } = useChatContext();
+  const { isConnected, send, on, off, setActiveConversationId } = useChatContext();
 
   // ─── State ─────────────────────────────────────────────
   const [allMessages, setAllMessages] = useState<DirectMessageDTO[]>([]);
@@ -255,12 +255,21 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
     };
   }, [conversationId, currentUser?.id, on, off, send, queryClient]);
 
-  // Send read receipt on open
+  // Send read receipt + conversation focus tracking on open
   useEffect(() => {
     if (isConnected) {
       send({ type: 'read:update', conversationId });
+      send({ type: 'conversation:focus', conversationId });
     }
-  }, [conversationId, isConnected, send]);
+    // Track in context so ChatProvider knows which conv is focused (for sound logic)
+    setActiveConversationId(conversationId);
+    return () => {
+      if (isConnected) {
+        send({ type: 'conversation:blur', conversationId });
+      }
+      setActiveConversationId(null);
+    };
+  }, [conversationId, isConnected, send, setActiveConversationId]);
 
   // Clean up typing timers
   useEffect(() => {
