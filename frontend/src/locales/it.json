@@ -752,7 +752,17 @@
     "requestDeclined": "Richiesta rifiutata",
     "pending": "In attesa",
     "noSuggestions": "Nessun suggerimento di amicizia",
-    "searchPlaceholder": "Cerca per nome o email..."
+    "searchPlaceholder": "Cerca per nome o email...",
+    "pendingRequests": "Richieste in Sospeso",
+    "sentRequests": "Richieste Inviate",
+    "active": "Attivo",
+    "noFriends": "Nessun amico. Condividi qualcosa per connetterti!",
+    "accept": "Accetta",
+    "decline": "Rifiuta",
+    "viewInSharingCenter": "Vedi nel Centro Condivisione",
+    "pendingCount": "{{count}} richiesta/e di amicizia in sospeso",
+    "noPendingRequests": "Nessuna richiesta di amicizia in sospeso",
+    "sentRequestsInfo": "Vedi le richieste di amicizia inviate nel Centro Condivisione"
   },
   "network": {
     "offline": "Offline",

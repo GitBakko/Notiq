@@ -1108,7 +1108,17 @@
     "requestDeclined": "Request declined",
     "pending": "Pending",
     "noSuggestions": "No friend suggestions",
-    "searchPlaceholder": "Search by name or email..."
+    "searchPlaceholder": "Search by name or email...",
+    "pendingRequests": "Pending Requests",
+    "sentRequests": "Sent Requests",
+    "active": "Active",
+    "noFriends": "No friends yet. Share something to connect!",
+    "accept": "Accept",
+    "decline": "Decline",
+    "viewInSharingCenter": "View in Sharing Center",
+    "pendingCount": "{{count}} pending friend request(s)",
+    "noPendingRequests": "No pending friend requests",
+    "sentRequestsInfo": "View your sent friend requests in the Sharing Center"
   },
   "network": {
     "offline": "Offline",

@@ -43,7 +43,7 @@ function getNotificationUrl(notification: Notification): string | null {
       return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';
     case 'SYSTEM': {
       // Friend requests → Chat page
-      if (data.localizationKey?.includes('friendRequest')) return '/chat';
+      if (data.localizationKey?.includes('friendRequest')) return '/shared?tab=friends';
       // Share responses
       if (data.localizationKey?.includes('shareResponse')) {
         if (data.type === 'NOTE' && data.itemId) return `/notes?noteId=${data.itemId}`;

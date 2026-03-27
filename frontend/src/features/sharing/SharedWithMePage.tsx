@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, FileText, Book, Menu, ListChecks, Columns3, Send, RefreshCw, X } from 'lucide-react';
+import { Users, FileText, Book, Menu, ListChecks, Columns3, Send, RefreshCw, X, UserPlus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { getSharedNotes } from '../notes/noteService';
 import { getSharedNotebooks } from '../notebooks/notebookService';
+import { getPendingRequests, getSentRequests, acceptFriendRequest, declineFriendRequest, getFriends, type ChatUser, type FriendRequest } from '../chat/chatService';
 import clsx from 'clsx';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import api from '../../lib/api';
@@ -102,9 +104,9 @@ interface SentData {
 export default function SharedWithMePage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab') as 'notes' | 'notebooks' | 'taskLists' | 'kanbanBoards' | null;
+  const tabParam = searchParams.get('tab') as 'notes' | 'notebooks' | 'taskLists' | 'kanbanBoards' | 'friends' | null;
   const highlightParam = searchParams.get('highlight');
-  const [activeTab, setActiveTab] = useState<'notes' | 'notebooks' | 'taskLists' | 'kanbanBoards'>(tabParam || 'notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'notebooks' | 'taskLists' | 'kanbanBoards' | 'friends'>(tabParam || 'notes');
   const [highlightedId, setHighlightedId] = useState<string | null>(highlightParam);
   const highlightRef = useRef<HTMLDivElement | HTMLAnchorElement>(null);
   const [sharedNotes, setSharedNotes] = useState<SharedNote[]>([]);
@@ -118,6 +120,38 @@ export default function SharedWithMePage() {
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const { toggleSidebar } = useUIStore();
+  const queryClient = useQueryClient();
+
+  const { data: pendingFriendRequests = [] } = useQuery({
+    queryKey: ['friends', 'pendingRequests'],
+    queryFn: getPendingRequests,
+  });
+
+  const { data: sentFriendRequests = [] } = useQuery({
+    queryKey: ['friends', 'sentRequests'],
+    queryFn: getSentRequests,
+  });
+
+  const { data: friends = [] } = useQuery({
+    queryKey: ['friends', 'list'],
+    queryFn: getFriends,
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: acceptFriendRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      toast.success(t('friends.requestAccepted'));
+    },
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: declineFriendRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      toast.success(t('friends.requestDeclined'));
+    },
+  });
 
   // Handle tab/highlight from URL params
   useEffect(() => {
@@ -316,10 +350,21 @@ export default function SharedWithMePage() {
             >
               {t('sidebar.kanban')} ({sharedKanbanBoards.length})
             </button>
+            <button
+              onClick={() => setActiveTab('friends')}
+              className={clsx(
+                "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
+                activeTab === 'friends'
+                  ? "border-emerald-600 text-emerald-600 dark:text-emerald-500"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+              )}
+            >
+              {t('friends.title')} ({pendingFriendRequests.length || 0})
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
-            {isLoading ? (
+            {isLoading && activeTab !== 'friends' ? (
               <div className="flex items-center justify-center h-full text-neutral-400">
                 {t('common.loading')}
               </div>
@@ -476,6 +521,109 @@ export default function SharedWithMePage() {
                     </>
                   );
                 })()}
+              </div>
+            )}
+
+            {activeTab === 'friends' && (
+              <div className="space-y-6">
+                {/* Pending Requests Section */}
+                {pendingFriendRequests.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
+                      {t('friends.pendingRequests')} ({pendingFriendRequests.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {pendingFriendRequests.map((req: FriendRequest) => (
+                        <div key={req.id} className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/50">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0 overflow-hidden" style={{ backgroundColor: req.from.color || '#6b7280' }}>
+                            {req.from.avatarUrl ? (
+                              <img src={req.from.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
+                            ) : (req.from.name || req.from.email).charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{req.from.name || req.from.email}</p>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{req.from.email}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => acceptMutation.mutate(req.id)}
+                              disabled={acceptMutation.isPending}
+                              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors min-h-[44px]"
+                            >
+                              {t('friends.accept')}
+                            </button>
+                            <button
+                              onClick={() => declineMutation.mutate(req.id)}
+                              disabled={declineMutation.isPending}
+                              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors min-h-[44px]"
+                            >
+                              {t('friends.decline')}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sent Requests Section */}
+                {sentFriendRequests.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
+                      {t('friends.sentRequests')} ({sentFriendRequests.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {sentFriendRequests.map((req: FriendRequest) => (
+                        <div key={req.id} className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/50">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0 overflow-hidden" style={{ backgroundColor: req.to.color || '#6b7280' }}>
+                            {req.to.avatarUrl ? (
+                              <img src={req.to.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
+                            ) : (req.to.name || req.to.email).charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{req.to.name || req.to.email}</p>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{req.to.email}</p>
+                          </div>
+                          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            {t('friends.pending')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Friends List Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
+                    {t('friends.title')} ({friends.length})
+                  </h3>
+                  {friends.length === 0 && pendingFriendRequests.length === 0 ? (
+                    <div className="text-center py-12 text-neutral-400 dark:text-neutral-500">
+                      <UserPlus size={40} className="mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">{t('friends.noFriends')}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {friends.map((friend: ChatUser) => (
+                        <div key={friend.id} className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/50">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0 overflow-hidden" style={{ backgroundColor: friend.color || '#6b7280' }}>
+                            {friend.avatarUrl ? (
+                              <img src={friend.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
+                            ) : (friend.name || friend.email).charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{friend.name || friend.email}</p>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{friend.email}</p>
+                          </div>
+                          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            {t('friends.active')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

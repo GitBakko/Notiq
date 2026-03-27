@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
-import { Search, UserPlus, MessageCircle, Clock, Check, X, Users } from 'lucide-react';
+import { Search, UserPlus, MessageCircle, Users, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Modal from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import {
@@ -10,13 +11,9 @@ import {
   getFriendSuggestions,
   searchUsers,
   getPendingRequests,
-  getSentRequests,
   sendFriendRequest,
-  acceptFriendRequest,
-  declineFriendRequest,
   getOrCreateDirectConversation,
   type ChatUser,
-  type FriendRequest,
 } from '../chatService';
 
 interface FriendRequestModalProps {
@@ -26,6 +23,7 @@ interface FriendRequestModalProps {
 }
 
 type Tab = 'find' | 'received' | 'sent';
+// Note: "received" and "sent" tabs now redirect to Sharing Center
 
 function UserAvatar({ user, size = 'md' }: { user: ChatUser; size?: 'sm' | 'md' }) {
   const dim = size === 'sm' ? 'w-9 h-9' : 'w-10 h-10';
@@ -47,6 +45,7 @@ function UserAvatar({ user, size = 'md' }: { user: ChatUser; size?: 'sm' | 'md' 
 export default function FriendRequestModal({ isOpen, onClose, onStartChat }: FriendRequestModalProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('find');
   const [search, setSearch] = useState('');
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -91,13 +90,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ['chat', 'pendingRequests'],
     queryFn: getPendingRequests,
-    enabled: isOpen && activeTab === 'received',
-  });
-
-  const { data: sentRequests = [] } = useQuery({
-    queryKey: ['chat', 'sentRequests'],
-    queryFn: getSentRequests,
-    enabled: isOpen && activeTab === 'sent',
+    enabled: isOpen,
   });
 
   const friendIds = new Set(friends.map(f => f.id));
@@ -120,21 +113,6 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
       toast.success(t('friends.requestSent'));
       queryClient.invalidateQueries({ queryKey: ['chat', 'sentRequests'] });
       queryClient.invalidateQueries({ queryKey: ['chat', 'friendSuggestions'] });
-    });
-
-  const handleAccept = (requestId: string) =>
-    withLoading(requestId, async () => {
-      await acceptFriendRequest(requestId);
-      toast.success(t('friends.requestAccepted'));
-      queryClient.invalidateQueries({ queryKey: ['chat', 'pendingRequests'] });
-      queryClient.invalidateQueries({ queryKey: ['chat', 'friends'] });
-    });
-
-  const handleDecline = (requestId: string) =>
-    withLoading(requestId, async () => {
-      await declineFriendRequest(requestId);
-      toast.success(t('friends.requestDeclined'));
-      queryClient.invalidateQueries({ queryKey: ['chat', 'pendingRequests'] });
     });
 
   const handleStartChat = (userId: string) =>
@@ -250,92 +228,41 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
           </div>
         )}
 
-        {/* Received tab */}
+        {/* Received tab — summary + link to Sharing Center */}
         {activeTab === 'received' && (
-          <div className="px-2 py-3">
-            {pendingRequests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-neutral-400 dark:text-neutral-500">
-                <Users size={36} strokeWidth={1.5} />
-                <p className="text-sm mt-2">{t('friends.noSuggestions')}</p>
-              </div>
-            ) : (
-              pendingRequests.map((req: FriendRequest) => {
-                const isLoading = loadingIds.has(req.id);
-                return (
-                  <div
-                    key={req.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
-                  >
-                    <UserAvatar user={req.from} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">
-                        {req.from.name || req.from.email}
-                      </p>
-                      {req.from.name && (
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{req.from.email}</p>
-                      )}
-                      <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">
-                        {new Date(req.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        onClick={() => handleAccept(req.id)}
-                        isLoading={isLoading}
-                      >
-                        <Check size={14} className="mr-1" />
-                        {t('common.accept')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDecline(req.id)}
-                        disabled={isLoading}
-                      >
-                        <X size={14} />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          <div className="px-4 py-6">
+            <div className="flex flex-col items-center justify-center py-6 text-neutral-500 dark:text-neutral-400">
+              <Users size={36} strokeWidth={1.5} className="mb-3 opacity-50" />
+              <p className="text-sm mb-1">
+                {pendingRequests.length > 0
+                  ? t('friends.pendingCount', { count: pendingRequests.length })
+                  : t('friends.noPendingRequests')}
+              </p>
+              <button
+                onClick={() => { onClose(); navigate('/shared?tab=friends'); }}
+                className="mt-3 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors min-h-[44px]"
+              >
+                <ExternalLink size={14} />
+                {t('friends.viewInSharingCenter')}
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Sent tab */}
+        {/* Sent tab — link to Sharing Center */}
         {activeTab === 'sent' && (
-          <div className="px-2 py-3">
-            {sentRequests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-neutral-400 dark:text-neutral-500">
-                <Users size={36} strokeWidth={1.5} />
-                <p className="text-sm mt-2">{t('friends.noSuggestions')}</p>
-              </div>
-            ) : (
-              sentRequests.map((req: FriendRequest) => (
-                <div
-                  key={req.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
-                >
-                  <UserAvatar user={req.to} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">
-                      {req.to.name || req.to.email}
-                    </p>
-                    {req.to.name && (
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{req.to.email}</p>
-                    )}
-                    <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">
-                      {new Date(req.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full">
-                    <Clock size={12} />
-                    {t('friends.pending')}
-                  </span>
-                </div>
-              ))
-            )}
+          <div className="px-4 py-6">
+            <div className="flex flex-col items-center justify-center py-6 text-neutral-500 dark:text-neutral-400">
+              <Users size={36} strokeWidth={1.5} className="mb-3 opacity-50" />
+              <p className="text-sm mb-1">{t('friends.sentRequestsInfo')}</p>
+              <button
+                onClick={() => { onClose(); navigate('/shared?tab=friends'); }}
+                className="mt-3 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors min-h-[44px]"
+              >
+                <ExternalLink size={14} />
+                {t('friends.viewInSharingCenter')}
+              </button>
+            </div>
           </div>
         )}
       </div>
