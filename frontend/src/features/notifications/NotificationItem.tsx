@@ -179,8 +179,18 @@ export default memo(function NotificationItem({ notification, onRead, onDelete, 
   // Resolve localization key: prefer explicit, fall back to type-based mapping
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = (notification.data || {}) as Record<string, any>;
-  const locKey: string | undefined = data.localizationKey || TYPE_TO_KEY[notification.type];
+
+  // Detect legacy notifications where the title IS the localization key (e.g. 'notifications.friendRequest')
+  let locKey: string | undefined = data.localizationKey || TYPE_TO_KEY[notification.type];
+  if (!locKey && notification.title?.startsWith('notifications.')) {
+    locKey = notification.title;
+  }
+
   const args = locKey ? buildArgs(data) : {};
+  // For legacy notifications, use the message field as senderName if not already in args
+  if (locKey && !args.senderName && notification.message && !notification.message.includes(' ')) {
+    args.senderName = notification.message;
+  }
 
   // Try localized title/message, fall back to raw DB values
   let title = notification.title;
