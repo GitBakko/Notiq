@@ -301,8 +301,7 @@ export const hocuspocus = new Server({
         });
 
         // Integrity: never replace good content with a degenerate doc (empty/paragraph-only).
-        const parsedNew = (() => { try { return JSON.parse(contentStr); } catch { return null; } })();
-        if (isDegenerateTipTapJson(parsedNew) && (existing?.content?.length ?? 0) > 150) {
+        if (isDegenerateTipTapJson(json) && (existing?.content?.length ?? 0) > 150) {
           logger.warn({ documentName }, 'Hocuspocus store: degenerate doc over substantial content — skipping write');
           return;
         }
