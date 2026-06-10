@@ -12,14 +12,19 @@ Full-stack TypeScript monorepo. **Live su `notiq.epartner.it`** (IIS + pm2).
 | Infra | Docker Compose (dev), IIS + ARR + pm2 (prod), PWA via vite-plugin-pwa |
 
 **Module types:** Backend = CommonJS (`type: "commonjs"`), Frontend = ESM (`type: "module"`).
+**Versione app:** `frontend/package.json` è la single source of truth (importata da `frontend/src/data/changelog.ts`). Attuale: 1.9.0.
 
-## Comandi (verificati 2026-02-25)
+## Comandi (verificati 2026-06-10)
 
 ```bash
 # Backend (cd backend)
 npm run dev          # tsx watch src/app.ts → localhost:3001
 npm run build        # tsc → dist/   (outDir: dist, rootDir: src)
 npm start            # node dist/app.js
+npm run lint         # ESLint (src/)
+npm test             # vitest run (unit tests)
+npm run test:coverage # vitest con coverage
+npx vitest run src/services/__tests__/auth.service.test.ts  # Singolo test file
 npm run prune        # Clean orphan attachments
 npm run backup       # ZIP backup (DB + files)
 npx prisma migrate dev --name <name>   # Nuova migration
@@ -29,10 +34,12 @@ npx prisma studio                      # DB browser GUI
 npx tsx src/scripts/testSmtp.ts <email> # Test SMTP
 
 # Frontend (cd frontend)
-npm run dev          # Vite → localhost:5173 (proxies /api, /uploads, /ws verso :3001)
+npm run dev          # Vite → localhost:5173 (proxies /api, /uploads, /ws, /chat-ws verso :3001)
 npm run build        # tsc -b && vite build
 npm run lint         # ESLint
-npx playwright test  # E2E (12 spec files)
+npm test             # vitest run (unit tests)
+npx playwright test  # E2E (16 spec files)
+npx playwright test e2e/notes.spec.ts   # Singolo spec E2E
 
 # Docker (root)
 docker compose up -d --build   # Build + start
@@ -48,12 +55,16 @@ Routes (Zod validation) → Services (business logic) → Prisma (PostgreSQL)
                                                        ↕
 Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
           TipTap Editor     ← HocuspocusProvider → WebSocket (/ws)
+          ChatContext       ← WebSocket nativo   → WebSocket (/chat-ws)
           Zustand stores    ← persist middleware  → localStorage
 ```
 
 **Data flow note:** User types → Dexie write (immediato) → SyncQueue → syncPush (debounced) → REST API → Prisma.
 **Collab flow:** TipTap → Yjs → HocuspocusProvider → WebSocket → Hocuspocus Server → TipTap JSON → Prisma.
 **Auth flow:** Register → email verifica → verify-email → login → JWT → `authStore` (Zustand persisted) → Axios interceptor auto-attacca token.
+**Chat flow:** ChatPage → `ChatContext` (UNA sola connessione WS per pagina) → `/chat-ws` → `chatWebSocket.ts` → Prisma. Chat è **online-only** by design (no Dexie). REST prefix: `/api/chat-direct` (NON `/api/chat`, che è la chat a livello nota).
+
+**Due WebSocket distinti, entrambi gestiti nell'upgrade event di `app.ts`:** `/ws` = Hocuspocus (collab editor), `/chat-ws` = chat system.
 
 ### Struttura progetto
 
@@ -68,10 +79,11 @@ Notiq/
 │   │   ├── scripts/         # One-off scripts (testSmtp, create-superadmin)
 │   │   ├── __tests__/       # Unit tests (vitest)
 │   │   ├── app.ts           # Server entry point
-│   │   └── hocuspocus.ts    # Yjs collab server
+│   │   ├── hocuspocus.ts    # Yjs collab server (/ws)
+│   │   └── chatWebSocket.ts # Chat WS server (/chat-ws)
 │   ├── prisma/
-│   │   ├── schema.prisma    # 30 models, 9 enums
-│   │   └── migrations/      # 22 migrations
+│   │   ├── schema.prisma    # 39 models, 14 enums
+│   │   └── migrations/      # 33 migrations
 │   ├── prisma.config.js     # Prisma config (dotenv loader)
 │   ├── Dockerfile
 │   └── .env                 # DB, JWT, SMTP credentials (gitignored)
@@ -85,7 +97,7 @@ Notiq/
 │   │   ├── utils/           # crypto.ts, format.ts
 │   │   ├── locales/         # en.json, it.json
 │   │   └── __tests__/       # Unit tests (vitest)
-│   ├── e2e/                 # Playwright E2E tests (12 specs)
+│   ├── e2e/                 # Playwright E2E tests (16 specs)
 │   ├── public/              # Static assets + web.config (IIS)
 │   └── scripts/             # Utility scripts (scan-i18n)
 ├── deploy/                  # Deploy scripts (pre/post-install.cmd) — gitignored
@@ -98,9 +110,11 @@ Notiq/
 
 | Cosa | Path |
 |------|------|
-| Server entry | `backend/src/app.ts` (port 3001, route + Hocuspocus su `/ws`) |
-| DB schema | `backend/prisma/schema.prisma` (30 modelli, 22 migrations) |
+| Server entry | `backend/src/app.ts` (port 3001, route + upgrade WS su `/ws` e `/chat-ws`) |
+| DB schema | `backend/prisma/schema.prisma` (39 modelli, 33 migrations) |
 | Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
+| Chat WS server | `backend/src/chatWebSocket.ts` (protocollo message/reaction/typing/read/presence) |
+| Chat context FE | `frontend/src/features/chat/` (`ChatContext` = singola connessione WS; i componenti usano `useChatContext()`) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
 | Logger | `backend/src/utils/logger.ts` (Pino shared; nelle route usare `request.log`) |
 | SMTP config | `backend/.env` (variabili `SMTP_*`, lette da `email.service.ts`) |
@@ -108,12 +122,12 @@ Notiq/
 | Frontend entry | `frontend/src/main.tsx` (React 19, QueryClient, BrowserRouter, SW) |
 | Route/pagine | `frontend/src/App.tsx` (protette dentro `<AppLayout />`, pubbliche fuori) |
 | Sync engine | `frontend/src/features/sync/syncService.ts` (syncPull + syncPush) |
-| Offline DB | `frontend/src/lib/db.ts` (Dexie v4, schema v13) |
+| Offline DB | `frontend/src/lib/db.ts` (Dexie v4, schema v14) |
 | API client | `frontend/src/lib/api.ts` (Axios + JWT interceptor + 401 auto-logout) |
 | Vault crypto | `frontend/src/utils/crypto.ts` (CryptoJS AES, PIN come chiave diretta) |
 | Auth store | `frontend/src/store/authStore.ts` (Zustand persisted, key: `auth-storage`) |
 | UI store | `frontend/src/store/uiStore.ts` (theme, sidebar, sort — persisted localStorage) |
-| IIS routing | `frontend/public/web.config` (URL Rewrite per /api, /uploads, /ws) |
+| IIS routing | `frontend/public/web.config` (URL Rewrite per /api, /uploads, /ws, /chat-ws) |
 
 ### Convenzioni
 
@@ -125,6 +139,8 @@ Notiq/
 - **Styling:** Tailwind utilities + `clsx()`. SEMPRE aggiungere varianti `dark:`.
 - **Nuovo entity Dexie:** incrementare version in `db.ts`, aggiungere in syncPull + syncPush.
 - **Nuova TipTap extension strutturale:** DEVE essere aggiunta sia in `Editor.tsx` CHE in `hocuspocus.ts`.
+- **Chat components:** usare `useChatContext()` dal `ChatContext` condiviso, MAI aprire una connessione WS diretta per componente.
+- **Nuova sottocartella `uploads/`:** richiede route esplicita in `app.ts` (gli static file NON sono serviti con wildcard).
 
 ### Environment
 
@@ -150,7 +166,7 @@ VITE_WS_URL=wss://notiq.epartner.it/ws
 VITE_VAPID_PUBLIC_KEY=<your-vapid-public-key>
 ```
 
-Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` → `ws://:3001`.
+Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` e `/chat-ws` → `ws://:3001`.
 
 ### Docker
 
@@ -166,10 +182,12 @@ Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` �
 - **Script deploy:** `deploy/pre-install.cmd` (stop + backup) e `deploy/post-install.cmd` (npm ci + prisma + start)
 - **Flusso:** build locale → zip → copia su server → pre-install → estrai → post-install → verifica
 
-### Prisma models (30) ed enums (9)
+### Prisma models (39) ed enums (14)
 
-**Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite, TaskList, TaskItem, SharedTaskList, KanbanBoard, KanbanColumn, KanbanCard, KanbanComment, SharedKanbanBoard, KanbanBoardChat, KanbanCardActivity, KanbanReminder
-**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE/GROUP_INVITE/GROUP_REMOVE/TASK_ITEM_ADDED/TASK_ITEM_CHECKED/TASK_ITEM_REMOVED/TASK_LIST_SHARED/KANBAN_BOARD_SHARED/KANBAN_CARD_ASSIGNED/KANBAN_COMMENT_ADDED), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL), TaskPriority (LOW/MEDIUM/HIGH), KanbanCardAction (CREATED/MOVED/UPDATED/ASSIGNED/UNASSIGNED/DUE_DATE_SET/DUE_DATE_REMOVED/NOTE_LINKED/NOTE_UNLINKED/DELETED)
+**Models:** User, Invitation, SystemSetting, Notebook, Note, Tag, TagsOnNotes, Attachment, SharedNote, SharedNotebook, Notification, PushSubscription, ChatMessage, AuditLog, InvitationRequest, AiConversation, Group, GroupMember, PendingGroupInvite, TaskList, TaskItem, SharedTaskList, KanbanBoard, KanbanColumn, KanbanCard, KanbanComment, SharedKanbanBoard, KanbanBoardChat, KanbanCardActivity, KanbanReminder, Announcement, AnnouncementDismissal, Friendship, FriendRequest, Conversation, ConversationParticipant, DirectMessage, MessageReaction, ChatFile
+**Enums:** Role (USER/SUPERADMIN), Permission (READ/WRITE), ShareStatus (PENDING/ACCEPTED/DECLINED), NotificationType (SHARE_NOTE/SHARE_NOTEBOOK/SYSTEM/REMINDER/CHAT_MESSAGE/GROUP_INVITE/GROUP_REMOVE/TASK_ITEM_ADDED/TASK_ITEM_CHECKED/TASK_ITEM_REMOVED/TASK_LIST_SHARED/KANBAN_BOARD_SHARED/KANBAN_CARD_ASSIGNED/KANBAN_COMMENT_ADDED/KANBAN_CARD_MOVED/KANBAN_COMMENT_DELETED), InvitationStatus (PENDING/USED), RequestStatus (PENDING/APPROVED/REJECTED), NoteType (NOTE/CREDENTIAL), TaskPriority (LOW/MEDIUM/HIGH), KanbanCardPriority (STANDBY/LOW/MEDIUM/HIGH/CRITICAL), KanbanCardAction (CREATED/MOVED/UPDATED/ASSIGNED/UNASSIGNED/DUE_DATE_SET/DUE_DATE_REMOVED/NOTE_LINKED/NOTE_UNLINKED/DELETED), AnnouncementCategory (MAINTENANCE/FEATURE/URGENT), FriendshipStatus (ACTIVE/BLOCKED_BY_A/BLOCKED_BY_B), FriendRequestStatus (PENDING/ACCEPTED/DECLINED), ConversationType (DIRECT/GROUP)
+
+**Nota chat:** `ChatMessage` (chat a livello nota) e `DirectMessage`/`KanbanBoardChat` sono intenzionalmente separati — non unificare. `Friendship` usa ID ordinati (`userAId < userBId` sempre) per evitare duplicati.
 
 ### Campi notevoli su User
 
@@ -186,7 +204,7 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 | File | Motivo |
 |------|--------|
 | `frontend/src/features/sync/syncService.ts` | Motore sync offline. Self-healing, zombie prevention, race condition guards. Errori = note perse o duplicate. |
-| `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB), 13 versioni. Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
+| `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB), 14 versioni. Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
 | `backend/src/hocuspocus.ts` | Server collab Yjs. Extensions devono matchare Editor.tsx. Errori = corruzione contenuto note. |
 | `frontend/src/utils/crypto.ts` | Encryption vault. Cambiare algo/parametri rende illeggibili tutte le note vault esistenti. |
 | `frontend/src/store/vaultStore.ts` | Stato vault (`pinHash` persisted). Cambiare `partialize` o storage key invalida tutti i vault. |
