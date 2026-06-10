@@ -9,7 +9,12 @@ import {
   revokeNotebookShare,
   getSharedNotebooks,
   respondToShareById,
+  updateSharedNoteContent,
 } from '../sharing.service';
+
+vi.mock('../../utils/extractText', () => ({
+  extractTextFromTipTapJson: vi.fn((c: string) => `extracted:${c}`),
+}));
 
 // Mock sibling services
 vi.mock('../audit.service', () => ({
@@ -743,5 +748,39 @@ describe('respondToShareById', () => {
     expect(result).toEqual({ success: true, status: 'ACCEPTED' });
     expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
     expect(notificationService.createNotification).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateSharedNoteContent
+// ---------------------------------------------------------------------------
+
+describe('updateSharedNoteContent', () => {
+  const SUBSTANTIAL = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"' + 'A'.repeat(200) + '"}]}]}';
+  const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
+
+  beforeEach(() => {
+    prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'ACCEPTED', permission: 'WRITE' });
+    prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared' });
+    prismaMock.note.update.mockResolvedValue({});
+  });
+
+  it('DROPS an empty-over-substantial content write and does NOT null ydocState', async () => {
+    await updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC });
+    expect(prismaMock.note.update).not.toHaveBeenCalled();
+  });
+
+  it('writes substantial content and nulls ydocState so fetch falls back to content', async () => {
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+    await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+    expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ content: newGood, ydocState: null }),
+    }));
+  });
+
+  it('throws when the share is not ACCEPTED+WRITE', async () => {
+    prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'PENDING', permission: 'WRITE' });
+    await expect(updateSharedNoteContent('user-2', 'note-1', { content: SUBSTANTIAL }))
+      .rejects.toThrow();
   });
 });

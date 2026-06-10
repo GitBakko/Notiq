@@ -5,6 +5,7 @@ import * as notificationService from './notification.service';
 import { Permission } from '@prisma/client';
 import logger from '../utils/logger';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors';
+import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { createFriendship, getFriendship } from './friendship.service';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
@@ -763,4 +764,44 @@ export const resendShareInvitation = async (
   });
 
   return { success: true };
+};
+
+export const updateSharedNoteContent = async (
+  userId: string,
+  noteId: string,
+  data: { content?: string; title?: string },
+): Promise<{ ok: boolean }> => {
+  const share = await prisma.sharedNote.findUnique({
+    where: { noteId_userId: { noteId, userId } },
+  });
+  if (!share || share.status !== 'ACCEPTED' || share.permission !== 'WRITE') {
+    throw new ForbiddenError('errors.sharing.forbidden');
+  }
+
+  const note = await prisma.note.findUnique({
+    where: { id: noteId },
+    select: { content: true, title: true },
+  });
+  if (!note) throw new NotFoundError('errors.notes.notFound');
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+  if (data.content && data.content !== note.content) {
+    const accepted = guardEmptyContentOverwrite(note.content, data.content);
+    if (accepted !== undefined) {
+      const { extractTextFromTipTapJson } = await import('../utils/extractText');
+      updateData.content = accepted;
+      updateData.searchText = extractTextFromTipTapJson(accepted);
+      updateData.ydocState = null; // only null ydocState when we accept new content
+    }
+  }
+
+  if (data.title && data.title !== note.title) {
+    updateData.title = data.title;
+  }
+
+  if (Object.keys(updateData).length > 1) {
+    await prisma.note.update({ where: { id: noteId }, data: updateData });
+  }
+  return { ok: true };
 };

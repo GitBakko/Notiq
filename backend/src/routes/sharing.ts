@@ -5,6 +5,7 @@ import * as taskListSharingService from '../services/tasklist-sharing.service';
 import * as taskListService from '../services/tasklist.service';
 import { Permission } from '@prisma/client';
 import prisma from '../plugins/prisma';
+import { ForbiddenError, NotFoundError } from '../utils/errors';
 
 const shareSchema = z.object({
   email: z.string().email(),
@@ -140,38 +141,14 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ message: 'errors.validation.required' });
     }
 
-    const share = await prisma.sharedNote.findUnique({
-      where: { noteId_userId: { noteId, userId: request.user.id } },
-    });
-    if (!share || share.status !== 'ACCEPTED' || share.permission !== 'WRITE') {
-      return reply.status(403).send({ message: 'errors.sharing.forbidden' });
+    // [BACKUP] 2026-06-10 — inline share-check + persistence moved to sharingService.updateSharedNoteContent (adds empty-overwrite guard)
+    try {
+      return await sharingService.updateSharedNoteContent(request.user.id, noteId, { content, title });
+    } catch (err) {
+      if (err instanceof ForbiddenError) return reply.status(403).send({ message: err.message });
+      if (err instanceof NotFoundError) return reply.status(404).send({ message: err.message });
+      throw err;
     }
-
-    const note = await prisma.note.findUnique({ where: { id: noteId }, select: { content: true, title: true } });
-    if (!note) return reply.status(404).send({ message: 'errors.notes.notFound' });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateData: any = { updatedAt: new Date() };
-
-    if (content && note.content !== content) {
-      const { extractTextFromTipTapJson } = await import('../utils/extractText');
-      updateData.content = content;
-      updateData.searchText = extractTextFromTipTapJson(content);
-      // Clear ydocState so Hocuspocus fetch falls through to content field.
-      // The stale Yjs binary would otherwise take priority over updated content.
-      updateData.ydocState = null;
-    }
-
-    if (title && note.title !== title) {
-      updateData.title = title;
-    }
-
-    // Only write if something actually changed
-    if (Object.keys(updateData).length > 1) {
-      await prisma.note.update({ where: { id: noteId }, data: updateData });
-    }
-
-    return { ok: true };
   });
 
   // Share Notebook
