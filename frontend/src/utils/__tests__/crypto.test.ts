@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { hashPin, encryptContent, decryptContent } from '../crypto';
+
+// PBKDF2 100k iterations via crypto-js (pure JS) is slow; encrypt+decrypt roundtrips
+// exceed the 5s default on constrained CI runners. Raise the timeout for this file.
+vi.setConfig({ testTimeout: 30000 });
 
 describe('hashPin', () => {
   it('produces a deterministic hash for the same input', () => {
