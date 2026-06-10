@@ -249,3 +249,19 @@ export const permanentlyDeleteNote = async (id: string) => {
     createdAt: Date.now()
   });
 };
+
+export interface NoteVersionDto {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+export const getNoteVersions = async (noteId: string): Promise<NoteVersionDto[]> => {
+  const { data } = await api.get<NoteVersionDto[]>(`/notes/${noteId}/versions`);
+  return data;
+};
+
+export const restoreNoteVersion = async (noteId: string, versionId: string): Promise<void> => {
+  await api.post(`/notes/${noteId}/versions/${versionId}/restore`);
+};

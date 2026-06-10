@@ -597,6 +597,16 @@
       "lines": "lines",
       "loading": "Calculating size...",
       "error": "Failed to load size"
+    },
+    "versions": {
+      "title": "Version history",
+      "empty": "No previous versions yet.",
+      "loadFailed": "Could not load versions.",
+      "restore": "Restore",
+      "restored": "Version restored.",
+      "restoreFailed": "Restore failed.",
+      "confirmTitle": "Restore this version?",
+      "confirmMessage": "The current content is saved as a new version first, so this is reversible."
     }
   },
   "editor": {
@@ -1477,7 +1487,8 @@
     "notes": {
       "notFound": "Note not found",
       "notFoundOrDenied": "Note not found or access denied",
-      "notFoundOrNotPublic": "Note not found or not public"
+      "notFoundOrNotPublic": "Note not found or not public",
+      "versionNotFound": "Version not found."
     },
     "notebooks": {
       "notFound": "Notebook not found",

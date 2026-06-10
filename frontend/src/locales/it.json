@@ -292,6 +292,16 @@
       "lines": "righe",
       "loading": "Calcolo dimensione...",
       "error": "Impossibile caricare la dimensione"
+    },
+    "versions": {
+      "title": "Cronologia versioni",
+      "empty": "Nessuna versione precedente.",
+      "loadFailed": "Impossibile caricare le versioni.",
+      "restore": "Ripristina",
+      "restored": "Versione ripristinata.",
+      "restoreFailed": "Ripristino non riuscito.",
+      "confirmTitle": "Ripristinare questa versione?",
+      "confirmMessage": "Il contenuto attuale viene prima salvato come nuova versione, quindi l'operazione è reversibile."
     }
   },
   "tasks": {
@@ -1477,7 +1487,8 @@
     "notes": {
       "notFound": "Nota non trovata",
       "notFoundOrDenied": "Nota non trovata o accesso negato",
-      "notFoundOrNotPublic": "Nota non trovata o non pubblica"
+      "notFoundOrNotPublic": "Nota non trovata o non pubblica",
+      "versionNotFound": "Versione non trovata."
     },
     "notebooks": {
       "notFound": "Taccuino non trovato",

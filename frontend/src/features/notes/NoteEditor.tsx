@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical } from 'lucide-react';
+import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical, History } from 'lucide-react';
 import Editor, { type EditorHandle } from '../../components/editor/Editor';
 import { revokeShare, updateNoteLocalOnly, updateSharedNoteNotebook, saveSharedNoteData, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -17,6 +17,7 @@ import ChatSidebar from '../../components/editor/ChatSidebar';
 import AiSidebar from '../../components/editor/AiSidebar';
 import NotebookSelector from '../../components/editor/NotebookSelector';
 import NoteSizeModal from './NoteSizeModal';
+import VersionHistoryModal from './VersionHistoryModal';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useNoteController } from './useNoteController';
@@ -73,6 +74,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+    const [isVersionsOpen, setIsVersionsOpen] = useState(false);
     const [attachmentToDelete, setAttachmentToDelete] = useState<{ id: string; url: string } | null>(null);
     const [showMobileMore, setShowMobileMore] = useState(false);
     const mobileMoreRef = useRef<HTMLDivElement>(null);
@@ -490,6 +492,17 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         <HardDrive className="w-5 h-5" />
                     </button>
 
+                    {!isSharedNote && (
+                        <button
+                            onClick={() => setIsVersionsOpen(true)}
+                            aria-label={t('notes.versions.title')}
+                            title={t('notes.versions.title')}
+                            className="p-2 rounded-full transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        >
+                            <History className="w-5 h-5" />
+                        </button>
+                    )}
+
                     <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700 mx-2" />
 
                     {(collaborators.length > 1 || isSharedNote || (note.sharedWith?.some(s => s.status === 'ACCEPTED'))) && (
@@ -642,6 +655,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                     <span>{t('notes.size.title')}</span>
                                 </button>
                                 {!isSharedNote && (
+                                    <button onClick={() => { setIsVersionsOpen(true); setShowMobileMore(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
+                                        <History className="w-4 h-4 flex-shrink-0" />
+                                        <span>{t('notes.versions.title')}</span>
+                                    </button>
+                                )}
+                                {!isSharedNote && (
                                     <>
                                         <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
                                         <button onClick={() => { setIsDeleteConfirmOpen(true); setShowMobileMore(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
@@ -759,6 +778,14 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             <ConfirmDialog isOpen={!!attachmentToDelete} onClose={() => setAttachmentToDelete(null)} onConfirm={handleAttachmentDeleteConfirm} title={t('notes.deleteAttachment')} message={t('notes.deleteAttachmentConfirm')} confirmText={t('common.delete')} variant="danger" />
 
             {isSizeModalOpen && <NoteSizeModal noteId={note.id} onClose={() => setIsSizeModalOpen(false)} />}
+
+            {isVersionsOpen && (
+                <VersionHistoryModal
+                    noteId={note.id}
+                    onClose={() => setIsVersionsOpen(false)}
+                    onRestored={() => { setIsVersionsOpen(false); window.location.reload(); }}
+                />
+            )}
         </div>
     );
 }
