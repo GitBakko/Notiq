@@ -7,6 +7,7 @@ import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractT
 import { NotFoundError, BadRequestError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { logEvent } from './audit.service';
+import { snapshotPreviousVersion } from './noteVersion.service';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
   const note = await prisma.note.findUnique({
@@ -223,6 +224,10 @@ export const updateNote = async (userId: string, id: string, data: {
     }
     if (finalContent && !rest.isEncrypted && !note.isEncrypted) {
       updateData.searchText = extractTextFromTipTapJson(finalContent);
+    }
+
+    if (finalContent !== undefined && finalContent !== note.content) {
+      await snapshotPreviousVersion(tx as unknown as typeof prisma, id, note.content, note.title);
     }
 
     return tx.note.update({

@@ -366,6 +366,8 @@ describe('updateNote', () => {
 
   it('updates note fields and recalculates searchText', async () => {
     prismaMock.note.findFirst.mockResolvedValue(existingNote);
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
     const updatedNote = { ...existingNote, title: 'Updated' };
     prismaMock.note.update.mockResolvedValue(updatedNote);
 
@@ -445,6 +447,8 @@ describe('updateNote', () => {
         content: 'X'.repeat(200),
       };
       prismaMock.note.findFirst.mockResolvedValue(substantialNote);
+      prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
       prismaMock.note.update.mockResolvedValue(substantialNote);
 
       const newSubstantialContent = 'Y'.repeat(200);
@@ -491,6 +495,8 @@ describe('updateNote', () => {
   it('does not recalculate searchText when note is encrypted', async () => {
     const encryptedNote = { ...existingNote, isEncrypted: true };
     prismaMock.note.findFirst.mockResolvedValue(encryptedNote);
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
     prismaMock.note.update.mockResolvedValue(encryptedNote);
 
     const newContent = 'Y'.repeat(200);

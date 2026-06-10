@@ -9,6 +9,7 @@ import { extractTextFromTipTapJson } from './utils/extractText';
 import logger from './utils/logger';
 import { guardEmptyContentOverwrite } from './utils/contentGuard';
 import { isDegenerateTipTapJson } from './utils/ydocIntegrity';
+import { snapshotPreviousVersion } from './services/noteVersion.service';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -297,7 +298,7 @@ export const hocuspocus = new Server({
         // [BACKUP] 2026-06-10 — inline <150 guard replaced by shared guard + try/catch
         const existing = await prisma.note.findUnique({
           where: { id: documentName },
-          select: { content: true },
+          select: { content: true, title: true },
         });
 
         // Integrity: never replace good content with a degenerate doc (empty/paragraph-only).
@@ -315,6 +316,8 @@ export const hocuspocus = new Server({
         }
 
         const searchText = extractTextFromTipTapJson(contentStr);
+
+        await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
 
         try {
           await prisma.note.update({
