@@ -1,6 +1,9 @@
 {
   "name": "notiq-backend",
   "version": "1.7.3",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "description": "",
   "main": "index.js",
   "scripts": {
