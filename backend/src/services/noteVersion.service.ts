@@ -14,23 +14,29 @@ const MIN_SNAPSHOT_LEN = 150; // don't archive empty/near-empty content
 
 /**
  * Save the PREVIOUS content of a note as a version, BEFORE it gets overwritten.
- * Throttled per-note. Accepts a prisma client or a transaction client.
+ * Throttled per-note (max one snapshot per SNAPSHOT_THROTTLE_MS) unless `options.force`
+ * is true — force bypasses the throttle so explicit destructive actions (e.g. restore)
+ * always preserve the current content. The MIN_SNAPSHOT_LEN guard is never bypassed.
+ * Accepts a prisma client or a transaction client.
  */
 export async function snapshotPreviousVersion(
   db: Db,
   noteId: string,
   previousContent: string | null | undefined,
   previousTitle: string,
+  options?: { force?: boolean },
 ): Promise<void> {
   if (!previousContent || previousContent.length < MIN_SNAPSHOT_LEN) return;
 
-  const latest = await db.noteVersion.findFirst({
-    where: { noteId },
-    orderBy: { createdAt: 'desc' },
-    select: { createdAt: true },
-  });
-  if (latest && Date.now() - new Date(latest.createdAt).getTime() < SNAPSHOT_THROTTLE_MS) {
-    return;
+  if (!options?.force) {
+    const latest = await db.noteVersion.findFirst({
+      where: { noteId },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (latest && Date.now() - new Date(latest.createdAt).getTime() < SNAPSHOT_THROTTLE_MS) {
+      return;
+    }
   }
 
   await db.noteVersion.create({
@@ -87,8 +93,10 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
   if (!version || version.noteId !== noteId) throw new NotFoundError('errors.notes.versionNotFound');
 
   // Archive what we're about to overwrite so a restore is itself undoable.
+  // Force-bypass the throttle: a restore is an explicit destructive action and MUST always
+  // preserve the current content, even if a snapshot was taken seconds ago.
   try {
-    await snapshotPreviousVersion(prisma, noteId, note.content, note.title);
+    await snapshotPreviousVersion(prisma, noteId, note.content, note.title, { force: true });
   } catch (snapErr) {
     logger.warn({ snapErr, noteId }, 'restoreNoteVersion: snapshot failed — continuing');
   }

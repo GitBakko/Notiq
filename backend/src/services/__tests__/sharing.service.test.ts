@@ -763,11 +763,18 @@ describe('updateSharedNoteContent', () => {
     prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'ACCEPTED', permission: 'WRITE' });
     prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared' });
     prismaMock.note.update.mockResolvedValue({});
+    // Defaults for the noteVersion snapshot path (throttle check + prune)
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.noteVersion.create.mockResolvedValue({});
+    prismaMock.noteVersion.deleteMany.mockResolvedValue({ count: 0 });
   });
 
   it('DROPS an empty-over-substantial content write and does NOT null ydocState', async () => {
     await updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC });
     expect(prismaMock.note.update).not.toHaveBeenCalled();
+    // No snapshot taken — content was dropped before reaching the accepted branch
+    expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
   });
 
   it('writes substantial content and nulls ydocState so fetch falls back to content', async () => {
@@ -776,6 +783,16 @@ describe('updateSharedNoteContent', () => {
     expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ content: newGood, ydocState: null }),
     }));
+  });
+
+  it('snapshots the previous content before accepting a new substantial write', async () => {
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+    await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledWith({
+      data: { noteId: 'note-1', content: SUBSTANTIAL, title: 'Shared' },
+    });
   });
 
   it('throws when the share is not ACCEPTED+WRITE', async () => {
@@ -797,5 +814,7 @@ describe('updateSharedNoteContent', () => {
     }));
     const callArg = prismaMock.note.update.mock.calls[0][0];
     expect(callArg.data).not.toHaveProperty('ydocState');
+    // Title-only update: no content accepted, so no snapshot
+    expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,14 @@ describe('snapshotPreviousVersion', () => {
     await snapshotPreviousVersion(prismaMock, 'note-1', 'x', 'T');
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
   });
+
+  it('forces a snapshot even within the throttle window when options.force is true', async () => {
+    prismaMock.noteVersion.findFirst.mockResolvedValue({ createdAt: new Date(NOW - 30_000) }); // 30s ago — within throttle
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    await snapshotPreviousVersion(prismaMock, 'note-1', 'A'.repeat(200), 'T', { force: true });
+    expect(prismaMock.noteVersion.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.noteVersion.create).toHaveBeenCalled();
+  });
 });
 
 describe('pruneNoteVersions', () => {
