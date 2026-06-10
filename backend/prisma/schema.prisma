@@ -155,10 +155,22 @@ model Note {
 
   kanbanCards   KanbanCard[]
   kanbanBoards  KanbanBoard[] @relation("KanbanBoardNote")
+  versions      NoteVersion[]
 
   @@index([userId, isTrashed])
   @@index([userId, createdAt])
   @@index([notebookId])
+}
+
+model NoteVersion {
+  id        String   @id @default(uuid())
+  noteId    String
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  content   String
+  title     String
+  createdAt DateTime @default(now())
+
+  @@index([noteId, createdAt])
 }
 
 model Tag {

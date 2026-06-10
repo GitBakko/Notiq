@@ -266,6 +266,14 @@ vi.mock('../plugins/prisma', () => {
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
+    noteVersion: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      deleteMany: vi.fn(),
+      count: vi.fn(),
+    },
     $transaction: vi.fn((fn: any) => {
       if (typeof fn === 'function') {
         return fn(mockPrisma);
