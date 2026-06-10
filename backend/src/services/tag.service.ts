@@ -1,5 +1,5 @@
 import prisma from '../plugins/prisma';
-import { NotFoundError, ForbiddenError } from '../utils/errors';
+import { NotFoundError } from '../utils/errors';
 import { checkNoteAccess } from './note.service';
 
 export const createTag = async (userId: string, name: string, isVault: boolean = false, id?: string) => {

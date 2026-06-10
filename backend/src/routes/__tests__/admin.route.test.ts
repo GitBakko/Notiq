@@ -269,7 +269,7 @@ describe('GET /api/admin/audit-logs', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockLogs);
-    expect(mockAudit.getAuditLogFiltered).toHaveBeenCalledWith(1, 20, expect.objectContaining({}));
+    expect(mockAudit.getAuditLogFiltered).toHaveBeenCalledWith(1, 20, expect.objectContaining({ event: undefined, userId: undefined, dateFrom: undefined, dateTo: undefined }));
   });
 
   it('returns 403 for regular USER', async () => {
