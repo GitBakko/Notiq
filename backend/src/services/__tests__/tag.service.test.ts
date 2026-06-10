@@ -13,9 +13,10 @@ import { NotFoundError } from '../../utils/errors';
 
 const prismaMock = prisma as any;
 
-// setup.ts does not include tag.updateMany or tag.deleteMany — add them here
+// setup.ts does not include tag.updateMany, tag.deleteMany, or tagsOnNotes.upsert — add them here
 prismaMock.tag.updateMany = vi.fn();
 prismaMock.tag.deleteMany = vi.fn();
+prismaMock.tagsOnNotes.upsert = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -107,7 +108,7 @@ describe('getTags', () => {
         _count: {
           select: {
             notes: {
-              where: { note: { isVault: undefined } },
+              where: { userId: 'user-1' },
             },
           },
         },
@@ -214,28 +215,28 @@ describe('deleteTag', () => {
 // ---------------------------------------------------------------------------
 describe('addTagToNote', () => {
   it('creates a tagsOnNotes record when note and tag belong to the user', async () => {
-    const note = makeNote({ id: 'note-1', userId: 'user-1' });
     const tag = makeTag({ id: 'tag-1', userId: 'user-1' });
-    prismaMock.note.findFirst.mockResolvedValue(note);
+    // checkNoteAccess uses note.findUnique; return a shape that makes it resolve to OWNER
+    prismaMock.note.findUnique.mockResolvedValue({ userId: 'user-1', sharedWith: [] });
     prismaMock.tag.findFirst.mockResolvedValue(tag);
-    prismaMock.tagsOnNotes.create.mockResolvedValue({ noteId: 'note-1', tagId: 'tag-1' });
+    prismaMock.tagsOnNotes.upsert.mockResolvedValue({ noteId: 'note-1', tagId: 'tag-1', userId: 'user-1' });
 
     const result = await addTagToNote('user-1', 'note-1', 'tag-1');
 
-    expect(prismaMock.note.findFirst).toHaveBeenCalledWith({
-      where: { id: 'note-1', userId: 'user-1' },
-    });
     expect(prismaMock.tag.findFirst).toHaveBeenCalledWith({
       where: { id: 'tag-1', userId: 'user-1' },
     });
-    expect(prismaMock.tagsOnNotes.create).toHaveBeenCalledWith({
-      data: { noteId: 'note-1', tagId: 'tag-1' },
+    expect(prismaMock.tagsOnNotes.upsert).toHaveBeenCalledWith({
+      where: { noteId_tagId_userId: { noteId: 'note-1', tagId: 'tag-1', userId: 'user-1' } },
+      update: {},
+      create: { noteId: 'note-1', tagId: 'tag-1', userId: 'user-1' },
     });
-    expect(result).toEqual({ noteId: 'note-1', tagId: 'tag-1' });
+    expect(result).toEqual({ noteId: 'note-1', tagId: 'tag-1', userId: 'user-1' });
   });
 
   it('throws NotFoundError when note does not belong to user', async () => {
-    prismaMock.note.findFirst.mockResolvedValue(null);
+    // checkNoteAccess uses note.findUnique; null means note not found or no access
+    prismaMock.note.findUnique.mockResolvedValue(null);
     prismaMock.tag.findFirst.mockResolvedValue(makeTag({ id: 'tag-1', userId: 'user-1' }));
 
     await expect(addTagToNote('user-1', 'note-1', 'tag-1'))
@@ -245,7 +246,8 @@ describe('addTagToNote', () => {
   });
 
   it('throws NotFoundError when tag does not belong to user', async () => {
-    prismaMock.note.findFirst.mockResolvedValue(makeNote({ id: 'note-1', userId: 'user-1' }));
+    // checkNoteAccess uses note.findUnique; return OWNER shape so access passes
+    prismaMock.note.findUnique.mockResolvedValue({ userId: 'user-1', sharedWith: [] });
     prismaMock.tag.findFirst.mockResolvedValue(null);
 
     await expect(addTagToNote('user-1', 'note-1', 'tag-1'))
@@ -255,7 +257,8 @@ describe('addTagToNote', () => {
   });
 
   it('throws NotFoundError when both note and tag are missing', async () => {
-    prismaMock.note.findFirst.mockResolvedValue(null);
+    // checkNoteAccess uses note.findUnique; null means no access
+    prismaMock.note.findUnique.mockResolvedValue(null);
     prismaMock.tag.findFirst.mockResolvedValue(null);
 
     await expect(addTagToNote('user-1', 'note-1', 'tag-1'))
@@ -263,12 +266,12 @@ describe('addTagToNote', () => {
   });
 
   it('does not create tagsOnNotes when ownership check fails', async () => {
-    prismaMock.note.findFirst.mockResolvedValue(null);
-    prismaMock.tag.findFirst.mockResolvedValue(null);
+    // note.findUnique returns null → checkNoteAccess returns null → NotFoundError
+    prismaMock.note.findUnique.mockResolvedValue(null);
 
     await expect(addTagToNote('user-1', 'note-1', 'tag-1')).rejects.toThrow();
 
-    expect(prismaMock.tagsOnNotes.create).not.toHaveBeenCalled();
+    expect(prismaMock.tagsOnNotes.upsert).not.toHaveBeenCalled();
   });
 });
 
@@ -285,7 +288,7 @@ describe('removeTagFromNote', () => {
       where: {
         noteId: 'note-1',
         tagId: 'tag-1',
-        note: { userId: 'user-1' },
+        userId: 'user-1',
       },
     });
     expect(result).toEqual({ count: 1 });

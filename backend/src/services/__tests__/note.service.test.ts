@@ -330,7 +330,7 @@ describe('getNote', () => {
         ],
       },
       include: expect.objectContaining({
-        tags: { include: { tag: true } },
+        tags: { where: { userId: 'user-1' }, include: { tag: true } },
         attachments: { where: { isLatest: true } },
       }),
     });
@@ -403,11 +403,11 @@ describe('updateNote', () => {
       tags: [{ tag: { id: 'tag-a' } }, { tag: { id: 'tag-b' } }],
     });
 
-    expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1' } });
+    expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1', userId: 'user-1' } });
     expect(prismaMock.tagsOnNotes.createMany).toHaveBeenCalledWith({
       data: [
-        { noteId: 'n1', tagId: 'tag-a' },
-        { noteId: 'n1', tagId: 'tag-b' },
+        { noteId: 'n1', tagId: 'tag-a', userId: 'user-1' },
+        { noteId: 'n1', tagId: 'tag-b', userId: 'user-1' },
       ],
     });
   });
@@ -419,7 +419,7 @@ describe('updateNote', () => {
 
     await updateNote('user-1', 'n1', { tags: [] });
 
-    expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1' } });
+    expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1', userId: 'user-1' } });
     expect(prismaMock.tagsOnNotes.createMany).not.toHaveBeenCalled();
   });
 

@@ -91,6 +91,7 @@ describe('getNotebooks', () => {
           select: {
             userId: true,
             permission: true,
+            status: true,
             user: { select: { id: true, name: true, email: true, avatarUrl: true } },
           },
         },

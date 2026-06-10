@@ -155,7 +155,9 @@ describe('POST /api/kanban/boards', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockBoard);
-    expect(mockKanbanService.createBoard).toHaveBeenCalledWith(TEST_USER.id, 'Sprint 1', 'First sprint');
+    expect(mockKanbanService.createBoard).toHaveBeenCalledWith(
+      TEST_USER.id, 'Sprint 1', 'First sprint', undefined, undefined,
+    );
   });
 
   it('returns 400 with empty title', async () => {
@@ -293,7 +295,7 @@ describe('POST /api/kanban/boards/:id/columns', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockColumn);
-    expect(mockKanbanService.createColumn).toHaveBeenCalledWith('board-1', 'To Do');
+    expect(mockKanbanService.createColumn).toHaveBeenCalledWith('board-1', 'To Do', undefined);
   });
 
   it('returns 400 with empty title', async () => {
@@ -389,7 +391,7 @@ describe('POST /api/kanban/columns/:id/cards', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockCard);
-    expect(mockKanbanService.createCard).toHaveBeenCalledWith('col-1', 'Fix bug', 'Critical issue', TEST_USER.id);
+    expect(mockKanbanService.createCard).toHaveBeenCalledWith('col-1', 'Fix bug', 'Critical issue', TEST_USER.id, undefined);
   });
 
   it('returns 400 with empty title', async () => {
@@ -458,7 +460,7 @@ describe('PUT /api/kanban/cards/:id/move', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual({ success: true });
-    expect(mockKanbanService.moveCard).toHaveBeenCalledWith('card-1', 'col-2', 0, TEST_USER.id);
+    expect(mockKanbanService.moveCard).toHaveBeenCalledWith('card-1', 'col-2', 0, TEST_USER.id, false);
   });
 
   it('returns 400 with negative position', async () => {

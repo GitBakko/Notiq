@@ -432,10 +432,11 @@ describe('getAuditLogs', () => {
 
     expect(result).toEqual({ logs: [logEntry], total: 1, pages: 1 });
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith({
+      where: {},
       skip: 0,
       take: 20,
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true } } },
+      include: { user: { select: { email: true, name: true } } },
     });
     expect(prismaMock.auditLog.count).toHaveBeenCalled();
   });
@@ -479,7 +480,7 @@ describe('getAuditLogs', () => {
     expect(result.logs[0].user.email).toBe('user1@test.com');
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: { user: { select: { email: true } } },
+        include: { user: { select: { email: true, name: true } } },
       }),
     );
   });

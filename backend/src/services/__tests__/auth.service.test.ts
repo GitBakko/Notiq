@@ -161,8 +161,8 @@ describe('registerUser', () => {
         data: expect.objectContaining({ status: 'USED', usedById: MOCK_USER_ID }),
       }),
     );
-    // Audit logs: INVITE_USED + REGISTRATION_PENDING
-    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2);
+    // Audit logs: INVITE_USED + logEvent(REGISTER) + REGISTRATION_PENDING
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(3);
   });
 
   it('should throw if user already exists', async () => {

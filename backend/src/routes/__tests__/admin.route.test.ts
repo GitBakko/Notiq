@@ -16,15 +16,23 @@ vi.mock('../../services/admin.service', () => ({
   updateUser: vi.fn(),
 }));
 
+vi.mock('../../services/audit.service', () => ({
+  getAuditLogFiltered: vi.fn(),
+  getAuditStats: vi.fn(),
+  logEvent: vi.fn(),
+}));
+
 import prisma from '../../plugins/prisma';
 import * as settingsService from '../../services/settings.service';
 import * as adminService from '../../services/admin.service';
+import * as auditService from '../../services/audit.service';
 import { AppError } from '../../utils/errors';
 import adminRoutes from '../admin';
 
 const mockPrisma = prisma as any;
 const mockSettings = settingsService as any;
 const mockAdmin = adminService as any;
+const mockAudit = auditService as any;
 
 const TEST_USER = { id: 'user-1', email: 'test@test.com', role: 'USER', tokenVersion: 0 };
 const ADMIN_USER = { id: 'admin-1', email: 'admin@test.com', role: 'SUPERADMIN', tokenVersion: 0 };
@@ -251,7 +259,7 @@ describe('GET /api/admin/audit-logs', () => {
   it('returns audit logs for SUPERADMIN', async () => {
     mockUserRole('SUPERADMIN');
     const mockLogs = { logs: [{ id: 'log-1', action: 'LOGIN' }], total: 1 };
-    mockAdmin.getAuditLogs.mockResolvedValue(mockLogs);
+    mockAudit.getAuditLogFiltered.mockResolvedValue(mockLogs);
 
     const res = await app.inject({
       method: 'GET',
@@ -261,7 +269,7 @@ describe('GET /api/admin/audit-logs', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockLogs);
-    expect(mockAdmin.getAuditLogs).toHaveBeenCalledWith(1, 20);
+    expect(mockAudit.getAuditLogFiltered).toHaveBeenCalledWith(1, 20, expect.objectContaining({}));
   });
 
   it('returns 403 for regular USER', async () => {
