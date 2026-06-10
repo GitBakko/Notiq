@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { createFriendship, getFriendship } from './friendship.service';
+import { extractTextFromTipTapJson } from '../utils/extractText';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
   // Verify ownership
@@ -789,7 +790,6 @@ export const updateSharedNoteContent = async (
   if (data.content && data.content !== note.content) {
     const accepted = guardEmptyContentOverwrite(note.content, data.content);
     if (accepted !== undefined) {
-      const { extractTextFromTipTapJson } = await import('../utils/extractText');
       updateData.content = accepted;
       updateData.searchText = extractTextFromTipTapJson(accepted);
       updateData.ydocState = null; // only null ydocState when we accept new content

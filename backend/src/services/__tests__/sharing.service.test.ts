@@ -781,6 +781,21 @@ describe('updateSharedNoteContent', () => {
   it('throws when the share is not ACCEPTED+WRITE', async () => {
     prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'PENDING', permission: 'WRITE' });
     await expect(updateSharedNoteContent('user-2', 'note-1', { content: SUBSTANTIAL }))
-      .rejects.toThrow();
+      .rejects.toThrow('errors.sharing.forbidden');
+  });
+
+  it('throws when share is ACCEPTED but permission is READ', async () => {
+    prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'ACCEPTED', permission: 'READ' });
+    await expect(updateSharedNoteContent('user-2', 'note-1', { content: SUBSTANTIAL }))
+      .rejects.toThrow('errors.sharing.forbidden');
+  });
+
+  it('updates title only and does NOT null ydocState when no content supplied', async () => {
+    await updateSharedNoteContent('user-2', 'note-1', { title: 'Renamed' });
+    expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ title: 'Renamed' }),
+    }));
+    const callArg = prismaMock.note.update.mock.calls[0][0];
+    expect(callArg.data).not.toHaveProperty('ydocState');
   });
 });
