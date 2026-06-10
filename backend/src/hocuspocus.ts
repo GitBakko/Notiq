@@ -8,6 +8,7 @@ import * as Y from 'yjs';
 import { extractTextFromTipTapJson } from './utils/extractText';
 import logger from './utils/logger';
 import { guardEmptyContentOverwrite } from './utils/contentGuard';
+import { isDegenerateTipTapJson } from './utils/ydocIntegrity';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -238,9 +239,24 @@ export const hocuspocus = new Server({
 
         if (!note) return null;
 
-        // If we have stored Yjs binary state, use it directly (preserves CRDT history)
+        // If we have stored Yjs binary state, use it — but only if it decodes to
+        // a non-degenerate doc. A corrupt ydocState over good content is exactly
+        // what rendered notes blank (2026-06 incident); fall through to content.
         if (note.ydocState) {
-          return new Uint8Array(note.ydocState);
+          try {
+            const probe = new Y.Doc();
+            Y.applyUpdate(probe, new Uint8Array(note.ydocState));
+            // @ts-ignore — TiptapTransformer API types incomplete
+            const probeJson = TiptapTransformer.fromYdoc(probe, 'default', extensions);
+            const ydocLooksEmpty = isDegenerateTipTapJson(probeJson);
+            const contentSubstantial = (note.content?.length ?? 0) > 150;
+            if (!(ydocLooksEmpty && contentSubstantial)) {
+              return new Uint8Array(note.ydocState);
+            }
+            logger.warn({ documentName }, 'Hocuspocus fetch: degenerate ydocState over substantial content — rebuilding from content');
+          } catch (err) {
+            logger.error({ err, documentName }, 'Hocuspocus fetch: ydocState failed to decode — rebuilding from content');
+          }
         }
 
         // Fallback: convert JSON content to Yjs (for notes without ydocState yet)
@@ -283,6 +299,14 @@ export const hocuspocus = new Server({
           where: { id: documentName },
           select: { content: true },
         });
+
+        // Integrity: never replace good content with a degenerate doc (empty/paragraph-only).
+        const parsedNew = (() => { try { return JSON.parse(contentStr); } catch { return null; } })();
+        if (isDegenerateTipTapJson(parsedNew) && (existing?.content?.length ?? 0) > 150) {
+          logger.warn({ documentName }, 'Hocuspocus store: degenerate doc over substantial content — skipping write');
+          return;
+        }
+
         if (guardEmptyContentOverwrite(existing?.content, contentStr) === undefined) {
           logger.warn(
             { documentName, newLen: contentStr.length, oldLen: existing?.content?.length ?? 0 },
