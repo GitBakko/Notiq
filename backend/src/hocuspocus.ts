@@ -317,7 +317,12 @@ export const hocuspocus = new Server({
 
         const searchText = extractTextFromTipTapJson(contentStr);
 
-        await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
+        // Versioning is best-effort — never let a snapshot failure crash the extension or lose the edit.
+        try {
+          await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
+        } catch (snapErr) {
+          logger.warn({ snapErr, documentName }, 'Hocuspocus store: snapshot failed — continuing with save');
+        }
 
         try {
           await prisma.note.update({

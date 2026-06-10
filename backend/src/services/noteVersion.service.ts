@@ -1,6 +1,8 @@
 import prisma from '../plugins/prisma';
+import { Prisma } from '@prisma/client';
 
-type Db = typeof prisma;
+// PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
+type Db = Prisma.TransactionClient;
 
 const SNAPSHOT_THROTTLE_MS = 2 * 60 * 1000; // at most one snapshot / 2 min / note
 const MAX_VERSIONS = 50;

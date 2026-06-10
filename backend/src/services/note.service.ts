@@ -8,6 +8,7 @@ import { NotFoundError, BadRequestError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { logEvent } from './audit.service';
 import { snapshotPreviousVersion } from './noteVersion.service';
+import logger from '../utils/logger';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
   const note = await prisma.note.findUnique({
@@ -227,7 +228,12 @@ export const updateNote = async (userId: string, id: string, data: {
     }
 
     if (finalContent !== undefined && finalContent !== note.content) {
-      await snapshotPreviousVersion(tx as unknown as typeof prisma, id, note.content, note.title);
+      try {
+        await snapshotPreviousVersion(tx, id, note.content, note.title);
+      } catch (snapErr) {
+        // versioning is best-effort — never block the primary save
+        logger.warn({ snapErr, noteId: id }, 'updateNote: snapshot failed — save will proceed');
+      }
     }
 
     return tx.note.update({
