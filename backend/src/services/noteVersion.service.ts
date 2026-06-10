@@ -1,5 +1,7 @@
 import prisma from '../plugins/prisma';
 import { Prisma } from '@prisma/client';
+import { extractTextFromTipTapJson } from '../utils/extractText';
+import { NotFoundError } from '../utils/errors';
 
 // PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
 type Db = Prisma.TransactionClient;
@@ -51,4 +53,43 @@ export async function pruneNoteVersions(db: Db, noteId: string): Promise<void> {
   if (keepNewest.length > 0) {
     await db.noteVersion.deleteMany({ where: { id: { in: keepNewest.map((v) => v.id) } } });
   }
+}
+
+/** List versions of a note the user OWNS. Returns metadata + content for preview, newest first. */
+export async function listNoteVersions(userId: string, noteId: string) {
+  const note = await prisma.note.findFirst({ where: { id: noteId, userId } });
+  if (!note) throw new NotFoundError('errors.notes.notFound');
+
+  return prisma.noteVersion.findMany({
+    where: { noteId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, title: true, content: true, createdAt: true },
+  });
+}
+
+/** Restore a version: archive current content first, then write the old content back. */
+export async function restoreNoteVersion(userId: string, noteId: string, versionId: string) {
+  const note = await prisma.note.findFirst({
+    where: { id: noteId, userId },
+    select: { id: true, content: true, title: true, isEncrypted: true },
+  });
+  if (!note) throw new NotFoundError('errors.notes.notFound');
+
+  const version = await prisma.noteVersion.findUnique({ where: { id: versionId } });
+  if (!version || version.noteId !== noteId) throw new NotFoundError('errors.notes.versionNotFound');
+
+  // Archive what we're about to overwrite so a restore is itself undoable.
+  try {
+    await snapshotPreviousVersion(prisma, noteId, note.content, note.title);
+  } catch {
+    // best-effort: snapshot failure must not block the restore
+  }
+
+  const searchText = note.isEncrypted ? null : extractTextFromTipTapJson(version.content);
+  await prisma.note.update({
+    where: { id: noteId },
+    // Null ydocState so the next Hocuspocus fetch rebuilds the Yjs doc from restored content.
+    data: { content: version.content, title: version.title, searchText, ydocState: null, updatedAt: new Date() },
+  });
+  return { ok: true };
 }

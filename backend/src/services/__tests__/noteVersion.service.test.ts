@@ -57,3 +57,49 @@ describe('pruneNoteVersions', () => {
     expect(prismaMock.noteVersion.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['v50'] } } });
   });
 });
+
+import { listNoteVersions, restoreNoteVersion } from '../noteVersion.service';
+
+describe('listNoteVersions', () => {
+  it('returns versions for an owned note (newest first)', async () => {
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1' });
+    prismaMock.noteVersion.findMany.mockResolvedValue([
+      { id: 'v2', title: 'B', content: 'c', createdAt: new Date(NOW) },
+    ]);
+    const out = await listNoteVersions('u1', 'note-1');
+    expect(prismaMock.note.findFirst).toHaveBeenCalledWith({ where: { id: 'note-1', userId: 'u1' } });
+    expect(out).toHaveLength(1);
+  });
+
+  it('throws when the note is not owned by the user', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(null);
+    await expect(listNoteVersions('u1', 'note-1')).rejects.toThrow();
+  });
+});
+
+describe('restoreNoteVersion', () => {
+  beforeEach(() => {
+    prismaMock.note.findFirst.mockReset();
+    prismaMock.noteVersion.findUnique.mockReset();
+    prismaMock.noteVersion.findFirst.mockReset();
+    prismaMock.note.update.mockReset();
+  });
+
+  it('snapshots current content, writes the version content back, and nulls ydocState', async () => {
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1', content: 'C'.repeat(200), title: 'now', isEncrypted: false });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.update.mockResolvedValue({});
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+    expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ content: 'D'.repeat(200), ydocState: null }),
+    }));
+  });
+
+  it('throws when the version does not belong to the note', async () => {
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1', content: 'x', title: 't', isEncrypted: false });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'OTHER', content: 'y', title: 't' });
+    await expect(restoreNoteVersion('u1', 'note-1', 'v1')).rejects.toThrow();
+  });
+});

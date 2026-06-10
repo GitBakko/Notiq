@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as noteService from '../services/note.service';
 import { shareNote } from '../services/sharing.service';
+import { listNoteVersions, restoreNoteVersion } from '../services/noteVersion.service';
 
 const createNoteSchema = z.object({
   id: z.string().uuid().optional(),
@@ -90,5 +91,18 @@ export default async function (fastify: FastifyInstance) {
   fastify.get('/:id/size', async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     return await noteService.getNoteSizeBreakdown(request.user.id, id);
+  });
+
+  fastify.get('/:id/versions', async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    return listNoteVersions(request.user.id, id);
+  });
+
+  fastify.post('/:id/versions/:versionId/restore', async (request) => {
+    const { id, versionId } = z.object({
+      id: z.string().uuid(),
+      versionId: z.string().uuid(),
+    }).parse(request.params);
+    return restoreNoteVersion(request.user.id, id, versionId);
   });
 }
