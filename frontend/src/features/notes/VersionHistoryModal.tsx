@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Loader2, History, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getNoteVersions, restoreNoteVersion, type NoteVersionDto } from './noteService';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 interface VersionHistoryModalProps {
   noteId: string;
@@ -35,11 +36,17 @@ export default function VersionHistoryModal({ noteId, onClose, onRestored }: Ver
   const [error, setError] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, true);
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onEsc);
-    return () => window.removeEventListener('keydown', onEsc);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onEsc);
+      document.body.style.overflow = 'unset';
+    };
   }, [onClose]);
 
   useEffect(() => {
@@ -60,6 +67,7 @@ export default function VersionHistoryModal({ noteId, onClose, onRestored }: Ver
       onRestored();
     } catch {
       toast.error(t('notes.versions.restoreFailed'));
+    } finally {
       setRestoring(false);
     }
   };
@@ -69,10 +77,11 @@ export default function VersionHistoryModal({ noteId, onClose, onRestored }: Ver
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
+      aria-labelledby="version-history-title"
     >
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 shadow-xl">
+      <div ref={panelRef} className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 shadow-xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-5 py-4">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+          <h2 id="version-history-title" className="flex items-center gap-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
             <History size={18} /> {t('notes.versions.title')}
           </h2>
           <button
