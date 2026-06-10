@@ -5,6 +5,7 @@ import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
 import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractText';
 import { NotFoundError, BadRequestError } from '../utils/errors';
+import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { logEvent } from './audit.service';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
@@ -207,19 +208,12 @@ export const updateNote = async (userId: string, id: string, data: {
       }
     }
 
-    // Guard: prevent overwriting substantial content with an empty TipTap doc
-    // An empty doc is ~93 chars: {"type":"doc","content":[{"type":"paragraph",...}]}
+    // [BACKUP] 2026-06-10 — inline guard replaced by shared guardEmptyContentOverwrite()
+    // Guard: prevent overwriting substantial content with an empty TipTap doc.
     const { content: contentField, ...restWithoutContent } = rest;
     let finalContent = contentField;
     if (contentField !== undefined) {
-      const newLen = contentField.length;
-      const oldLen = note.content?.length ?? 0;
-      const isNewEmpty = newLen < 150;
-      const isOldSubstantial = oldLen > 150;
-      if (isNewEmpty && isOldSubstantial) {
-        // Drop the content field — don't overwrite real content with empty
-        finalContent = undefined;
-      }
+      finalContent = guardEmptyContentOverwrite(note.content, contentField);
     }
 
     // Recalculate searchText if content changed
