@@ -6,7 +6,7 @@
  *
  * @returns the content to persist, or `undefined` when the write must be dropped.
  */
-const EMPTY_THRESHOLD = 150;
+export const EMPTY_THRESHOLD = 150;
 
 export function guardEmptyContentOverwrite(
   oldContent: string | null | undefined,
