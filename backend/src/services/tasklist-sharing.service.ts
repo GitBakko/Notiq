@@ -165,7 +165,11 @@ export const respondToTaskListShareById = async (
 
   // Auto-create friendship on share accept
   if (action === 'accept') {
-    const taskListOwnerId = result.taskList.user.id;
+    const taskListOwnerId = result.taskList.user?.id;
+    if (!taskListOwnerId) {
+      // Owner was deleted — skip friendship creation and notification
+      return { success: true, status: result.status };
+    }
     try {
       const existing = await getFriendship(taskListOwnerId, userId);
       if (!existing) {

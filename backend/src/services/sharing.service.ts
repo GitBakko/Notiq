@@ -477,11 +477,11 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
   if (action === 'accept' && result) {
     let ownerId: string | undefined;
     if (type === 'NOTE' && 'note' in result) {
-      ownerId = result.note.user.id;
+      ownerId = result.note.user?.id;
     } else if (type === 'NOTEBOOK' && 'notebook' in result) {
-      ownerId = result.notebook.user.id;
+      ownerId = result.notebook.user?.id;
     } else if ('board' in result) {
-      ownerId = result.board.owner.id;
+      ownerId = result.board.owner?.id;
     }
     if (ownerId) {
       try {

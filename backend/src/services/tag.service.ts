@@ -51,8 +51,9 @@ export const deleteTag = async (userId: string, id: string) => {
 export const addTagToNote = async (userId: string, noteId: string, tagId: string) => {
   // Tags are per-user metadata (PK: noteId+tagId+userId), not content modifications.
   // Any user with access (owner or any accepted share) can manage their own tags.
+  // Use NotFoundError (not ForbiddenError) to avoid leaking note existence to non-owners.
   const access = await checkNoteAccess(userId, noteId);
-  if (!access) throw new ForbiddenError('errors.tags.noWriteAccess');
+  if (!access) throw new NotFoundError('errors.tags.noteOrTagNotFound');
 
   // Verify tag belongs to the requesting user
   const tag = await prisma.tag.findFirst({ where: { id: tagId, userId } });
