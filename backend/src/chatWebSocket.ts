@@ -12,6 +12,8 @@ const { WebSocketServer, WebSocket: WsWebSocket } = require('ws') as {
 };
 
 // Minimal ws type definitions (avoids @types/ws dependency)
+// ws loaded via require() without @types/ws — minimal hand-rolled interface uses any
+/* eslint-disable @typescript-eslint/no-explicit-any */
 interface WsSocket {
   readyState: number;
   send(data: string): void;
@@ -25,6 +27,7 @@ interface WsServer {
   handleUpgrade(request: any, socket: any, head: any, callback: (ws: WsSocket) => void): void;
   emit(event: string, ...args: any[]): void;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const JWT_SECRET = process.env.JWT_SECRET || '';
 
@@ -43,6 +46,7 @@ const PUSH_DEBOUNCE_MS = 30_000; // 30 seconds
 // ─── Helpers ───────────────────────────────────────────────
 
 function getUserId(ws: WsSocket): string | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (ws as any).__userId;
 }
 
@@ -127,13 +131,15 @@ chatWss.on('connection', (ws: WsSocket) => {
     if (ws.readyState === WsWebSocket.OPEN) ws.ping();
   }, 30000);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ws.on('pong', () => { (ws as any).__alive = true; });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (ws as any).__alive = true;
 
   // Message handler
-  ws.on('message', (raw: any) => {
+  ws.on('message', (raw: unknown) => {
     try {
-      const data = JSON.parse(raw.toString());
+      const data: unknown = JSON.parse(String(raw));
       handleMessage(ws, userId, data);
     } catch (err) {
       logger.warn({ err }, 'Invalid WS message');
@@ -170,6 +176,7 @@ async function broadcastPresence(userId: string, isOnline: boolean) {
 
 // ─── Message router ────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleMessage(ws: WsSocket, userId: string, data: any) {
   try {
     switch (data.type) {

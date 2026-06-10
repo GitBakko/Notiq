@@ -322,6 +322,7 @@ const start = async () => {
         }
         chatWss.handleUpgrade(request, socket, head, (ws) => {
           // Attach userId before emitting connection
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (ws as any).__userId = userId;
           chatWss.emit('connection', ws);
         });
