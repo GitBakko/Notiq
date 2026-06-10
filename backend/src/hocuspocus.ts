@@ -150,6 +150,51 @@ const CustomTableCell = TableCell.extend({
   },
 });
 
+// Mirror of frontend Table.extend — preserves tableWidth attr during Hocuspocus persistence
+const CustomTable = Table.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      tableWidth: {
+        default: null, // null = AUTO (100%), 'free' = column-based
+        parseHTML: (element: HTMLElement) => {
+          const w = element.getAttribute('data-table-width');
+          if (w === 'free') return 'free';
+          return null; // default AUTO
+        },
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (attributes.tableWidth === 'free') {
+            return { 'data-table-width': 'free' };
+          }
+          return { style: 'width: 100%' }; // AUTO
+        },
+      },
+    };
+  },
+}).configure({
+  resizable: true,
+});
+
+// Mirror of frontend TableRow.extend — preserves rowHeight attr during Hocuspocus persistence
+const CustomTableRow = TableRow.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      rowHeight: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const h = element.style.height;
+          return (h && h !== 'auto') ? h : null;
+        },
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (!attributes.rowHeight) return {};
+          return { style: `height: ${attributes.rowHeight}` };
+        },
+      },
+    };
+  },
+});
+
 
 
 const LineHeight = Extension.create({
@@ -187,10 +232,8 @@ const LineHeight = Extension.create({
 
 export const extensions = [
   StarterKit,
-  Table.configure({
-    resizable: true,
-  }),
-  TableRow,
+  CustomTable,
+  CustomTableRow,
   CustomTableHeader,
   CustomTableCell,
   TextAlign.configure({
