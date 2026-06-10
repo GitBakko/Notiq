@@ -148,7 +148,7 @@ test.describe('Collaboration', () => {
 
     try {
       // Register both users
-      const userA = await registerAndLoginInContext(pageA, { name: 'Collab User A' });
+      const _userA = await registerAndLoginInContext(pageA, { name: 'Collab User A' });
       const userB = await registerAndLoginInContext(pageB, { name: 'Collab User B' });
 
       // User A creates a note and shares it with User B
@@ -182,7 +182,7 @@ test.describe('Collaboration', () => {
     const pageB = await contextB.newPage();
 
     try {
-      const userA = await registerAndLoginInContext(pageA, { name: 'Accept User A' });
+      const _userA = await registerAndLoginInContext(pageA, { name: 'Accept User A' });
       const userB = await registerAndLoginInContext(pageB, { name: 'Accept User B' });
 
       // User A creates and shares a note
@@ -217,7 +217,7 @@ test.describe('Collaboration', () => {
     const pageB = await contextB.newPage();
 
     try {
-      const userA = await registerAndLoginInContext(pageA, { name: 'Perm User A' });
+      const _userA = await registerAndLoginInContext(pageA, { name: 'Perm User A' });
       const userB = await registerAndLoginInContext(pageB, { name: 'Perm User B' });
 
       await createNoteAndWait(pageA, 'Permission Test Note', 'Testing read permission');
@@ -255,7 +255,7 @@ test.describe('Collaboration', () => {
     const pageB = await contextB.newPage();
 
     try {
-      const userA = await registerAndLoginInContext(pageA, { name: 'Sent User A' });
+      const _userA = await registerAndLoginInContext(pageA, { name: 'Sent User A' });
       const userB = await registerAndLoginInContext(pageB, { name: 'Sent User B' });
 
       await createNoteAndWait(pageA, 'Sent Invite Note', 'Checking sent invitations');

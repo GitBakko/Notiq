@@ -78,6 +78,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-located with provider for cohesion
 export function useChatContext() {
   const ctx = useContext(ChatContext);
   if (!ctx) throw new Error('useChatContext must be used within ChatProvider');

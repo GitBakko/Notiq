@@ -66,6 +66,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   AlertTriangle, Wrench, Sparkles, Bell, Info, Megaphone, Shield, Zap, Heart, Star, Gift,
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- constant co-located with component for cohesion
 export const AVAILABLE_ICONS = Object.keys(ICON_MAP);
 
 function hexToTailwindClasses(hex: string) {

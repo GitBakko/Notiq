@@ -32,7 +32,7 @@ test.describe('Groups', () => {
     const pageA = await contextA.newPage();
     const pageB = await contextB.newPage();
 
-    const userA = await registerAndLogin(pageA, { name: 'Group Owner' });
+    const _userA = await registerAndLogin(pageA, { name: 'Group Owner' });
     const userB = await registerAndLogin(pageB, { name: 'Group Member' });
 
     // User A creates a group

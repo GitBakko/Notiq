@@ -14,14 +14,17 @@ const { mockDb, mockApi, mockAuthStore } = vi.hoisted(() => {
    * .filter().toArray(), .orderBy().toArray(), .and(fn).toArray(), etc.
    */
   const createTable = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock: Dexie table is a recursive self-referential proxy
     const table: Record<string, any> = {
       where: vi.fn().mockImplementation(() => table),
       equals: vi.fn().mockImplementation(() => table),
       notEqual: vi.fn().mockImplementation(() => table),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock callback
       and: vi.fn().mockImplementation((fn: any) => {
         table._andFn = fn;
         return table;
       }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock callback
       filter: vi.fn().mockImplementation((fn: any) => {
         table._filterFn = fn;
         return table;
@@ -92,13 +95,16 @@ import { syncPull, syncPush } from '../syncService';
 /** Reset all mock return values to empty defaults */
 const resetAllTableMocks = () => {
   for (const key of Object.keys(mockDb)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock: dynamic table access by key
     const table = (mockDb as Record<string, any>)[key];
     if (table && typeof table === 'object' && 'toArray' in table) {
       // Reset chainable methods to return `table` itself
       table.where.mockImplementation(() => table);
       table.equals.mockImplementation(() => table);
       table.notEqual.mockImplementation(() => table);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock callback
       table.and.mockImplementation((fn: any) => { table._andFn = fn; return table; });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock callback
       table.filter.mockImplementation((fn: any) => { table._filterFn = fn; return table; });
       table.orderBy.mockImplementation(() => table);
       // Reset terminal methods
@@ -146,9 +152,7 @@ describe('syncPull', () => {
       });
 
       // No dirty notebooks, no local synced
-      let notebookToArrayCallCount = 0;
       mockDb.notebooks.toArray.mockImplementation(() => {
-        notebookToArrayCallCount++;
         return Promise.resolve([]);
       });
 
@@ -368,6 +372,7 @@ describe('syncPull', () => {
       // Find the bulkPut call for shared notes
       const allBulkPutCalls = mockDb.notes.bulkPut.mock.calls;
       const sharedBulkPutCall = allBulkPutCalls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock call inspection: array items are untyped
         (call: unknown[]) => (call[0] as any[])?.some?.((n: any) => n.ownership === 'shared'),
       );
 

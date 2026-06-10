@@ -21,7 +21,7 @@ test('should use dexie', async ({ page }) => {
 
       // Let's try to verify if IndexedDB is available.
       return !!window.indexedDB;
-    } catch (e) {
+    } catch (_e) {
       return false;
     }
   });

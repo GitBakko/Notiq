@@ -64,8 +64,8 @@ test.describe('Tables', () => {
     // If not, we'll use evaluate to bypass UI for table insertion, as the core issue is PERSISTENCE, not the UI of inserting.
 
     await page.evaluate(() => {
-      // @ts-ignore
-      const editor = document.querySelector('.ProseMirror')?.editor;
+      // @ts-expect-error — ProseMirror DOM element does not expose `.editor` in TS types
+      const _editor = document.querySelector('.ProseMirror')?.editor;
       // We don't have direct access to the tiptap instance on DOM element usually unless we attached it.
       // So we might have to rely on UI.
     });
@@ -95,7 +95,7 @@ test.describe('Tables', () => {
     // Let's try to click the cell.
     try {
       await cell.click({ timeout: 2000 });
-    } catch (e) {
+    } catch (_e) {
       console.log('Could not click table selector cell. Trying to find it...');
       // If we can't find it, we might need to inspect TableSelector.tsx
     }
