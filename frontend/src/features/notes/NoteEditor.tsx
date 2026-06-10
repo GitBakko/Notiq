@@ -134,18 +134,25 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
         if (debouncedContent !== note.content) {
             if (provider || isSharedNote) {
-                // Shared notes OR Hocuspocus active: update Local DB ONLY for UI.
-                // We SKIP updateContent which triggers REST syncQueue (fails for shared notes).
+                // Dexie write is ALWAYS unconditional — UI needs it regardless of collab state.
                 updateNoteLocalOnly(note.id, { content: debouncedContent });
 
-                // For shared notes: also persist to server via REST immediately.
-                // Hocuspocus store is debounced and may NOT fire if the last connection
-                // closes before the timer (e.g. user navigates away while owner is offline).
-                // This REST save ensures the DB always has the latest content.
                 if (isSharedNote && sharedPermission === 'WRITE') {
-                    saveSharedNoteData(note.id, { content: debouncedContent }).catch(() => {
-                        // Non-critical: Hocuspocus store or next edit will retry
-                    });
+                    // DL-4 single-writer: while Hocuspocus is connected AND synced it owns
+                    // persistence end-to-end. REST is the offline fallback only — it fires when
+                    // the provider is absent, not yet synced, or not yet authenticated.
+                    //
+                    // Note: isSynced / isAuthenticated are mutable properties on the provider
+                    // object, not React state, so this effect does NOT re-run when they flip.
+                    // That is intentional — the effect re-runs on every debouncedContent change
+                    // (the actual trigger) and reads the CURRENT provider status at that moment.
+                    const hocuspocusOwnsPersistence =
+                        provider?.isSynced === true && provider?.isAuthenticated === true;
+                    if (!hocuspocusOwnsPersistence) {
+                        saveSharedNoteData(note.id, { content: debouncedContent }).catch(() => {
+                            // Non-critical: Hocuspocus store or next edit will retry
+                        });
+                    }
                 }
             } else {
                 updateContent(debouncedContent);
