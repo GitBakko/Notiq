@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma';
 import { Prisma } from '@prisma/client';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import { NotFoundError } from '../utils/errors';
+import logger from '../utils/logger';
 
 // PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
 type Db = Prisma.TransactionClient;
@@ -55,8 +56,15 @@ export async function pruneNoteVersions(db: Db, noteId: string): Promise<void> {
   }
 }
 
+export interface NoteVersionSummary {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+}
+
 /** List versions of a note the user OWNS. Returns metadata + content for preview, newest first. */
-export async function listNoteVersions(userId: string, noteId: string) {
+export async function listNoteVersions(userId: string, noteId: string): Promise<NoteVersionSummary[]> {
   const note = await prisma.note.findFirst({ where: { id: noteId, userId } });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
@@ -68,7 +76,7 @@ export async function listNoteVersions(userId: string, noteId: string) {
 }
 
 /** Restore a version: archive current content first, then write the old content back. */
-export async function restoreNoteVersion(userId: string, noteId: string, versionId: string) {
+export async function restoreNoteVersion(userId: string, noteId: string, versionId: string): Promise<{ ok: true }> {
   const note = await prisma.note.findFirst({
     where: { id: noteId, userId },
     select: { id: true, content: true, title: true, isEncrypted: true },
@@ -81,8 +89,8 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
   // Archive what we're about to overwrite so a restore is itself undoable.
   try {
     await snapshotPreviousVersion(prisma, noteId, note.content, note.title);
-  } catch {
-    // best-effort: snapshot failure must not block the restore
+  } catch (snapErr) {
+    logger.warn({ snapErr, noteId }, 'restoreNoteVersion: snapshot failed — continuing');
   }
 
   const searchText = note.isEncrypted ? null : extractTextFromTipTapJson(version.content);

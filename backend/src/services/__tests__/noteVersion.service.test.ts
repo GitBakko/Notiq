@@ -102,4 +102,9 @@ describe('restoreNoteVersion', () => {
     prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'OTHER', content: 'y', title: 't' });
     await expect(restoreNoteVersion('u1', 'note-1', 'v1')).rejects.toThrow();
   });
+
+  it('throws when the note is not owned by the user', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(null);
+    await expect(restoreNoteVersion('u2', 'note-1', 'v1')).rejects.toThrow();
+  });
 });

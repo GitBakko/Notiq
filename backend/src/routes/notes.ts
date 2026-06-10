@@ -93,12 +93,12 @@ export default async function (fastify: FastifyInstance) {
     return await noteService.getNoteSizeBreakdown(request.user.id, id);
   });
 
-  fastify.get('/:id/versions', async (request) => {
+  fastify.get('/:id/versions', async (request, _reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     return listNoteVersions(request.user.id, id);
   });
 
-  fastify.post('/:id/versions/:versionId/restore', async (request) => {
+  fastify.post('/:id/versions/:versionId/restore', async (request, _reply) => {
     const { id, versionId } = z.object({
       id: z.string().uuid(),
       versionId: z.string().uuid(),
