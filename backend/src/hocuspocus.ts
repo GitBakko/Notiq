@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import * as Y from 'yjs';
 import { extractTextFromTipTapJson } from './utils/extractText';
 import logger from './utils/logger';
+import { guardEmptyContentOverwrite } from './utils/contentGuard';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -277,31 +278,37 @@ export const hocuspocus = new Server({
         const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
         const contentStr = JSON.stringify(json);
 
-        // Guard: prevent overwriting substantial content with an empty Yjs doc
-        const isNewEmpty = contentStr.length < 150;
-        if (isNewEmpty) {
-          const existing = await prisma.note.findUnique({
-            where: { id: documentName },
-            select: { content: true },
-          });
-          if (existing?.content && existing.content.length > 150) {
-            logger.warn({ documentName, newLen: contentStr.length, oldLen: existing.content.length },
-              'Hocuspocus store: blocked empty content overwrite');
-            return;
-          }
+        // [BACKUP] 2026-06-10 — inline <150 guard replaced by shared guard + try/catch
+        const existing = await prisma.note.findUnique({
+          where: { id: documentName },
+          select: { content: true },
+        });
+        if (guardEmptyContentOverwrite(existing?.content, contentStr) === undefined) {
+          logger.warn(
+            { documentName, newLen: contentStr.length, oldLen: existing?.content?.length ?? 0 },
+            'Hocuspocus store: blocked empty content overwrite',
+          );
+          return;
         }
 
         const searchText = extractTextFromTipTapJson(contentStr);
 
-        await prisma.note.update({
-          where: { id: documentName },
-          data: {
-            content: contentStr,
-            ydocState: Buffer.from(state),
-            searchText,
-            updatedAt: new Date(),
-          },
-        });
+        try {
+          await prisma.note.update({
+            where: { id: documentName },
+            data: {
+              content: contentStr,
+              ydocState: Buffer.from(state),
+              searchText,
+              updatedAt: new Date(),
+            },
+          });
+        } catch (err) {
+          // Never let a persistence failure become an unhandled rejection inside
+          // the extension — log loudly; the client keeps the edit in its Yjs doc
+          // and the next change retries.
+          logger.error({ err, documentName }, 'Hocuspocus store: prisma.note.update FAILED — edit not persisted');
+        }
       },
     }),
   ],
