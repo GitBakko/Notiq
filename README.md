@@ -187,6 +187,36 @@ Notiq/
 
 ---
 
+## Troubleshooting / Ops Scripts
+
+One-off scripts located in `backend/src/scripts/`. Run from the `backend/` directory.
+
+### `recover-note.ts` — Blank note recovery
+
+Use when a note opens blank in the editor (corrupt `ydocState` while `content` is still intact).
+
+```bash
+# Diagnose (read-only) — find notes matching a title fragment
+npx tsx src/scripts/recover-note.ts "Note title fragment"
+
+# Recover — null the corrupt ydocState so Hocuspocus rebuilds from content
+npx tsx src/scripts/recover-note.ts --clear-ydoc --id=<noteId>
+```
+
+After `--clear-ydoc`: close all open tabs of the note on every device, then `pm2 restart notiq-backend` (flushes in-memory Hocuspocus docs), then reopen the note. The script refuses if `content` is too short — in that case restore from a DB backup.
+
+### `emergency-fix-db.ts` — Raw DDL schema repair
+
+Manual last-resort tool. Runs `ALTER TABLE`, `CREATE TYPE`, and related DDL to patch schema drift that Prisma migrations cannot handle. Requires explicit opt-in flag.
+
+```bash
+npx tsx src/scripts/emergency-fix-db.ts --yes-i-understand
+```
+
+**Never run against production without a verified backup.** Without `--yes-i-understand` the script prints a warning and exits immediately.
+
+---
+
 ## Security
 
 - JWT authentication with token expiration and version-based invalidation

@@ -15,6 +15,16 @@ async function executeRaw(query: string) {
 }
 
 async function main() {
+  // SAFETY GUARD — this script runs raw DDL and can drop indexes.
+  // It is a manual last-resort ops tool. Require explicit opt-in.
+  const confirmed = process.argv.includes('--yes-i-understand');
+  if (!confirmed) {
+    console.error('REFUSING: emergency-fix-db runs raw DDL and can drop indexes.');
+    console.error('This is a manual last-resort ops tool. Re-run with --yes-i-understand if you are certain.');
+    console.error('NEVER run this against production without a verified backup.');
+    process.exit(1);
+  }
+
   console.log('--- Checking Database Schema Integrity ---');
 
   try {
