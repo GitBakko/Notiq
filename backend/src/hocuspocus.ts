@@ -330,58 +330,62 @@ export const hocuspocus = new Server({
         return null;
       },
       store: async ({ documentName, state }) => {
-        // state is a Buffer/Uint8Array
-        const doc = new Y.Doc();
-        Y.applyUpdate(doc, new Uint8Array(state));
-
-        // @ts-ignore — TiptapTransformer API types incomplete
-        const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
-        const contentStr = JSON.stringify(json);
-
-        // [BACKUP] 2026-06-10 — inline <150 guard replaced by shared guard + try/catch
-        const existing = await prisma.note.findUnique({
-          where: { id: documentName },
-          select: { content: true, title: true },
-        });
-
-        // Integrity: never replace good content with a degenerate doc (empty/paragraph-only).
-        if (isDegenerateTipTapJson(json) && (existing?.content?.length ?? 0) > 150) {
-          logger.warn({ documentName }, 'Hocuspocus store: degenerate doc over substantial content — skipping write');
-          return;
-        }
-
-        if (guardEmptyContentOverwrite(existing?.content, contentStr) === undefined) {
-          logger.warn(
-            { documentName, newLen: contentStr.length, oldLen: existing?.content?.length ?? 0 },
-            'Hocuspocus store: blocked empty content overwrite',
-          );
-          return;
-        }
-
-        const searchText = extractTextFromTipTapJson(contentStr);
-
-        // Versioning is best-effort — never let a snapshot failure crash the extension or lose the edit.
         try {
-          await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
-        } catch (snapErr) {
-          logger.warn({ snapErr, documentName }, 'Hocuspocus store: snapshot failed — continuing with save');
-        }
+          // state is a Buffer/Uint8Array
+          const doc = new Y.Doc();
+          Y.applyUpdate(doc, new Uint8Array(state));
 
-        try {
-          await prisma.note.update({
+          // @ts-ignore — TiptapTransformer API types incomplete
+          const json = TiptapTransformer.fromYdoc(doc, 'default', extensions);
+          const contentStr = JSON.stringify(json);
+
+          // [BACKUP] 2026-06-10 — inline <150 guard replaced by shared guard + try/catch
+          const existing = await prisma.note.findUnique({
             where: { id: documentName },
-            data: {
-              content: contentStr,
-              ydocState: Buffer.from(state),
-              searchText,
-              updatedAt: new Date(),
-            },
+            select: { content: true, title: true },
           });
+
+          // Integrity: never replace good content with a degenerate doc (empty/paragraph-only).
+          if (isDegenerateTipTapJson(json) && (existing?.content?.length ?? 0) > 150) {
+            logger.warn({ documentName }, 'Hocuspocus store: degenerate doc over substantial content — skipping write');
+            return;
+          }
+
+          if (guardEmptyContentOverwrite(existing?.content, contentStr) === undefined) {
+            logger.warn(
+              { documentName, newLen: contentStr.length, oldLen: existing?.content?.length ?? 0 },
+              'Hocuspocus store: blocked empty content overwrite',
+            );
+            return;
+          }
+
+          const searchText = extractTextFromTipTapJson(contentStr);
+
+          // Versioning is best-effort — never let a snapshot failure crash the extension or lose the edit.
+          try {
+            await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
+          } catch (snapErr) {
+            logger.warn({ snapErr, documentName }, 'Hocuspocus store: snapshot failed — continuing with save');
+          }
+
+          try {
+            await prisma.note.update({
+              where: { id: documentName },
+              data: {
+                content: contentStr,
+                ydocState: Buffer.from(state),
+                searchText,
+                updatedAt: new Date(),
+              },
+            });
+          } catch (err) {
+            // Never let a persistence failure become an unhandled rejection inside
+            // the extension — log loudly; the client keeps the edit in its Yjs doc
+            // and the next change retries.
+            logger.error({ err, documentName }, 'Hocuspocus store: prisma.note.update FAILED — edit not persisted');
+          }
         } catch (err) {
-          // Never let a persistence failure become an unhandled rejection inside
-          // the extension — log loudly; the client keeps the edit in its Yjs doc
-          // and the next change retries.
-          logger.error({ err, documentName }, 'Hocuspocus store: prisma.note.update FAILED — edit not persisted');
+          logger.error({ err, documentName }, 'Hocuspocus store: unexpected failure — edit not persisted this cycle');
         }
       },
     }),
