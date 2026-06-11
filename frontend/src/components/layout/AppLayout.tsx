@@ -10,6 +10,7 @@ import CommandMenu from '../search/CommandMenu';
 import WhatsNewModal from '../WhatsNewModal';
 import AnnouncementBanner from '../../features/announcements/AnnouncementBanner';
 import NetworkStatusIndicator from './NetworkStatusIndicator';
+import SyncStatusIndicator from './SyncStatusIndicator';
 import NotificationPanel from '../../features/notifications/NotificationPanel';
 import { CURRENT_VERSION } from '../../data/changelog';
 import i18n from '../../i18n';
@@ -89,6 +90,7 @@ export default function AppLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden w-full bg-white dark:bg-neutral-950">
         <NetworkStatusIndicator />
+        <SyncStatusIndicator />
         <AnnouncementBanner />
         <ErrorBoundary>
           <Outlet />
