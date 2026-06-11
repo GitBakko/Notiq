@@ -32,6 +32,7 @@ import { registerUser, loginUser, verifyEmail, requestPasswordReset, resetPasswo
 import * as settingsService from '../services/settings.service';
 import * as inviteService from '../services/invite.service';
 import * as groupService from '../services/group.service';
+import * as emailService from '../services/email.service';
 
 const prismaMock = vi.mocked(prisma, true);
 const bcryptMock = vi.mocked(bcrypt, true);
@@ -104,6 +105,27 @@ describe('auth.service — registerUser', () => {
 
     expect(result).toEqual(createdUser);
     expect(inviteService.validateInvite).not.toHaveBeenCalled();
+  });
+
+  it('should complete registration even if the verification email fails to send (SMTP down)', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(null);
+    prismaMock.user.create.mockResolvedValueOnce(createdUser as any);
+    prismaMock.invitation.update.mockResolvedValueOnce({
+      creatorId: 'creator-1',
+      creator: { role: 'USER', invitesAvailable: 3 },
+    } as any);
+    prismaMock.auditLog.create.mockResolvedValue({} as any);
+    prismaMock.user.update.mockResolvedValueOnce({} as any);
+    vi.mocked(emailService.sendNotificationEmail).mockRejectedValueOnce(new Error('connect ECONNREFUSED (SMTP)'));
+
+    // The user row is already committed when the email is sent — an SMTP failure
+    // must NOT fail the registration (the user can use "resend verification" later).
+    const result = await registerUser(validData);
+
+    expect(result).toEqual(createdUser);
+    expect(emailService.sendNotificationEmail).toHaveBeenCalledWith(
+      validData.email, 'VERIFY_EMAIL', expect.objectContaining({ locale: 'en' })
+    );
   });
 });
 

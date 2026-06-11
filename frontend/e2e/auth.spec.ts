@@ -7,11 +7,10 @@ const SUPERADMIN_EMAIL = 'superadmin@notiq.ai';
 const SUPERADMIN_PASSWORD = 'superadmin';
 
 test.describe('Authentication', () => {
-  test.fixme('should register a new user', async ({ page }) => {
-    // FIXME: In dev env SMTP is not configured so the register endpoint returns 500 even though the
-    // user row IS created (bug: sendNotificationEmail throws after DB insert, polluting the response).
-    // The real fix is in auth.service.ts — catch SMTP errors and return success regardless.
-    // When fixed, the expected UX is: form fills → submit → "Registration Successful!" success screen.
+  test('should register a new user', async ({ page }) => {
+    // Registration is invitation-based: provision an invite code via the superadmin API,
+    // then drive the real register form. The verification email send is best-effort on the
+    // backend (SMTP failures don't fail registration), so this works in dev without SMTP.
     const email = `test-${uuidv4()}@example.com`;
     const password = 'password123';
 

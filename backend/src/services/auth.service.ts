@@ -8,6 +8,7 @@ import * as settingsService from './settings.service';
 import * as groupService from './group.service';
 import { BadRequestError, UnauthorizedError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors';
 import { logEvent } from './audit.service';
+import logger from '../utils/logger';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -111,8 +112,15 @@ export const registerUser = async (data: { email: string; password: string; name
     }
   }
 
-  // 8. Send Verification Email
-  await sendNotificationEmail(email, 'VERIFY_EMAIL', { token: verificationToken, locale: user.locale || 'en' });
+  // 8. Send Verification Email — best-effort: the user row is already committed, so an
+  // SMTP failure must NOT fail the registration (a 500 here left an orphan unverified row
+  // and the user's retry hit "userExists"). The user can request a resend later.
+  // [BACKUP] 2026-06-11 — was: await sendNotificationEmail(email, 'VERIFY_EMAIL', { token: verificationToken, locale: user.locale || 'en' });
+  try {
+    await sendNotificationEmail(email, 'VERIFY_EMAIL', { token: verificationToken, locale: user.locale || 'en' });
+  } catch (err) {
+    logger.error({ err, email }, 'registerUser: verification email failed to send — registration still succeeds');
+  }
 
   // Audit: successful registration
   logEvent(user.id, 'REGISTER', { email: data.email });

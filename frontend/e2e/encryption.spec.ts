@@ -9,6 +9,9 @@ test.describe('Encryption', () => {
   });
 
   test('should insert, lock, and unlock an encrypted block', async ({ page }) => {
+    // PBKDF2 (100k iterations) runs twice in-browser — slow under parallel CPU contention
+    test.slow();
+
     // Capture browser logs and errors
     page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
     page.on('pageerror', err => console.log('BROWSER ERROR:', err));
