@@ -135,11 +135,19 @@ export const syncPull = async () => {
       const sharedPullStartTime = Date.now();
       const sharedRes = await api.get<(Note & { _sharedPermission: 'READ' | 'WRITE'; _recipientNotebookId?: string | null })[]>('/share/notes/accepted');
 
-      await db.transaction('rw', db.notes, async () => {
+      await db.transaction('rw', db.notes, db.syncQueue, async () => {
+        // Zombie prevention (mirrors the owned-notes pull): a locally-deleted shared note with a
+        // pending DELETE in the queue must not be resurrected by the server response.
+        const pendingSharedDeletes = await db.syncQueue
+          .where('entity').equals('NOTE')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingSharedDeleteIds = new Set(pendingSharedDeletes.map(i => i.entityId));
+
         const localShared = await db.notes.where('ownership').equals('shared').toArray();
         const localSharedMap = new Map(localShared.map(n => [n.id, n]));
 
-        const serverShared = sharedRes.data.map(n => {
+        const serverShared = sharedRes.data.filter(n => !pendingSharedDeleteIds.has(n.id)).map(n => {
           const mapped = {
             ...n,
             tags: n.tags || [],
@@ -499,7 +507,7 @@ function shouldRetry(itemId: number | undefined): boolean {
   if (!itemId) return true;
   const info = failureCounts.get(itemId);
   if (!info) return true;
-  if (info.count >= MAX_RETRIES) return false;
+  if (info.count >= MAX_RETRIES) return false; // defensive backstop — terminal items are skipped via status==='failed' before this runs
   return Date.now() >= info.nextRetryAt;
 }
 
@@ -626,6 +634,7 @@ export const syncPush = async () => {
           const localBoard = await db.kanbanBoards.get(item.entityId);
           if (localBoard?.ownership === 'shared') {
             if (item.id) await db.syncQueue.delete(item.id);
+            clearFailure(item.id);
             continue;
           }
           if (item.type === 'CREATE') {
@@ -788,5 +797,23 @@ export const syncPush = async () => {
       setTimeout(() => syncPush(), 1000);
     }
   }
+};
+
+/**
+ * Re-enable all failed queue items for the current user and trigger a push.
+ * Called from the SyncStatusIndicator retry action.
+ */
+export const retryFailedSyncItems = async (): Promise<void> => {
+  const currentUserId = useAuthStore.getState().user?.id;
+  if (!currentUserId) return;
+  const failed = await db.syncQueue.where('status').equals('failed')
+    .filter(item => item.userId === currentUserId).toArray();
+  for (const item of failed) {
+    if (!item.id) continue;
+    failureCounts.delete(item.id);
+    await db.syncQueue.update(item.id, { status: 'pending' as const, attempts: 0 });
+  }
+  // The liveQuery count doesn't change on status updates, so useSync won't re-fire — push explicitly
+  if (failed.length > 0) void syncPush();
 };
 

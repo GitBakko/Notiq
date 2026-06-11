@@ -86,7 +86,7 @@ vi.mock('../../../store/authStore', () => ({ useAuthStore: mockAuthStore }));
 // Import the module under test (AFTER mocks are registered)
 // ---------------------------------------------------------------------------
 
-import { syncPull, syncPush } from '../syncService';
+import { syncPull, syncPush, retryFailedSyncItems } from '../syncService';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -383,6 +383,35 @@ describe('syncPull', () => {
         sharedPermission: 'WRITE',
         syncStatus: 'synced',
       }));
+    });
+
+    it('prevents zombie resurrection for shared notes with pending DELETE', async () => {
+      // Pending DELETE for shared-z1 in the queue
+      const pendingDelete = {
+        id: 905, type: 'DELETE' as const, entity: 'NOTE' as const, entityId: 'shared-z1',
+        userId: 'user-1', data: {}, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([pendingDelete]);
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/share/notes/accepted') {
+          return Promise.resolve({
+            data: [
+              { id: 'shared-z1', title: 'Zombie', _sharedPermission: 'WRITE', user: null },
+              { id: 'shared-ok', title: 'Fine', _sharedPermission: 'READ', user: null },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      await syncPull();
+
+      // bulkPut on notes must never include the pending-delete shared note
+      const allBulkPuts = mockDb.notes.bulkPut.mock.calls.flatMap((c: unknown[][]) => c[0] as { id: string }[]);
+      const putIds = allBulkPuts.map((n: { id: string }) => n.id);
+      expect(putIds).not.toContain('shared-z1');
+      expect(putIds).toContain('shared-ok');
     });
 
     it('removes shared notes no longer in server response (revoked)', async () => {
@@ -1112,6 +1141,37 @@ describe('syncPush', () => {
   });
 
   // -----------------------------------------------------------------
+  // retryFailedSyncItems (M2 sync surfacing)
+  // -----------------------------------------------------------------
+  describe('retryFailedSyncItems', () => {
+    it('resets failed items of the current user to pending and triggers a push', async () => {
+      const failedItem = {
+        id: 904, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f4',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+        attempts: 5, status: 'failed' as const, lastError: 'boom',
+      };
+
+      // where('status').equals('failed').filter(...).toArray()
+      mockDb.syncQueue.toArray.mockResolvedValue([failedItem]);
+
+      await retryFailedSyncItems();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(904, expect.objectContaining({
+        status: 'pending',
+        attempts: 0,
+      }));
+    });
+
+    it('does nothing when there are no failed items', async () => {
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+
+      await retryFailedSyncItems();
+
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------
   // Failure persistence (M2 sync surfacing)
   // -----------------------------------------------------------------
   describe('failure persistence', () => {
@@ -1154,6 +1214,23 @@ describe('syncPush', () => {
         attempts: 5,
         status: 'failed',
         lastError: 'Still down',
+      }));
+    });
+
+    it('stringifies non-Error rejections into lastError', async () => {
+      const queueItem = {
+        id: 906, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f5',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-f5', ownership: 'owned' });
+      mockApi.put.mockRejectedValue('plain string failure');
+
+      await syncPush();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(906, expect.objectContaining({
+        lastError: 'plain string failure',
       }));
     });
 
