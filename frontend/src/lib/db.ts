@@ -156,6 +156,11 @@ export interface SyncQueueItem {
   userId: string; // Added for data isolation
   data?: Record<string, unknown>;
   createdAt: number;
+  // v15 sync surfacing — optional so the many existing enqueue call-sites need no changes.
+  // undefined attempts/status ≡ pending item with 0 attempts.
+  attempts?: number;
+  status?: 'pending' | 'failed';
+  lastError?: string;
 }
 
 class AppDatabase extends Dexie {
@@ -248,6 +253,16 @@ class AppDatabase extends Dexie {
       kanbanBoards: 'id, ownerId, updatedAt, syncStatus, ownership',
       kanbanColumns: 'id, boardId, position, syncStatus',
       kanbanCards: 'id, columnId, boardId, position, updatedAt, syncStatus',
+    });
+
+    // v15: Sync surfacing — status/attempts/lastError on syncQueue (status indexed for failed-count queries)
+    this.version(15).stores({
+      syncQueue: '++id, type, entity, userId, createdAt, status'
+    }).upgrade(tx => {
+      return tx.table('syncQueue').toCollection().modify(item => {
+        item.attempts = item.attempts ?? 0;
+        item.status = item.status ?? 'pending';
+      });
     });
   }
 }
