@@ -782,6 +782,13 @@
     "online": "Online",
     "reconnecting": "Riconnessione..."
   },
+  "sync": {
+    "pending": "{{count}} modifiche in attesa di sincronizzazione",
+    "failed": "{{count}} modifiche non sincronizzate",
+    "retry": "Riprova",
+    "failedToast": "Alcune modifiche non sono state sincronizzate. Usa Riprova nella barra di sincronizzazione.",
+    "pendingToast": "La sincronizzazione sta richiedendo più tempo del solito"
+  },
   "collaboration": {
     "you": "Tu",
     "jumpToEdit": "Vai alla modifica"

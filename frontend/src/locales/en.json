@@ -1138,6 +1138,13 @@
     "online": "Online",
     "reconnecting": "Reconnecting..."
   },
+  "sync": {
+    "pending": "{{count}} change(s) waiting to sync",
+    "failed": "{{count}} change(s) failed to sync",
+    "retry": "Retry",
+    "failedToast": "Some changes could not be synced. Use Retry in the sync bar.",
+    "pendingToast": "Changes are taking longer than usual to sync"
+  },
   "collaboration": {
     "you": "You",
     "jumpToEdit": "Jump to edit"
