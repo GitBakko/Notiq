@@ -162,7 +162,6 @@ export const syncPull = async () => {
           // Race condition guard: if per-user metadata (tags, recipientNotebookId) was updated
           // locally DURING this pull (i.e., after the fetch started but before it completed),
           // preserve the local values — the server response contains stale data for these fields.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const local = localSharedMap.get(n.id) as (typeof mapped & { _localMetaUpdatedAt?: number }) | undefined;
           if (local?._localMetaUpdatedAt && local._localMetaUpdatedAt >= sharedPullStartTime) {
             return {
