@@ -1,18 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { v4 as uuidv4 } from 'uuid';
+import { registerAndLogin } from './helpers';
 
 test.describe('Encryption', () => {
   test.beforeEach(async ({ page }) => {
-    // Register and login with unique email
-    const email = `encryption-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Encryption User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Encryption User' });
   });
 
   test('should insert, lock, and unlock an encrypted block', async ({ page }) => {
@@ -22,7 +15,7 @@ test.describe('Encryption', () => {
 
     // 1. Create a new note
     await expect(page.getByTestId('sidebar-item-notes')).toBeVisible({ timeout: 10000 });
-    const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
+    const newNoteBtn = page.getByRole('button', { name: 'New Note', exact: true });
     await expect(newNoteBtn).toBeVisible();
     await newNoteBtn.click();
     await expect(page).toHaveURL(/.*noteId=.*/, { timeout: 10000 });
@@ -79,7 +72,6 @@ test.describe('Encryption', () => {
     await unlockBtn.click();
 
     // 9. Verify Unlocked State
-    // 9. Verify Unlocked State
     await expect(page.locator('textarea')).toHaveValue('This is a secret message.');
 
     // 10. Re-lock
@@ -88,8 +80,8 @@ test.describe('Encryption', () => {
     await expect(page.getByText('Encrypted Content')).toBeVisible();
 
     // 11. Reload and Verify Persistence
-    // Wait for debounce (1s) and save to complete
-    await page.waitForTimeout(2000);
+    // Offline-first: Dexie write is immediate (debounced ~1s); no "Saved" indicator exists.
+    await page.waitForTimeout(3000);
     await page.reload();
     await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 10000 });
 

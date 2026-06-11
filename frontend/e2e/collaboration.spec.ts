@@ -261,8 +261,11 @@ test.describe('Collaboration', () => {
       await createNoteAndWait(pageA, 'Sent Invite Note', 'Checking sent invitations');
       await shareCurrentNote(pageA, userB.email);
 
-      // Close the modal (first X button is the modal close)
-      await pageA.locator('button').filter({ has: pageA.locator('svg.lucide-x') }).first().click();
+      // Close the modal by clicking the backdrop — the global "first lucide-x button"
+      // heuristic is flaky (can resolve to a hidden panel's close button and hang forever,
+      // since no actionTimeout is configured).
+      await pageA.locator('div.fixed.inset-0.z-50').click({ position: { x: 8, y: 8 } });
+      await expect(pageA.locator('input[placeholder="Enter email address"]')).not.toBeVisible({ timeout: 5000 });
 
       // User A navigates to Sharing Center and switches to "Sent" tab
       await pageA.goto('/shared');

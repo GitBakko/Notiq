@@ -1,17 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { v4 as uuidv4 } from 'uuid';
+import { registerAndLogin } from './helpers';
 
 test.describe('User Profile', () => {
   test.beforeEach(async ({ page }) => {
-    const email = `profile-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Profile User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Profile User' });
   });
 
   test('should navigate to profile page', async ({ page }) => {
@@ -37,15 +31,9 @@ test.describe('User Profile', () => {
 
 test.describe('Trash', () => {
   test.beforeEach(async ({ page }) => {
-    const email = `trash-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Trash User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Trash User' });
   });
 
   test('should navigate to trash page', async ({ page }) => {

@@ -1,17 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { v4 as uuidv4 } from 'uuid';
+import { registerAndLogin } from './helpers';
 
 test.describe('Kanban Boards', () => {
   test.beforeEach(async ({ page }) => {
-    const email = `kanban-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Kanban User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Kanban User' });
   });
 
   test('should navigate to kanban page', async ({ page }) => {
@@ -29,15 +23,16 @@ test.describe('Kanban Boards', () => {
     await page.click('a[href="/kanban"]');
     await expect(page).toHaveURL(/\/kanban/);
 
-    // Click New Board button
-    await page.getByRole('button', { name: 'New Board' }).click();
+    // Click New Board button (use first() — both the header button and empty-state button exist)
+    await page.getByRole('button', { name: 'New Board' }).first().click();
 
     // Fill in the title
     await page.fill('input[placeholder="Board title"]', 'Test Board');
     await page.fill('textarea[placeholder="Description (optional)"]', 'A test board');
 
     // Submit
-    await page.getByRole('button', { name: 'Create' }).click();
+    // Scope to the modal dialog to avoid matching the "Create Notebook" sidebar button
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
 
     // Board should appear in the list
     await expect(page.getByText('Test Board')).toBeVisible({ timeout: 5000 });
@@ -51,9 +46,10 @@ test.describe('Kanban Boards', () => {
     await expect(page).toHaveURL(/\/kanban/);
 
     // Create a board first
-    await page.getByRole('button', { name: 'New Board' }).click();
+    await page.getByRole('button', { name: 'New Board' }).first().click();
     await page.fill('input[placeholder="Board title"]', 'Column Board');
-    await page.getByRole('button', { name: 'Create' }).click();
+    // Scope to the modal dialog to avoid matching the "Create Notebook" sidebar button
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText('Column Board')).toBeVisible({ timeout: 5000 });
 
     // Click the board to open it
@@ -72,9 +68,10 @@ test.describe('Kanban Boards', () => {
     await page.click('a[href="/kanban"]');
 
     // Create board
-    await page.getByRole('button', { name: 'New Board' }).click();
+    await page.getByRole('button', { name: 'New Board' }).first().click();
     await page.fill('input[placeholder="Board title"]', 'Card Board');
-    await page.getByRole('button', { name: 'Create' }).click();
+    // Scope to the modal dialog to avoid matching the "Create Notebook" sidebar button
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText('Card Board')).toBeVisible({ timeout: 5000 });
 
     // Open board
@@ -102,9 +99,10 @@ test.describe('Kanban Boards', () => {
     await page.click('a[href="/kanban"]');
 
     // Create board
-    await page.getByRole('button', { name: 'New Board' }).click();
+    await page.getByRole('button', { name: 'New Board' }).first().click();
     await page.fill('input[placeholder="Board title"]', 'Extra Column Board');
-    await page.getByRole('button', { name: 'Create' }).click();
+    // Scope to the modal dialog to avoid matching the "Create Notebook" sidebar button
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText('Extra Column Board')).toBeVisible({ timeout: 5000 });
 
     // Open board
@@ -131,18 +129,29 @@ test.describe('Kanban Boards', () => {
     await page.click('a[href="/kanban"]');
 
     // Create board
-    await page.getByRole('button', { name: 'New Board' }).click();
+    await page.getByRole('button', { name: 'New Board' }).first().click();
     await page.fill('input[placeholder="Board title"]', 'Delete Me Board');
-    await page.getByRole('button', { name: 'Create' }).click();
+    // Scope to the modal dialog to avoid matching the "Create Notebook" sidebar button
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText('Delete Me Board')).toBeVisible({ timeout: 5000 });
 
-    // Find the board card and click its delete button
-    const boardCard = page.locator('[class*="rounded"]').filter({ hasText: 'Delete Me Board' });
-    await boardCard.getByRole('button', { name: 'Delete board' }).click();
+    // Find the board card and trigger the context menu (3-dot/MoreVertical button, opacity-0 by default)
+    const boardCard = page.locator('[class*="rounded"]').filter({ hasText: 'Delete Me Board' }).first();
+    await boardCard.hover();
 
-    // Confirm deletion
-    const confirmBtn = page.getByRole('button', { name: 'Delete' });
-    await confirmBtn.click();
+    // Force-click the MoreVertical button (it is opacity-0 until hover, use force to bypass)
+    const menuBtn = boardCard.locator('button').first();
+    await menuBtn.click({ force: true });
+
+    // The dropdown menu appears — wait for "Delete" button to be visible (it's in a dropdown inside the board card)
+    const dropdownDeleteBtn = boardCard.getByRole('button', { name: 'Delete' });
+    await expect(dropdownDeleteBtn).toBeVisible({ timeout: 3000 });
+    await dropdownDeleteBtn.click();
+
+    // App uses ConfirmDialog (never window.confirm) — confirm deletion in the "Delete board" dialog
+    const deleteBoardDialog = page.getByRole('dialog', { name: 'Delete board' });
+    await expect(deleteBoardDialog).toBeVisible({ timeout: 3000 });
+    await deleteBoardDialog.getByRole('button', { name: 'Delete' }).click();
 
     // Board should be gone
     await expect(page.getByText('Delete Me Board')).not.toBeVisible({ timeout: 5000 });

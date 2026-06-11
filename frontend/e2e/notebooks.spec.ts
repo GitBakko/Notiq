@@ -1,17 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { v4 as uuidv4 } from 'uuid';
+import { registerAndLogin } from './helpers';
 
 test.describe('Notebooks', () => {
   test.beforeEach(async ({ page }) => {
-    const email = `notebooks-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Notebook User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Notebook User' });
   });
 
   test('should create a new notebook', async ({ page }) => {

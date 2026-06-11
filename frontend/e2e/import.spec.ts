@@ -4,6 +4,14 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { execSync } from 'child_process';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// Read current version so addInitScript can suppress the "What's New" modal.
+// The modal fires when lastSeenVersion !== CURRENT_VERSION; setting them equal suppresses it.
+const CURRENT_VERSION: string = JSON.parse(fs.readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8')).version;
 
 /**
  * Create a verified user directly in PostgreSQL and login via the UI.
@@ -43,11 +51,12 @@ async function createUserAndLogin(
     try { execSync(`docker exec notiq-db rm -f ${containerSqlPath}`, { timeout: 5000 }); } catch { /* ignore */ }
   }
 
-  // Suppress "What's New" modal and force English locale
-  await page.addInitScript(() => {
-    localStorage.setItem('lastSeenVersion', '99.99.99');
+  // Suppress "What's New" modal by marking the current version as seen, and force English locale.
+  // The modal shows when lastSeenVersion !== CURRENT_VERSION; they must match to suppress it.
+  await page.addInitScript((ver) => {
+    localStorage.setItem('lastSeenVersion', ver);
     localStorage.setItem('i18nextLng', 'en');
-  });
+  }, CURRENT_VERSION);
 
   // Login via UI
   await page.goto('/login');

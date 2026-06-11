@@ -181,8 +181,11 @@ export async function createTaskList(page: Page, title: string): Promise<void> {
 }
 
 /**
- * Wait for the "Saved" indicator to appear.
+ * Wait for the debounced offline-first save to flush to Dexie.
+ * (The old "Saved" indicator no longer exists in the UI.)
+ * TODO: a fixed sleep can flake on slow runners — poll IndexedDB via
+ * page.evaluate for the written record instead if this starts flaking.
  */
 export async function waitForSave(page: Page): Promise<void> {
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10000 });
+  await page.waitForTimeout(3000);
 }

@@ -1,17 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { v4 as uuidv4 } from 'uuid';
+import { registerAndLogin } from './helpers';
 
 test.describe('Tasks', () => {
   test.beforeEach(async ({ page }) => {
-    const email = `tasks-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Tasks User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Tasks User' });
   });
 
   test('should navigate to tasks page', async ({ page }) => {
@@ -23,15 +17,15 @@ test.describe('Tasks', () => {
 
     // Verify we're on tasks page
     await expect(page).toHaveURL(/\/tasks/);
-    // Use exact selector to avoid matching username
-    await expect(page.getByRole('link', { name: 'Tasks', exact: true })).toBeVisible();
+    // Sidebar link text is "Task Lists" (not "Tasks")
+    await expect(page.getByRole('link', { name: 'Task Lists', exact: true })).toBeVisible();
   });
 
   test('should create a note with checklist', async ({ page }) => {
     await expect(page.getByTestId('sidebar-item-notes')).toBeVisible();
 
-    // Create a note
-    const newNoteBtn = page.locator('button.rounded-full.bg-emerald-600').filter({ hasText: 'New Note' });
+    // Create a note (use role selector — CSS classes may change)
+    const newNoteBtn = page.getByRole('button', { name: 'New Note', exact: true });
     await newNoteBtn.click();
     await expect(page.locator('input[placeholder="Note Title"]')).toBeVisible({ timeout: 10000 });
 
@@ -45,8 +39,8 @@ test.describe('Tasks', () => {
     await page.keyboard.press('Enter');
     await page.locator('.ProseMirror').type('- [ ] Second task item');
 
-    // Wait for save
-    await expect(page.getByText('Saved')).toBeVisible({ timeout: 10000 });
+    // Offline-first: Dexie write is immediate (debounced ~1s); no "Saved" indicator exists.
+    await page.waitForTimeout(3000);
 
     // Verify checkboxes are rendered (TipTap converts [ ] to checkbox)
     // The exact rendering depends on the TipTap extension
