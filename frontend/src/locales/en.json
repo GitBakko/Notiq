@@ -1143,7 +1143,8 @@
     "failed": "{{count}} change(s) failed to sync",
     "retry": "Retry",
     "failedToast": "Some changes could not be synced. Use Retry in the sync bar.",
-    "pendingToast": "Changes are taking longer than usual to sync"
+    "pendingToast": "Changes are taking longer than usual to sync",
+    "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection"
   },
   "collaboration": {
     "you": "You",
@@ -1157,6 +1158,8 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "syncRetryKick": "Offline changes now sync automatically when the connection returns (no edit needed)",
+      "sharedSaveToast": "A warning appears when changes to a shared note cannot reach the server",
       "noteVersionHistory": "Note version history — browse previous versions and restore with one click (⟳ button)",
       "syncStatusBanner": "Sync status banner — see pending/failed offline changes with a Retry action",
       "dataLossGuards": "Data-loss protection — guards against accidental content wipes and corrupted collaboration state",

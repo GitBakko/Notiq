@@ -109,6 +109,15 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         }
     }, [note.content]);
 
+    // Shared-note REST saves bypass the sync queue (recipients can't push via /notes),
+    // so a failure would otherwise be invisible. Warn ONCE per failure streak.
+    const sharedSaveFailedNotifiedRef = useRef(false);
+    const notifySharedSaveFailure = useCallback(() => {
+        if (sharedSaveFailedNotifiedRef.current) return;
+        sharedSaveFailedNotifiedRef.current = true;
+        toast.error(t('sync.sharedSaveFailed'), { id: 'shared-save-failed' });
+    }, [t]);
+
     // -- Save Effects --
     useEffect(() => {
         if (note.isTrashed || isReadOnly) return;
@@ -117,7 +126,9 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 updateNoteLocalOnly(note.id, { title: debouncedTitle });
                 // Persist title to server so the owner (and other recipients) see it
                 if (sharedPermission === 'WRITE') {
-                    saveSharedNoteData(note.id, { title: debouncedTitle }).catch(() => {});
+                    saveSharedNoteData(note.id, { title: debouncedTitle })
+                        .then(() => { sharedSaveFailedNotifiedRef.current = false; })
+                        .catch(notifySharedSaveFailure);
                 }
             } else {
                 updateTitle(debouncedTitle);
@@ -127,7 +138,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 provider.awareness.setLocalStateField('title', debouncedTitle);
             }
         }
-    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, sharedPermission, isReadOnly, provider]);
+    }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, sharedPermission, isReadOnly, provider, notifySharedSaveFailure]);
 
     useEffect(() => {
         if (note.isTrashed) return; // Don't save if trashed
@@ -149,16 +160,18 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     const hocuspocusOwnsPersistence =
                         provider?.isSynced === true && provider?.isAuthenticated === true;
                     if (!hocuspocusOwnsPersistence) {
-                        saveSharedNoteData(note.id, { content: debouncedContent }).catch(() => {
-                            // Non-critical: Hocuspocus store or next edit will retry
-                        });
+                        saveSharedNoteData(note.id, { content: debouncedContent })
+                            .then(() => { sharedSaveFailedNotifiedRef.current = false; })
+                            // Next edit retries; the toast makes the failure visible (shared
+                            // notes bypass the sync queue, so no banner covers this path)
+                            .catch(notifySharedSaveFailure);
                     }
                 }
             } else {
                 updateContent(debouncedContent);
             }
         }
-    }, [debouncedContent, note.id, provider, note.isTrashed, isSharedNote, sharedPermission, updateContent]);
+    }, [debouncedContent, note.id, provider, note.isTrashed, isSharedNote, sharedPermission, updateContent, notifySharedSaveFailure]);
 
 
     // -- Hocuspocus / Chat Logic --

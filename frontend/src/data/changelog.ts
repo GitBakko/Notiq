@@ -11,6 +11,14 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.10.1',
+    date: '2026-06-11',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.syncRetryKick' },
+      { type: 'fix', titleKey: 'whatsNew.entries.sharedSaveToast' },
+    ],
+  },
+  {
     version: '1.10.0',
     date: '2026-06-11',
     entries: [

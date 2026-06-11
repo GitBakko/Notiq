@@ -787,7 +787,8 @@
     "failed": "{{count}} modifiche non sincronizzate",
     "retry": "Riprova",
     "failedToast": "Alcune modifiche non sono state sincronizzate. Usa Riprova nella barra di sincronizzazione.",
-    "pendingToast": "La sincronizzazione sta richiedendo più tempo del solito"
+    "pendingToast": "La sincronizzazione sta richiedendo più tempo del solito",
+    "sharedSaveFailed": "Le modifiche a questa nota condivisa non sono state salvate sul server — verifica la connessione"
   },
   "collaboration": {
     "you": "Tu",
@@ -801,6 +802,8 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "syncRetryKick": "Le modifiche offline ora si sincronizzano da sole al ritorno della connessione (senza dover modificare)",
+      "sharedSaveToast": "Avviso quando le modifiche a una nota condivisa non raggiungono il server",
       "noteVersionHistory": "Cronologia versioni note — sfoglia le versioni precedenti e ripristina con un click (pulsante ⟳)",
       "syncStatusBanner": "Banner stato sincronizzazione — modifiche offline in attesa/fallite con azione Riprova",
       "dataLossGuards": "Protezione perdita dati — guardie contro cancellazioni accidentali e stato collaborazione corrotto",

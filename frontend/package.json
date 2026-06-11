@@ -1,7 +1,7 @@
 {
   "name": "notiq",
   "private": true,
-  "version": "1.10.0",
+  "version": "1.10.1",
   "engines": {
     "node": ">=20.19.0"
   },

@@ -28,23 +28,31 @@ export function useSync() {
   }, [pendingCount, token]);
 
 
-  // Periodic PULL (and initial sync)
+  // Periodic PULL + PUSH retry (and initial sync)
   useEffect(() => {
     if (!token) return;
 
-    const runPull = async () => {
+    const runSync = async () => {
       try {
         await syncPull();
       } catch (error) {
         console.error('Periodic Pull failed:', error);
       }
+      // Retry kick for the push queue: the count-based effect above only fires when the
+      // queue CHANGES, so items stuck after a connectivity loss would otherwise wait for
+      // the next user edit. syncPush is cheap when the queue is empty or in backoff.
+      try {
+        await syncPush();
+      } catch (error) {
+        console.error('Periodic Push retry failed:', error);
+      }
     };
 
-    // Initial pull on mount
-    runPull();
+    // Initial sync on mount
+    runSync();
 
-    // Periodic pull every 30s
-    const intervalId = setInterval(runPull, 30000);
+    // Periodic sync every 30s
+    const intervalId = setInterval(runSync, 30000);
 
     return () => clearInterval(intervalId);
   }, [token]);
