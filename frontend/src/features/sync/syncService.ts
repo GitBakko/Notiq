@@ -3,7 +3,7 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
-import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard } from '../../lib/db';
+import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard, SyncQueueItem } from '../../lib/db';
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 
 export const syncPull = async () => {
@@ -503,13 +503,37 @@ function shouldRetry(itemId: number | undefined): boolean {
   return Date.now() >= info.nextRetryAt;
 }
 
-function recordFailure(itemId: number | undefined): void {
-  if (!itemId) return;
-  const info = failureCounts.get(itemId) || { count: 0, nextRetryAt: 0 };
+// [BACKUP] 2026-06-11 — old recordFailure was in-memory only (sync surfacing M2 adds persistence):
+// function recordFailure(itemId: number | undefined): void {
+//   if (!itemId) return;
+//   const info = failureCounts.get(itemId) || { count: 0, nextRetryAt: 0 };
+//   info.count += 1;
+//   // Exponential backoff: 5s, 15s, 45s, 135s, 405s
+//   info.nextRetryAt = Date.now() + Math.min(5000 * Math.pow(3, info.count - 1), 5 * 60 * 1000);
+//   failureCounts.set(itemId, info);
+// }
+async function recordFailure(item: SyncQueueItem, error: unknown): Promise<void> {
+  if (!item.id) return;
+  // Seed from persisted attempts so bounded retries survive page reloads
+  const info = failureCounts.get(item.id) || { count: item.attempts ?? 0, nextRetryAt: 0 };
   info.count += 1;
-  // Exponential backoff: 5s, 15s, 45s, 135s, 405s
-  info.nextRetryAt = Date.now() + Math.min(5000 * Math.pow(3, info.count - 1), 5 * 60 * 1000);
-  failureCounts.set(itemId, info);
+  // Exponential backoff: 5s, 15s, 45s, 135s, 405s — ±20% jitter avoids synchronized retry storms
+  const base = Math.min(5000 * Math.pow(3, info.count - 1), 5 * 60 * 1000);
+  info.nextRetryAt = Date.now() + base + Math.round(base * 0.2 * (Math.random() * 2 - 1));
+  failureCounts.set(item.id, info);
+
+  const lastError = error instanceof Error ? error.message : String(error);
+  try {
+    if (info.count >= MAX_RETRIES) {
+      await db.syncQueue.update(item.id, { attempts: info.count, status: 'failed' as const, lastError });
+      // Terminal state — prune the in-memory map; only an explicit user retry re-enables the item
+      failureCounts.delete(item.id);
+    } else {
+      await db.syncQueue.update(item.id, { attempts: info.count, status: 'pending' as const, lastError });
+    }
+  } catch (e) {
+    console.error('Sync Push: failed to persist failure metadata', e);
+  }
 }
 
 function clearFailure(itemId: number | undefined): void {
@@ -535,6 +559,8 @@ export const syncPush = async () => {
     const queue = allQueue.filter(item => item.userId === currentUserId);
 
     for (const item of queue) {
+      // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
+      if (item.status === 'failed') continue;
       // Skip items in backoff period
       if (!shouldRetry(item.id)) continue;
 
@@ -749,7 +775,7 @@ export const syncPush = async () => {
           if (item.id) await db.syncQueue.delete(item.id);
           clearFailure(item.id);
         } else {
-          recordFailure(item.id);
+          await recordFailure(item, error);
           console.error('Sync Push Failed for item:', item, error);
         }
       }

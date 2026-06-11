@@ -1110,4 +1110,68 @@ describe('syncPush', () => {
       expect(mockApi.delete).not.toHaveBeenCalled();
     });
   });
+
+  // -----------------------------------------------------------------
+  // Failure persistence (M2 sync surfacing)
+  // -----------------------------------------------------------------
+  describe('failure persistence', () => {
+    it('persists attempts and lastError on push failure', async () => {
+      const queueItem = {
+        id: 901, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f1',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-f1', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error'));
+
+      await syncPush();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(901, expect.objectContaining({
+        attempts: 1,
+        status: 'pending',
+        lastError: 'Network Error',
+      }));
+      // Item must stay in the queue
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(901);
+    });
+
+    it('marks item failed (terminal) when persisted attempts reach MAX_RETRIES', async () => {
+      // attempts: 4 persisted → this failure is the 5th → terminal
+      const queueItem = {
+        id: 902, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f2',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+        attempts: 4,
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-f2', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Still down'));
+
+      await syncPush();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(902, expect.objectContaining({
+        attempts: 5,
+        status: 'failed',
+        lastError: 'Still down',
+      }));
+    });
+
+    it('skips items with status=failed entirely (no API call)', async () => {
+      const queueItem = {
+        id: 903, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f3',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+        attempts: 5, status: 'failed' as const,
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+
+      await syncPush();
+
+      expect(mockApi.put).not.toHaveBeenCalled();
+      expect(mockApi.post).not.toHaveBeenCalled();
+      expect(mockApi.delete).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+    });
+  });
 });
