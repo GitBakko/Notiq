@@ -801,6 +801,11 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "noteVersionHistory": "Cronologia versioni note — sfoglia le versioni precedenti e ripristina con un click (pulsante ⟳)",
+      "syncStatusBanner": "Banner stato sincronizzazione — modifiche offline in attesa/fallite con azione Riprova",
+      "dataLossGuards": "Protezione perdita dati — guardie contro cancellazioni accidentali e stato collaborazione corrotto",
+      "collabTableAttrs": "Larghezza colonne e altezza righe delle tabelle ora preservate nelle note collaborative",
+      "registerSmtpFix": "La registrazione non fallisce piu' quando il servizio email e' temporaneamente non disponibile",
       "chatSystem": "Chat dedicata — conversazioni 1:1 e di gruppo con messaggistica in tempo reale",
       "chatEmoji": "Supporto emoji completo con reazioni, risposte, modifica ed eliminazione messaggi",
       "chatFileSharing": "Condivisione file in chat con miniature e anteprime inline",

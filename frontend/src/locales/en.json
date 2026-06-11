@@ -1157,6 +1157,11 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "noteVersionHistory": "Note version history — browse previous versions and restore with one click (⟳ button)",
+      "syncStatusBanner": "Sync status banner — see pending/failed offline changes with a Retry action",
+      "dataLossGuards": "Data-loss protection — guards against accidental content wipes and corrupted collaboration state",
+      "collabTableAttrs": "Table column widths and row heights are now preserved in collaborative notes",
+      "registerSmtpFix": "Registration no longer fails when the email service is temporarily unavailable",
       "chatSystem": "Dedicated chat — WhatsApp-like 1:1 and group conversations with real-time messaging",
       "chatEmoji": "Full emoji support with reactions, replies, message editing and deletion",
       "chatFileSharing": "File sharing in chat with thumbnails and inline previews",
