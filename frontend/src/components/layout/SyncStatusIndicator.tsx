@@ -26,7 +26,9 @@ export default function SyncStatusIndicator() {
 
   const failedCount = items?.filter((i) => i.status === 'failed').length ?? 0;
   const pendingItems = items?.filter((i) => i.status !== 'failed') ?? [];
-  const oldestPendingAt = pendingItems.length > 0 ? Math.min(...pendingItems.map((i) => i.createdAt)) : null;
+  const oldestPendingAt = pendingItems.length > 0
+    ? pendingItems.reduce((min, i) => Math.min(min, i.createdAt), Infinity)
+    : null;
   const pendingAge = oldestPendingAt ? Date.now() - oldestPendingAt : 0;
   const showPending = pendingItems.length > 0 && pendingAge >= PENDING_VISIBLE_AFTER_MS;
 
@@ -57,7 +59,7 @@ export default function SyncStatusIndicator() {
       pendingToastShownRef.current = true;
       toast(t('sync.pendingToast'), { icon: '⏳' });
     }
-  });
+  }, [pendingItems.length, pendingAge, t]);
 
   const handleRetry = async () => {
     setIsRetrying(true);

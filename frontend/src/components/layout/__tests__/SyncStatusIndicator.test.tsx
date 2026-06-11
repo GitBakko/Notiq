@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { act } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 const { mockUseLiveQuery, mockRetry, mockToast } = vi.hoisted(() => ({
@@ -37,6 +38,12 @@ describe('SyncStatusIndicator', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('renders nothing while items are loading (undefined)', () => {
+    mockUseLiveQuery.mockReturnValue(undefined);
+    const { container } = render(<SyncStatusIndicator />);
+    expect(container.firstChild).toBeNull();
+  });
+
   it('renders nothing for fresh pending items (normal debounce window)', () => {
     mockUseLiveQuery.mockReturnValue([
       { id: 1, createdAt: Date.now() - 1000, userId: 'user-1' },
@@ -54,13 +61,15 @@ describe('SyncStatusIndicator', () => {
     expect(screen.getByText('sync.pending:2')).toBeTruthy();
   });
 
-  it('shows the failed banner with a retry button; clicking calls retryFailedSyncItems', () => {
+  it('shows the failed banner with a retry button; clicking calls retryFailedSyncItems', async () => {
     mockUseLiveQuery.mockReturnValue([
       { id: 1, status: 'failed', createdAt: Date.now() - 1000, userId: 'user-1' },
     ]);
     render(<SyncStatusIndicator />);
     expect(screen.getByText('sync.failed:1')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button'));
+    });
     expect(mockRetry).toHaveBeenCalledOnce();
   });
 
