@@ -1,19 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { v4 as uuidv4 } from 'uuid';
+import { registerAndLogin } from './helpers';
 
 test.describe('Notes', () => {
   test.beforeEach(async ({ page }) => {
-    // Register and login with unique email
-    const email = `notes-${uuidv4()}@example.com`;
-    const password = 'password123';
-
-    await page.goto('/register');
-    await page.fill('input[type="text"]', 'Notes User');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/notes/, { timeout: 10000 });
-    // Already logged in
+    // Stale register-page flow replaced: invitation-based auth + email verification
+    // block direct /register → /notes. The shared helper provisions a verified user via API.
+    await registerAndLogin(page, { name: 'Notes User' });
   });
 
   test('should create a new note', async ({ page }) => {
@@ -67,10 +59,9 @@ test.describe('Notes', () => {
     await editor.fill('This is the content of my first note.');
 
     console.log('Waiting for auto-save...');
-    // Wait for auto-save (debounced 1000ms)
+    // Offline-first: the note is written to Dexie immediately (debounced ~1s); there is
+    // no "Saved" indicator anymore. Wait out the debounce before navigating away.
     await page.waitForTimeout(3000);
-    // Wait for "Saved" indicator just to be sure
-    await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10000 });
 
     console.log('Clicking on notebook in sidebar to see note list...');
     // The notebook in the sidebar should contain our note
@@ -110,19 +101,15 @@ test.describe('Notes', () => {
     await expect(titleInput).toBeVisible({ timeout: 10000 });
     await titleInput.fill('Note to Delete');
 
-    // Wait for auto-save
+    // Offline-first: Dexie write is immediate (debounced ~1s); no "Saved" indicator exists.
     await page.waitForTimeout(3000);
-    await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10000 });
-
-    // Handle confirm dialog
-    page.on('dialog', dialog => {
-      console.log('Dialog appeared:', dialog.message());
-      dialog.accept();
-    });
 
     console.log('Clicking Delete button...');
     // Click Delete button in toolbar (rounded-full version in NoteEditor toolbar)
     await page.locator('button.rounded-full[title="Delete"]').click();
+
+    // App uses ConfirmDialog (never window.confirm) — confirm the move to trash
+    await page.getByRole('button', { name: 'Move to Trash' }).click();
 
     console.log('Verifying deletion...');
     // Navigate to notes list explicitly to verify note is deleted
