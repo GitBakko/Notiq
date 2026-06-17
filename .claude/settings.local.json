@@ -71,6 +71,40 @@
       "Bash(claude mcp:*)",
       "Bash(npm view:*)",
       "WebSearch"
+    ],
+    "deny": [
+      "Read(./backend/.env)",
+      "Edit(./backend/.env)",
+      "Write(./backend/.env)",
+      "Read(./backend/.env.*)",
+      "Edit(./backend/.env.*)",
+      "Write(./backend/.env.*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c \"node \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\tier1-guard.cjs\"\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c \"node \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\eslint-fix.cjs\"\"",
+            "timeout": 8000
+          }
+        ]
+      }
     ]
   }
 }
