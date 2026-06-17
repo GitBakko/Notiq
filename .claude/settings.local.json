@@ -81,6 +81,9 @@
       "Write(./backend/.env.*)"
     ]
   },
+  "enabledMcpjsonServers": [
+    "postgres"
+  ],
   "hooks": {
     "PreToolUse": [
       {
@@ -88,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd /c \"node \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\tier1-guard.cjs\"\"",
+            "command": "cmd /c \"IF EXIST \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\tier1-guard.cjs\" (node \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\tier1-guard.cjs\") ELSE (exit 0)\"",
             "timeout": 5000
           }
         ]
@@ -100,11 +103,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd /c \"node \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\eslint-fix.cjs\"\"",
+            "command": "cmd /c \"IF EXIST \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\eslint-fix.cjs\" (node \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\eslint-fix.cjs\") ELSE (exit 0)\"",
             "timeout": 8000
           }
         ]
       }
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }
