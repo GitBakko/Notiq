@@ -60,8 +60,10 @@ ehthumbs.db
 *.tmp
 *.temp
 
-# Deploy artifacts
-deploy/
+# Deploy artifacts — keep the reusable PowerShell deploy scripts tracked; ignore the rest (.cmd, .sql, _backup, zips)
+deploy/*
+!deploy/Build-Package.ps1
+!deploy/Deploy-Server.ps1
 *.zip
 
 # User uploads (attachments and avatars)

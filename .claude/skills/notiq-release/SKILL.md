@@ -25,5 +25,6 @@ disable-model-invocation: true
    ```
 
 ## After release
-- To deploy the new version to production, use the **notiq-deploy** skill.
+- Build the deploy package locally: `.\deploy\Build-Package.ps1` (reads the new version from `frontend/package.json`).
+- To deploy the new version to production, use the **notiq-deploy** skill (`Deploy-Server.ps1` on the server).
 - Suggest re-running relevant E2E specs (`frontend/e2e/`) for touched flows before deploy.

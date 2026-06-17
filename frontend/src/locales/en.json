@@ -1158,6 +1158,9 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "kanbanDeleteShared": "Deleting a Kanban card now works reliably, including on shared boards",
+      "readOnlyBoardActions": "Read-only shared boards no longer show edit actions you can't use",
+      "syncFailureToast": "Failed background syncs now alert you instead of silently retrying",
       "syncRetryKick": "Offline changes now sync automatically when the connection returns (no edit needed)",
       "sharedSaveToast": "A warning appears when changes to a shared note cannot reach the server",
       "noteVersionHistory": "Note version history — browse previous versions and restore with one click (⟳ button)",

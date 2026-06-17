@@ -802,6 +802,9 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "kanbanDeleteShared": "L'eliminazione di una card Kanban ora funziona in modo affidabile, anche sulle board condivise",
+      "readOnlyBoardActions": "Le board condivise in sola lettura non mostrano più azioni di modifica non disponibili",
+      "syncFailureToast": "Le sincronizzazioni in background fallite ora ti avvisano invece di riprovare in silenzio",
       "syncRetryKick": "Le modifiche offline ora si sincronizzano da sole al ritorno della connessione (senza dover modificare)",
       "sharedSaveToast": "Avviso quando le modifiche a una nota condivisa non raggiungono il server",
       "noteVersionHistory": "Cronologia versioni note — sfoglia le versioni precedenti e ripristina con un click (pulsante ⟳)",

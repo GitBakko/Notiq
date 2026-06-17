@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.10.2',
+    date: '2026-06-17',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanDeleteShared' },
+      { type: 'fix', titleKey: 'whatsNew.entries.readOnlyBoardActions' },
+      { type: 'fix', titleKey: 'whatsNew.entries.syncFailureToast' },
+    ],
+  },
+  {
     version: '1.10.1',
     date: '2026-06-11',
     entries: [
