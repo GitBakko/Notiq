@@ -350,16 +350,24 @@ export async function moveCard(cardId: string, toColumnId: string, position: num
 export async function deleteCard(cardId: string): Promise<void> {
   const userId = getUserId();
 
+  // [BACKUP] 2026-06-17 — previously: `const card = ...; if (!card) return;`
+  // bailed out when the card was absent from the local Dexie cache, skipping the
+  // sync-queue enqueue → NO server DELETE was ever issued (silent no-op, no
+  // feedback). The board detail view renders cards from the server query, which
+  // can be out of sync with Dexie (hydration is best-effort), so a displayed
+  // card may not exist locally. Mirror updateCard/moveCard: ALWAYS enqueue the
+  // DELETE; do local cleanup best-effort.
   const card = await db.kanbanCards.get(cardId);
-  if (!card) return;
 
   await db.transaction('rw', db.kanbanCards, db.kanbanBoards, db.syncQueue, async () => {
-    await db.kanbanCards.delete(cardId);
+    await db.kanbanCards.delete(cardId); // no-op if the card isn't cached locally
 
-    // Update board card count
-    const board = await db.kanbanBoards.get(card.boardId);
-    if (board) {
-      await db.kanbanBoards.update(card.boardId, { cardCount: Math.max(0, (board.cardCount || 0) - 1) });
+    // Update board card count when we know which board the card belonged to
+    if (card) {
+      const board = await db.kanbanBoards.get(card.boardId);
+      if (board) {
+        await db.kanbanBoards.update(card.boardId, { cardCount: Math.max(0, (board.cardCount || 0) - 1) });
+      }
     }
 
     await db.syncQueue.add({
@@ -367,7 +375,7 @@ export async function deleteCard(cardId: string): Promise<void> {
       entity: 'KANBAN_CARD',
       entityId: cardId,
       userId,
-      data: { columnId: card.columnId },
+      data: card ? { columnId: card.columnId } : {},
       createdAt: Date.now(),
     });
   });

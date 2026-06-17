@@ -873,6 +873,24 @@ describe('syncPush', () => {
       }));
     });
 
+    it('marks a queue item failed immediately on 403 forbidden (no infinite silent retry)', async () => {
+      const queueItem = {
+        id: 99, type: 'DELETE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-forbidden',
+        userId: 'user-1', data: {}, createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.delete.mockRejectedValue({ response: { status: 403 } });
+
+      await syncPush();
+
+      expect(mockApi.delete).toHaveBeenCalledWith('/kanban/cards/card-forbidden');
+      // Permanent failure surfaced to the user (SyncStatusIndicator reads status:'failed'),
+      // not silently retried for ~10 minutes and not dropped.
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(99, expect.objectContaining({ status: 'failed' }));
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(99);
+    });
+
     it('skips shared kanban boards — removes from queue without API call', async () => {
       const queueItem = {
         id: 41, type: 'UPDATE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared',

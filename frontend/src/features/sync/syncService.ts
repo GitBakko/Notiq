@@ -782,6 +782,16 @@ export const syncPush = async () => {
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
           if (item.id) await db.syncQueue.delete(item.id);
           clearFailure(item.id);
+        } else if (status === 403) {
+          // Forbidden is permanent (insufficient permission) — retrying will never
+          // succeed. Mark the item 'failed' IMMEDIATELY (instead of ~5 backoff
+          // retries over ~10 min) so SyncStatusIndicator surfaces it to the user
+          // right away (error toast + retry banner) rather than failing silently.
+          console.error('Sync Push: forbidden (permission denied), marking failed:', item.entity, item.entityId);
+          if (item.id) {
+            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'forbidden' });
+          }
+          clearFailure(item.id);
         } else {
           await recordFailure(item, error);
           console.error('Sync Push Failed for item:', item, error);

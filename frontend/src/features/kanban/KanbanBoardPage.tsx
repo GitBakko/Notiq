@@ -121,7 +121,13 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const filtersActive = isFiltersActive(filters);
 
   const isOwner = board?.ownerId === user?.id;
-  const readOnly = !isOwner && board?.shares?.every((s) => s.permission === 'READ');
+  // [BACKUP] 2026-06-17 — previously: `!isOwner && board?.shares?.every((s) => s.permission === 'READ')`.
+  // That derived read-only from ALL shares, so a READ member was treated as
+  // writable whenever ANY OTHER share was WRITE (e.g. group-shared boards) and
+  // got write affordances that 403 on the server. Must use THE CURRENT USER's
+  // own share permission instead.
+  const myShare = board?.shares?.find((s) => s.userId === user?.id);
+  const readOnly = !isOwner && !(myShare?.status === 'ACCEPTED' && myShare?.permission === 'WRITE');
   const isShared = board && (board.shares?.some((s) => s.status === 'ACCEPTED') || false);
 
   // ── Marquee selection (desktop only) ──

@@ -58,8 +58,13 @@ export function useKanbanBoard(boardId: string | undefined) {
             }
           }
         });
-      } catch {
+      } catch (err) {
         // Non-critical: Dexie hydration failure shouldn't break the board view
+        // (the view renders from server data). But log it — when hydration fails,
+        // cards aren't cached locally, which breaks offline reads and used to make
+        // card deletes silently no-op. Surfacing the error makes the cause
+        // diagnosable instead of vanishing into a swallowed catch.
+        console.error('useKanbanBoard: Dexie hydration failed for board', boardId, err);
       }
 
       return board;
