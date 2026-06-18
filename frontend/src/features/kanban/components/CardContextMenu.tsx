@@ -86,6 +86,15 @@ export default function CardContextMenu({
 
   // Close on click outside
   useEffect(() => {
+    // [BACKUP] 2026-06-18 — handler ran unconditionally on `mousedown`. The delete
+    // ConfirmDialog renders in a SEPARATE portal (sibling of the menu, outside menuRef),
+    // so a mousedown on its "Confirm" button counted as an outside click → onClose() →
+    // the menu + dialog unmounted on mousedown, BEFORE the button's click/onConfirm could
+    // fire. Net effect: right-click → Delete → Confirm silently did nothing (no mutate,
+    // no request). The detail-modal delete was unaffected (no such handler). Fix: pause
+    // outside-click handling while the confirm dialog is open — the dialog already calls
+    // onClose() itself on both confirm and cancel.
+    if (showDeleteConfirm) return;
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
@@ -99,7 +108,7 @@ export default function CardContextMenu({
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClick);
     };
-  }, [onClose]);
+  }, [onClose, showDeleteConfirm]);
 
   const handleSubmenuEnter = useCallback((key: string) => {
     if (submenuTimeoutRef.current) {

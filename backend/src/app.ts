@@ -96,6 +96,16 @@ server.setErrorHandler((error, request, reply) => {
     return reply.status(400).send({ message: error instanceof Error ? error.message : 'errors.common.validationError' });
   }
 
+  // HTTP errors carrying an explicit client-error status (e.g. @fastify/rate-limit 429).
+  // [BACKUP] 2026-06-18 — previously fell straight through to the 500 fallback, which
+  // masked rate-limit 429s as 500s. That made the frontend treat throttling as a server
+  // error and retry hard, snowballing into a request storm. Preserve the real 4xx status
+  // so clients can back off correctly.
+  const httpStatus = (error as { statusCode?: number } | null)?.statusCode;
+  if (typeof httpStatus === 'number' && httpStatus >= 400 && httpStatus < 500) {
+    return reply.status(httpStatus).send({ message: error instanceof Error ? error.message : 'errors.common.error' });
+  }
+
   // Fallback — log and return 500
   request.log.error({ err: error }, 'Unhandled error');
   return reply.status(500).send({ message: 'errors.common.internalError' });
@@ -110,7 +120,12 @@ server.register(jwt, { secret: JWT_SECRET });
 
 server.register(rateLimit, {
   global: true,
-  max: 100,           // 100 requests per window per IP
+  // [BACKUP] 2026-06-18 — was max:100. Too low for an offline-first SPA: a single user's
+  // initial load + syncPull legitimately fetches notes+notebooks+tags+tasklists+shares plus
+  // ONE GET per kanban board (24+ boards), easily exceeding 100/min/IP → 429 → (masked) 500
+  // → retry storm that wedged the whole kanban. 600/min (~10 req/s sustained) gives normal
+  // app traffic headroom; sensitive write endpoints keep their stricter per-route limits.
+  max: 600,
   timeWindow: '1 minute',
   allowList: ['127.0.0.1', '::1'], // localhost exempt (health checks, internal)
 });

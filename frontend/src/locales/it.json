@@ -802,6 +802,8 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "kanbanContextDelete": "L'eliminazione di una card Kanban dal menu tasto destro ora funziona",
+      "kanbanSyncReliability": "Le board Kanban non falliscono più il caricamento o l'aggiornamento durante sync intensi",
       "kanbanDeleteShared": "L'eliminazione di una card Kanban ora funziona in modo affidabile, anche sulle board condivise",
       "readOnlyBoardActions": "Le board condivise in sola lettura non mostrano più azioni di modifica non disponibili",
       "syncFailureToast": "Le sincronizzazioni in background fallite ora ti avvisano invece di riprovare in silenzio",
