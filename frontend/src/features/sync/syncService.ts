@@ -782,6 +782,18 @@ export const syncPush = async () => {
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
           if (item.id) await db.syncQueue.delete(item.id);
           clearFailure(item.id);
+        } else if (status === 400 || status === 422) {
+          // [BACKUP] 2026-08-23 — 400/422 previously fell through to recordFailure()
+          // (backoff retry). A validation error is permanent: the queued payload is
+          // byte-identical on every attempt, so the item stayed poisoned in the queue
+          // and retried forever (observed in prod: a kanban card whose title exceeded
+          // the backend's 500-char cap). Mark it 'failed' immediately so
+          // SyncStatusIndicator surfaces it instead of looping silently.
+          console.error('Sync Push: validation rejected by server, marking failed:', item.entity, item.entityId, error);
+          if (item.id) {
+            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'validation' });
+          }
+          clearFailure(item.id);
         } else if (status === 403) {
           // Forbidden is permanent (insufficient permission) — retrying will never
           // succeed. Mark the item 'failed' IMMEDIATELY (instead of ~5 backoff

@@ -279,6 +279,7 @@ export default function CardDetailModal({
           ) : (
             <input
               type="text"
+              maxLength={500}
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               onBlur={handleTitleBlur}
@@ -301,6 +302,7 @@ export default function CardDetailModal({
           ) : (
             <textarea
               ref={descriptionRef}
+              maxLength={5000}
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
               onBlur={handleDescriptionBlur}

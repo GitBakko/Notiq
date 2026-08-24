@@ -984,6 +984,40 @@ describe('syncPush', () => {
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(101);
     });
 
+    it('marks a queue item failed immediately on 400 validation error (no infinite retry)', async () => {
+      const queueItem = {
+        id: 103, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-toolong',
+        userId: 'user-1', data: { columnId: 'col-1', title: 'x'.repeat(600) },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockRejectedValue({ response: { status: 400 } });
+
+      await syncPush();
+
+      // A validation error is permanent — the payload is identical on every attempt,
+      // so backoff retries would loop forever. Surface it to the user instead.
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(103, expect.objectContaining({ status: 'failed' }));
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(103);
+    });
+
+    it('marks a queue item failed immediately on 422 unprocessable entity', async () => {
+      const queueItem = {
+        id: 104, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-invalid',
+        userId: 'user-1', data: { title: 'Update' },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.put.mockRejectedValue({ response: { status: 422 } });
+
+      await syncPush();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(104, expect.objectContaining({ status: 'failed' }));
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(104);
+    });
+
     it('keeps item in queue on other errors (e.g. 500)', async () => {
       const queueItem = {
         id: 102, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-err',

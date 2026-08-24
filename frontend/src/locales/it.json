@@ -802,6 +802,8 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "kanbanFieldLimits": "Titoli e descrizioni Kanban si fermano alla lunghezza accettata dal server, così un titolo troppo lungo non blocca più la sincronizzazione",
+      "syncValidationSurfacing": "Una modifica rifiutata dal server viene segnalata subito, invece di essere ritentata in silenzio all'infinito",
       "kanbanContextDelete": "L'eliminazione di una card Kanban dal menu tasto destro ora funziona",
       "kanbanSyncReliability": "Le board Kanban non falliscono più il caricamento o l'aggiornamento durante sync intensi",
       "kanbanDeleteShared": "L'eliminazione di una card Kanban ora funziona in modo affidabile, anche sulle board condivise",

@@ -147,6 +147,7 @@ export default function KanbanColumn({
           {isEditingTitle && !readOnly ? (
             <input
               ref={titleInputRef}
+              maxLength={100}
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               onBlur={handleSaveTitle}
@@ -285,6 +286,7 @@ export default function KanbanColumn({
             <div className="space-y-2">
               <input
                 ref={newCardInputRef}
+                maxLength={500}
                 value={newCardTitle}
                 onChange={(e) => setNewCardTitle(e.target.value)}
                 onKeyDown={(e) => {

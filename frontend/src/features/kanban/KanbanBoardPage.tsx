@@ -480,6 +480,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {isEditingTitle ? (
                 <input
                   autoFocus
+                  maxLength={200}
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   onBlur={handleSaveTitle}

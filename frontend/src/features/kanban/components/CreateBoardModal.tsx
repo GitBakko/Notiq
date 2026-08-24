@@ -53,6 +53,7 @@ export default function CreateBoardModal({ isOpen, onClose }: CreateBoardModalPr
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           ref={inputRef}
+          maxLength={200}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t('kanban.boardTitle')}
@@ -61,6 +62,7 @@ export default function CreateBoardModal({ isOpen, onClose }: CreateBoardModalPr
         />
 
         <textarea
+          maxLength={2000}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder={t('kanban.boardDescription')}

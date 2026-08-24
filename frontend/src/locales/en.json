@@ -1158,6 +1158,8 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "kanbanFieldLimits": "Kanban titles and descriptions now stop at the length the server accepts, so an over-long title can no longer break syncing",
+      "syncValidationSurfacing": "A change the server rejects is now reported right away instead of retrying silently forever",
       "kanbanContextDelete": "Deleting a Kanban card from the right-click menu now works",
       "kanbanSyncReliability": "Kanban boards no longer fail to load or refresh during heavy syncing",
       "kanbanDeleteShared": "Deleting a Kanban card now works reliably, including on shared boards",
