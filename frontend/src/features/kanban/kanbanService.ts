@@ -24,6 +24,36 @@ const getUserId = () => {
   return userId;
 };
 
+// ── Field limits ────────────────────────────────────────────────────────
+// Mirror the Zod caps in backend/src/routes/kanban.ts. The backend rejects
+// anything longer with a 400, and a 400 in the sync queue is permanent — so
+// oversized text must never reach the queue in the first place.
+export const CARD_TITLE_MAX = 500;
+export const CARD_DESCRIPTION_MAX = 5000;
+
+/**
+ * Turn a free-form block of text (a note list item, a task item) into a card
+ * title + description that the backend will accept.
+ *
+ * Mirrors `splitText` in backend/src/services/kanban/board.service.ts: when the
+ * text doesn't fit in a title, the title is truncated and the FULL text is kept
+ * in the description, so nothing the user wrote is lost.
+ */
+export function splitTextForCard(text: string): { title: string; description?: string } {
+  const firstLine = text.split('\n')[0];
+  const isTruncated = firstLine.length > CARD_TITLE_MAX;
+  const title = isTruncated
+    ? firstLine.slice(0, CARD_TITLE_MAX - 1) + '…'
+    : firstLine;
+
+  // Keep the full text whenever the title alone doesn't carry it.
+  const carriesMore = isTruncated || text.length > firstLine.length;
+  return {
+    title,
+    description: carriesMore ? text.slice(0, CARD_DESCRIPTION_MAX) : undefined,
+  };
+}
+
 // ── Boards (offline-first) ──────────────────────────────────────────────
 
 export async function listBoards(): Promise<KanbanBoardListItem[]> {
@@ -259,6 +289,13 @@ export async function createCard(
   const id = uuidv4();
   const now = new Date().toISOString();
 
+  // Last line of defence before the sync queue. Inputs are capped by maxLength
+  // and conversions go through splitTextForCard, but a single oversized value
+  // reaching the queue means a permanent 400 that blocks that item forever —
+  // so clamp here, where every caller passes through.
+  const title = data.title.slice(0, CARD_TITLE_MAX);
+  const description = data.description?.slice(0, CARD_DESCRIPTION_MAX);
+
   // Get column for boardId + max position
   const column = await db.kanbanColumns.get(columnId);
   if (!column) throw new Error('Column not found');
@@ -268,8 +305,8 @@ export async function createCard(
 
   const card: LocalKanbanCard = {
     id,
-    title: data.title,
-    description: data.description || null,
+    title,
+    description: description || null,
     position: maxPos + 1,
     columnId,
     boardId: column.boardId,
@@ -300,7 +337,7 @@ export async function createCard(
       entity: 'KANBAN_CARD',
       entityId: id,
       userId,
-      data: { id, columnId, title: data.title, description: data.description },
+      data: { id, columnId, title, description },
       createdAt: Date.now(),
     });
   });
@@ -392,10 +429,16 @@ export async function duplicateCard(cardId: string): Promise<LocalKanbanCard> {
   const cardsInColumn = await db.kanbanCards.where('columnId').equals(original.columnId).toArray();
   const newPosition = original.position + 1;
 
+  // "Copy of " pushes a title that was already at the cap over it, and the
+  // backend's createCardSchema takes `description` as optional-but-not-nullable,
+  // so a null description is a guaranteed 400. Clamp and drop the null.
+  const title = `Copy of ${original.title}`.slice(0, CARD_TITLE_MAX);
+  const description = original.description?.slice(0, CARD_DESCRIPTION_MAX) ?? undefined;
+
   const card: LocalKanbanCard = {
     id,
-    title: `Copy of ${original.title}`,
-    description: original.description,
+    title,
+    description: description ?? null,
     position: newPosition,
     columnId: original.columnId,
     boardId: original.boardId,
@@ -431,7 +474,7 @@ export async function duplicateCard(cardId: string): Promise<LocalKanbanCard> {
       entity: 'KANBAN_CARD',
       entityId: id,
       userId,
-      data: { id, columnId: original.columnId, title: card.title, description: card.description, priority: card.priority },
+      data: { id, columnId: original.columnId, title, description, priority: card.priority },
       createdAt: Date.now(),
     });
   });

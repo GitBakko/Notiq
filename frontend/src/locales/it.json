@@ -683,6 +683,7 @@
       "newBoard": "Nuova board",
       "existingBoard": "Board esistente",
       "selectColumn": "Seleziona una colonna",
+      "noColumnsAvailable": "Le colonne di questa board non sono ancora disponibili. Torna indietro e riseleziona la board, oppure aprila dalla pagina Kanban.",
       "selectList": "Seleziona una task list",
       "newList": "Nuova lista",
       "existingList": "Lista esistente",
@@ -802,6 +803,8 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "kanbanTransformLimits": "La trasformazione di elementi di una nota o di una task list in card Kanban non fallisce più con testi lunghi — il testo completo viene conservato nella descrizione della card",
+      "kanbanTransformNewBoard": "Creare una nuova board durante la conversione di una nota non lascia più bloccati su una lista di colonne vuota",
       "kanbanFieldLimits": "Titoli e descrizioni Kanban si fermano alla lunghezza accettata dal server, così un titolo troppo lungo non blocca più la sincronizzazione",
       "syncValidationSurfacing": "Una modifica rifiutata dal server viene segnalata subito, invece di essere ritentata in silenzio all'infinito",
       "kanbanContextDelete": "L'eliminazione di una card Kanban dal menu tasto destro ora funziona",

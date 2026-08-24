@@ -10,7 +10,7 @@ import Modal from '../../components/ui/Modal';
 import { useKanbanBoards } from '../kanban/hooks/useKanbanBoards';
 import { useKanbanBoard } from '../kanban/hooks/useKanbanBoard';
 import { useKanbanMutations } from '../kanban/hooks/useKanbanMutations';
-import { createBoardFromTaskList, linkTaskList } from '../kanban/kanbanService';
+import { createBoardFromTaskList, linkTaskList, splitTextForCard } from '../kanban/kanbanService';
 import { syncPush } from '../sync/syncService';
 import * as taskListService from './taskListService';
 import type { LocalTaskList, LocalTaskItem } from '../../lib/db';
@@ -96,7 +96,11 @@ export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList
   }
 
   async function distributeCards(items: { text: string; isChecked: boolean }[]) {
-    if (!boardDetail || boardDetail.columns.length === 0) return;
+    if (!boardDetail || boardDetail.columns.length === 0) {
+      // Was a bare `return`: the click did nothing at all, with no feedback.
+      toast.error(t('editor.transform.noColumnsAvailable'));
+      return;
+    }
 
     setIsCreating(true);
     try {
@@ -106,7 +110,10 @@ export default function ConvertTaskListToKanbanModal({ isOpen, onClose, taskList
 
       for (const item of items) {
         const columnId = item.isChecked ? doneColumnId : todoColumnId;
-        await createCard.mutateAsync({ columnId, title: item.text });
+        // Task item text has no length cap of its own, so it can exceed the card
+        // title cap — split it instead of sending it verbatim and hitting a 400.
+        const { title, description } = splitTextForCard(item.text);
+        await createCard.mutateAsync({ columnId, title, description });
       }
 
       // Sync the task list to remote before linking (ensures IDs are stable)

@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { LayoutDashboard, Plus, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import Modal from '../ui/Modal';
+import { db } from '../../lib/db';
 import { useKanbanBoards } from '../../features/kanban/hooks/useKanbanBoards';
 import { useKanbanBoard } from '../../features/kanban/hooks/useKanbanBoard';
 import { useKanbanMutations } from '../../features/kanban/hooks/useKanbanMutations';
+import { splitTextForCard } from '../../features/kanban/kanbanService';
 import type { ListItemInfo } from './EditorContextMenu';
 import type { Editor } from '@tiptap/react';
 
@@ -32,8 +35,46 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
   const [isCreating, setIsCreating] = useState(false);
 
   const { data: boards, isLoading: boardsLoading } = useKanbanBoards();
-  const { data: boardDetail } = useKanbanBoard(selectedBoardId || undefined);
+  const { data: boardDetail, isLoading: boardLoading } = useKanbanBoard(selectedBoardId || undefined);
   const { createBoard, createCard } = useKanbanMutations(selectedBoardId || undefined);
+
+  // Read the board's columns from Dexie, not only from the server query.
+  // A board created here exists locally the moment createBoard resolves, but its
+  // server CREATE is still in the sync queue — the GET in useKanbanBoard 404s
+  // (and never retries), leaving the column step with nothing to show. Dexie has
+  // the columns immediately; the server query stays as the fallback for boards
+  // that were never opened on this device.
+  const liveColumns = useLiveQuery(
+    async () => (selectedBoardId
+      ? db.kanbanColumns.where('boardId').equals(selectedBoardId).sortBy('position')
+      : undefined),
+    [selectedBoardId],
+  );
+  const liveCards = useLiveQuery(
+    async () => (selectedBoardId
+      ? db.kanbanCards.where('boardId').equals(selectedBoardId).toArray()
+      : undefined),
+    [selectedBoardId],
+  );
+  const liveBoard = useLiveQuery(
+    async () => (selectedBoardId ? db.kanbanBoards.get(selectedBoardId) : undefined),
+    [selectedBoardId],
+  );
+
+  const columns = (liveColumns?.length ? liveColumns : boardDetail?.columns) ?? [];
+  const boardTitle = boardDetail?.title ?? liveBoard?.title ?? '';
+
+  function cardTitlesInColumn(columnId: string): string[] {
+    const fromDexie = liveCards?.filter(c => c.columnId === columnId);
+    const source = fromDexie?.length
+      ? fromDexie
+      : boardDetail?.columns.find(c => c.id === columnId)?.cards ?? [];
+    return source.map(c => c.title);
+  }
+
+  function cardCount(columnId: string): number {
+    return cardTitlesInColumn(columnId).length;
+  }
 
   function handleClose() {
     setStep('board');
@@ -48,9 +89,8 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
 
   function handleCheckDuplicates(columnId: string) {
     setSelectedColumnId(columnId);
-    const column = boardDetail?.columns.find(c => c.id === columnId);
     const existingTitles = new Set(
-      (column?.cards || []).map(c => c.title.trim().toLowerCase())
+      cardTitlesInColumn(columnId).map(title => title.trim().toLowerCase())
     );
 
     const checklist = items.map(item => {
@@ -71,11 +111,11 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
   async function handleCreateCards(columnId: string, itemsToAdd: ListItemInfo[]) {
     setIsCreating(true);
     try {
-      const boardTitle = boardDetail?.title || '';
       for (const item of itemsToAdd) {
-        const lines = item.text.split('\n');
-        const title = lines[0];
-        const description = lines.length > 1 ? item.text : undefined;
+        // splitTextForCard keeps the full text in the description when the first
+        // line is longer than the backend's title cap — an over-long list item
+        // used to be sent verbatim and rejected with a permanent 400.
+        const { title, description } = splitTextForCard(item.text);
         await createCard.mutateAsync({ columnId, title, description });
       }
       toast.success(t('editor.transform.kanbanSuccess', { count: itemsToAdd.length, board: boardTitle }));
@@ -91,7 +131,15 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
     if (!newBoardTitle.trim()) return;
     setIsCreating(true);
     try {
-      const board = await createBoard.mutateAsync({ title: newBoardTitle.trim() });
+      const board = await createBoard.mutateAsync({
+        title: newBoardTitle.trim(),
+        // Without this the service falls back to hardcoded English titles.
+        columnTitles: {
+          todo: t('kanban.defaultColumns.todo'),
+          inProgress: t('kanban.defaultColumns.inProgress'),
+          done: t('kanban.defaultColumns.done'),
+        },
+      });
       setSelectedBoardId(board.id);
       setStep('column');
     } catch {
@@ -206,6 +254,7 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
             <div className="space-y-3">
               <input
                 type="text"
+                maxLength={200}
                 value={newBoardTitle}
                 onChange={e => setNewBoardTitle(e.target.value)}
                 placeholder={t('editor.transform.boardTitle')}
@@ -230,19 +279,31 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
       {/* Step: Column Selection */}
       {step === 'column' && (
         <div className="space-y-2">
-          {boardDetail?.columns.map(col => (
-            <button
-              key={col.id}
-              onClick={() => handleCheckDuplicates(col.id)}
-              disabled={isCreating}
-              className="w-full flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors text-left disabled:opacity-50"
-            >
-              <span className="text-sm text-neutral-900 dark:text-white">
-                {t(`kanban.column.${col.title === 'TODO' ? 'todo' : col.title === 'IN_PROGRESS' ? 'inProgress' : col.title === 'DONE' ? 'done' : 'custom'}`, { defaultValue: col.title })}
-              </span>
-              <span className="text-xs text-neutral-400">{col.cards.length}</span>
-            </button>
-          ))}
+          {columns.length > 0 ? (
+            columns.map(col => (
+              <button
+                key={col.id}
+                onClick={() => handleCheckDuplicates(col.id)}
+                disabled={isCreating}
+                className="w-full flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors text-left disabled:opacity-50"
+              >
+                <span className="text-sm text-neutral-900 dark:text-white">
+                  {t(`kanban.column.${col.title === 'TODO' ? 'todo' : col.title === 'IN_PROGRESS' ? 'inProgress' : col.title === 'DONE' ? 'done' : 'custom'}`, { defaultValue: col.title })}
+                </span>
+                <span className="text-xs text-neutral-400">{cardCount(col.id)}</span>
+              </button>
+            ))
+          ) : boardLoading ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-4">
+              {t('common.loading')}
+            </p>
+          ) : (
+            // Never leave this step with nothing but "back": the board has already
+            // been created at this point, so a silent empty list reads as a hang.
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-4">
+              {t('editor.transform.noColumnsAvailable')}
+            </p>
+          )}
           <button
             onClick={() => {
               setSelectedBoardId('');

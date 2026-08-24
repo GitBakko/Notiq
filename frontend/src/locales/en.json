@@ -683,6 +683,7 @@
       "newBoard": "New board",
       "existingBoard": "Existing board",
       "selectColumn": "Select a column",
+      "noColumnsAvailable": "This board's columns aren't available yet. Go back and pick the board again, or open it from the Kanban page.",
       "selectList": "Select a task list",
       "newList": "New list",
       "existingList": "Existing list",
@@ -1158,6 +1159,8 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "kanbanTransformLimits": "Turning note items or a task list into Kanban cards no longer fails on long text — the full text is kept in the card description",
+      "kanbanTransformNewBoard": "Creating a new board while converting a note no longer leaves you stuck on an empty column list",
       "kanbanFieldLimits": "Kanban titles and descriptions now stop at the length the server accepts, so an over-long title can no longer break syncing",
       "syncValidationSurfacing": "A change the server rejects is now reported right away instead of retrying silently forever",
       "kanbanContextDelete": "Deleting a Kanban card from the right-click menu now works",

@@ -11,6 +11,14 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.10.5',
+    date: '2026-08-24',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanTransformLimits' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanTransformNewBoard' },
+    ],
+  },
+  {
     version: '1.10.4',
     date: '2026-08-23',
     entries: [
