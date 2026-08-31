@@ -588,6 +588,45 @@ describe('syncPull', () => {
         ]),
       );
     });
+
+    it('stamps viewerId on every board row it writes (list scoping)', async () => {
+      const boardsList = [
+        {
+          id: 'kb-owned', title: 'Mine', description: null, coverImage: null,
+          avatarUrl: null, ownerId: 'user-1', columnCount: 0, cardCount: 0,
+          ownership: 'owned' as const, createdAt: '2026-01-01', updatedAt: '2026-01-01',
+        },
+        {
+          id: 'kb-shared', title: 'Theirs', description: null, coverImage: null,
+          avatarUrl: null, ownerId: 'user-2', columnCount: 0, cardCount: 0,
+          ownership: 'shared' as const, permission: 'WRITE' as const,
+          createdAt: '2026-01-01', updatedAt: '2026-01-01',
+        },
+      ];
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: boardsList });
+        if (url === '/kanban/boards/kb-owned') return Promise.resolve({ data: { id: 'kb-owned', columns: [] } });
+        if (url === '/kanban/boards/kb-shared') return Promise.resolve({ data: { id: 'kb-shared', columns: [] } });
+        return Promise.resolve({ data: [] });
+      });
+
+      mockDb.kanbanBoards.toArray.mockResolvedValue([]);
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'kb-owned', viewerId: 'user-1' }),
+          expect.objectContaining({ id: 'kb-shared', viewerId: 'user-1' }),
+        ]),
+      );
+    });
   });
 
   // -----------------------------------------------------------------

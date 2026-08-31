@@ -114,6 +114,12 @@ export interface LocalKanbanBoard {
   shares?: { userId: string; permission: 'READ' | 'WRITE'; user: { id: string; name: string | null; email: string; avatarUrl?: string | null } }[];
   ownership: 'owned' | 'shared';
   permission?: 'READ' | 'WRITE';
+  // Id of the user syncPull ran for when it wrote this row. Owned rows are already
+  // identified by ownerId, but on a SHARED row ownerId is the OTHER user's id, so
+  // without this there is no way to tell whose list a shared board belongs to.
+  // NOT an index: IndexedDB stores whole objects and only the keys declared in
+  // .stores() become indexes — this needs NO Dexie version bump, db stays at v15.
+  viewerId?: string;
   createdAt: string;
   updatedAt: string;
   syncStatus: 'synced' | 'created' | 'updated';
