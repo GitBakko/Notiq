@@ -3,6 +3,7 @@ import logger from '../../utils/logger';
 import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
 import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
+import { computeColumnOrder } from './position';
 import { notifyBoardUsers, notifyBoardUsersTiered } from './notifications';
 import { assertBelongsToBoard } from '../kanbanPermissions';
 
@@ -215,36 +216,64 @@ export async function moveCard(
     throw new NotFoundError('errors.kanban.columnNotFound');
   }
 
-  await prisma.$transaction(async (tx) => {
-    // Shift cards in target column to make room
-    await tx.kanbanCard.updateMany({
-      where: { columnId: toColumnId, position: { gte: newPosition } },
-      data: { position: { increment: 1 } },
-    });
+  const isCrossColumn = card.columnId !== toColumnId;
 
-    // Move the card
-    await tx.kanbanCard.update({
-      where: { id: cardId },
-      data: { columnId: toColumnId, position: newPosition },
-    });
-
-    // If moving within the same column, close the gap at the old position
-    if (card.columnId === toColumnId) {
-      await tx.kanbanCard.updateMany({
-        where: {
-          columnId: card.columnId,
-          position: { gt: card.position },
-          id: { not: cardId },
-        },
-        data: { position: { decrement: 1 } },
+  // [BACKUP] 2026-08-31 — the previous body was three updateMany calls:
+  //   1. increment every position >= newPosition in the target column
+  //   2. update the card to (toColumnId, newPosition)
+  //   3. decrement every position > card.position in the source column
+  // Step 3 used card.position (the PRE-move value) against rows step 1 had
+  // already shifted. With A=0 B=1 C=2 D=3 and A moved to index 2 the result was
+  // A=2, C=2 (collision) and a hole at position 1. Replaced by a read-then-diff
+  // resequence: the column order is computed in memory and only the rows that
+  // actually change position are written.
+  const order = await prisma.$transaction(async (tx) => {
+    // Cross-column: close the hole the card leaves behind in the source column.
+    if (isCrossColumn) {
+      const sourceCards = await tx.kanbanCard.findMany({
+        where: { columnId: card.columnId, archivedAt: null, id: { not: cardId } },
+        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, position: true },
       });
-    } else {
-      // Close gap in source column
-      await tx.kanbanCard.updateMany({
-        where: { columnId: card.columnId, position: { gt: card.position } },
-        data: { position: { decrement: 1 } },
+      for (let i = 0; i < sourceCards.length; i++) {
+        if (sourceCards[i].position === i) continue;
+        await tx.kanbanCard.update({ where: { id: sourceCards[i].id }, data: { position: i } });
+      }
+    }
+
+    // The target column as it is now. Archived cards are excluded on purpose:
+    // getBoard() filters archivedAt: null, so they are never rendered and must
+    // not consume positions.
+    const targetCards = await tx.kanbanCard.findMany({
+      where: { columnId: toColumnId, archivedAt: null },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, position: true },
+    });
+
+    const nextOrder = computeColumnOrder(targetCards.map((c) => c.id), cardId, newPosition);
+    // The explicit <string, number> generic is required: without it TS types the
+    // .map() result as (string | number)[][] and the Map constructor rejects it.
+    const currentPosition = new Map<string, number>(targetCards.map((c) => [c.id, c.position]));
+
+    for (let i = 0; i < nextOrder.length; i++) {
+      const id = nextOrder[i];
+      // Rows that do not actually move are NOT written. KanbanCard.updatedAt is
+      // @updatedAt and archiveCompletedCards() filters on `updatedAt <= cutoff`
+      // as the 7-day archive clock: rewriting the whole column would reset that
+      // clock for every card on every single drag.
+      // (On a cross-column move the moved card is absent from currentPosition,
+      // so it is always written — together with its new columnId.)
+      if (currentPosition.get(id) === i) continue;
+      await tx.kanbanCard.update({
+        where: { id },
+        data:
+          id === cardId && isCrossColumn
+            ? { columnId: toColumnId, position: i }
+            : { position: i },
       });
     }
+
+    return nextOrder;
   });
 
   broadcast(boardId, {
@@ -252,7 +281,9 @@ export async function moveCard(
     boardId,
     cardId,
     toColumnId,
-    position: newPosition,
+    // The position actually written, not the one requested: computeColumnOrder
+    // clamps an out-of-range index (e.g. an append) into the column.
+    position: order.indexOf(cardId),
   });
 
   // Cross-column move: log activity + auto-assign card to the mover

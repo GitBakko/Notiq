@@ -490,6 +490,28 @@ describe('moveCard', () => {
   const targetColumn = makeKanbanColumn({ boardId: board.id, title: 'Done', isCompleted: false });
   const card = makeKanbanCard({ columnId: sourceColumn.id });
 
+  beforeEach(() => {
+    // moveCard now READS the column before rewriting it: without a default the
+    // findMany mock resolves to undefined and every test in this block explodes.
+    // mockReset (not mockClear) also drains any leftover mockResolvedValueOnce
+    // queue from a previous test in this describe.
+    prismaMock.kanbanCard.findMany.mockReset();
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+    // Same shape as column.service.test.ts: run the callback with prismaMock.
+    prismaMock.$transaction = vi.fn((fn: any) => {
+      if (typeof fn === 'function') return fn(prismaMock);
+      return Promise.all(fn);
+    });
+  });
+
+  /** The (id, position) pairs the service actually wrote, in write order. */
+  function positionWrites(): { id: string; position: number }[] {
+    return prismaMock.kanbanCard.update.mock.calls
+      .map(([arg]: [any]) => arg)
+      .filter((arg: any) => arg.data.position !== undefined)
+      .map((arg: any) => ({ id: arg.where.id, position: arg.data.position as number }));
+  }
+
   it('moves card between columns and updates positions via transaction', async () => {
     prismaMock.kanbanCard.findUnique.mockResolvedValue({
       title: card.title,
@@ -683,6 +705,123 @@ describe('moveCard', () => {
     expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
     expect(prismaMock.kanbanCard.updateMany).not.toHaveBeenCalled();
     expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('never leaves two cards on the same position after a same-column downward move', async () => {
+    // A=0 B=1 C=2 D=3, drag A down to index 2 -> expected final order B C A D.
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: 'A',
+      columnId: sourceColumn.id,
+      position: 0,
+      taskItemId: null,
+      column: { boardId: board.id, title: 'To Do', isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: 'To Do',
+      position: 0,
+      isCompleted: false,
+    });
+    prismaMock.kanbanCard.findMany.mockResolvedValue([
+      { id: 'A', position: 0 },
+      { id: 'B', position: 1 },
+      { id: 'C', position: 2 },
+      { id: 'D', position: 3 },
+    ]);
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+
+    await moveCard('A', sourceColumn.id, 2, actor.id);
+
+    // Start from the pre-move state and apply what the service wrote.
+    const final: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+    for (const w of positionWrites()) final[w.id] = w.position;
+
+    expect(final).toEqual({ B: 0, C: 1, A: 2, D: 3 });
+    // No duplicate positions.
+    expect(new Set(Object.values(final)).size).toBe(4);
+    // Contiguous 0..n-1 permutation, no holes.
+    expect(Object.values(final).sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('writes only the rows between the old and the new index', async () => {
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: 'A',
+      columnId: sourceColumn.id,
+      position: 0,
+      taskItemId: null,
+      column: { boardId: board.id, title: 'To Do', isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: 'To Do',
+      position: 0,
+      isCompleted: false,
+    });
+    prismaMock.kanbanCard.findMany.mockResolvedValue([
+      { id: 'A', position: 0 },
+      { id: 'B', position: 1 },
+      { id: 'C', position: 2 },
+      { id: 'D', position: 3 },
+    ]);
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+
+    await moveCard('A', sourceColumn.id, 2, actor.id);
+
+    const writes = positionWrites();
+    expect(writes).toEqual([
+      { id: 'B', position: 0 },
+      { id: 'C', position: 1 },
+      { id: 'A', position: 2 },
+    ]);
+    // D does not move. Writing it would bump its @updatedAt and reset the
+    // 7-day archive clock read by archiveCompletedCards().
+    expect(writes.map((w) => w.id)).not.toContain('D');
+    // The reposition must go through targeted updates, never updateMany.
+    expect(prismaMock.kanbanCard.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('inserts into the middle of the target column without duplicating a position', async () => {
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: card.title,
+      columnId: sourceColumn.id,
+      position: 1,
+      taskItemId: null,
+      column: { boardId: board.id, title: 'To Do', isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: 'Done',
+      position: 1,
+      isCompleted: false,
+    });
+    // 1st findMany = source column (without the moved card), 2nd = target column
+    prismaMock.kanbanCard.findMany
+      .mockResolvedValueOnce([
+        { id: 'S1', position: 0 },
+        { id: 'S2', position: 1 },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'X', position: 0 },
+        { id: 'Y', position: 1 },
+      ]);
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+    prismaMock.user.findUnique.mockResolvedValue({ name: actor.name, email: actor.email });
+
+    await moveCard('M', targetColumn.id, 1, actor.id);
+
+    expect(positionWrites()).toEqual([
+      { id: 'M', position: 1 },
+      { id: 'Y', position: 2 },
+    ]);
+    // S1/S2 are already contiguous once M is gone: nothing to rewrite there.
+    // NOTE: the broadcast object carries no actorId — matching the service.
+    expect(broadcast).toHaveBeenCalledWith(board.id, {
+      type: 'card:moved',
+      boardId: board.id,
+      cardId: 'M',
+      toColumnId: targetColumn.id,
+      position: 1,
+    });
   });
 });
 
