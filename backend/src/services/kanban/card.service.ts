@@ -290,6 +290,10 @@ export async function moveCard(
     const isCrossColumn = sourceColumnId !== toColumnId;
 
     // Cross-column: close the hole the card leaves behind in the source column.
+    // Twin of deleteCard's repack loop below (same file) — same read-then-diff
+    // shape, minus the `id: { not: cardId }` exclude (deleteCard's card is
+    // already physically gone by this point). Kept duplicated rather than
+    // extracted (see task-2.8-report.md); keep the two in sync by hand.
     if (isCrossColumn) {
       const sourceCards = await tx.kanbanCard.findMany({
         where: { columnId: sourceColumnId, archivedAt: null, id: { not: cardId } },
@@ -502,7 +506,11 @@ export async function deleteCard(cardId: string, actorId?: string) {
     // Repack the live cards left in the column. archivedAt: null excludes
     // archived cards — they consume no position, matching getBoard(). Only
     // rows whose index actually changed are written (see the note above on
-    // the archive-clock reset).
+    // the archive-clock reset). Twin of moveCard's source-column repair loop
+    // above (`isCrossColumn` block) — same shape, minus the `id: { not:
+    // cardId }` exclude since the card is already deleted by this point.
+    // Kept duplicated rather than extracted (see task-2.8-report.md); keep
+    // the two in sync by hand.
     const remaining = await tx.kanbanCard.findMany({
       where: { columnId, archivedAt: null },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],

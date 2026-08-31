@@ -1079,9 +1079,15 @@ describe('deleteCard', () => {
 
   afterEach(() => {
     // A couple of tests below swap in a distinct `tx` double (same rationale
-    // as moveCard's own afterEach): restore the default shape so it doesn't
-    // leak into whatever describe block runs next in this file.
-    prismaMock.$transaction = vi.fn((fn: any) => fn(prismaMock));
+    // as moveCard's own afterEach): restore the exact default shape setup.ts
+    // defines so it doesn't leak into whatever describe block runs next in
+    // this file. Matches moveCard's own afterEach byte-for-byte on purpose —
+    // a restore to a subtly different shape is the same class of trap as the
+    // mock-leak this guards against in the first place.
+    prismaMock.$transaction = vi.fn((fn: any) => {
+      if (typeof fn === 'function') return fn(prismaMock);
+      return Promise.resolve(fn);
+    });
   });
 
   /** The (id, position) pairs deleteCard actually wrote, in write order. */
@@ -1233,6 +1239,13 @@ describe('deleteCard', () => {
     const sql = strings.join('?');
     expect(sql).toContain('FOR UPDATE');
     expect(sql).toContain('ORDER BY id');
+    // Pin the quoted, mixed-case identifiers: Postgres folds an unquoted
+    // KanbanCard/columnId to lowercase and 500s on every delete. Neither the
+    // mock nor tsc catches a "tidied" `FROM KanbanCard` — this is the
+    // durable substitute for the one-off live-Postgres syntax check run for
+    // this task (see task-2.8-report.md).
+    expect(sql).toContain('"KanbanCard"');
+    expect(sql).toContain('"columnId"');
     expect(values).toEqual(['B', column.id]);
 
     // The lock must go through the transaction's client, never the
