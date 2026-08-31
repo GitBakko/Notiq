@@ -586,7 +586,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   });
 
   // Bulk archive execute (owner-only): archive specific card IDs
-  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()).max(100) });
+  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()).max(1000) });
 
   fastify.post('/boards/:id/bulk-archive', async (request) => {
     const { id } = request.params as { id: string };

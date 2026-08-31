@@ -33,6 +33,7 @@ vi.mock('../../services/kanban/index', () => ({
   getLinkedBoardsForNote: vi.fn(),
   getArchivedCards: vi.fn(),
   unarchiveCard: vi.fn(),
+  executeBulkArchive: vi.fn(),
   linkTaskListToBoard: vi.fn(),
   unlinkTaskListFromBoard: vi.fn(),
   searchUserTaskLists: vi.fn(),
@@ -693,5 +694,39 @@ describe('POST /api/kanban/boards/:id/chat', () => {
       payload: { content: '' },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ── Bulk Archive ─────────────────────────────────────────────────
+
+describe('POST /api/kanban/boards/:id/bulk-archive', () => {
+  it('accepts 1000 card ids', async () => {
+    mockKanbanService.executeBulkArchive.mockResolvedValue(1000);
+    const cardIds = Array.from({ length: 1000 }, () => crypto.randomUUID());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/kanban/boards/board-1/bulk-archive',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { cardIds },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload)).toEqual({ archived: 1000 });
+    expect(mockKanbanService.executeBulkArchive).toHaveBeenCalledWith('board-1', cardIds);
+  });
+
+  it('rejects 1001 card ids without reaching the service', async () => {
+    const cardIds = Array.from({ length: 1001 }, () => crypto.randomUUID());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/kanban/boards/board-1/bulk-archive',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { cardIds },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockKanbanService.executeBulkArchive).not.toHaveBeenCalled();
   });
 });
