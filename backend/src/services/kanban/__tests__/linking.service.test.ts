@@ -117,6 +117,32 @@ describe('checkNoteSharingForBoard', () => {
       checkNoteSharingForBoard('n1', 'missing-board', 'u1')
     ).rejects.toThrow('errors.kanban.boardNotFound');
   });
+
+  it('throws ForbiddenError when the requester does not own the note', async () => {
+    const snooper = setupUser();
+    const victim = setupUser();
+    const victimNote = makeNote({ userId: victim.id, title: 'Secret roadmap' });
+
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: victimNote.id,
+      title: victimNote.title,
+      userId: victim.id,
+    });
+    // Deliberately answerable: the guard must fire before this is ever read.
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: victim.id,
+      owner: { id: victim.id, name: victim.name, email: victim.email },
+      shares: [],
+    });
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+
+    await expect(
+      checkNoteSharingForBoard(victimNote.id, 'board-1', snooper.id)
+    ).rejects.toThrow('errors.kanban.onlyOwnerCanLink');
+
+    // The board must never even be queried for a note the caller cannot see.
+    expect(prismaMock.kanbanBoard.findUnique).not.toHaveBeenCalled();
+  });
 });
 
 // ═════════════════════════════════════════════════════════════

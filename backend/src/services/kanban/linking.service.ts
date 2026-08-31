@@ -39,6 +39,10 @@ export async function checkNoteSharingForBoard(
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
+  // Only the note owner may link a note (see linkNoteToCard / linkNoteToBoard),
+  // so only the owner may probe its title, owner and sharing state.
+  if (note.userId !== requestingUserId) throw new ForbiddenError('errors.kanban.onlyOwnerCanLink');
+
   // Get board owner + accepted shares
   const board = await prisma.kanbanBoard.findUnique({
     where: { id: boardId },
