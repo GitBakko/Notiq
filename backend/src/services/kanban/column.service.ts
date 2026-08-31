@@ -6,14 +6,18 @@ import { assertBelongsToBoard } from '../kanbanPermissions';
 // ─── Column CRUD ────────────────────────────────────────────
 
 export async function createColumn(boardId: string, title: string, id?: string) {
-  const maxPos = await prisma.kanbanColumn.aggregate({
-    where: { boardId },
-    _max: { position: true },
-  });
-  const position = (maxPos._max.position ?? -1) + 1;
+  // aggregate + create in ONE transaction — see createCard in card.service.ts
+  // for the isolation-level caveat.
+  const column = await prisma.$transaction(async (tx) => {
+    const maxPos = await tx.kanbanColumn.aggregate({
+      where: { boardId },
+      _max: { position: true },
+    });
+    const position = (maxPos._max.position ?? -1) + 1;
 
-  const column = await prisma.kanbanColumn.create({
-    data: { ...(id ? { id } : {}), boardId, title, position },
+    return tx.kanbanColumn.create({
+      data: { ...(id ? { id } : {}), boardId, title, position },
+    });
   });
 
   broadcast(boardId, { type: 'column:created', boardId, column });

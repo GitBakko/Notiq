@@ -22,15 +22,24 @@ export async function createCard(
   });
   if (!column) throw new NotFoundError('errors.kanban.columnNotFound');
 
-  const maxPos = await prisma.kanbanCard.aggregate({
-    where: { columnId },
-    _max: { position: true },
-  });
-  const position = (maxPos._max.position ?? -1) + 1;
+  // aggregate + create in ONE transaction: a read-then-write split across two
+  // round trips lets two concurrent creates read the same max and write the
+  // same position.
+  // NOTE: this makes the pair atomic, not serialized — at PostgreSQL's default
+  // READ COMMITTED two transactions can still read the same max. Upgrade path
+  // if it ever bites in production: @@unique([columnId, position]) on
+  // KanbanCard plus a retry, or isolationLevel: 'Serializable'.
+  const card = await prisma.$transaction(async (tx) => {
+    const maxPos = await tx.kanbanCard.aggregate({
+      where: { columnId },
+      _max: { position: true },
+    });
+    const position = (maxPos._max.position ?? -1) + 1;
 
-  const card = await prisma.kanbanCard.create({
-    data: { ...(id ? { id } : {}), columnId, title, description, position },
-    select: cardWithAssigneeSelect,
+    return tx.kanbanCard.create({
+      data: { ...(id ? { id } : {}), columnId, title, description, position },
+      select: cardWithAssigneeSelect,
+    });
   });
 
   broadcast(column.boardId, {

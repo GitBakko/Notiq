@@ -259,6 +259,42 @@ describe('createCard', () => {
       card: rawCard,
     });
   });
+
+  it('computes the max position and creates the card inside one transaction', async () => {
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: column.title,
+    });
+    prismaMock.kanbanCard.aggregate.mockResolvedValue({ _max: { position: 3 } });
+    prismaMock.kanbanCard.create.mockResolvedValue({
+      id: 'card-tx',
+      title: 'Tx Card',
+      description: null,
+      position: 4,
+      columnId: column.id,
+      assigneeId: null,
+      dueDate: null,
+      priority: null,
+      noteId: null,
+      noteLinkedById: null,
+      archivedAt: null,
+      taskItemId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      assignee: null,
+      note: null,
+      _count: { comments: 0 },
+    });
+
+    await createCard(column.id, 'Tx Card');
+
+    // read-then-write outside a transaction lets two concurrent creates read
+    // the same max and land on the same position.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.kanbanCard.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ position: 4 }) }),
+    );
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

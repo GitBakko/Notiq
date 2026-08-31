@@ -84,6 +84,19 @@ describe('createColumn', () => {
     });
     expect(result).toEqual(expectedColumn);
   });
+
+  it('computes the max position and creates the column inside one transaction', async () => {
+    const board = makeKanbanBoard();
+    prismaMock.kanbanColumn.aggregate.mockResolvedValue({ _max: { position: 1 } });
+    prismaMock.kanbanColumn.create.mockResolvedValue(makeKanbanColumn({ boardId: board.id, position: 2 }));
+
+    await createColumn(board.id, 'Review');
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.kanbanColumn.create).toHaveBeenCalledWith({
+      data: { boardId: board.id, title: 'Review', position: 2 },
+    });
+  });
 });
 
 // ─── updateColumn ──────────────────────────────────────────────
