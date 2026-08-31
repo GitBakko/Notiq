@@ -325,9 +325,13 @@ export const syncPull = async () => {
             syncStatus: 'synced' as const,
           }));
 
-        // Remove boards no longer on server (owned only — shared handled below)
+        // Remove boards no longer on server (owned only — shared handled below).
+        // Scoped to the current user's own rows: an unscoped scan here would treat
+        // another account's still-valid synced board as "not on my server list"
+        // and bulkDelete it (cascading to its columns/cards) the moment this user
+        // pulls, race or not.
         const allLocalSyncedBoards = await db.kanbanBoards.where('syncStatus').equals('synced')
-          .filter(b => b.ownership !== 'shared').toArray();
+          .filter(b => b.ownership !== 'shared' && b.ownerId === currentUserId).toArray();
         const serverIds = new Set(serverBoards.map(b => b.id));
         const toDeleteIds = allLocalSyncedBoards
           .filter(b => !serverIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
@@ -448,8 +452,15 @@ export const syncPull = async () => {
           cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
         }));
 
-        // Remove stale shared boards no longer in server response
-        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared').toArray();
+        // Remove stale shared boards no longer in server response. Scoped to rows
+        // stamped for THIS viewer — a pre-upgrade row with no viewerId can't be told
+        // apart from another account's leftover share, so it is deliberately left
+        // out of deletion candidacy rather than guessed at: it stays inert (already
+        // hidden by useKanbanBoards) until something else claims it, same as any
+        // other pre-upgrade orphan. Guessing it belongs to "probably me" would
+        // reopen the exact cross-account bulkDelete this scoping exists to close.
+        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared')
+          .filter(b => b.viewerId === currentUserId).toArray();
         const sharedServerIds = new Set(sharedBoardsMapped.map(b => b.id));
         const staleIds = localSharedBoards.filter(b => !sharedServerIds.has(b.id)).map(b => b.id);
         if (staleIds.length > 0) {

@@ -8,9 +8,13 @@ import { registerAndLogin } from './helpers';
 // Regression coverage for task 3.1: useKanbanBoards used to do a bare
 // `db.kanbanBoards.toArray()` with no user scope — Dexie is one IndexedDB per
 // browser profile and is not cleared on logout, so a previous account's boards
-// rendered in the next account's session. A unit test can't catch this: `db` is
-// mocked wholesale there, so a refactor of `.filter(...)` into different
-// selection logic would pass the mocks and fail only in a real browser.
+// rendered in the next account's session. The unit tests (useKanbanBoards.test.tsx,
+// syncService.test.ts) are where the weight of this regression's coverage sits — they
+// pin the exact filter predicate and the viewerId stamp against a real callback, case
+// by case. What they cannot prove is that useKanbanBoards is wired to the REAL Dexie
+// collection rather than a test double: `db` is mocked wholesale there, so a refactor
+// that broke the wiring itself (not the predicate) would still pass every mock. That
+// is what these two tests are for — a real browser, a real IndexedDB.
 
 const API_BASE = 'http://localhost:3001';
 const SUPERADMIN_EMAIL = 'superadmin@notiq.ai';
@@ -84,14 +88,29 @@ test.describe('Kanban board list — cross-account scoping', () => {
   test('does not leak a previous account\'s board on this browser', async ({ page }) => {
     test.setTimeout(60000);
 
+    // Block the board-CREATE push for the whole test. kanbanService.createBoard is
+    // offline-first — it writes to Dexie and returns before any network call — so the
+    // board still appears immediately in the UI, but with the push permanently
+    // unreachable it can never reach syncStatus 'synced'. This matters: the prune in
+    // syncPull only ever touches synced rows, so a board that DID sync would be
+    // bulkDelete'd (not merely filtered) the moment the other account pulls — passing
+    // this test whether or not useKanbanBoards' own filter exists. Keeping it dirty is
+    // what actually exercises that filter, and it also is the realistic case: a board
+    // created offline by a previous account, never pushed, still sitting in Dexie.
+    await page.route('**/api/kanban/boards', async (route) => {
+      if (route.request().method() === 'POST') { await route.abort(); return; }
+      await route.continue();
+    });
+
     // --- User A creates a board in the browser ---
     await registerAndLogin(page, { name: 'Scope User A' });
     await page.goto('/kanban');
     await page.getByRole('button', { name: 'New Board' }).first().click();
     await page.fill('input[placeholder="Board title"]', 'A-Only-Board');
     await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+    // The Dexie write (and the create push firing and failing) has already happened by
+    // the time this resolves — the assertion IS the observable-state wait.
     await expect(page.getByText('A-Only-Board')).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(1500);
 
     // --- Logout does NOT clear Dexie by design — that's the leak this guards against ---
     await page.click('button[title="Logout"]');
@@ -100,9 +119,10 @@ test.describe('Kanban board list — cross-account scoping', () => {
     // --- User B logs in on the SAME browser/IndexedDB ---
     await registerAndLogin(page, { name: 'Scope User B' });
     await page.goto('/kanban');
-    await page.waitForTimeout(1500);
 
-    // B must not see A's board.
+    // B must not see A's dirty (never-synced) board. useLiveQuery reacts to Dexie
+    // synchronously on mount — nothing here depends on a pull completing, so there is
+    // no operation to wait on beyond the assertion's own auto-retry.
     await expect(page.getByText('A-Only-Board')).not.toBeVisible();
 
     // B creates their own board — scoping isn't over-tightened either.
@@ -160,7 +180,8 @@ test.describe('Kanban board list — cross-account scoping', () => {
     await page.route('**/api/share/**', route => route.abort());
     await browserLogin(page, userB);
     await page.goto('/kanban');
-    await page.waitForTimeout(1500);
+    // No pull can complete while these endpoints are blocked, so there is nothing to
+    // wait on beyond the assertion's own auto-retry.
     await expect(page.getByRole('heading', { name: 'Shared-With-B' })).not.toBeVisible();
 
     // --- Endpoints reachable again + reload triggers useSync's initial pull ---
