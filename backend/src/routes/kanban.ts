@@ -50,7 +50,6 @@ const updateCardSchema = z.object({
   assigneeId: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   priority: z.enum(['STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).nullable().optional(),
-  noteId: z.string().nullable().optional(),
 });
 
 const moveCardSchema = z.object({

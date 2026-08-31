@@ -463,6 +463,20 @@ describe('updateCard', () => {
 
     expect(assertBelongsToBoard).not.toHaveBeenCalled();
   });
+
+  it('ignores a noteId smuggled into the update payload', async () => {
+    prismaMock.kanbanCard.update.mockResolvedValue(makeRawCardResult());
+
+    // `as any` on purpose: the field is gone from the type, this proves the
+    // runtime drops it too (the Zod schema strips it, this is the second line).
+    await updateCard('card-u1', { noteId: 'someone-elses-note' } as any, actor.id);
+
+    expect(prismaMock.kanbanCard.update).toHaveBeenCalledWith({
+      where: { id: 'card-u1' },
+      data: {},
+      select: expect.any(Object),
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

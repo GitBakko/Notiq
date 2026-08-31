@@ -53,7 +53,6 @@ export async function updateCard(
     assigneeId?: string | null;
     dueDate?: string | null;
     priority?: string | null;
-    noteId?: string | null;
   },
   actorId: string
 ) {
@@ -75,7 +74,6 @@ export async function updateCard(
   if (data.title !== undefined) updateData.title = data.title;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
-  if (data.noteId !== undefined) updateData.noteId = data.noteId;
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.dueDate !== undefined) {
     updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
