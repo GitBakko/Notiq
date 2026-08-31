@@ -970,7 +970,10 @@ describe('moveCard', () => {
       kanbanCard: {
         findUnique: vi.fn(() => {
           callOrder.push('findUnique');
-          return Promise.resolve({ columnId: sourceColumn.id });
+          return Promise.resolve({
+            columnId: sourceColumn.id,
+            column: { title: 'To Do', isCompleted: false },
+          });
         }),
         findMany: vi.fn(() => {
           callOrder.push('findMany');
@@ -1013,6 +1016,13 @@ describe('moveCard', () => {
     // position would make it move-dependent again and reopen the deadlock
     // this task closes.
     expect(sql).not.toMatch(/ORDER BY\s*"?position/i);
+    // Pin the quoted, mixed-case identifiers: Postgres folds an unquoted
+    // KanbanCard/columnId to lowercase and 500s on every drag. Neither the
+    // mock nor tsc catches a "tidied" `FROM KanbanCard` — this is the
+    // durable substitute for the one-off live-Postgres syntax check run for
+    // this task (see task-2.7-report.md).
+    expect(sql).toContain('"KanbanCard"');
+    expect(sql).toContain('"columnId"');
     expect(values[0]).toBe('A'); // cardId is locked explicitly, by id
 
     // The lock must go through the transaction's client, never the
@@ -1024,7 +1034,10 @@ describe('moveCard', () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue(undefined),
       kanbanCard: {
-        findUnique: vi.fn().mockResolvedValue({ columnId: sourceColumn.id }),
+        findUnique: vi.fn().mockResolvedValue({
+          columnId: sourceColumn.id,
+          column: { title: sourceColumn.title, isCompleted: false },
+        }),
         findMany: vi.fn().mockResolvedValue([]),
         update: vi.fn().mockResolvedValue({}),
       },

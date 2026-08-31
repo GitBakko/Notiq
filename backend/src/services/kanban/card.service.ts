@@ -246,7 +246,7 @@ export async function moveCard(
   // first commits, instead of racing it. This narrows the window to
   // uncontended reads/writes; it does not add retry or serializable
   // isolation — see task-2.7-report.md for what is intentionally left open.
-  const { order, isCrossColumn } = await prisma.$transaction(async (tx) => {
+  const { order, isCrossColumn, fromColumnTitle, fromColumnIsCompleted } = await prisma.$transaction(async (tx) => {
     // Lock candidate rows before any ordering read: the card's own row (in
     // case a concurrent move already relocated it — see the liveCard reread
     // below) plus every row currently in the source and target columns.
@@ -275,9 +275,15 @@ export async function moveCard(
     // documented in task-2.7-report.md; it is far narrower than the bug
     // this task closes (it requires a second move of this specific card,
     // not just any card in the column, to land in that sliver).
+    // Selects the source column's title/isCompleted too, at zero extra cost
+    // (same query): the post-transaction cross-column branch below used to
+    // read these off the same pre-transaction `card`, which is exactly the
+    // staleness this reread exists to close for columnId — isCompleted
+    // drives a real write (TaskItem.isChecked), not just log text, so it
+    // needs to be fresh for the same reason columnId does.
     const liveCard = await tx.kanbanCard.findUnique({
       where: { id: cardId },
-      select: { columnId: true },
+      select: { columnId: true, column: { select: { isCompleted: true, title: true } } },
     });
     if (!liveCard) throw new NotFoundError('errors.kanban.cardNotFound');
     const sourceColumnId = liveCard.columnId;
@@ -328,7 +334,12 @@ export async function moveCard(
       });
     }
 
-    return { order: nextOrder, isCrossColumn };
+    return {
+      order: nextOrder,
+      isCrossColumn,
+      fromColumnTitle: liveCard.column.title,
+      fromColumnIsCompleted: liveCard.column.isCompleted,
+    };
   });
 
   broadcast(boardId, {
@@ -351,14 +362,14 @@ export async function moveCard(
     });
 
     await logCardActivity(cardId, actorId, 'MOVED', {
-      fromColumnTitle: card.column.title,
+      fromColumnTitle,
       toColumnTitle: targetColumn.title,
     });
 
     // Sync linked TaskItem checked status based on isCompleted columns
     if (card.taskItemId) {
-      const movedIntoCompleted = targetColumn.isCompleted && !card.column.isCompleted;
-      const movedOutOfCompleted = !targetColumn.isCompleted && card.column.isCompleted;
+      const movedIntoCompleted = targetColumn.isCompleted && !fromColumnIsCompleted;
+      const movedOutOfCompleted = !targetColumn.isCompleted && fromColumnIsCompleted;
 
       if (movedIntoCompleted) {
         await prisma.taskItem.update({
@@ -386,19 +397,19 @@ export async function moveCard(
         boardId,
         'KANBAN_CARD_MOVED',
         'Card Moved',
-        `${actorName} moved "${card.title}" from "${card.column.title}" to "${targetColumn.title}"`,
+        `${actorName} moved "${card.title}" from "${fromColumnTitle}" to "${targetColumn.title}"`,
         {
           boardId,
           cardId,
           cardTitle: card.title,
           actorName,
-          fromColumn: card.column.title,
+          fromColumn: fromColumnTitle,
           toColumn: targetColumn.title,
           localizationKey: 'notifications.kanbanCardMoved',
           localizationArgs: {
             actorName,
             cardTitle: card.title,
-            fromColumn: card.column.title,
+            fromColumn: fromColumnTitle,
             toColumn: targetColumn.title,
           },
         },
@@ -407,7 +418,7 @@ export async function moveCard(
           data: (_email, locale) => ({
             actorName,
             cardTitle: card.title,
-            fromColumn: card.column.title,
+            fromColumn: fromColumnTitle,
             toColumn: targetColumn.title,
             boardId,
             locale,
