@@ -40,7 +40,8 @@ export async function createComment(
     select: {
       title: true,
       assigneeId: true,
-      column: { select: { boardId: true } },
+      // board.title is needed by the notifications.kanbanCommentAdded template
+      column: { select: { boardId: true, board: { select: { title: true } } } },
     },
   });
   if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
@@ -76,7 +77,13 @@ export async function createComment(
       cardTitle: card.title,
       commenterName,
       localizationKey: 'notifications.kanbanCommentAdded',
-      localizationArgs: { commenterName, cardTitle: card.title },
+      // Key names MUST match the {{placeholders}} in notifications.kanbanCommentAdded
+      // (backend/src/utils/notificationI18n.ts + locales): authorName, cardTitle, boardTitle.
+      localizationArgs: {
+        authorName: commenterName,
+        cardTitle: card.title,
+        boardTitle: card.column.board.title,
+      },
     },
     {
       type: 'KANBAN_COMMENT',
@@ -99,7 +106,14 @@ export async function deleteComment(commentId: string, userId: string) {
     select: {
       authorId: true,
       content: true,
-      card: { select: { id: true, title: true, column: { select: { boardId: true } } } },
+      // board.title is needed by the notifications.kanbanCommentDeleted template
+      card: {
+        select: {
+          id: true,
+          title: true,
+          column: { select: { boardId: true, board: { select: { title: true } } } },
+        },
+      },
       author: { select: { name: true, email: true } },
     },
   });
@@ -132,7 +146,13 @@ export async function deleteComment(commentId: string, userId: string) {
       cardTitle: comment.card.title,
       deleterName,
       localizationKey: 'notifications.kanbanCommentDeleted',
-      localizationArgs: { deleterName, cardTitle: comment.card.title },
+      // Key names MUST match the {{placeholders}} in notifications.kanbanCommentDeleted:
+      // authorName, cardTitle, boardTitle.
+      localizationArgs: {
+        authorName: deleterName,
+        cardTitle: comment.card.title,
+        boardTitle: comment.card.column.board.title,
+      },
     },
     {
       type: 'KANBAN_COMMENT_DELETED',
@@ -232,7 +252,8 @@ export async function createBoardChatMessage(
           boardTitle: board.title,
           authorName,
           localizationKey: 'notifications.kanbanBoardChat',
-          localizationArgs: { authorName, boardTitle: board.title },
+          // notifications.kanbanBoardChat interpolates {{senderName}}, not {{authorName}}.
+          localizationArgs: { senderName: authorName, boardTitle: board.title },
         }
       );
 
