@@ -136,9 +136,9 @@ describe('checkNoteSharingForBoard', () => {
     });
     prismaMock.sharedNote.findMany.mockResolvedValue([]);
 
-    await expect(
-      checkNoteSharingForBoard(victimNote.id, 'board-1', snooper.id)
-    ).rejects.toThrow('errors.kanban.onlyOwnerCanLink');
+    const promise = checkNoteSharingForBoard(victimNote.id, 'board-1', snooper.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.kanban.onlyOwnerCanLink');
 
     // The board must never even be queried for a note the caller cannot see.
     expect(prismaMock.kanbanBoard.findUnique).not.toHaveBeenCalled();
