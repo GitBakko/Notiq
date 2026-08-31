@@ -87,18 +87,20 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **2.1** | Estrarre `computeColumnOrder` come funzione pura | `` |
-| [ ] | **2.2** | Riscrivere `moveCard` come resequence diff-based | `` |
-| [ ] | **2.3** | Tiebreaker deterministico su ogni ordinamento per `position` | `` |
-| [ ] | **2.4** | Eliminare il sentinella `999` | `` |
-| [ ] | **2.5** | Rispecchiare insert-and-shift nella scrittura Dexie | `` |
-| [ ] | **2.6** | Atomizzare `aggregate` + `create` in `createCard` e `createColumn` | `` |
+| [x] | **2.1** | Estrarre `computeColumnOrder` come funzione pura | `3777255` |
+| [x] | **2.2** | Riscrivere `moveCard` come resequence diff-based | `8f67599..b7e72a1` |
+| [x] | **2.3** | Tiebreaker deterministico su ogni ordinamento per `position` | `eb84f50` |
+| [x] | **2.4** | Eliminare il sentinella `999` | `5e70326..6b04a03` |
+| [x] | **2.5** | Rispecchiare insert-and-shift nella scrittura Dexie | `deba2e9` |
+| [x] | **2.6** | Atomizzare `aggregate` + `create` in `createCard` e `createColumn` | `c652c76..2a1cbca` |
+| [x] | **2.7** | Rendere il resequence sicuro sotto concorrenza | `b126ee7..a2d045e` |
+| [x] | **2.8** | `deleteCard`: chiudere il buco senza azzerare l'orologio di archiviazione | `e1692dc..7ba98fa` |
 
 ### Stage 3 — Sync e offline (TIER 1)
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **3.1** | Scope `useKanbanBoards` all'utente corrente e stampa `viewerId` in pull | `` |
+| [x] | **3.1** | Scope `useKanbanBoards` all'utente corrente e stampa `viewerId` in pull | `57f8152..d296ee8` |
 | [ ] | **3.2** | Risolvere il `columnId` della card CREATE da Dexie invece che dal payload in coda | `` |
 | [ ] | **3.3** | Non scartare più in silenzio una CREATE che va in 404 | `` |
 | [ ] | **3.4** | Far restituire a `syncPush` la promise in volo e incatenare il refresh della board | `` |
@@ -4422,6 +4424,111 @@ Atteso: `(0 rows)` — nessuna coppia (colonna, position) duplicata.
 ---
 
 The draft is verified against the real code. Every line number, API, test-mock shape, and expected output below was checked by opening the file or by actually running the change and capturing the output.
+
+### Task 2.7: Rendere il resequence sicuro sotto concorrenza
+
+> **Origine:** non presente nel piano originale. Aggiunto il 2026-08-31 dalla review su opus del task 2.2 (ruling R24 nel ledger SDD). Il task 2.2 ha reso il resequence corretto per un utente singolo; questo chiude la finestra concorrente che resta.
+
+**Perché:** `moveCard` legge l'ordine della colonna, calcola il nuovo ordine e scrive solo le righe che differiscono **dalla propria lettura**. A READ COMMITTED, senza row lock, due move concorrenti sulla stessa colonna leggono lo stesso pre-stato e ciascuna salta righe che l'altra ha invece riscritto. Controesempio verificato dal reviewer su `[A0,B1,C2,D3]`: T1 sposta A→3 e scrive B:0 C:1 D:2 A:3; T2, con lettura stale, sposta B→0 e scrive B:0 A:1 saltando C e D perché nella *sua* lettura erano già a 2 e 3. Commit T1 poi T2 → **A=1, B=0, C=1, D=2**: duplicato a 1, buco a 3. È la stessa classe di guasto che lo Stage 2 elimina, raggiungibile da una porta molto più stretta.
+Due corollari dallo stesso report: la lettura di `card` sta **fuori** dalla transazione, quindi un move concorrente in quella finestra fa scrivere `position` senza `columnId` (la card resta in una colonna estranea con la numerazione di quella di destinazione); e i lock si prendono in ordine variabile per move, allargando la superficie di deadlock (Postgres 40P01 → 500).
+**Attenuante da non perdere di vista:** il danno è **transitorio** — il primo drag non contestato ricompatta la colonna a `0..n-1`. Il bug vecchio era permanente e su *ogni* drag.
+
+**Severità:** high · **Effort:** M · **Rischio:** percorso di scrittura su dati utente — commit isolato, nessun'altra modifica nel diff.
+
+**File:**
+- Modifica: `backend/src/services/kanban/card.service.ts` (`moveCard`)
+- Modifica: `backend/src/services/kanban/__tests__/card.service.test.ts`
+
+**Interfacce:**
+- Consuma: `computeColumnOrder(cardIds, cardId, newIndex)` da `position.ts`; il guard cross-board già presente in `moveCard`
+- Produce: nessuna nuova firma pubblica
+
+- [ ] **Step 1 — Scegliere la strategia e motivarla nel report**
+
+Due opzioni difendibili, entrambe accettabili. Scegliere **una**, non entrambe:
+
+**(a) Lock di riga espliciti.** All'apertura della transazione, bloccare le righe delle colonne coinvolte con un `SELECT … FOR UPDATE` emesso via `tx.$queryRaw`, **ordinando il lock per `id`** (non per `position`) così che due move concorrenti prendano i lock nello stesso ordine e non possano deadlockare. Poi rileggere l'ordine e procedere.
+
+**(b) Isolamento serializzabile con retry.** `prisma.$transaction(fn, { isolationLevel: 'Serializable' })` più un retry bounded sul codice di conflitto di serializzazione di Postgres (40001). Più semplice da leggere, ma richiede che il retry sia davvero implementato: senza, l'utente vede un 500 al posto di un ordine sbagliato, che non è un miglioramento.
+
+Motivare la scelta nel report contro questi criteri: quante query aggiunge per drag, cosa vede l'utente quando due drag collidono davvero, e se la soluzione regge anche il caso cross-column (due colonne, non una).
+
+- [ ] **Step 2 — Portare la lettura di `card` dentro la transazione**
+
+Indipendentemente dalla strategia scelta. Oggi `card` viene letta prima del `$transaction` e il suo `columnId` decide il ramo `isCrossColumn`. Rileggerla dentro, dopo aver preso i lock, elimina la finestra in cui si scrive `position` senza `columnId`.
+
+- [ ] **Step 3 — Scrivere il test di concorrenza**
+
+Il mock Prisma non ha isolamento, quindi non si può simulare una vera corsa. Testare invece **la forma**: che i lock (o l'opzione di isolamento) siano richiesti prima di qualsiasi lettura d'ordine, e — per l'opzione (a) — che l'ordinamento del lock sia per `id`. Se si sceglie (b), testare che il retry riprovi sul codice 40001 e si arrenda dopo il numero di tentativi previsto, con un errore che il client possa interpretare. Dichiarare nel report che questo è un test di forma e perché il test più forte non è disponibile a questo livello.
+
+- [ ] **Step 4 — Verificare che il guard cross-board e i test di 2.2 restino verdi senza modifiche**
+
+Run: `cd backend && npx vitest run src/services/kanban/__tests__/card.service.test.ts`
+Atteso: tutti verdi, **nessuna asserzione preesistente modificata**. Se serve modificarne una, fermarsi e segnalare.
+
+- [ ] **Step 5 — Suite intera e typecheck**
+
+Run: `cd backend && npx vitest run && npx tsc --noEmit`
+Atteso: suite verde, tsc exit 0 senza output.
+
+- [ ] **Step 6 — Commit**
+
+```bash
+git add backend/src/services/kanban/card.service.ts backend/src/services/kanban/__tests__/card.service.test.ts
+git commit -m "fix(kanban): serialize concurrent card moves on the same column"
+```
+
+---
+
+### Task 2.8: `deleteCard` — chiudere il buco senza azzerare l'orologio di archiviazione
+
+> **Origine:** non presente nel piano originale. Aggiunto il 2026-08-31 dalla review su opus del task 2.2 (ruling R25 nel ledger SDD).
+
+**Perché:** `deleteCard` chiude il buco lasciato dalla card cancellata con una `updateMany({ where: { columnId, position: { gt: card.position } }, data: { position: { decrement: 1 } } })` cieca. È esattamente la classe di difetto che lo Stage 2 elimina in `moveCard`: nessun filtro `archivedAt`, quindi conta anche le card archiviate; e nessun diff, quindi tocca **ogni** riga sotto quella cancellata. Siccome `KanbanCard.updatedAt` è `@updatedAt` e Prisma lo applica su `updateMany`, ogni cancellazione **azzera l'orologio di auto-archiviazione a 7 giorni** per tutta la parte inferiore della colonna. Su una board attiva le card completate non si archiviano mai. Lasciare questo significherebbe aver sistemato l'istanza e non la classe.
+
+**Severità:** medium · **Effort:** S · **Rischio:** stesso percorso di scrittura di `moveCard`, ma molto più piccolo.
+
+**File:**
+- Modifica: `backend/src/services/kanban/card.service.ts` (`deleteCard`)
+- Modifica: `backend/src/services/kanban/__tests__/card.service.test.ts`
+
+**Interfacce:**
+- Consuma: lo stesso schema diff-and-write introdotto da 2.2 in `moveCard` — riusare quella forma, non inventarne una seconda
+- Produce: nessuna nuova firma pubblica
+
+- [ ] **Step 1 — Scrivere il test che fallisce**
+
+Due asserzioni, entrambe rosse oggi. Con una colonna `[A0, B1, C2, D3]` dove `B` viene cancellata e `C` è archiviata:
+1. dopo la cancellazione le posizioni delle card **vive** sono una permutazione contigua `0..n-1`;
+2. le righe la cui posizione **non cambia** non vengono scritte — asserire la lista esatta degli update, come fa `positionWrites()` nei test di `moveCard`, e asserire che `updateMany` non venga chiamata.
+
+- [ ] **Step 2 — Eseguire il test e vederlo fallire per il motivo giusto**
+
+Run: `cd backend && npx vitest run src/services/kanban/__tests__/card.service.test.ts -t "deleteCard"`
+Atteso: FAIL. Il fallimento deve mostrare una `updateMany` chiamata (o righe non cambiate riscritte), **non** un errore di arità del mock.
+
+- [ ] **Step 3 — Sostituire lo shift cieco con lo stesso diff-and-write di `moveCard`**
+
+Leggere le card vive della colonna (`archivedAt: null`, ordinate `[{position:'asc'},{createdAt:'asc'}]`) dentro la transazione, escludere quella cancellata, e scrivere solo le righe il cui indice differisce dalla posizione corrente. Riusare la forma già introdotta in `moveCard`; se emerge una funzione condivisa ovvia, estrarla — ma non introdurre un'astrazione per due soli chiamanti se il codice resta più chiaro duplicato.
+
+- [ ] **Step 4 — Eseguire il test e vederlo passare**
+
+Run: `cd backend && npx vitest run src/services/kanban/__tests__/card.service.test.ts -t "deleteCard"`
+Atteso: PASS.
+
+- [ ] **Step 5 — Suite intera e typecheck**
+
+Run: `cd backend && npx vitest run && npx tsc --noEmit`
+Atteso: suite verde, tsc exit 0 senza output.
+
+- [ ] **Step 6 — Commit**
+
+```bash
+git add backend/src/services/kanban/card.service.ts backend/src/services/kanban/__tests__/card.service.test.ts
+git commit -m "fix(kanban): deleteCard repacks live cards without resetting the archive clock"
+```
+
+---
 
 ## Stage 3 — Sync e offline (TIER 1)
 
