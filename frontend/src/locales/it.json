@@ -1219,6 +1219,7 @@
       "boardLabel": "Board: {{boardTitle}}",
       "cardLabel": "Card: {{cardTitle}} ({{boardTitle}})",
       "sharingGapTitle": "Condividi Nota con i Membri della Board",
+      "sharingGapDescription": "Alcuni membri della board non possono aprire \"{{noteTitle}}\". Seleziona chi deve ricevere l'accesso.",
       "usersWithAccess": "Hanno gia' accesso",
       "usersWithoutAccess": "Riceveranno accesso",
       "confirmLink": "Collega e Condividi"
@@ -1547,6 +1548,7 @@
       "onlyLinkerCanUnlinkTaskList": "Solo chi ha collegato la lista può scollegarla",
       "onlyOwnerCanLink": "Solo il proprietario della nota può collegarla",
       "onlyOwnerCanDelete": "Solo il proprietario può eliminare la board",
+      "ownerOnly": "Solo il proprietario della board può eseguire questa azione",
       "boardAlreadyLinkedNote": "La board ha già una nota collegata",
       "boardAlreadyLinkedTaskList": "La board ha già una lista collegata",
       "cardAlreadyLinkedNote": "La card ha già una nota collegata",

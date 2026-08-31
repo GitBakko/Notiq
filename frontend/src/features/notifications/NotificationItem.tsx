@@ -131,6 +131,11 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   if (src.fromColumn) args.fromColumn = src.fromColumn;
   if (src.toColumn) args.toColumn = src.toColumn;
 
+  // count, summary — used by kanbanBulkMove. Note: count can legitimately be
+  // the number 0-as-string, so test for null/undefined, not falsiness.
+  if (src.count !== undefined && src.count !== null) args.count = String(src.count);
+  if (src.summary) args.summary = src.summary;
+
   return args;
 }
 

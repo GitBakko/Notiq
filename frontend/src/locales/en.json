@@ -964,6 +964,7 @@
       "boardLabel": "Board: {{boardTitle}}",
       "cardLabel": "Card: {{cardTitle}} ({{boardTitle}})",
       "sharingGapTitle": "Share Note with Board Members",
+      "sharingGapDescription": "Some board members cannot open \"{{noteTitle}}\". Select who should get access to it.",
       "usersWithAccess": "Already have access",
       "usersWithoutAccess": "Will be given access",
       "confirmLink": "Link & Share"
@@ -1547,6 +1548,7 @@
       "onlyLinkerCanUnlinkTaskList": "Only the user who linked the task list can unlink it",
       "onlyOwnerCanLink": "Only the note owner can link this note",
       "onlyOwnerCanDelete": "Only the owner can delete a board",
+      "ownerOnly": "Only the board owner can perform this action",
       "boardAlreadyLinkedNote": "Board already has a linked note",
       "boardAlreadyLinkedTaskList": "Board already has a linked task list",
       "cardAlreadyLinkedNote": "Card already has a linked note",
