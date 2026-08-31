@@ -504,6 +504,22 @@ describe('moveCard', () => {
     });
   });
 
+  afterEach(() => {
+    // [Finding 3] The beforeEach above overwrites the shared prismaMock.$transaction
+    // with an array-aware stand-in (Promise.all(fn)). vi.clearAllMocks() (the
+    // outer, file-level beforeEach) clears call history but does NOT restore a
+    // reassigned property, so every describe block below this one in the file
+    // would otherwise silently inherit it instead of setup.ts's original
+    // (Promise.resolve(fn)). Restored locally rather than lifted into
+    // setup.ts: the array-form transaction shape is only needed by this
+    // describe's own beforeEach, and setup.ts is shared by all 63 test files —
+    // a small afterEach here has a much smaller blast radius than editing it.
+    prismaMock.$transaction = vi.fn((fn: any) => {
+      if (typeof fn === 'function') return fn(prismaMock);
+      return Promise.resolve(fn);
+    });
+  });
+
   /** The (id, position) pairs the service actually wrote, in write order. */
   function positionWrites(): { id: string; position: number }[] {
     return prismaMock.kanbanCard.update.mock.calls
@@ -813,6 +829,15 @@ describe('moveCard', () => {
       { id: 'M', position: 1 },
       { id: 'Y', position: 2 },
     ]);
+    // [Finding 1] positionWrites() only projects {id, position} and drops
+    // columnId — pin the FULL write for the moved card so a regression that
+    // simplifies the cross-column ternary to `{ position: i }` (silently
+    // dropping the columnId write, i.e. the card never actually changes
+    // column) fails here instead of passing all other tests.
+    expect(prismaMock.kanbanCard.update).toHaveBeenCalledWith({
+      where: { id: 'M' },
+      data: { columnId: targetColumn.id, position: 1 },
+    });
     // S1/S2 are already contiguous once M is gone: nothing to rewrite there.
     // NOTE: the broadcast object carries no actorId — matching the service.
     expect(broadcast).toHaveBeenCalledWith(board.id, {
@@ -822,6 +847,48 @@ describe('moveCard', () => {
       toColumnId: targetColumn.id,
       position: 1,
     });
+  });
+
+  it('closes a real hole in the source column, not just a card the frontend already removed', async () => {
+    // [Finding 2] The other cross-column test's source is [S1@0, S2@1] —
+    // already contiguous once M is filtered out — so the write branch in the
+    // source-repair loop never runs. Here the hole is real: S2 sits at
+    // position 2 with nothing at 1 (as if a card between them was deleted
+    // earlier), so closing it must actually rewrite S2's position.
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: card.title,
+      columnId: sourceColumn.id,
+      position: 0,
+      taskItemId: null,
+      column: { boardId: board.id, title: 'To Do', isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: 'Done',
+      position: 1,
+      isCompleted: false,
+    });
+    // 1st findMany = source column (without the moved card) with a hole at
+    // position 1; 2nd = empty target column.
+    prismaMock.kanbanCard.findMany
+      .mockResolvedValueOnce([
+        { id: 'S1', position: 0 },
+        { id: 'S2', position: 2 },
+      ])
+      .mockResolvedValueOnce([]);
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+    prismaMock.user.findUnique.mockResolvedValue({ name: actor.name, email: actor.email });
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    // S1 is already at 0: untouched. S2 closes the hole: 2 -> 1.
+    expect(prismaMock.kanbanCard.update).toHaveBeenCalledWith({
+      where: { id: 'S2' },
+      data: { position: 1 },
+    });
+    expect(prismaMock.kanbanCard.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'S1' } }),
+    );
   });
 });
 
