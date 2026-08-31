@@ -705,7 +705,18 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'KANBAN_CARD') {
           if (item.type === 'CREATE') {
-            const columnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
+            // The queued payload can point at a DEAD column id. When a board is
+            // created offline, the KANBAN_BOARD/CREATE branch above rewrites the
+            // Dexie column ids to the server ones after the round-trip (and
+            // repoints the cards), but it never rewrites payloads already sitting
+            // in the queue. Dexie holds the reconciled id — read it from there and
+            // keep the queued value only as the fallback for cards whose board
+            // never went through a reconciliation.
+            // The stale columnId left in the body is harmless: createCardSchema
+            // (backend/src/routes/kanban.ts:41-45) strips unknown keys and the
+            // column comes from the URL.
+            const queuedColumnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
+            const columnId = (await db.kanbanCards.get(item.entityId))?.columnId ?? queuedColumnId;
             await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
             const cardData = item.data as Record<string, unknown> | undefined;

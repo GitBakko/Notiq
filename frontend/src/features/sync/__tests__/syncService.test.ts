@@ -1002,6 +1002,33 @@ describe('syncPush', () => {
         id: 'card-new', title: 'Fix bug',
       }));
     });
+
+    it('resolves the card CREATE columnId from Dexie, not from the stale queued payload', async () => {
+      const queueItem = {
+        id: 61, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-orphan',
+        userId: 'user-1',
+        // Queued while the board was still offline: this column id died when the
+        // board CREATE round-tripped and syncPush rewrote the Dexie column ids.
+        data: { id: 'card-orphan', columnId: 'local-col-uuid', title: 'Orphan' },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-orphan',
+        columnId: 'server-col-uuid',
+        updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockApi.post.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.post).toHaveBeenCalledWith(
+        '/kanban/columns/server-col-uuid/cards',
+        expect.objectContaining({ id: 'card-orphan', title: 'Orphan' }),
+      );
+    });
   });
 
   // -----------------------------------------------------------------
