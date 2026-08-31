@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../../plugins/prisma';
 import logger from '../../utils/logger';
 import { NotFoundError, BadRequestError } from '../../utils/errors';
@@ -225,8 +226,6 @@ export async function moveCard(
     throw new NotFoundError('errors.kanban.columnNotFound');
   }
 
-  const isCrossColumn = card.columnId !== toColumnId;
-
   // [BACKUP] 2026-08-31 — the previous body was three updateMany calls:
   //   1. increment every position >= newPosition in the target column
   //   2. update the card to (toColumnId, newPosition)
@@ -236,11 +235,58 @@ export async function moveCard(
   // A=2, C=2 (collision) and a hole at position 1. Replaced by a read-then-diff
   // resequence: the column order is computed in memory and only the rows that
   // actually change position are written.
-  const order = await prisma.$transaction(async (tx) => {
+  //
+  // That fixed a single-user resequence but is still racy under concurrency:
+  // at READ COMMITTED (no row locks) two moves on the same column each read
+  // the same pre-state and each skip rows the other one changed, producing a
+  // duplicate position + a hole (worked counterexample in task-2.7-brief.md).
+  // Locking every candidate row up front, ORDERED BY id (not by the
+  // move-dependent computed position), makes two concurrent moves request
+  // the same rows in the same order: the second blocks on the lock until the
+  // first commits, instead of racing it. This narrows the window to
+  // uncontended reads/writes; it does not add retry or serializable
+  // isolation — see task-2.7-report.md for what is intentionally left open.
+  const { order, isCrossColumn } = await prisma.$transaction(async (tx) => {
+    // Lock candidate rows before any ordering read: the card's own row (in
+    // case a concurrent move already relocated it — see the liveCard reread
+    // below) plus every row currently in the source and target columns.
+    // Ordering by id keeps the lock order identical across concurrent moves
+    // regardless of which cards are actually being reordered, which is what
+    // prevents a Postgres deadlock (40P01) between two moves that touch the
+    // same column pair from opposite directions.
+    const lockColumnIds = Array.from(new Set([card.columnId, toColumnId]));
+    await tx.$queryRaw`
+      SELECT id FROM "KanbanCard"
+      WHERE id = ${cardId} OR "columnId" IN (${Prisma.join(lockColumnIds)})
+      ORDER BY id
+      FOR UPDATE
+    `;
+
+    // Re-read the card now that its row is locked. `card` above was read
+    // BEFORE this transaction opened; a concurrent move landing in that
+    // window could have changed its columnId, and deciding isCrossColumn
+    // from the stale value would write `position` without `columnId`,
+    // stranding the card in a foreign column. sourceColumnId (not the outer
+    // card.columnId) drives the source-column repair below.
+    // NOTE: if the live columnId turns out to be a THIRD column — this exact
+    // card relocated elsewhere by another transaction in the sliver between
+    // the outer read and the lock above — that column's rows are not part
+    // of lockColumnIds and are not locked here. That residual window is
+    // documented in task-2.7-report.md; it is far narrower than the bug
+    // this task closes (it requires a second move of this specific card,
+    // not just any card in the column, to land in that sliver).
+    const liveCard = await tx.kanbanCard.findUnique({
+      where: { id: cardId },
+      select: { columnId: true },
+    });
+    if (!liveCard) throw new NotFoundError('errors.kanban.cardNotFound');
+    const sourceColumnId = liveCard.columnId;
+    const isCrossColumn = sourceColumnId !== toColumnId;
+
     // Cross-column: close the hole the card leaves behind in the source column.
     if (isCrossColumn) {
       const sourceCards = await tx.kanbanCard.findMany({
-        where: { columnId: card.columnId, archivedAt: null, id: { not: cardId } },
+        where: { columnId: sourceColumnId, archivedAt: null, id: { not: cardId } },
         orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
         select: { id: true, position: true },
       });
@@ -282,7 +328,7 @@ export async function moveCard(
       });
     }
 
-    return nextOrder;
+    return { order: nextOrder, isCrossColumn };
   });
 
   broadcast(boardId, {
@@ -295,8 +341,10 @@ export async function moveCard(
     position: order.indexOf(cardId),
   });
 
-  // Cross-column move: log activity + auto-assign card to the mover
-  if (actorId && card.columnId !== toColumnId) {
+  // Cross-column move: log activity + auto-assign card to the mover.
+  // Uses the transaction's isCrossColumn (decided from the row read AFTER
+  // the lock), not a recompute against the outer, pre-transaction `card`.
+  if (actorId && isCrossColumn) {
     await prisma.kanbanCard.update({
       where: { id: cardId },
       data: { assigneeId: actorId },

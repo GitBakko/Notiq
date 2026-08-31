@@ -946,6 +946,114 @@ describe('moveCard', () => {
       expect.objectContaining({ where: { id: 'S1' } }),
     );
   });
+
+  // ─── Concurrency hardening (task 2.7) ────────────────────────
+  //
+  // A mocked Prisma has no real transaction isolation — two `moveCard` calls
+  // in the same test process share one fake connection and can never
+  // actually race each other, so no test here can reproduce the worked
+  // counterexample from task-2.7-brief.md (two real Postgres transactions
+  // reading the same pre-state under READ COMMITTED). These are SHAPE tests:
+  // they assert the row lock is requested, ordered by id, before any read
+  // that decides the new order — the property that makes two concurrent
+  // moves serialize instead of racing. A real demonstration needs two
+  // concurrent connections against the dev Postgres on 5433; see the task
+  // report for why that integration test was judged not worth adding here.
+
+  it('locks candidate rows via FOR UPDATE, ordered by id, before reading the column order', async () => {
+    const callOrder: string[] = [];
+    const tx = {
+      $queryRaw: vi.fn((..._args: unknown[]) => {
+        callOrder.push('lock');
+        return Promise.resolve(undefined);
+      }),
+      kanbanCard: {
+        findUnique: vi.fn(() => {
+          callOrder.push('findUnique');
+          return Promise.resolve({ columnId: sourceColumn.id });
+        }),
+        findMany: vi.fn(() => {
+          callOrder.push('findMany');
+          return Promise.resolve([
+            { id: 'A', position: 0 },
+            { id: 'B', position: 1 },
+            { id: 'C', position: 2 },
+            { id: 'D', position: 3 },
+          ]);
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: 'A',
+      columnId: sourceColumn.id,
+      position: 0,
+      taskItemId: null,
+      column: { boardId: board.id, title: 'To Do', isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: 'To Do',
+      position: 0,
+      isCompleted: false,
+    });
+
+    await moveCard('A', sourceColumn.id, 2, actor.id);
+
+    // Lock first, then the fresh card reread, then the order-deciding read.
+    expect(callOrder).toEqual(['lock', 'findUnique', 'findMany']);
+
+    const [strings, ...values] = tx.$queryRaw.mock.calls[0] as [string[], ...unknown[]];
+    const sql = strings.join('?');
+    expect(sql).toContain('FOR UPDATE');
+    expect(sql).toContain('ORDER BY id');
+    // The lock order must not depend on the move: ordering by the computed
+    // position would make it move-dependent again and reopen the deadlock
+    // this task closes.
+    expect(sql).not.toMatch(/ORDER BY\s*"?position/i);
+    expect(values[0]).toBe('A'); // cardId is locked explicitly, by id
+
+    // The lock must go through the transaction's client, never the
+    // top-level one — a call there would run outside the lock entirely.
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('locks rows in both the source and target columns on a cross-column move', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue(undefined),
+      kanbanCard: {
+        findUnique: vi.fn().mockResolvedValue({ columnId: sourceColumn.id }),
+        findMany: vi.fn().mockResolvedValue([]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: card.title,
+      columnId: sourceColumn.id,
+      position: 0,
+      taskItemId: null,
+      column: { boardId: board.id, title: sourceColumn.title, isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      title: targetColumn.title,
+      position: 1,
+      isCompleted: false,
+    });
+    prismaMock.user.findUnique.mockResolvedValue({ name: actor.name, email: actor.email });
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    const [, , lockedColumns] = tx.$queryRaw.mock.calls[0] as [unknown, unknown, { values: string[] }];
+    // Both columns involved in a cross-column move must be in the locked
+    // set, not just the target: the source-column hole-closing loop writes
+    // rows there too, and those writes need the same protection.
+    expect(new Set(lockedColumns.values)).toEqual(new Set([sourceColumn.id, targetColumn.id]));
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
