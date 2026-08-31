@@ -9,7 +9,6 @@ import {
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
-import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
 import { useKanbanMutations } from './hooks/useKanbanMutations';
 import { useKanbanRealtime } from './hooks/useKanbanRealtime';
@@ -201,9 +200,11 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   function handleDeleteColumn(columnId: string): void {
-    mutations.deleteColumn.mutate(columnId, {
-      onError: () => toast.error(t('kanban.column.hasCards')),
-    });
+    // The error message is now produced by the global MutationCache handler in
+    // lib/queryClient.ts. The old local message said "move or delete all cards
+    // first", which can never be true here: kanbanService.deleteColumn is a Dexie
+    // transaction that deletes the column's cards itself.
+    mutations.deleteColumn.mutate(columnId);
   }
 
   function handleToggleColumnCompletion(columnId: string, isCompleted: boolean): void {
@@ -236,10 +237,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (!file) return;
-    mutations.uploadCover.mutate(
-      { bid: boardId, file },
-      { onError: () => toast.error(t('kanban.cover.uploadError')) },
-    );
+    // Global handler surfaces the server message (e.g. errors.kanban.coverTooLarge).
+    mutations.uploadCover.mutate({ bid: boardId, file });
     e.target.value = '';
   }
 
@@ -295,10 +294,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (!file) return;
-    mutations.uploadAvatar.mutate(
-      { bid: boardId, file },
-      { onError: () => toast.error(t('common.genericError')) },
-    );
+    // Global handler surfaces the server message (e.g. errors.kanban.avatarTooLarge).
+    mutations.uploadAvatar.mutate({ bid: boardId, file });
     e.target.value = '';
   }
 
