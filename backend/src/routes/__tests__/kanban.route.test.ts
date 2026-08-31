@@ -436,6 +436,25 @@ describe('PUT /api/kanban/cards/:id', () => {
     );
   });
 
+  it('strips noteId at the schema layer, before it reaches the service', async () => {
+    const updated = { id: 'card-1', title: 'Updated card' };
+    mockKanbanService.updateCard.mockResolvedValue(updated);
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kanban/cards/card-1',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { title: 'Updated card', noteId: 'note-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockKanbanService.updateCard).toHaveBeenCalledWith(
+      'card-1',
+      { title: 'Updated card' },
+      TEST_USER.id,
+    );
+  });
+
   it('returns 400 with invalid priority value', async () => {
     const res = await app.inject({
       method: 'PUT',
