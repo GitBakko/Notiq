@@ -35,7 +35,7 @@ const createColumnSchema = z.object({
 });
 
 const reorderColumnsSchema = z.object({
-  columns: z.array(z.object({ id: z.string(), position: z.number().int().min(0) })),
+  columns: z.array(z.object({ id: z.string(), position: z.number().int().min(0) })).min(1).max(100),
 });
 
 const createCardSchema = z.object({

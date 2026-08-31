@@ -1,6 +1,7 @@
 import prisma from '../../plugins/prisma';
 import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
+import { assertBelongsToBoard } from '../kanbanPermissions';
 
 // ─── Column CRUD ────────────────────────────────────────────
 
@@ -55,6 +56,10 @@ export async function reorderColumns(
   boardId: string,
   items: { id: string; position: number }[]
 ) {
+  // The route only proved WRITE access to `boardId`; the ids in the body are
+  // caller-controlled and must be confirmed to live on that board before writing.
+  await assertBelongsToBoard(boardId, { columnIds: items.map((item) => item.id) });
+
   await prisma.$transaction(
     items.map((item) =>
       prisma.kanbanColumn.update({

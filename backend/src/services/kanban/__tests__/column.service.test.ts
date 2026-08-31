@@ -5,10 +5,15 @@ vi.mock('../../kanbanSSE', () => ({
   broadcast: vi.fn(),
 }));
 
+vi.mock('../../kanbanPermissions', () => ({
+  assertBelongsToBoard: vi.fn().mockResolvedValue(undefined),
+}));
+
 import prisma from '../../../plugins/prisma';
 import { createColumn, updateColumn, reorderColumns, deleteColumn } from '../column.service';
 import { makeKanbanColumn, makeKanbanBoard } from '../../../__tests__/factories';
-import { NotFoundError, BadRequestError } from '../../../utils/errors';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../../../utils/errors';
+import { assertBelongsToBoard } from '../../kanbanPermissions';
 
 // Cast for type-safe mock access
 const prismaMock = prisma as any;
@@ -37,6 +42,10 @@ beforeEach(() => {
     if (typeof fn === 'function') return fn(prismaMock);
     return Promise.all(fn);
   });
+
+  // clearAllMocks does not drop queued `...Once` implementations: reset explicitly
+  (assertBelongsToBoard as any).mockReset();
+  (assertBelongsToBoard as any).mockResolvedValue(undefined);
 });
 
 // ─── createColumn ──────────────────────────────────────────────
@@ -162,6 +171,40 @@ describe('reorderColumns', () => {
       where: { id: col2.id },
       data: { position: 0 },
     });
+  });
+
+  it('asserts every column id belongs to the board before writing', async () => {
+    const board = makeKanbanBoard();
+    const col1 = makeKanbanColumn({ boardId: board.id, position: 0 });
+    const col2 = makeKanbanColumn({ boardId: board.id, position: 1 });
+
+    prismaMock.kanbanColumn.update.mockResolvedValue({});
+
+    await reorderColumns(board.id, [
+      { id: col1.id, position: 1 },
+      { id: col2.id, position: 0 },
+    ]);
+
+    expect(assertBelongsToBoard).toHaveBeenCalledWith(board.id, {
+      columnIds: [col1.id, col2.id],
+    });
+  });
+
+  it('does not write anything when a column belongs to another board', async () => {
+    const board = makeKanbanBoard();
+    const foreign = makeKanbanColumn();
+
+    prismaMock.kanbanColumn.update.mockResolvedValue({});
+    (assertBelongsToBoard as any).mockRejectedValueOnce(
+      new ForbiddenError('errors.common.accessDenied')
+    );
+
+    const promise = reorderColumns(board.id, [{ id: foreign.id, position: 0 }]);
+
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+    expect(prismaMock.kanbanColumn.update).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
 
