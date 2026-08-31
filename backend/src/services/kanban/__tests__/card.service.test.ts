@@ -265,35 +265,55 @@ describe('createCard', () => {
       boardId: board.id,
       title: column.title,
     });
-    prismaMock.kanbanCard.aggregate.mockResolvedValue({ _max: { position: 3 } });
-    prismaMock.kanbanCard.create.mockResolvedValue({
-      id: 'card-tx',
-      title: 'Tx Card',
-      description: null,
-      position: 4,
-      columnId: column.id,
-      assigneeId: null,
-      dueDate: null,
-      priority: null,
-      noteId: null,
-      noteLinkedById: null,
-      archivedAt: null,
-      taskItemId: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      assignee: null,
-      note: null,
-      _count: { comments: 0 },
-    });
+
+    // setup.ts's default $transaction mock invokes the callback with
+    // prismaMock itself as `tx`, so prismaMock.kanbanCard.aggregate/create
+    // ARE tx.kanbanCard.aggregate/create — an assertion on the shared mock
+    // can't tell a call made inside the callback from one made outside it.
+    // Stub a distinct `tx` double locally so the assertions below can only
+    // pass if createCard actually calls aggregate/create on the object the
+    // transaction handed it, not on the top-level prisma client.
+    const tx = {
+      kanbanCard: {
+        aggregate: vi.fn().mockResolvedValue({ _max: { position: 3 } }),
+        create: vi.fn().mockResolvedValue({
+          id: 'card-tx',
+          title: 'Tx Card',
+          description: null,
+          position: 4,
+          columnId: column.id,
+          assigneeId: null,
+          dueDate: null,
+          priority: null,
+          noteId: null,
+          noteLinkedById: null,
+          archivedAt: null,
+          taskItemId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          assignee: null,
+          note: null,
+          _count: { comments: 0 },
+        }),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
 
     await createCard(column.id, 'Tx Card');
 
     // read-then-write outside a transaction lets two concurrent creates read
     // the same max and land on the same position.
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    expect(prismaMock.kanbanCard.create).toHaveBeenCalledWith(
+    expect(tx.kanbanCard.aggregate).toHaveBeenCalledWith({
+      where: { columnId: column.id },
+      _max: { position: true },
+    });
+    expect(tx.kanbanCard.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ position: 4 }) }),
     );
+    // Neither call may bypass the transaction and hit the top-level client.
+    expect(prismaMock.kanbanCard.aggregate).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.create).not.toHaveBeenCalled();
   });
 });
 

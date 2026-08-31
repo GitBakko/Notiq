@@ -87,15 +87,33 @@ describe('createColumn', () => {
 
   it('computes the max position and creates the column inside one transaction', async () => {
     const board = makeKanbanBoard();
-    prismaMock.kanbanColumn.aggregate.mockResolvedValue({ _max: { position: 1 } });
-    prismaMock.kanbanColumn.create.mockResolvedValue(makeKanbanColumn({ boardId: board.id, position: 2 }));
+
+    // Same rationale as the equivalent test in card.service.test.ts:
+    // setup.ts's default $transaction mock hands the callback prismaMock
+    // itself, so a call to prismaMock.kanbanColumn.* can't be told apart from
+    // a call made outside the transaction. Use a distinct `tx` double so the
+    // assertions below can only pass if createColumn actually runs
+    // aggregate/create through the transaction's client.
+    const tx = {
+      kanbanColumn: {
+        aggregate: vi.fn().mockResolvedValue({ _max: { position: 1 } }),
+        create: vi.fn().mockResolvedValue(makeKanbanColumn({ boardId: board.id, position: 2 })),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
 
     await createColumn(board.id, 'Review');
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    expect(prismaMock.kanbanColumn.create).toHaveBeenCalledWith({
+    expect(tx.kanbanColumn.aggregate).toHaveBeenCalledWith({
+      where: { boardId: board.id },
+      _max: { position: true },
+    });
+    expect(tx.kanbanColumn.create).toHaveBeenCalledWith({
       data: { boardId: board.id, title: 'Review', position: 2 },
     });
+    expect(prismaMock.kanbanColumn.aggregate).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanColumn.create).not.toHaveBeenCalled();
   });
 });
 
