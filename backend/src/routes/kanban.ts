@@ -47,13 +47,13 @@ const createCardSchema = z.object({
 const updateCardSchema = z.object({
   title: z.string().min(1).max(500).optional(),
   description: z.string().max(5000).nullable().optional(),
-  assigneeId: z.string().nullable().optional(),
+  assigneeId: z.string().min(1).nullable().optional(),
   dueDate: z.string().nullable().optional(),
   priority: z.enum(['STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).nullable().optional(),
 });
 
 const moveCardSchema = z.object({
-  toColumnId: z.string(),
+  toColumnId: z.string().min(1),
   position: z.number().int().min(0),
 });
 

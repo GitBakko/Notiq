@@ -445,6 +445,19 @@ describe('PUT /api/kanban/cards/:id', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('returns 400 with an empty-string assigneeId, without reaching the service', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kanban/cards/card-1',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { assigneeId: '' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.payload).message).toBe('Validation error');
+    expect(mockKanbanService.updateCard).not.toHaveBeenCalled();
+  });
 });
 
 describe('PUT /api/kanban/cards/:id/move', () => {
@@ -481,6 +494,19 @@ describe('PUT /api/kanban/cards/:id/move', () => {
       payload: { position: 0 },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 with an empty-string toColumnId, without reaching the service', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kanban/cards/card-1/move',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { toColumnId: '', position: 0 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.payload).message).toBe('Validation error');
+    expect(mockKanbanService.moveCard).not.toHaveBeenCalled();
   });
 });
 
