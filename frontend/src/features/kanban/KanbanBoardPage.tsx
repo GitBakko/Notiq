@@ -356,12 +356,19 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     // out-of-range position. `moves` only holds cards from OTHER columns (filtered above),
     // so `targetColumn.cards.length` is the correct append base; each
     // successive card then lands one index further.
+    //
+    // [FIX 2026-08-31, round 1] Passing an explicit `appendBase + i` to
+    // handleMoveCardToColumn matters here: it's a useCallback memoized on
+    // localColumns, and this loop calls it N times synchronously with no
+    // render between iterations, so every call would otherwise read the
+    // same stale localColumns snapshot and compute the SAME append index
+    // for every card — see the callback's own comment in useBoardDnD.ts.
     const targetColumn = board.columns.find(c => c.id === targetColumnId);
     const appendBase = targetColumn ? targetColumn.cards.length : 0;
 
-    for (const move of moves) {
-      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId);
-    }
+    moves.forEach((move, i) => {
+      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId, appendBase + i);
+    });
     moves.forEach((move, i) => {
       api.put(`/kanban/cards/${move.cardId}/move?silent=true`, {
         toColumnId: move.toColumnId,

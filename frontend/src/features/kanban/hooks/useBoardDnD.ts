@@ -267,17 +267,29 @@ export function useBoardDnD({ board, boardId, mutations }: UseBoardDnDParams) {
 
   // Move card to a different column via menu (mobile & desktop)
   const handleMoveCardToColumn = useCallback(
-    (cardId: string, targetColumnId: string) => {
-      // [BACKUP] 2026-08-31 — previously sent the literal sentinel `999` as
-      // the position. The server now clamps it, but it still lied about the
-      // requested index. Send the real append index instead: the count of
-      // live cards in the target column, minus the moving card itself if it's
-      // already there (same-column move to the end) — matches @dnd-kit's
-      // arrayMove convention (index after removal) used by computeColumnOrder.
+    // [BACKUP] 2026-08-31 — previously sent the literal sentinel `999` as
+    // the position. The server now clamps it, but it still lied about the
+    // requested index. Default: the real append index, computed from the
+    // count of live cards in the target column, minus the moving card
+    // itself if it's already there (same-column move to the end) — matches
+    // @dnd-kit's arrayMove convention (index after removal) used by
+    // computeColumnOrder.
+    //
+    // [FIX 2026-08-31, round 1] `explicitPosition` lets a caller that fires
+    // this in a tight synchronous loop (bulk move) supply an advancing
+    // index instead. This callback is memoized on `localColumns`, so N
+    // synchronous calls in one render all read the SAME `localColumns`
+    // snapshot — the derived `appendIndex` below would be identical for
+    // every card in the batch, and the backend (processing the queued
+    // requests sequentially) would insert each one before the last,
+    // reversing the intended order. The old `999` sentinel accidentally
+    // dodged this because the server clamped it against the live length at
+    // processing time; a precomputed real index does not get that for free.
+    (cardId: string, targetColumnId: string, explicitPosition?: number) => {
       const targetColumn = localColumns.find((c) => c.id === targetColumnId);
-      const appendIndex = targetColumn
+      const appendIndex = explicitPosition ?? (targetColumn
         ? targetColumn.cards.filter((c) => c.id !== cardId).length
-        : 0;
+        : 0);
 
       // Optimistic: move card in localColumns immediately
       setLocalColumns((prev) => {
