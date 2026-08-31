@@ -199,6 +199,16 @@ export async function moveCard(
 
   const boardId = card.column.boardId;
 
+  // The target column must live on the same board as the card: without this the
+  // caller can inject a card into any board whose column id they can guess.
+  if (targetColumn.boardId !== boardId) {
+    logger.warn(
+      { cardId, toColumnId, boardId, targetBoardId: targetColumn.boardId },
+      'Rejected cross-board card move'
+    );
+    throw new NotFoundError('errors.kanban.columnNotFound');
+  }
+
   await prisma.$transaction(async (tx) => {
     // Shift cards in target column to make room
     await tx.kanbanCard.updateMany({

@@ -595,6 +595,32 @@ describe('moveCard', () => {
       expect.objectContaining({ type: 'KANBAN_CARD_MOVED' })
     );
   });
+
+  it('throws NotFoundError and writes nothing when the target column is on another board', async () => {
+    const foreignBoard = makeKanbanBoard();
+    const foreignColumn = makeKanbanColumn({ boardId: foreignBoard.id, title: 'Victim Column' });
+
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      title: card.title,
+      columnId: sourceColumn.id,
+      position: 0,
+      taskItemId: null,
+      column: { boardId: board.id, title: sourceColumn.title, isCompleted: false },
+    });
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: foreignBoard.id,
+      title: foreignColumn.title,
+      position: 0,
+      isCompleted: false,
+    });
+
+    await expect(moveCard(card.id, foreignColumn.id, 0, actor.id)).rejects.toThrow(NotFoundError);
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.updateMany).not.toHaveBeenCalled();
+    expect(broadcast).not.toHaveBeenCalled();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
