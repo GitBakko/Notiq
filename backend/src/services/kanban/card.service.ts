@@ -4,6 +4,7 @@ import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
 import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
 import { notifyBoardUsers, notifyBoardUsersTiered } from './notifications';
+import { assertBelongsToBoard } from '../kanbanPermissions';
 
 // ─── Card CRUD ──────────────────────────────────────────────
 
@@ -62,6 +63,13 @@ export async function updateCard(
     select: { assigneeId: true, title: true, dueDate: true, column: { select: { boardId: true } } },
   });
   if (!currentCard) throw new NotFoundError('errors.kanban.cardNotFound');
+
+  // A card may only be assigned to someone who is already on the board: otherwise
+  // any writer can push notifications and reminders onto arbitrary users.
+  // Truthy check on purpose — `null` means "unassign" and needs no membership.
+  if (data.assigneeId) {
+    await assertBelongsToBoard(currentCard.column.boardId, { userIds: [data.assigneeId] });
+  }
 
   const updateData: Record<string, unknown> = {};
   if (data.title !== undefined) updateData.title = data.title;

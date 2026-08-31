@@ -34,6 +34,10 @@ vi.mock('../notifications', () => ({
   notifyBoardUsersTiered: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../kanbanPermissions', () => ({
+  assertBelongsToBoard: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../kanbanSSE', () => ({
   broadcast: vi.fn(),
 }));
@@ -64,6 +68,7 @@ import {
 import { logCardActivity, transformCard } from '../helpers';
 import { broadcast } from '../../kanbanSSE';
 import { notifyBoardUsers, notifyBoardUsersTiered } from '../notifications';
+import { assertBelongsToBoard } from '../../kanbanPermissions';
 import {
   makeUser,
   makeKanbanBoard,
@@ -71,7 +76,7 @@ import {
   makeKanbanCard,
   makeKanbanCardActivity,
 } from '../../../__tests__/factories';
-import { NotFoundError, BadRequestError } from '../../../utils/errors';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../../../utils/errors';
 
 // ─── Typed prisma mock ────────────────────────────────────────
 
@@ -89,6 +94,10 @@ beforeEach(() => {
 
   // Re-create aggregate after clearAllMocks wipes it
   prismaMock.kanbanCard.aggregate = vi.fn();
+
+  // clearAllMocks does not drop queued `...Once` implementations: reset explicitly
+  (assertBelongsToBoard as any).mockReset();
+  (assertBelongsToBoard as any).mockResolvedValue(undefined);
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -413,6 +422,46 @@ describe('updateCard', () => {
       type: 'card:updated',
       boardId: board.id,
     }));
+  });
+
+  it('checks the new assignee is a board participant before writing', async () => {
+    const assignee = makeUser();
+    const rawCard = makeRawCardResult({ assigneeId: assignee.id });
+    prismaMock.kanbanCard.update.mockResolvedValue(rawCard);
+    prismaMock.user.findUnique.mockResolvedValue({ name: assignee.name, email: assignee.email });
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ title: board.title });
+
+    await updateCard('card-u1', { assigneeId: assignee.id }, actor.id);
+
+    expect(assertBelongsToBoard).toHaveBeenCalledWith(board.id, { userIds: [assignee.id] });
+  });
+
+  it('does not write when the assignee is not a board participant', async () => {
+    const outsider = makeUser();
+    prismaMock.kanbanCard.update.mockResolvedValue(makeRawCardResult());
+    (assertBelongsToBoard as any).mockRejectedValueOnce(
+      new ForbiddenError('errors.common.accessDenied')
+    );
+
+    const promise = updateCard('card-u1', { assigneeId: outsider.id }, actor.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+
+    expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
+    expect(notifyBoardUsers).not.toHaveBeenCalled();
+  });
+
+  it('does not check membership when clearing the assignee', async () => {
+    const previousAssignee = makeUser();
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      ...currentCard,
+      assigneeId: previousAssignee.id,
+    });
+    prismaMock.kanbanCard.update.mockResolvedValue(makeRawCardResult({ assigneeId: null }));
+
+    await updateCard('card-u1', { assigneeId: null }, actor.id);
+
+    expect(assertBelongsToBoard).not.toHaveBeenCalled();
   });
 });
 
