@@ -1064,19 +1064,34 @@ describe('deleteCard', () => {
   const board = makeKanbanBoard();
   const column = makeKanbanColumn({ boardId: board.id });
 
-  it('deletes card and repositions remaining cards', async () => {
+  afterEach(() => {
+    // A couple of tests below swap in a distinct `tx` double (same rationale
+    // as moveCard's own afterEach): restore the default shape so it doesn't
+    // leak into whatever describe block runs next in this file.
+    prismaMock.$transaction = vi.fn((fn: any) => fn(prismaMock));
+  });
+
+  /** The (id, position) pairs deleteCard actually wrote, in write order. */
+  function positionWrites(): { id: string; position: number }[] {
+    return prismaMock.kanbanCard.update.mock.calls
+      .map(([arg]: [any]) => arg)
+      .filter((arg: any) => arg.data.position !== undefined)
+      .map((arg: any) => ({ id: arg.where.id, position: arg.data.position as number }));
+  }
+
+  it('deletes the card and broadcasts card:deleted', async () => {
     prismaMock.kanbanCard.findUnique.mockResolvedValue({
       columnId: column.id,
-      position: 1,
       title: 'Card to delete',
       column: { boardId: board.id, title: column.title },
     });
     prismaMock.kanbanCard.delete.mockResolvedValue({});
-    prismaMock.kanbanCard.updateMany.mockResolvedValue({ count: 2 });
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
 
     await deleteCard('card-del');
 
     expect(prismaMock.$transaction).toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.delete).toHaveBeenCalledWith({ where: { id: 'card-del' } });
     expect(broadcast).toHaveBeenCalledWith(board.id, {
       type: 'card:deleted',
       boardId: board.id,
@@ -1088,6 +1103,128 @@ describe('deleteCard', () => {
     prismaMock.kanbanCard.findUnique.mockResolvedValue(null);
 
     await expect(deleteCard('missing')).rejects.toThrow(NotFoundError);
+  });
+
+  it('repacks live cards into a contiguous 0..n-1 permutation, ignoring an archived card', async () => {
+    // Column [A0, B1, C2, D3]: B is deleted, C is archived. The repack read
+    // filters archivedAt: null, so C is never returned and its position is
+    // not counted against the live cards.
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      columnId: column.id,
+      title: 'B',
+      column: { boardId: board.id, title: column.title },
+    });
+    prismaMock.kanbanCard.delete.mockResolvedValue({});
+    prismaMock.kanbanCard.findMany.mockResolvedValue([
+      { id: 'A', position: 0 },
+      { id: 'D', position: 3 },
+    ]);
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+
+    await deleteCard('B');
+
+    // Start from the pre-delete state (B gone, C archived and out of scope)
+    // and apply what the service actually wrote.
+    const final: Record<string, number> = { A: 0, D: 3 };
+    for (const w of positionWrites()) final[w.id] = w.position;
+
+    expect(Object.values(final).sort((a, b) => a - b)).toEqual([0, 1]);
+    expect(new Set(Object.values(final)).size).toBe(2);
+  });
+
+  it('writes only the rows whose position actually changed, never via updateMany', async () => {
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      columnId: column.id,
+      title: 'B',
+      column: { boardId: board.id, title: column.title },
+    });
+    prismaMock.kanbanCard.delete.mockResolvedValue({});
+    prismaMock.kanbanCard.findMany.mockResolvedValue([
+      { id: 'A', position: 0 },
+      { id: 'D', position: 3 },
+    ]);
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+
+    await deleteCard('B');
+
+    expect(positionWrites()).toEqual([{ id: 'D', position: 1 }]);
+    // A is already contiguous at 0: writing it would bump its @updatedAt and
+    // reset the 7-day archive clock read by archiveCompletedCards().
+    expect(positionWrites().map((w) => w.id)).not.toContain('A');
+    // The reposition must go through targeted updates, never updateMany.
+    expect(prismaMock.kanbanCard.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('excludes archived cards from the repack read itself, not just from the write', async () => {
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      columnId: column.id,
+      title: 'B',
+      column: { boardId: board.id, title: column.title },
+    });
+    prismaMock.kanbanCard.delete.mockResolvedValue({});
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+
+    await deleteCard('B');
+
+    expect(prismaMock.kanbanCard.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ columnId: column.id, archivedAt: null }),
+      })
+    );
+  });
+
+  // ─── Concurrency hardening (consistency with moveCard, task 2.7) ─────
+  //
+  // Same caveat as moveCard's own lock tests: a mocked Prisma has no real
+  // transaction isolation, so this is a SHAPE test — it asserts the lock is
+  // requested, ordered by id, before any read that decides what to repack.
+
+  it('locks the card and its column via FOR UPDATE, ordered by id, before deleting', async () => {
+    const callOrder: string[] = [];
+    const tx = {
+      $queryRaw: vi.fn((..._args: unknown[]) => {
+        callOrder.push('lock');
+        return Promise.resolve(undefined);
+      }),
+      kanbanCard: {
+        findUnique: vi.fn(() => {
+          callOrder.push('findUnique');
+          return Promise.resolve({ columnId: column.id });
+        }),
+        delete: vi.fn(() => {
+          callOrder.push('delete');
+          return Promise.resolve({});
+        }),
+        findMany: vi.fn(() => {
+          callOrder.push('findMany');
+          return Promise.resolve([]);
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    prismaMock.kanbanCard.findUnique.mockResolvedValue({
+      columnId: column.id,
+      title: 'B',
+      column: { boardId: board.id, title: column.title },
+    });
+
+    await deleteCard('B');
+
+    // Lock first, then the fresh card reread, then the delete, then the
+    // repack-deciding read.
+    expect(callOrder).toEqual(['lock', 'findUnique', 'delete', 'findMany']);
+
+    const [strings, ...values] = tx.$queryRaw.mock.calls[0] as [string[], ...unknown[]];
+    const sql = strings.join('?');
+    expect(sql).toContain('FOR UPDATE');
+    expect(sql).toContain('ORDER BY id');
+    expect(values).toEqual(['B', column.id]);
+
+    // The lock must go through the transaction's client, never the
+    // top-level one — a call there would run outside the lock entirely.
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
   });
 });
 

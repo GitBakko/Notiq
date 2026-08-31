@@ -429,7 +429,7 @@ export async function moveCard(
 export async function deleteCard(cardId: string, actorId?: string) {
   const card = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
-    select: { columnId: true, position: true, title: true, column: { select: { boardId: true, title: true } } },
+    select: { columnId: true, title: true, column: { select: { boardId: true, title: true } } },
   });
   if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
 
@@ -440,14 +440,67 @@ export async function deleteCard(cardId: string, actorId?: string) {
   // If we want to keep history after deletion, we'd need a board-level log.
   // For now, activities are tied to the card lifecycle.
 
+  // [BACKUP] 2026-08-31 — the previous body was a blind updateMany:
+  //   updateMany({ where: { columnId, position: { gt: card.position } }, data: { position: { decrement: 1 } } })
+  // Same defect class moveCard had before task 2.2/2.7: no archivedAt filter
+  // (archived cards were counted and shifted even though the frontend only
+  // ever sees live ones — getBoard() filters archivedAt: null), and no diff
+  // (every row below the deleted card was rewritten regardless of whether
+  // its index actually changed). Since KanbanCard.updatedAt is @updatedAt
+  // and Prisma applies it on updateMany, every delete reset the 7-day
+  // auto-archive clock — archiveCompletedCards() filters on updatedAt — for
+  // the whole lower part of the column, so completed cards on an active
+  // board never reached the archive. Replaced with the same read-then-diff
+  // resequence moveCard uses: read the live rows, write only the ones whose
+  // index actually changed.
   await prisma.$transaction(async (tx) => {
+    // Lock the card's row plus every row currently in its column, ordered by
+    // id, before any read — same primitive moveCard's FOR UPDATE lock uses
+    // (task 2.7). Two concurrent deleteCards on the same column don't
+    // strictly need this to stay safe: Prisma's own row lock on the DELETE
+    // plus a P2025 on a since-deleted row turns that race into a transient
+    // error + retry, not silent corruption. But an unlocked deleteCard
+    // racing a (now-locked) moveCard on the same column is a real lost
+    // update: moveCard can commit a fresh position for a row after this
+    // transaction's own repack read below has already captured that row's
+    // stale position, and this transaction's later UPDATE would silently
+    // overwrite moveCard's fresh write — the exact corruption class task
+    // 2.7 closed for moveCard-vs-moveCard, just reachable from the other
+    // side. The lock closes that window for the price of one extra query.
+    await tx.$queryRaw`
+      SELECT id FROM "KanbanCard"
+      WHERE id = ${cardId} OR "columnId" = ${card.columnId}
+      ORDER BY id
+      FOR UPDATE
+    `;
+
+    // Re-read after the lock: a concurrent move could have relocated this
+    // card to a different column in the window between the outer read above
+    // and this transaction opening (same residual documented in moveCard /
+    // task-2.7-report.md — narrower still, since it needs a second move of
+    // this exact card in that sliver).
+    const liveCard = await tx.kanbanCard.findUnique({
+      where: { id: cardId },
+      select: { columnId: true },
+    });
+    if (!liveCard) throw new NotFoundError('errors.kanban.cardNotFound');
+    const columnId = liveCard.columnId;
+
     await tx.kanbanCard.delete({ where: { id: cardId } });
 
-    // Reposition remaining cards in the column
-    await tx.kanbanCard.updateMany({
-      where: { columnId: card.columnId, position: { gt: card.position } },
-      data: { position: { decrement: 1 } },
+    // Repack the live cards left in the column. archivedAt: null excludes
+    // archived cards — they consume no position, matching getBoard(). Only
+    // rows whose index actually changed are written (see the note above on
+    // the archive-clock reset).
+    const remaining = await tx.kanbanCard.findMany({
+      where: { columnId, archivedAt: null },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, position: true },
     });
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].position === i) continue;
+      await tx.kanbanCard.update({ where: { id: remaining[i].id }, data: { position: i } });
+    }
   });
 
   broadcast(boardId, { type: 'card:deleted', boardId, cardId });
