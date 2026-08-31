@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import prisma from '../../../plugins/prisma';
+import { ForbiddenError } from '../../../utils/errors';
 import {
   makeUser,
   makeNote,
@@ -621,6 +622,86 @@ describe('linkTaskListToBoard', () => {
     await expect(
       linkTaskListToBoard('missing-board', 'tl-1', 'user-1')
     ).rejects.toThrow('errors.kanban.boardNotFound');
+  });
+
+  it('throws ForbiddenError and writes nothing when the task list belongs to someone else', async () => {
+    const attacker = setupUser();
+    const victim = setupUser();
+    const victimList = makeTaskList({ userId: victim.id });
+
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ taskListId: null });
+    prismaMock.taskList.findUnique.mockResolvedValue({
+      id: victimList.id,
+      title: victimList.title,
+      userId: victim.id,
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue(null);
+
+    const promise = linkTaskListToBoard('board-1', victimList.id, attacker.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+
+    // The write must not happen — neither the link nor the TaskItem sync.
+    expect(prismaMock.kanbanBoard.update).not.toHaveBeenCalled();
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenError when the share is READ-only', async () => {
+    const collaborator = setupUser();
+    const victim = setupUser();
+    const victimList = makeTaskList({ userId: victim.id });
+
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ taskListId: null });
+    prismaMock.taskList.findUnique.mockResolvedValue({
+      id: victimList.id,
+      title: victimList.title,
+      userId: victim.id,
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue({
+      status: 'ACCEPTED',
+      permission: 'READ',
+    });
+
+    const promise = linkTaskListToBoard('board-1', victimList.id, collaborator.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+
+    expect(prismaMock.kanbanBoard.update).not.toHaveBeenCalled();
+  });
+
+  it('allows linking a task list shared with ACCEPTED + WRITE', async () => {
+    const collaborator = setupUser();
+    const victim = setupUser();
+    const sharedList = makeTaskList({ userId: victim.id });
+
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ taskListId: null });
+    prismaMock.taskList.findUnique.mockResolvedValue({
+      id: sharedList.id,
+      title: sharedList.title,
+      userId: victim.id,
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue({
+      status: 'ACCEPTED',
+      permission: 'WRITE',
+    });
+    prismaMock.kanbanBoard.update.mockResolvedValue({
+      taskListId: sharedList.id,
+      taskListLinkedById: collaborator.id,
+      taskList: { id: sharedList.id, title: sharedList.title, userId: victim.id },
+    });
+    prismaMock.kanbanColumn.findMany.mockResolvedValue([]);
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+    prismaMock.taskItem.findMany.mockResolvedValue([]);
+
+    await linkTaskListToBoard('board-1', sharedList.id, collaborator.id);
+
+    expect(prismaMock.kanbanBoard.update).toHaveBeenCalled();
+    expect(prismaMock.sharedTaskList.findUnique).toHaveBeenCalledWith({
+      where: { taskListId_userId: { taskListId: sharedList.id, userId: collaborator.id } },
+      select: { status: true, permission: true },
+    });
   });
 });
 

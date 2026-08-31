@@ -379,6 +379,19 @@ export async function linkTaskListToBoard(
   });
   if (!taskList) throw new NotFoundError('errors.tasks.listNotFound');
 
+  // Same rule as createBoardFromTaskList (board.service.ts): owner, or an
+  // ACCEPTED + WRITE share. Linking writes back onto the list's TaskItem rows,
+  // so this must run before any write below.
+  if (taskList.userId !== userId) {
+    const shared = await prisma.sharedTaskList.findUnique({
+      where: { taskListId_userId: { taskListId, userId } },
+      select: { status: true, permission: true },
+    });
+    if (!shared || shared.status !== 'ACCEPTED' || shared.permission !== 'WRITE') {
+      throw new ForbiddenError('errors.common.accessDenied');
+    }
+  }
+
   const updatedBoard = await prisma.kanbanBoard.update({
     where: { id: boardId },
     data: { taskListId, taskListLinkedById: userId },
