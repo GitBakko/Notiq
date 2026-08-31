@@ -2,6 +2,7 @@ import prisma from '../../plugins/prisma';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { broadcast, getPresenceUsers } from '../kanbanSSE';
 import { notifyBoardUsersTiered, boardChatEmailDebounce, BOARD_CHAT_EMAIL_DEBOUNCE_MS } from './notifications';
+import { assertBoardAccess } from '../kanbanPermissions';
 
 // Re-usable select for chat message author info
 const chatAuthorSelect = {
@@ -118,12 +119,19 @@ export async function deleteComment(commentId: string, userId: string) {
     },
   });
   if (!comment) throw new NotFoundError('errors.kanban.commentNotFound');
+
+  const boardId = comment.card.column.boardId;
+
+  // The DELETE /comments/:id route carries no board id, so it cannot check
+  // access itself: a revoked or demoted user must not still be able to delete
+  // (and notify the whole board about) their old comments.
+  await assertBoardAccess(boardId, userId, 'WRITE');
+
   if (comment.authorId !== userId) throw new ForbiddenError('errors.kanban.notYourComment');
 
   await prisma.kanbanComment.delete({ where: { id: commentId } });
 
   // Broadcast deletion for real-time UI update
-  const boardId = comment.card.column.boardId;
   broadcast(boardId, {
     type: 'comment:deleted',
     boardId,

@@ -31,6 +31,10 @@ vi.mock('../notifications', () => ({
   BOARD_CHAT_EMAIL_DEBOUNCE_MS: 30 * 60 * 1000,
 }));
 
+vi.mock('../../kanbanPermissions', () => ({
+  assertBoardAccess: vi.fn().mockResolvedValue({ isOwner: true }),
+}));
+
 // ─── Import SUT (after mocks) ─────────────────────────────────────────
 
 import {
@@ -44,6 +48,7 @@ import {
 import { NotFoundError, ForbiddenError } from '../../../utils/errors';
 import { broadcast, getPresenceUsers } from '../../kanbanSSE';
 import { notifyBoardUsersTiered } from '../notifications';
+import { assertBoardAccess } from '../../kanbanPermissions';
 import { resolveNotification } from '../../../utils/notificationI18n';
 
 /** Reads localizationKey/localizationArgs off the notifyBoardUsersTiered call and renders it. */
@@ -94,6 +99,10 @@ function chatWithAuthor(chat: ReturnType<typeof makeKanbanBoardChat>, author: Re
 describe('comments-chat.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // clearAllMocks does not drop queued `...Once` implementations: reset explicitly
+    (assertBoardAccess as any).mockReset();
+    (assertBoardAccess as any).mockResolvedValue({ isOwner: true });
   });
 
   // ═══════════════════════════════════════════════════════
@@ -385,6 +394,44 @@ describe('comments-chat.service', () => {
         'Carol deleted a comment on "My Card" in board "My Board"',
       );
       expect(renderTieredNotification()).not.toContain('{{');
+    });
+
+    it('re-validates board WRITE access before deleting', async () => {
+      const user = makeUser();
+      const boardId = 'board-del-3';
+
+      mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
+        authorId: user.id,
+        content: 'Mine',
+        card: { id: 'card-del-3', title: 'Card', column: { boardId, board: { title: 'Board' } } },
+        author: { name: user.name, email: user.email },
+      });
+      mockedPrisma.kanbanComment.delete.mockResolvedValue({});
+
+      await deleteComment('comment-3', user.id);
+
+      expect(assertBoardAccess).toHaveBeenCalledWith(boardId, user.id, 'WRITE');
+    });
+
+    it('does not delete when board access has been revoked', async () => {
+      const user = makeUser();
+      const boardId = 'board-del-4';
+
+      mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
+        authorId: user.id,
+        content: 'Mine',
+        card: { id: 'card-del-4', title: 'Card', column: { boardId } },
+        author: { name: user.name, email: user.email },
+      });
+      mockedPrisma.kanbanComment.delete.mockResolvedValue({});
+      (assertBoardAccess as any).mockRejectedValueOnce(
+        new ForbiddenError('errors.common.accessDenied')
+      );
+
+      await expect(deleteComment('comment-4', user.id)).rejects.toThrow(ForbiddenError);
+
+      expect(mockedPrisma.kanbanComment.delete).not.toHaveBeenCalled();
+      expect(notifyBoardUsersTiered).not.toHaveBeenCalled();
     });
   });
 
