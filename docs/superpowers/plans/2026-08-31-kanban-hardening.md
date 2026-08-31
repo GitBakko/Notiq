@@ -26,7 +26,7 @@ Valgono per **ogni** task. Non vengono ripetute nei singoli task.
 - **Test:** Vitest in entrambi i workspace. Backend `cd backend && npx vitest run <path>`, frontend `cd frontend && npx vitest run <path>`. Singolo test: `-t "nome"`.
 - **Typecheck:** backend `cd backend && npx tsc --noEmit`. Frontend **`cd frontend && npx tsc -p tsconfig.app.json --noEmit`** — ⚠️ `npx tsc --noEmit` liscio nel frontend esce 0 senza compilare nulla (`tsconfig.json` ha `"files": []`): è un controllo finto, non usarlo mai come verifica.
 - **Lint:** `npm run lint` nel workspace toccato.
-- **Baseline verde da mantenere:** backend `Test Files 62 passed, Tests 1089 passed`; frontend `Test Files 9 passed, Tests 131 passed`. Se un task fa scendere questi numeri senza averlo dichiarato, è una regressione.
+- **Baseline verde da mantenere** (misurata sul branch `fix/kanban-hardening` al commit `a767527`, 2026-08-31): backend `Test Files 61 passed, Tests 1083 passed`; frontend `Test Files 9 passed, Tests 131 passed`. Se un task fa scendere questi numeri senza averlo dichiarato, è una regressione. ⚠️ Alcuni stage citano `62 / 1089` nei loro step: è sbagliato, vale il numero qui sopra.
 - **Prisma:** `npx prisma` legge `prisma.config.js` che richiede `backend/.env`. Niente flag `--schema`. Prisma 7: `db execute --file`, non `--stdin`.
 - **Commit:** convenzione del repo — `fix(kanban): ...`, `feat(kanban): ...`, `test(kanban): ...`, `perf(kanban): ...`, `chore(...): ...`. Imperativo, minuscolo dopo i due punti.
 - **TDD:** test che fallisce → eseguirlo e vederlo fallire con l'errore atteso → implementazione minima → test verde → commit. Dove un task non può portare un test (aggiunta di una chiave i18n, una stringa di route), lo dichiara e porta una **Verifica** manuale o un `grep` che dimostra il cambio.
@@ -63,25 +63,25 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **0.1** | Aggiungere un handler globale `onError` alle mutation | `` |
-| [ ] | **0.2** | Aggiungere le tre chiavi i18n mancanti | `` |
-| [ ] | **0.3** | Correggere i nomi dei placeholder nelle notifiche di commento e chat board | `` |
-| [ ] | **0.4** | Far riconnettere l'SSE su risposta non-OK e su fine stream pulita | `` |
+| [x] | **0.1** | Aggiungere un handler globale `onError` alle mutation | `f711230` |
+| [x] | **0.2** | Aggiungere le tre chiavi i18n mancanti | `f36e57a` |
+| [x] | **0.3** | Correggere i nomi dei placeholder nelle notifiche di commento e chat board | `d2d4e9d` |
+| [x] | **0.4** | Far riconnettere l'SSE su risposta non-OK e su fine stream pulita | `6e014e8` |
 
 ### Stage 1 — Buchi di permessi
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **1.1** | Aggiungere `assertBelongsToBoard` a kanbanPermissions | `` |
-| [ ] | **1.2** | Bloccare lo spostamento di card fra board diverse | `` |
-| [ ] | **1.3** | Limitare `reorderColumns` alle colonne della board | `` |
-| [ ] | **1.4** | Validare `assigneeId` contro i partecipanti della board | `` |
-| [ ] | **1.5** | Rimuovere `noteId` dal percorso di update della card | `` |
-| [ ] | **1.6** | Controllo d'accesso in `linkTaskListToBoard` | `` |
-| [ ] | **1.7** | `shareWithUserIds` diventa un filtro, non una lista di concessione | `` |
-| [ ] | **1.8** | `checkNoteSharingForBoard` deve verificare il proprietario della nota | `` |
-| [ ] | **1.9** | `deleteComment` deve rivalidare l'accesso alla board | `` |
-| [ ] | **1.10** | La ri-condivisione di una board non deve riportare a PENDING uno share ACCEPTED | `` |
+| [x] | **1.1** | Aggiungere `assertBelongsToBoard` a kanbanPermissions | `c68438e..5ac03b7` |
+| [x] | **1.2** | Bloccare lo spostamento di card fra board diverse | `feb2b23` |
+| [x] | **1.3** | Limitare `reorderColumns` alle colonne della board | `c81c748` |
+| [x] | **1.4** | Validare `assigneeId` contro i partecipanti della board | `70a5952..289097c` |
+| [x] | **1.5** | Rimuovere `noteId` dal percorso di update della card | `9571cf0` |
+| [x] | **1.6** | Controllo d'accesso in `linkTaskListToBoard` | `44dc60d` |
+| [x] | **1.7** | `shareWithUserIds` diventa un filtro, non una lista di concessione | `f4750d6` |
+| [x] | **1.8** | `checkNoteSharingForBoard` deve verificare il proprietario della nota | `e28265d` |
+| [x] | **1.9** | `deleteComment` deve rivalidare l'accesso alla board | `d7dff00` |
+| [x] | **1.10** | La ri-condivisione di una board non deve riportare a PENDING uno share ACCEPTED | `43c201d` |
 
 ### Stage 2 — Riscrittura di position
 
