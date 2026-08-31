@@ -350,16 +350,24 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       return;
     }
 
-    // Optimistic UI + silent REST calls (bypass sync queue notifications)
+    // Optimistic UI + silent REST calls (bypass sync queue notifications).
+    // [BACKUP] 2026-08-31 — previously sent the literal sentinel `999` for
+    // every card in the loop, so the server piled them all onto the same
+    // out-of-range position. `moves` only holds cards from OTHER columns (filtered above),
+    // so `targetColumn.cards.length` is the correct append base; each
+    // successive card then lands one index further.
+    const targetColumn = board.columns.find(c => c.id === targetColumnId);
+    const appendBase = targetColumn ? targetColumn.cards.length : 0;
+
     for (const move of moves) {
       dnd.handleMoveCardToColumn(move.cardId, move.toColumnId);
     }
-    for (const move of moves) {
+    moves.forEach((move, i) => {
       api.put(`/kanban/cards/${move.cardId}/move?silent=true`, {
         toColumnId: move.toColumnId,
-        position: 999,
+        position: appendBase + i,
       }).catch(() => {});
-    }
+    });
 
     // Grouped notification
     api.post(`/kanban/boards/${board.id}/bulk-move-notify`, { moves }).catch(() => {});

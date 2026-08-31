@@ -268,6 +268,17 @@ export function useBoardDnD({ board, boardId, mutations }: UseBoardDnDParams) {
   // Move card to a different column via menu (mobile & desktop)
   const handleMoveCardToColumn = useCallback(
     (cardId: string, targetColumnId: string) => {
+      // [BACKUP] 2026-08-31 — previously sent the literal sentinel `999` as
+      // the position. The server now clamps it, but it still lied about the
+      // requested index. Send the real append index instead: the count of
+      // live cards in the target column, minus the moving card itself if it's
+      // already there (same-column move to the end) — matches @dnd-kit's
+      // arrayMove convention (index after removal) used by computeColumnOrder.
+      const targetColumn = localColumns.find((c) => c.id === targetColumnId);
+      const appendIndex = targetColumn
+        ? targetColumn.cards.filter((c) => c.id !== cardId).length
+        : 0;
+
       // Optimistic: move card in localColumns immediately
       setLocalColumns((prev) => {
         let movedCard: KanbanCard | undefined;
@@ -292,11 +303,11 @@ export function useBoardDnD({ board, boardId, mutations }: UseBoardDnDParams) {
       // Persist to backend
       setIsMoveInFlight(true);
       mutations.moveCard.mutate(
-        { cardId, toColumnId: targetColumnId, position: 999 },
+        { cardId, toColumnId: targetColumnId, position: appendIndex },
         { onSettled: () => setIsMoveInFlight(false) },
       );
     },
-    [mutations.moveCard],
+    [localColumns, mutations.moveCard],
   );
 
   // Sorted columns for display
