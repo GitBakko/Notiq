@@ -30,6 +30,7 @@ const { mockDb, mockApi, mockAuthStore } = vi.hoisted(() => {
         return table;
       }),
       toArray: vi.fn().mockResolvedValue([]),
+      put: vi.fn().mockResolvedValue(undefined),
       bulkPut: vi.fn().mockResolvedValue(undefined),
       bulkDelete: vi.fn().mockResolvedValue(undefined),
       bulkGet: vi.fn().mockResolvedValue([]),
@@ -109,6 +110,7 @@ const resetAllTableMocks = () => {
       table.orderBy.mockImplementation(() => table);
       // Reset terminal methods
       table.toArray.mockResolvedValue([]);
+      table.put.mockResolvedValue(undefined);
       table.bulkPut.mockResolvedValue(undefined);
       table.bulkDelete.mockResolvedValue(undefined);
       table.bulkGet.mockResolvedValue([]);
@@ -1003,31 +1005,166 @@ describe('syncPush', () => {
       }));
     });
 
-    it('resolves the card CREATE columnId from Dexie, not from the stale queued payload', async () => {
-      const queueItem = {
-        id: 61, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-orphan',
+    it('resolves the card CREATE columnId from Dexie after a real board-CREATE reconciliation round-trip', async () => {
+      const baseTime = Date.now();
+      const boardItem = {
+        id: 61, type: 'CREATE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'board-new',
         userId: 'user-1',
-        // Queued while the board was still offline: this column id died when the
-        // board CREATE round-tripped and syncPush rewrote the Dexie column ids.
+        data: { id: 'board-new', title: 'New Board', _localColumnIds: ['local-col-uuid'] },
+        createdAt: baseTime,
+      };
+      // Queued while the board was still offline: this column id dies the moment
+      // the board CREATE above round-trips and its reconciliation rewrites the
+      // Dexie column ids.
+      const cardItem = {
+        id: 62, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-orphan',
+        userId: 'user-1',
         data: { id: 'card-orphan', columnId: 'local-col-uuid', title: 'Orphan' },
+        createdAt: baseTime + 1000,
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([boardItem, cardItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+
+      // Board CREATE's response carries the server-generated column, driving the
+      // REAL reconciliation loop in the KANBAN_BOARD/CREATE branch.
+      mockApi.post.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') {
+          return Promise.resolve({ data: { columns: [{ id: 'server-col-uuid', position: 0 }] } });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      // Reconciliation looks up cards currently in the local column...
+      mockDb.kanbanCards.toArray.mockResolvedValue([{ id: 'card-orphan', columnId: 'local-col-uuid' }]);
+      // ...and the local column row it is about to replace with the server one.
+      // Keyed because the same table mock answers both the pre- and post-
+      // reconciliation lookups later in this same syncPush() run.
+      mockDb.kanbanColumns.get.mockImplementation((id: string) => {
+        if (id === 'local-col-uuid') {
+          return Promise.resolve({ id: 'local-col-uuid', title: 'To Do', boardId: 'board-new', position: 0, isCompleted: false, syncStatus: 'created' });
+        }
+        if (id === 'server-col-uuid') {
+          return Promise.resolve({ id: 'server-col-uuid', title: 'To Do', boardId: 'board-new', position: 0, isCompleted: false, syncStatus: 'synced' });
+        }
+        return Promise.resolve(null);
+      });
+      // The card CREATE branch's own Dexie read: what a real Dexie would show
+      // after the reconciliation's db.kanbanCards.update() ran (asserted below).
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-orphan',
+        columnId: 'server-col-uuid',
+        updatedAt: new Date(baseTime - 1000).toISOString(),
+      });
+
+      await syncPush();
+
+      // Pins that the reconciliation itself ran and repointed the card...
+      expect(mockDb.kanbanCards.update).toHaveBeenCalledWith('card-orphan', { columnId: 'server-col-uuid' });
+      expect(mockDb.kanbanColumns.put).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'server-col-uuid', syncStatus: 'synced' }),
+      );
+      // ...and that it ran BEFORE the card CREATE (board is item 1, card is item 2).
+      expect(mockApi.post).toHaveBeenNthCalledWith(1, '/kanban/boards', expect.objectContaining({ id: 'board-new' }));
+      expect(mockApi.post).toHaveBeenNthCalledWith(
+        2,
+        '/kanban/columns/server-col-uuid/cards',
+        expect.objectContaining({ id: 'card-orphan', title: 'Orphan' }),
+      );
+    });
+
+    it('falls back to the queued columnId for a card CREATE when the Dexie column is not yet synced (queue-order inversion)', async () => {
+      const baseTime = Date.now();
+      // Entirely ordinary offline sequence:
+      // 1. Add a card to "To Do" (col-A, already synced).
+      // 2. Add a new column "Blocked" (col-B, still local-only).
+      // 3. Drag the card into "Blocked" — Dexie's card row now says col-B,
+      //    even though col-B's own CREATE (item 2 below) has not reached the
+      //    server yet. Item 1 (the card CREATE) is what we're pushing here,
+      //    and it must NOT trust col-B just because Dexie already shows it.
+      const cardCreateItem = {
+        id: 63, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-x',
+        userId: 'user-1', data: { id: 'card-x', columnId: 'col-A', title: 'Task' },
+        createdAt: baseTime,
+      };
+      const columnCreateItem = {
+        id: 64, type: 'CREATE' as const, entity: 'KANBAN_COLUMN' as const, entityId: 'col-B',
+        userId: 'user-1', data: { id: 'col-B', boardId: 'board-1', title: 'Blocked' },
+        createdAt: baseTime + 1000,
+      };
+      const moveItem = {
+        id: 65, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-x',
+        userId: 'user-1', data: { columnId: 'col-B', position: 0 },
+        createdAt: baseTime + 2000,
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([cardCreateItem, columnCreateItem, moveItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      // Dexie already reflects the final local state (the move already happened
+      // optimistically, offline, before any of this was pushed).
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-x', columnId: 'col-B', updatedAt: new Date(baseTime - 1000).toISOString(),
+      });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'col-B', title: 'Blocked', boardId: 'board-1', position: 1, isCompleted: false, syncStatus: 'created' });
+      mockApi.post.mockResolvedValue({ data: {} });
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.post).toHaveBeenNthCalledWith(
+        1,
+        '/kanban/columns/col-A/cards',
+        expect.objectContaining({ id: 'card-x', title: 'Task' }),
+      );
+    });
+
+    it('resolves the card MOVE toColumnId from Dexie, not from the stale queued payload', async () => {
+      const queueItem = {
+        id: 66, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-move',
+        userId: 'user-1',
+        // Queued while the destination board was still offline: this column id
+        // died when that board CREATE round-tripped and rewrote the Dexie ids.
+        data: { columnId: 'local-col-uuid', position: 2 },
         createdAt: Date.now(),
       };
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.syncQueue.count.mockResolvedValue(0);
       mockDb.kanbanCards.get.mockResolvedValue({
-        id: 'card-orphan',
-        columnId: 'server-col-uuid',
-        updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+        id: 'card-move', columnId: 'server-col-uuid', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
       });
-      mockApi.post.mockResolvedValue({ data: {} });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'server-col-uuid', syncStatus: 'synced' });
+      mockApi.put.mockResolvedValue({ data: {} });
 
       await syncPush();
 
-      expect(mockApi.post).toHaveBeenCalledWith(
-        '/kanban/columns/server-col-uuid/cards',
-        expect.objectContaining({ id: 'card-orphan', title: 'Orphan' }),
-      );
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/cards/card-move/move', {
+        toColumnId: 'server-col-uuid', position: 2,
+      });
+    });
+
+    it('falls back to the queued toColumnId for a card MOVE when the Dexie column is not yet synced', async () => {
+      const queueItem = {
+        id: 67, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-move-2',
+        userId: 'user-1', data: { columnId: 'col-A', position: 0 },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      // Dexie already shows the card in the brand-new column (optimistic local
+      // move), but that column's own CREATE has not round-tripped yet.
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-move-2', columnId: 'col-B', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'col-B', syncStatus: 'created' });
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/cards/card-move-2/move', {
+        toColumnId: 'col-A', position: 0,
+      });
     });
   });
 

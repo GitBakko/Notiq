@@ -569,6 +569,29 @@ function clearFailure(itemId: number | undefined): void {
   if (itemId) failureCounts.delete(itemId);
 }
 
+/**
+ * A queued card CREATE/move payload can carry a DEAD column id: the
+ * KANBAN_BOARD/CREATE branch below remaps local column ids to server ids
+ * after the board round-trips (and repoints the card's Dexie row), but
+ * never rewrites payloads already sitting in the queue. Dexie's card row
+ * is more current — but only trust its columnId once that column is
+ * confirmed synced.
+ *
+ * That guard matters for the opposite race too: add a card to an
+ * already-synced column, then add a NEW column, then drag the card into
+ * it, all offline. Dexie's card row now points at the new column, but
+ * that column's own CREATE is a later, still-unprocessed queue item — the
+ * card would 404 against a column that doesn't exist YET rather than one
+ * that's dead. Falling back to the queued value when the Dexie column
+ * isn't 'synced' keeps the original (still-valid) destination instead.
+ */
+async function resolveCardColumnId(cardId: string, queuedColumnId: string | undefined): Promise<string | undefined> {
+  const dexieColumnId = (await db.kanbanCards.get(cardId))?.columnId;
+  if (!dexieColumnId) return queuedColumnId;
+  const dexieCol = await db.kanbanColumns.get(dexieColumnId);
+  return dexieCol?.syncStatus === 'synced' ? dexieColumnId : queuedColumnId;
+}
+
 export const syncPush = async () => {
   if (isSyncing) {
     // Instead of silently dropping, schedule a follow-up push
@@ -705,25 +728,22 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'KANBAN_CARD') {
           if (item.type === 'CREATE') {
-            // The queued payload can point at a DEAD column id. When a board is
-            // created offline, the KANBAN_BOARD/CREATE branch above rewrites the
-            // Dexie column ids to the server ones after the round-trip (and
-            // repoints the cards), but it never rewrites payloads already sitting
-            // in the queue. Dexie holds the reconciled id — read it from there and
-            // keep the queued value only as the fallback for cards whose board
-            // never went through a reconciliation.
+            // See resolveCardColumnId() above for why this reads Dexie instead
+            // of trusting the queued payload outright.
             // The stale columnId left in the body is harmless: createCardSchema
             // (backend/src/routes/kanban.ts:41-45) strips unknown keys and the
             // column comes from the URL.
             const queuedColumnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
-            const columnId = (await db.kanbanCards.get(item.entityId))?.columnId ?? queuedColumnId;
+            const columnId = await resolveCardColumnId(item.entityId, queuedColumnId);
             await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
             const cardData = item.data as Record<string, unknown> | undefined;
             if (cardData?.columnId) {
-              // Move operation — route to dedicated move endpoint
+              // Move operation — route to dedicated move endpoint. Same dead/not-yet-
+              // created column id hazard as the CREATE branch — see resolveCardColumnId().
+              const toColumnId = await resolveCardColumnId(item.entityId, cardData.columnId as string);
               await api.put(`/kanban/cards/${item.entityId}/move`, {
-                toColumnId: cardData.columnId,
+                toColumnId,
                 position: cardData.position ?? 0,
               });
             } else {
