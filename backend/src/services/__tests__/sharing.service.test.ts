@@ -10,6 +10,7 @@ import {
   getSharedNotebooks,
   respondToShareById,
   updateSharedNoteContent,
+  shareKanbanBoard,
 } from '../sharing.service';
 
 vi.mock('../../utils/extractText', () => ({
@@ -816,5 +817,88 @@ describe('updateSharedNoteContent', () => {
     expect(callArg.data).not.toHaveProperty('ydocState');
     // Title-only update: no content accepted, so no snapshot
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// shareKanbanBoard
+// ===========================================================================
+
+describe('shareKanbanBoard', () => {
+  const SHARE_BOARD_ID = 'board-id-2';
+  const sampleBoard = { title: 'My Board', ownerId: OWNER_ID };
+
+  function primeCommonMocks() {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue(sampleBoard);
+    // First user.findUnique = target by email, second = the sharer
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce({ ...targetUser, locale: 'en' })
+      .mockResolvedValueOnce({ name: ownerUser.name, email: ownerUser.email });
+    prismaMock.sharedKanbanBoard.upsert.mockResolvedValue({
+      id: 'share-1',
+      boardId: SHARE_BOARD_ID,
+      userId: TARGET_USER_ID,
+      permission: 'WRITE',
+      status: 'PENDING',
+      user: targetUser,
+    });
+  }
+
+  it('creates a PENDING share when none exists yet', async () => {
+    primeCommonMocks();
+    prismaMock.sharedKanbanBoard.findUnique.mockResolvedValue(null);
+
+    await shareKanbanBoard(OWNER_ID, SHARE_BOARD_ID, targetUser.email, 'WRITE');
+
+    expect(prismaMock.sharedKanbanBoard.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { permission: 'WRITE', status: 'PENDING' },
+        create: {
+          boardId: SHARE_BOARD_ID,
+          userId: TARGET_USER_ID,
+          permission: 'WRITE',
+          status: 'PENDING',
+        },
+      })
+    );
+  });
+
+  it('keeps an ACCEPTED share ACCEPTED when the owner re-shares to change permission', async () => {
+    primeCommonMocks();
+    prismaMock.sharedKanbanBoard.findUnique.mockResolvedValue({ status: 'ACCEPTED' });
+
+    await shareKanbanBoard(OWNER_ID, SHARE_BOARD_ID, targetUser.email, 'WRITE');
+
+    expect(prismaMock.sharedKanbanBoard.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { permission: 'WRITE', status: 'ACCEPTED' },
+      })
+    );
+  });
+
+  it('resets a DECLINED share back to PENDING on re-share', async () => {
+    primeCommonMocks();
+    prismaMock.sharedKanbanBoard.findUnique.mockResolvedValue({ status: 'DECLINED' });
+
+    await shareKanbanBoard(OWNER_ID, SHARE_BOARD_ID, targetUser.email, 'READ');
+
+    expect(prismaMock.sharedKanbanBoard.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { permission: 'READ', status: 'PENDING' },
+      })
+    );
+  });
+
+  it('throws when the requester is not the board owner', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      title: 'My Board',
+      ownerId: 'someone-else',
+    });
+
+    await expect(
+      shareKanbanBoard(OWNER_ID, SHARE_BOARD_ID, targetUser.email, 'READ')
+    ).rejects.toThrow('errors.common.notTheOwner');
+
+    expect(prismaMock.sharedKanbanBoard.upsert).not.toHaveBeenCalled();
   });
 });
