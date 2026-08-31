@@ -469,7 +469,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       cardId: z.string(),
       fromColumnId: z.string(),
       toColumnId: z.string(),
-    })),
+    })).max(100),
   });
 
   fastify.post('/boards/:boardId/bulk-move-notify', async (request) => {
@@ -586,7 +586,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   });
 
   // Bulk archive execute (owner-only): archive specific card IDs
-  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()) });
+  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()).max(100) });
 
   fastify.post('/boards/:id/bulk-archive', async (request) => {
     const { id } = request.params as { id: string };
