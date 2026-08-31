@@ -4,6 +4,7 @@ import {
   assertBoardAccess,
   getColumnWithAccess,
   getCardWithAccess,
+  assertBelongsToBoard,
 } from '../kanbanPermissions';
 import {
   makeUser,
@@ -241,6 +242,130 @@ describe('getCardWithAccess', () => {
 
     await expect(
       getCardWithAccess('nonexistent-card', owner.id, 'READ')
+    ).rejects.toThrow(NotFoundError);
+  });
+});
+
+// ===========================================================================
+// assertBelongsToBoard
+// ===========================================================================
+
+describe('assertBelongsToBoard', () => {
+  const otherBoard = makeKanbanBoard({ ownerId: stranger.id });
+
+  it('resolves without querying anything when no ids are given', async () => {
+    await expect(assertBelongsToBoard(board.id, {})).resolves.toBeUndefined();
+
+    expect(prismaMock.kanbanColumn.count).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.count).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanBoard.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('resolves when every column belongs to the board', async () => {
+    const colA = makeKanbanColumn({ boardId: board.id });
+    const colB = makeKanbanColumn({ boardId: board.id });
+    prismaMock.kanbanColumn.count.mockResolvedValue(2);
+
+    await expect(
+      assertBelongsToBoard(board.id, { columnIds: [colA.id, colB.id] })
+    ).resolves.toBeUndefined();
+
+    expect(prismaMock.kanbanColumn.count).toHaveBeenCalledWith({
+      where: { boardId: board.id, id: { in: [colA.id, colB.id] } },
+    });
+  });
+
+  it('throws ForbiddenError when a column belongs to another board', async () => {
+    const mine = makeKanbanColumn({ boardId: board.id });
+    const foreign = makeKanbanColumn({ boardId: otherBoard.id });
+    prismaMock.kanbanColumn.count.mockResolvedValue(1);
+
+    await expect(
+      assertBelongsToBoard(board.id, { columnIds: [mine.id, foreign.id] })
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('de-duplicates column ids before comparing the count', async () => {
+    const colA = makeKanbanColumn({ boardId: board.id });
+    prismaMock.kanbanColumn.count.mockResolvedValue(1);
+
+    await expect(
+      assertBelongsToBoard(board.id, { columnIds: [colA.id, colA.id, colA.id] })
+    ).resolves.toBeUndefined();
+
+    expect(prismaMock.kanbanColumn.count).toHaveBeenCalledWith({
+      where: { boardId: board.id, id: { in: [colA.id] } },
+    });
+  });
+
+  it('resolves when every card belongs to the board', async () => {
+    const cardA = makeKanbanCard({ columnId: column.id });
+    prismaMock.kanbanCard.count.mockResolvedValue(1);
+
+    await expect(
+      assertBelongsToBoard(board.id, { cardIds: [cardA.id] })
+    ).resolves.toBeUndefined();
+
+    expect(prismaMock.kanbanCard.count).toHaveBeenCalledWith({
+      where: { column: { boardId: board.id }, id: { in: [cardA.id] } },
+    });
+  });
+
+  it('throws ForbiddenError when a card belongs to another board', async () => {
+    const foreign = makeKanbanCard();
+    prismaMock.kanbanCard.count.mockResolvedValue(0);
+
+    await expect(
+      assertBelongsToBoard(board.id, { cardIds: [foreign.id] })
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('resolves when the user is the board owner', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [],
+    });
+
+    await expect(
+      assertBelongsToBoard(board.id, { userIds: [owner.id] })
+    ).resolves.toBeUndefined();
+  });
+
+  it('resolves when the user has an ACCEPTED share', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [{ userId: writer.id }],
+    });
+
+    await expect(
+      assertBelongsToBoard(board.id, { userIds: [writer.id] })
+    ).resolves.toBeUndefined();
+
+    expect(prismaMock.kanbanBoard.findUnique).toHaveBeenCalledWith({
+      where: { id: board.id },
+      select: {
+        ownerId: true,
+        shares: { where: { status: 'ACCEPTED' }, select: { userId: true } },
+      },
+    });
+  });
+
+  it('throws ForbiddenError for a user who is not a board participant', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [{ userId: writer.id }],
+    });
+
+    await expect(
+      assertBelongsToBoard(board.id, { userIds: [stranger.id] })
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('throws NotFoundError when the board does not exist', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue(null);
+
+    await expect(
+      assertBelongsToBoard('nonexistent-board', { userIds: [owner.id] })
     ).rejects.toThrow(NotFoundError);
   });
 });
