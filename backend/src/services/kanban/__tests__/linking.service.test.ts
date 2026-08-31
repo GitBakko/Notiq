@@ -215,7 +215,7 @@ describe('linkNoteToCard', () => {
     ).rejects.toThrow('errors.kanban.onlyOwnerCanLink');
   });
 
-  it('calls autoShareNoteForBoard when shareWithUserIds are provided', async () => {
+  it('calls autoShareNoteForBoard with the board participants among shareWithUserIds', async () => {
     const user = setupUser();
     const note = makeNote({ userId: user.id });
 
@@ -237,6 +237,11 @@ describe('linkNoteToCard', () => {
 
     prismaMock.kanbanCard.update.mockResolvedValue({ id: 'card-1' });
 
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: user.id,
+      shares: [{ userId: 'other-user-1' }, { userId: 'other-user-2' }],
+    });
+
     const { autoShareNoteForBoard } = await import('../../sharing.service');
 
     await linkNoteToCard('card-1', note.id, user.id, ['other-user-1', 'other-user-2']);
@@ -248,6 +253,73 @@ describe('linkNoteToCard', () => {
       'READ',
       'Board Title'
     );
+  });
+
+  it('auto-shares only with users who are actually on the board', async () => {
+    const owner = setupUser();
+    const participant = setupUser();
+    const outsider = setupUser();
+    const note = makeNote({ userId: owner.id });
+    const board = makeKanbanBoard({ ownerId: owner.id });
+
+    prismaMock.kanbanCard.findUnique
+      .mockResolvedValueOnce({
+        noteId: null,
+        column: { boardId: board.id, board: { title: board.title } },
+      })
+      .mockResolvedValueOnce({ id: 'card-1', _count: { comments: 0 } });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: note.id,
+      title: note.title,
+      userId: owner.id,
+    });
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [{ userId: participant.id }],
+    });
+
+    const { autoShareNoteForBoard } = await import('../../sharing.service');
+
+    await linkNoteToCard('card-1', note.id, owner.id, [participant.id, outsider.id]);
+
+    expect(autoShareNoteForBoard).toHaveBeenCalledWith(
+      owner.id,
+      note.id,
+      [participant.id],
+      'READ',
+      board.title
+    );
+  });
+
+  it('does not call autoShareNoteForBoard when no requested user is on the board', async () => {
+    const owner = setupUser();
+    const outsider = setupUser();
+    const note = makeNote({ userId: owner.id });
+    const board = makeKanbanBoard({ ownerId: owner.id });
+
+    prismaMock.kanbanCard.findUnique
+      .mockResolvedValueOnce({
+        noteId: null,
+        column: { boardId: board.id, board: { title: board.title } },
+      })
+      .mockResolvedValueOnce({ id: 'card-1', _count: { comments: 0 } });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: note.id,
+      title: note.title,
+      userId: owner.id,
+    });
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [],
+    });
+
+    const { autoShareNoteForBoard } = await import('../../sharing.service');
+
+    await linkNoteToCard('card-1', note.id, owner.id, [outsider.id]);
+
+    expect(autoShareNoteForBoard).not.toHaveBeenCalled();
   });
 });
 
@@ -423,6 +495,40 @@ describe('linkNoteToBoard', () => {
     await expect(
       linkNoteToBoard('board-1', 'missing-note', 'user-1')
     ).rejects.toThrow('errors.notes.notFound');
+  });
+
+  it('auto-shares only with users who are actually on the board', async () => {
+    const owner = setupUser();
+    const participant = setupUser();
+    const outsider = setupUser();
+    const note = makeNote({ userId: owner.id });
+    const board = makeKanbanBoard({ ownerId: owner.id });
+
+    prismaMock.kanbanBoard.findUnique
+      .mockResolvedValueOnce({ noteId: null, title: board.title })
+      .mockResolvedValueOnce({ ownerId: owner.id, shares: [{ userId: participant.id }] });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: note.id,
+      title: note.title,
+      userId: owner.id,
+    });
+    prismaMock.kanbanBoard.update.mockResolvedValue({
+      noteId: note.id,
+      noteLinkedById: owner.id,
+      note: { id: note.id, title: note.title, userId: owner.id },
+    });
+
+    const { autoShareNoteForBoard } = await import('../../sharing.service');
+
+    await linkNoteToBoard(board.id, note.id, owner.id, [participant.id, outsider.id]);
+
+    expect(autoShareNoteForBoard).toHaveBeenCalledWith(
+      owner.id,
+      note.id,
+      [participant.id],
+      'READ',
+      board.title
+    );
   });
 });
 

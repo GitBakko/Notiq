@@ -328,7 +328,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
   const boardLinkNoteSchema = z.object({
     noteId: z.string().uuid(),
-    shareWithUserIds: z.array(z.string().uuid()).optional(),
+    shareWithUserIds: z.array(z.string().uuid()).max(50).optional(),
   });
 
   fastify.get('/boards/:id/check-note-sharing', async (request) => {
@@ -522,7 +522,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
   const linkNoteSchema = z.object({
     noteId: z.string().uuid(),
-    shareWithUserIds: z.array(z.string().uuid()).optional(),
+    shareWithUserIds: z.array(z.string().uuid()).max(50).optional(),
   });
 
   // Check note sharing gap relative to board participants

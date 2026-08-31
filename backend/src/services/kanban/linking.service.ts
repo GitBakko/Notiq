@@ -5,6 +5,23 @@ import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/erro
 import { broadcast } from '../kanbanSSE';
 import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
 
+/**
+ * Owner + ACCEPTED shares of a board. `shareWithUserIds` from the client is a
+ * *filter* over this set, never a grant list: without the intersection any
+ * writer can auto-share (status ACCEPTED, plus email) with arbitrary users.
+ */
+async function boardParticipantIds(boardId: string): Promise<Set<string>> {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: {
+      ownerId: true,
+      shares: { where: { status: 'ACCEPTED' }, select: { userId: true } },
+    },
+  });
+  if (!board) throw new NotFoundError('errors.kanban.boardNotFound');
+  return new Set<string>([board.ownerId, ...board.shares.map((s) => s.userId)]);
+}
+
 // ─── Note Linking ──────────────────────────────────────────
 
 /**
@@ -95,16 +112,20 @@ export async function linkNoteToCard(
 
   const boardId = card.column.boardId;
 
-  // Auto-share with selected users
+  // Auto-share, restricted to actual board participants
   if (shareWithUserIds && shareWithUserIds.length > 0) {
-    const { autoShareNoteForBoard } = await import('../sharing.service');
-    await autoShareNoteForBoard(
-      actorId,
-      noteId,
-      shareWithUserIds,
-      'READ',
-      card.column.board.title
-    );
+    const participants = await boardParticipantIds(boardId);
+    const targets = shareWithUserIds.filter((id) => participants.has(id));
+    if (targets.length > 0) {
+      const { autoShareNoteForBoard } = await import('../sharing.service');
+      await autoShareNoteForBoard(
+        actorId,
+        noteId,
+        targets,
+        'READ',
+        card.column.board.title
+      );
+    }
   }
 
   // Log activity
@@ -204,10 +225,14 @@ export async function linkNoteToBoard(
     },
   });
 
-  // Auto-share with selected users
+  // Auto-share, restricted to actual board participants
   if (shareWithUserIds && shareWithUserIds.length > 0) {
-    const { autoShareNoteForBoard } = await import('../sharing.service');
-    await autoShareNoteForBoard(actorId, noteId, shareWithUserIds, 'READ', board.title);
+    const participants = await boardParticipantIds(boardId);
+    const targets = shareWithUserIds.filter((id) => participants.has(id));
+    if (targets.length > 0) {
+      const { autoShareNoteForBoard } = await import('../sharing.service');
+      await autoShareNoteForBoard(actorId, noteId, targets, 'READ', board.title);
+    }
   }
 
   broadcast(boardId, { type: 'board:updated', boardId });
