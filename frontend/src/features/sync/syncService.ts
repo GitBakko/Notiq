@@ -8,6 +8,13 @@ import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 
 export const syncPull = async () => {
   try {
+    // Captured once, synchronously, before any await in this pull run — an
+    // account switch mid-pull (logout+login while a request is in flight)
+    // cannot leave a later write site stamping a different user than the one
+    // this pull started under. Matches syncPush's own entry guard.
+    const currentUserId = useAuthStore.getState().user?.id;
+    if (!currentUserId) return; // Cannot sync if not logged in
+
     // Pull Notebooks
     const notebooksRes = await api.get<Notebook[]>('/notebooks');
     await db.transaction('rw', db.notebooks, async () => {
@@ -296,10 +303,6 @@ export const syncPull = async () => {
     try {
       const boardsRes = await api.get<KanbanBoardListItem[]>('/kanban/boards');
       const serverBoards = boardsRes.data;
-      // The `import { useAuthStore }` statement sits further down this file (below
-      // syncPull, at line 496) — ES module imports are hoisted, so the binding is
-      // available here.
-      const viewerId = useAuthStore.getState().user?.id;
 
       await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
         const dirtyBoards = await db.kanbanBoards.where('syncStatus').notEqual('synced').toArray();
@@ -318,7 +321,7 @@ export const syncPull = async () => {
             ...b,
             // Whose list this row belongs to. On a shared board ownerId is the
             // OWNER, so useKanbanBoards has nothing else to scope by.
-            viewerId,
+            viewerId: currentUserId,
             syncStatus: 'synced' as const,
           }));
 
@@ -432,14 +435,13 @@ export const syncPull = async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sharedKanbanRes = await api.get<any[]>('/share/kanbans/accepted');
       const sharedBoards = sharedKanbanRes.data;
-      const sharedViewerId = useAuthStore.getState().user?.id;
 
       await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards.map((b: any) => ({
           ...b,
           ownership: 'shared' as const,
-          viewerId: sharedViewerId,
+          viewerId: currentUserId,
           permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
           syncStatus: 'synced' as const,
           columnCount: b._count?.columns ?? b.columns?.length ?? 0,

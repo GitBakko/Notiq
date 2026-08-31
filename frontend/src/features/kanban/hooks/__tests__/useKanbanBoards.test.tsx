@@ -21,13 +21,19 @@ const { captured } = vi.hoisted(() => ({
   captured: { querier: null as null | (() => Promise<unknown>) },
 }));
 
+// Mutable so a test can flip to a logged-out state and back — a plain
+// module-level constant can't cover the 'no user' branch.
+const { currentUser } = vi.hoisted(() => ({
+  currentUser: { user: { id: 'user-1' } as { id: string } | undefined },
+}));
+
 vi.mock('../../../../lib/db', () => ({ db: mockDb }));
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: (querier: () => Promise<unknown>) => { captured.querier = querier; return undefined; },
 }));
 vi.mock('../../../../store/authStore', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- zustand selector signature
-  useAuthStore: (selector: (s: any) => unknown) => selector({ user: { id: 'user-1' } }),
+  useAuthStore: (selector: (s: any) => unknown) => selector(currentUser),
 }));
 
 import { useKanbanBoards } from '../useKanbanBoards';
@@ -38,6 +44,7 @@ beforeEach(() => {
   (mockDb.kanbanBoards as any)._predicate = null;
   rows.length = 0;
   captured.querier = null;
+  currentUser.user = { id: 'user-1' };
 });
 
 async function runQuerier(): Promise<{ id: string }[]> {
@@ -71,5 +78,13 @@ describe('useKanbanBoards scoping', () => {
     rows.push({ id: 'kb-ghost', ownerId: 'user-2', ownership: 'owned', syncStatus: 'created', updatedAt: '2026-01-02' });
     const result = await runQuerier();
     expect(result).toEqual([]);
+  });
+
+  it('returns an empty list without touching Dexie when no user is logged in', async () => {
+    currentUser.user = undefined;
+    rows.push({ id: 'kb-mine', ownerId: 'user-1', ownership: 'owned', syncStatus: 'synced', updatedAt: '2026-01-02' });
+    const result = await runQuerier();
+    expect(result).toEqual([]);
+    expect(mockDb.kanbanBoards.orderBy).not.toHaveBeenCalled();
   });
 });

@@ -604,10 +604,19 @@ describe('syncPull', () => {
         },
       ];
 
+      // A separate board reachable only via the 'accepted share' pull (the
+      // other of the two write sites this task stamps), so this test can't pass
+      // by exercising just one of them.
+      const acceptedShareBoard = {
+        id: 'kb-shared-accept', title: 'AcceptedShare', ownerId: 'user-3',
+        columns: [], _sharedPermission: 'READ' as const,
+      };
+
       mockApi.get.mockImplementation((url: string) => {
         if (url === '/kanban/boards') return Promise.resolve({ data: boardsList });
         if (url === '/kanban/boards/kb-owned') return Promise.resolve({ data: { id: 'kb-owned', columns: [] } });
         if (url === '/kanban/boards/kb-shared') return Promise.resolve({ data: { id: 'kb-shared', columns: [] } });
+        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [acceptedShareBoard] });
         return Promise.resolve({ data: [] });
       });
 
@@ -620,10 +629,17 @@ describe('syncPull', () => {
 
       await syncPull();
 
+      // Owned pull site
       expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ id: 'kb-owned', viewerId: 'user-1' }),
           expect.objectContaining({ id: 'kb-shared', viewerId: 'user-1' }),
+        ]),
+      );
+      // Accepted-share pull site — a separate bulkPut call, so a separate assertion
+      expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'kb-shared-accept', viewerId: 'user-1' }),
         ]),
       );
     });
