@@ -334,10 +334,10 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
           include: {
             owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
             columns: {
-              orderBy: { position: 'asc' },
+              orderBy: [{ position: 'asc' }, { id: 'asc' }],
               include: {
                 cards: {
-                  orderBy: { position: 'asc' },
+                  orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
                   include: {
                     assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
                     _count: { select: { comments: true } },

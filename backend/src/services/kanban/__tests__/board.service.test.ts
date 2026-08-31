@@ -220,6 +220,39 @@ describe('board.service', () => {
       expect(result.columns[0].cards[0]).not.toHaveProperty('_count');
     });
 
+    it('orders cards and columns with a deterministic tiebreaker', async () => {
+      const user = makeUser();
+      const board = makeKanbanBoard({ ownerId: user.id });
+      const column = makeKanbanColumn({ boardId: board.id });
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([
+        { id: column.id, isCompleted: true } as any,
+      ]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue({
+        ...board,
+        noteId: null,
+        taskListId: null,
+        columns: [],
+        shares: [],
+        owner: { id: user.id, name: user.name, email: user.email, color: user.color, avatarUrl: user.avatarUrl },
+        note: null,
+        taskList: null,
+      } as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+
+      await getBoard(board.id);
+
+      const arg = m(prisma.kanbanBoard.findUnique).mock.calls[0][0] as any;
+      // Two cards can share a position (legacy rows written by the old moveCard),
+      // and a plain ORDER BY position then leaves their order to the planner.
+      expect(arg.include.columns.include.cards.orderBy).toEqual([
+        { position: 'asc' },
+        { createdAt: 'asc' },
+      ]);
+      // KanbanColumn has no createdAt in schema.prisma — id is the stable tiebreaker.
+      expect(arg.include.columns.orderBy).toEqual([{ position: 'asc' }, { id: 'asc' }]);
+    });
+
     it('throws NotFoundError when board does not exist', async () => {
       // archiveCompletedCards already mocked
       m(prisma.kanbanColumn.findMany).mockResolvedValue([]);

@@ -132,7 +132,7 @@ export async function createBoard(
         },
       },
       include: {
-        columns: { orderBy: { position: 'asc' } },
+        columns: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
       },
     });
     return board;
@@ -147,7 +147,7 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
   try {
     const columns = await prisma.kanbanColumn.findMany({
       where: { boardId },
-      orderBy: { position: 'asc' },
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
       select: { id: true, isCompleted: true },
     });
     if (columns.length > 0 && !columns.some(c => c.isCompleted)) {
@@ -165,11 +165,13 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
     where: { id: boardId },
     include: {
       columns: {
-        orderBy: { position: 'asc' },
+        // KanbanColumn has no createdAt (see schema.prisma): id is the stable
+        // tiebreaker so the same board never renders in two different orders.
+        orderBy: [{ position: 'asc' }, { id: 'asc' }],
         include: {
           cards: {
             where: { archivedAt: null },
-            orderBy: { position: 'asc' },
+            orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
             select: cardWithAssigneeSelect,
           },
         },
@@ -328,7 +330,7 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
         },
       },
       include: {
-        columns: { orderBy: { position: 'asc' } },
+        columns: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
       },
     });
 
