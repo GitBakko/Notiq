@@ -1,8 +1,6 @@
 import prisma from '../../plugins/prisma';
-import logger from '../../utils/logger';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { cardWithAssigneeSelect, transformCard } from './helpers';
-import { archiveCompletedCards } from './card.service';
 
 // ─── Board CRUD ─────────────────────────────────────────────
 
@@ -132,7 +130,7 @@ export async function createBoard(
         },
       },
       include: {
-        columns: { orderBy: { position: 'asc' } },
+        columns: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
       },
     });
     return board;
@@ -140,36 +138,31 @@ export async function createBoard(
 }
 
 export async function getBoard(boardId: string, requestingUserId?: string) {
-  // Run lazy archive before returning board data
-  await archiveCompletedCards(boardId);
-
-  // Auto-mark last column as "completed" if no column has isCompleted set
-  try {
-    const columns = await prisma.kanbanColumn.findMany({
-      where: { boardId },
-      orderBy: { position: 'asc' },
-      select: { id: true, isCompleted: true },
-    });
-    if (columns.length > 0 && !columns.some(c => c.isCompleted)) {
-      const lastColumn = columns[columns.length - 1];
-      await prisma.kanbanColumn.update({
-        where: { id: lastColumn.id },
-        data: { isCompleted: true },
-      });
-    }
-  } catch (err) {
-    logger.error(err, 'Failed to auto-set last column as completed');
-  }
+  // [BACKUP] 2026-09-01 — questa GET faceva due scritture:
+  //   await archiveCompletedCards(boardId);              → ora job orario in app.ts
+  //   try { ...kanbanColumn.update({ isCompleted: true }) } catch { ... }
+  // Il secondo blocco era un backfill per board legacy, eseguito a ogni lettura:
+  // riattivava "completed" sull'ultima colonna subito dopo che l'utente lo aveva
+  // tolto, perché la invalidate della mutation rifaceva il fetch da qui.
+  // createBoard e createBoardFromTaskList seminano gia una colonna isCompleted: true,
+  // quindi ogni board NUOVA nasce con l'invariante. Non e vero per tutte le altre:
+  // la migration 20260228130000 ha aggiunto isCompleted con DEFAULT false e nessun
+  // backfill, e deleteColumn non impedisce di cancellare l'unica colonna completed.
+  // Su quelle board archiveCompletedCards (che filtra isCompleted: true) non trova
+  // nulla e l'auto-archiviazione resta inerte. Il backfill va rifatto una volta sola
+  // come migration, non a ogni lettura: vedi il piano kanban, task 5.1bis.
 
   const board = await prisma.kanbanBoard.findUnique({
     where: { id: boardId },
     include: {
       columns: {
-        orderBy: { position: 'asc' },
+        // KanbanColumn has no createdAt (see schema.prisma): id is the stable
+        // tiebreaker so the same board never renders in two different orders.
+        orderBy: [{ position: 'asc' }, { id: 'asc' }],
         include: {
           cards: {
             where: { archivedAt: null },
-            orderBy: { position: 'asc' },
+            orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
             select: cardWithAssigneeSelect,
           },
         },
@@ -328,7 +321,7 @@ export async function createBoardFromTaskList(userId: string, taskListId: string
         },
       },
       include: {
-        columns: { orderBy: { position: 'asc' } },
+        columns: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
       },
     });
 

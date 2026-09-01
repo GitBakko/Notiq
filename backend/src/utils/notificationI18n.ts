@@ -166,6 +166,14 @@ const translations: Record<string, Record<Locale, string>> = {
     en: 'Card Moved',
     it: 'Card Spostata',
   },
+  'notifications.kanbanBulkMove': {
+    en: '{{actorName}} moved {{count}} cards on {{boardTitle}}: {{summary}}',
+    it: '{{actorName}} ha spostato {{count}} card su {{boardTitle}}: {{summary}}',
+  },
+  'notifications.kanbanBulkMove_TITLE': {
+    en: 'Cards Moved',
+    it: 'Card Spostate',
+  },
   // --- Chat ---
   'notifications.chatMessage': {
     en: '{{senderName}} sent you a message',

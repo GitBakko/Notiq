@@ -35,7 +35,7 @@ const createColumnSchema = z.object({
 });
 
 const reorderColumnsSchema = z.object({
-  columns: z.array(z.object({ id: z.string(), position: z.number().int().min(0) })),
+  columns: z.array(z.object({ id: z.string(), position: z.number().int().min(0) })).min(1).max(100),
 });
 
 const createCardSchema = z.object({
@@ -47,14 +47,13 @@ const createCardSchema = z.object({
 const updateCardSchema = z.object({
   title: z.string().min(1).max(500).optional(),
   description: z.string().max(5000).nullable().optional(),
-  assigneeId: z.string().nullable().optional(),
+  assigneeId: z.string().min(1).nullable().optional(),
   dueDate: z.string().nullable().optional(),
   priority: z.enum(['STANDBY', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).nullable().optional(),
-  noteId: z.string().nullable().optional(),
 });
 
 const moveCardSchema = z.object({
-  toColumnId: z.string(),
+  toColumnId: z.string().min(1),
   position: z.number().int().min(0),
 });
 
@@ -329,7 +328,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
   const boardLinkNoteSchema = z.object({
     noteId: z.string().uuid(),
-    shareWithUserIds: z.array(z.string().uuid()).optional(),
+    shareWithUserIds: z.array(z.string().uuid()).max(50).optional(),
   });
 
   fastify.get('/boards/:id/check-note-sharing', async (request) => {
@@ -470,7 +469,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       cardId: z.string(),
       fromColumnId: z.string(),
       toColumnId: z.string(),
-    })),
+    })).max(100),
   });
 
   fastify.post('/boards/:boardId/bulk-move-notify', async (request) => {
@@ -484,7 +483,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   fastify.delete('/cards/:id', async (request) => {
     const { id } = request.params as { id: string };
     await getCardWithAccess(id, request.user.id, 'WRITE');
-    await kanbanService.deleteCard(id);
+    await kanbanService.deleteCard(id, request.user.id);
     return { success: true };
   });
 
@@ -523,7 +522,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
 
   const linkNoteSchema = z.object({
     noteId: z.string().uuid(),
-    shareWithUserIds: z.array(z.string().uuid()).optional(),
+    shareWithUserIds: z.array(z.string().uuid()).max(50).optional(),
   });
 
   // Check note sharing gap relative to board participants
@@ -587,7 +586,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   });
 
   // Bulk archive execute (owner-only): archive specific card IDs
-  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()) });
+  const bulkArchiveExecSchema = z.object({ cardIds: z.array(z.string().uuid()).max(1000) });
 
   fastify.post('/boards/:id/bulk-archive', async (request) => {
     const { id } = request.params as { id: string };

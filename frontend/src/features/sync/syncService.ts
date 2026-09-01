@@ -7,10 +7,26 @@ import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn,
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 
 export const syncPull = async () => {
+  // Task 6 fix round 1: board ids this pull actually deletes from Dexie (owned,
+  // no longer on server; or shared, no longer accepted) — a board someone had
+  // open in an already-mounted tab keeps rendering the stale copy forever
+  // otherwise, since nothing else invalidates that query on a pure prune (no
+  // queue item is pushed, so syncPush's own invalidation never fires for it).
+  // useSync reads this to invalidate just those board queries. Declared before
+  // the try/catch so a failure anywhere still returns whatever was pruned
+  // before the failure, instead of throwing away real deletions already made.
+  const prunedBoardIds: string[] = [];
   try {
+    // Captured once, synchronously, before any await in this pull run — an
+    // account switch mid-pull (logout+login while a request is in flight)
+    // cannot leave a later write site stamping a different user than the one
+    // this pull started under. Matches syncPush's own entry guard.
+    const currentUserId = useAuthStore.getState().user?.id;
+    if (!currentUserId) return prunedBoardIds; // Cannot sync if not logged in
+
     // Pull Notebooks
     const notebooksRes = await api.get<Notebook[]>('/notebooks');
-    await db.transaction('rw', db.notebooks, async () => {
+    await db.transaction('rw', db.notebooks, db.syncQueue, async () => {
       const dirtyNotebooks = await db.notebooks.where('syncStatus').notEqual('synced').toArray();
       const dirtyIds = new Set(dirtyNotebooks.map(n => n.id));
 
@@ -19,11 +35,21 @@ export const syncPull = async () => {
         syncStatus: 'synced' as const
       }));
 
-      const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id));
+      // Zombie prevention (mirrors the notes pull): a locally-deleted notebook with
+      // a pending DELETE in the queue must not be resurrected by the server response.
+      const pendingDeletes = await db.syncQueue
+        .where('entity').equals('NOTEBOOK')
+        .and(item => item.type === 'DELETE')
+        .toArray();
+      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+
+      const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id) && !pendingDeleteIds.has(n.id));
 
       const allLocalSyncedNotebooks = await db.notebooks.where('syncStatus').equals('synced').toArray();
       const serverIds = new Set(serverNotebooks.map(n => n.id));
-      const toDeleteIds = allLocalSyncedNotebooks.filter(n => !serverIds.has(n.id)).map(n => n.id);
+      const toDeleteIds = allLocalSyncedNotebooks
+        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+        .map(n => n.id);
 
       await db.notebooks.bulkDelete(toDeleteIds);
       await db.notebooks.bulkPut(notebooksToPut);
@@ -31,7 +57,7 @@ export const syncPull = async () => {
 
     // Pull Tags
     const tagsRes = await api.get<Tag[]>('/tags');
-    await db.transaction('rw', db.tags, async () => {
+    await db.transaction('rw', db.tags, db.syncQueue, async () => {
       const dirtyTags = await db.tags.where('syncStatus').notEqual('synced').toArray();
       const dirtyIds = new Set(dirtyTags.map(t => t.id));
 
@@ -42,11 +68,21 @@ export const syncPull = async () => {
         syncStatus: 'synced' as const
       }));
 
-      const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id));
+      // Zombie prevention (mirrors the notes pull): a locally-deleted tag with a
+      // pending DELETE in the queue must not be resurrected by the server response.
+      const pendingDeletes = await db.syncQueue
+        .where('entity').equals('TAG')
+        .and(item => item.type === 'DELETE')
+        .toArray();
+      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+
+      const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id) && !pendingDeleteIds.has(t.id));
 
       const allLocalSyncedTags = await db.tags.where('syncStatus').equals('synced').toArray();
       const serverIds = new Set(serverTags.map(t => t.id));
-      const toDeleteIds = allLocalSyncedTags.filter(t => !serverIds.has(t.id)).map(t => t.id);
+      const toDeleteIds = allLocalSyncedTags
+        .filter(t => !serverIds.has(t.id) && !pendingDeleteIds.has(t.id))
+        .map(t => t.id);
 
       await db.tags.bulkDelete(toDeleteIds);
       await db.tags.bulkPut(tagsToPut);
@@ -312,12 +348,19 @@ export const syncPull = async () => {
           .filter(b => !dirtyIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
           .map(b => ({
             ...b,
+            // Whose list this row belongs to. On a shared board ownerId is the
+            // OWNER, so useKanbanBoards has nothing else to scope by.
+            viewerId: currentUserId,
             syncStatus: 'synced' as const,
           }));
 
-        // Remove boards no longer on server (owned only — shared handled below)
+        // Remove boards no longer on server (owned only — shared handled below).
+        // Scoped to the current user's own rows: an unscoped scan here would treat
+        // another account's still-valid synced board as "not on my server list"
+        // and bulkDelete it (cascading to its columns/cards) the moment this user
+        // pulls, race or not.
         const allLocalSyncedBoards = await db.kanbanBoards.where('syncStatus').equals('synced')
-          .filter(b => b.ownership !== 'shared').toArray();
+          .filter(b => b.ownership !== 'shared' && b.ownerId === currentUserId).toArray();
         const serverIds = new Set(serverBoards.map(b => b.id));
         const toDeleteIds = allLocalSyncedBoards
           .filter(b => !serverIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
@@ -333,6 +376,7 @@ export const syncPull = async () => {
             }
             await db.kanbanCards.where('boardId').equals(boardId).delete();
           }
+          prunedBoardIds.push(...toDeleteIds);
         }
 
         if (boardsToPut.length > 0) await db.kanbanBoards.bulkPut(boardsToPut);
@@ -426,20 +470,65 @@ export const syncPull = async () => {
       const sharedKanbanRes = await api.get<any[]>('/share/kanbans/accepted');
       const sharedBoards = sharedKanbanRes.data;
 
-      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards.map((b: any) => ({
-          ...b,
-          ownership: 'shared' as const,
-          permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
-          syncStatus: 'synced' as const,
-          columnCount: b._count?.columns ?? b.columns?.length ?? 0,
-          cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
-        }));
+      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
+        // Zombie prevention (mirrors the main "Kanban Boards Pull" block above): a
+        // locally-dirty row survives an overwrite, and a pending DELETE blocks
+        // resurrection. Without this, these three bulkPuts below applied no dirty
+        // filter and no pending-delete filter at all, running AFTER the main
+        // block's guarded pass over overlapping rows and silently clobbering it.
+        const dirtyBoards = await db.kanbanBoards.where('syncStatus').notEqual('synced').toArray();
+        const dirtyBoardIds = new Set(dirtyBoards.map(b => b.id));
+        const pendingBoardDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_BOARD')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingBoardDeleteIds = new Set(pendingBoardDeletes.map(i => i.entityId));
 
-        // Remove stale shared boards no longer in server response
-        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared').toArray();
-        const sharedServerIds = new Set(sharedBoardsMapped.map(b => b.id));
+        const dirtyColumns = await db.kanbanColumns.where('syncStatus').notEqual('synced').toArray();
+        const dirtyColumnIds = new Set(dirtyColumns.map(c => c.id));
+        const pendingColDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_COLUMN')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingColDeleteIds = new Set(pendingColDeletes.map(i => i.entityId));
+
+        const dirtyCards = await db.kanbanCards.where('syncStatus').notEqual('synced').toArray();
+        const dirtyCardIds = new Set(dirtyCards.map(c => c.id));
+        const pendingCardDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_CARD')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingCardDeleteIds = new Set(pendingCardDeletes.map(i => i.entityId));
+
+        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((b: any) => !dirtyBoardIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((b: any) => ({
+            ...b,
+            ownership: 'shared' as const,
+            viewerId: currentUserId,
+            permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
+            syncStatus: 'synced' as const,
+            columnCount: b._count?.columns ?? b.columns?.length ?? 0,
+            cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
+          }));
+
+        // Remove stale shared boards no longer in server response. Scoped to rows
+        // stamped for THIS viewer — a pre-upgrade row with no viewerId can't be told
+        // apart from another account's leftover share, so it is deliberately left
+        // out of deletion candidacy rather than guessed at: it stays inert (already
+        // hidden by useKanbanBoards) until something else claims it, same as any
+        // other pre-upgrade orphan. Guessing it belongs to "probably me" would
+        // reopen the exact cross-account bulkDelete this scoping exists to close.
+        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared')
+          .filter(b => b.viewerId === currentUserId).toArray();
+        // Fix round 2: derive from the RAW server response, not sharedBoardsMapped
+        // (which the dirty-row guard above already filtered) -- mirrors the main
+        // block's serverIds, which also comes from the raw serverBoards. Using the
+        // filtered array here excluded a dirty shared board from this set too, so
+        // this staleness check saw it as "gone from the server" and pruned it.
+        const sharedServerIds = new Set(sharedBoards.map(b => b.id));
         const staleIds = localSharedBoards.filter(b => !sharedServerIds.has(b.id)).map(b => b.id);
         if (staleIds.length > 0) {
           await db.kanbanBoards.bulkDelete(staleIds);
@@ -447,6 +536,7 @@ export const syncPull = async () => {
             await db.kanbanColumns.where('boardId').equals(boardId).delete();
             await db.kanbanCards.where('boardId').equals(boardId).delete();
           }
+          prunedBoardIds.push(...staleIds);
         }
 
         if (sharedBoardsMapped.length > 0) await db.kanbanBoards.bulkPut(sharedBoardsMapped);
@@ -455,29 +545,35 @@ export const syncPull = async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const board of sharedBoards as any[]) {
           if (board.columns) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const columns: LocalKanbanColumn[] = board.columns.map((col: any) => ({
-              id: col.id,
-              title: col.title,
-              position: col.position,
-              boardId: board.id,
-              isCompleted: col.isCompleted ?? false,
-              syncStatus: 'synced' as const,
-            }));
+            const columns: LocalKanbanColumn[] = board.columns
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .filter((col: any) => !dirtyColumnIds.has(col.id) && !pendingColDeleteIds.has(col.id))
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((col: any) => ({
+                id: col.id,
+                title: col.title,
+                position: col.position,
+                boardId: board.id,
+                isCompleted: col.isCompleted ?? false,
+                syncStatus: 'synced' as const,
+              }));
             if (columns.length > 0) await db.kanbanColumns.bulkPut(columns);
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             for (const col of board.columns as any[]) {
               if (col.cards && col.cards.length > 0) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const cards: LocalKanbanCard[] = col.cards.map((card: any) => ({
-                  ...card,
-                  columnId: col.id,
-                  boardId: board.id,
-                  commentCount: card._count?.comments ?? 0,
-                  syncStatus: 'synced' as const,
-                }));
-                await db.kanbanCards.bulkPut(cards);
+                const cards: LocalKanbanCard[] = col.cards
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  .filter((card: any) => !dirtyCardIds.has(card.id) && !pendingCardDeleteIds.has(card.id))
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  .map((card: any) => ({
+                    ...card,
+                    columnId: col.id,
+                    boardId: board.id,
+                    commentCount: card._count?.comments ?? 0,
+                    syncStatus: 'synced' as const,
+                  }));
+                if (cards.length > 0) await db.kanbanCards.bulkPut(cards);
               }
             }
           }
@@ -490,6 +586,7 @@ export const syncPull = async () => {
   } catch (error) {
     console.error('Sync Pull Failed:', error);
   }
+  return prunedBoardIds;
 };
 
 
@@ -501,6 +598,29 @@ let syncPushScheduled = false;
 // Retry backoff: track failures per queue item to avoid tight retry loops
 const failureCounts = new Map<number, { count: number; nextRetryAt: number }>();
 const MAX_RETRIES = 5;
+
+// A transport failure (no `.response` -- see the `break` branch below) never
+// reaches recordFailure, so it gets zero backoff and never increments
+// `attempts`: a persistently-unreachable item (oversized payload reset by a
+// proxy, a broken deployment link) would otherwise be retried at full
+// frequency forever, head-of-line-blocking the whole queue with no signal
+// ever reaching SyncStatusIndicator's red banner (status never becomes
+// 'failed') and no escape hatch (retryFailedSyncItems only re-enables items
+// already 'failed'). Track wall-clock elapsed since the FIRST transport
+// failure for an item, not an attempt count -- retries aren't paced (a burst
+// of local writes can trigger many pushes within seconds), so counting
+// attempts would trip on activity level, not on how long the network has
+// actually been broken. 10 minutes matches the order of magnitude of
+// recordFailure's own worst-case backoff window (5-minute cap, ~7-10 min to
+// reach MAX_RETRIES): long enough that an ordinary wifi blip or captive
+// portal that clears in under a minute never trips it, short enough that
+// the user isn't left with a silently wedged queue for the rest of the day.
+// ponytail: in-memory only, resets on page reload (like failureCounts
+// without its Dexie-seeded `attempts` backstop) -- an item is never lost by
+// that, it just gets a fresh 10-minute window; add Dexie persistence only
+// if "reload resets the clock" turns out to matter in practice.
+const transportFailureSince = new Map<number, number>();
+const TRANSPORT_FAILURE_CEILING_MS = 10 * 60 * 1000;
 
 function shouldRetry(itemId: number | undefined): boolean {
   if (!itemId) return true;
@@ -544,22 +664,65 @@ async function recordFailure(item: SyncQueueItem, error: unknown): Promise<void>
 }
 
 function clearFailure(itemId: number | undefined): void {
-  if (itemId) failureCounts.delete(itemId);
+  if (itemId) {
+    failureCounts.delete(itemId);
+    transportFailureSince.delete(itemId);
+  }
 }
 
-export const syncPush = async () => {
+/**
+ * A queued card CREATE/move payload can carry a DEAD column id: the
+ * KANBAN_BOARD/CREATE branch below remaps local column ids to server ids
+ * after the board round-trips (and repoints the card's Dexie row), but
+ * never rewrites payloads already sitting in the queue. Dexie's card row
+ * is more current — but only trust its columnId once that column is
+ * confirmed synced.
+ *
+ * That guard matters for the opposite race too: add a card to an
+ * already-synced column, then add a NEW column, then drag the card into
+ * it, all offline. Dexie's card row now points at the new column, but
+ * that column's own CREATE is a later, still-unprocessed queue item — the
+ * card would 404 against a column that doesn't exist YET rather than one
+ * that's dead. Falling back to the queued value when the Dexie column
+ * isn't 'synced' keeps the original (still-valid) destination instead.
+ */
+async function resolveCardColumnId(cardId: string, queuedColumnId: string | undefined): Promise<string | undefined> {
+  const dexieColumnId = (await db.kanbanCards.get(cardId))?.columnId;
+  if (!dexieColumnId) return queuedColumnId;
+  const dexieCol = await db.kanbanColumns.get(dexieColumnId);
+  return dexieCol?.syncStatus === 'synced' ? dexieColumnId : queuedColumnId;
+}
+
+/**
+ * Returns whether this call actually pushed at least one item to the server —
+ * NOT just whether it ran without throwing. Callers (useSync) use this to
+ * decide whether to invalidate the kanban react-query cache: invalidating
+ * after a run that pushed nothing (empty queue, offline, already-syncing,
+ * logged out) would be pointless at best and a refetch storm at worst, since
+ * syncPush also runs on every 30s tick whether or not there's anything to do.
+ * A transport-failure `break` partway through still returns true if earlier
+ * items in the same run succeeded — those did change server state.
+ */
+export const syncPush = async (): Promise<boolean> => {
+  // ponytail: cheap bail-out before touching Dexie or the queue at all. Does
+  // NOT cover a captive portal / connected-but-dead network — navigator.onLine
+  // stays true there — the response-less-error `break` below is what catches
+  // that case, by stopping the run after the first request that never gets a
+  // reply instead of relying on this flag to have caught it up front.
+  if (!navigator.onLine) return false;
   if (isSyncing) {
     // Instead of silently dropping, schedule a follow-up push
     syncPushScheduled = true;
-    return;
+    return false;
   }
   isSyncing = true;
   syncPushScheduled = false;
+  let pushedAny = false;
   try {
     const currentUserId = useAuthStore.getState().user?.id;
-    if (!currentUserId) return; // Cannot sync if not logged in
+    if (!currentUserId) return false; // Cannot sync if not logged in
 
-    // Filter queue by userId. 
+    // Filter queue by userId.
     // We only process items that belong to the current user.
     // Legacy items without userId will be ignored (and potentially cleaned up later or stuck, which prevents leakage).
     const allQueue = await db.syncQueue.orderBy('createdAt').toArray();
@@ -629,13 +792,21 @@ export const syncPush = async () => {
             await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
           }
         } else if (item.entity === 'KANBAN_BOARD') {
-          // Safety: never push shared boards to REST API
-          const localBoard = await db.kanbanBoards.get(item.entityId);
-          if (localBoard?.ownership === 'shared') {
-            if (item.id) await db.syncQueue.delete(item.id);
-            clearFailure(item.id);
-            continue;
-          }
+          // [BACKUP] 2026-09-01 — used to skip ANY queued item for a shared board
+          // and delete it without calling the API at all ("never push shared
+          // boards to REST API"). The backend explicitly authorizes a WRITE
+          // collaborator's board update (assertBoardAccess(id, userId, 'WRITE')
+          // in board.service.ts) and the UI offers a rename to one — dropping the
+          // queue item made the edit look like it saved, then the next pull
+          // silently reverted it, with no error surfaced (the item was deleted,
+          // not failed). An unauthorized case still fails loudly: a 403 is
+          // already handled as terminal below.
+          //   const localBoard = await db.kanbanBoards.get(item.entityId);
+          //   if (localBoard?.ownership === 'shared') {
+          //     if (item.id) await db.syncQueue.delete(item.id);
+          //     clearFailure(item.id);
+          //     continue;
+          //   }
           if (item.type === 'CREATE') {
             const boardData = item.data as Record<string, unknown>;
             const localColumnIds = (boardData._localColumnIds as string[] | undefined) || [];
@@ -683,14 +854,22 @@ export const syncPush = async () => {
           }
         } else if (item.entity === 'KANBAN_CARD') {
           if (item.type === 'CREATE') {
-            const columnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
+            // See resolveCardColumnId() above for why this reads Dexie instead
+            // of trusting the queued payload outright.
+            // The stale columnId left in the body is harmless: createCardSchema
+            // (backend/src/routes/kanban.ts:41-45) strips unknown keys and the
+            // column comes from the URL.
+            const queuedColumnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
+            const columnId = await resolveCardColumnId(item.entityId, queuedColumnId);
             await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
           } else if (item.type === 'UPDATE') {
             const cardData = item.data as Record<string, unknown> | undefined;
             if (cardData?.columnId) {
-              // Move operation — route to dedicated move endpoint
+              // Move operation — route to dedicated move endpoint. Same dead/not-yet-
+              // created column id hazard as the CREATE branch — see resolveCardColumnId().
+              const toColumnId = await resolveCardColumnId(item.entityId, cardData.columnId as string);
               await api.put(`/kanban/cards/${item.entityId}/move`, {
-                toColumnId: cardData.columnId,
+                toColumnId,
                 position: cardData.position ?? 0,
               });
             } else {
@@ -704,6 +883,7 @@ export const syncPush = async () => {
         // If successful, remove from queue and clear backoff
         if (item.id) await db.syncQueue.delete(item.id);
         clearFailure(item.id);
+        pushedAny = true;
 
         // Update syncStatus of the entity ONLY if there are no more pending items for this entity
         if (item.type !== 'DELETE') {
@@ -777,10 +957,23 @@ export const syncPush = async () => {
 
       } catch (error: unknown) {
         const status = (error as { response?: { status?: number } })?.response?.status;
-        if (status === 404 || status === 410) {
-          // Resource no longer exists on server — remove from queue to stop infinite retries
+        if ((status === 404 || status === 410) && item.type !== 'CREATE') {
+          // Resource no longer exists on server — remove from queue to stop infinite retries.
+          // NOT for a CREATE: a 404/410 there means the thing the user made never reached
+          // the server, so silently dropping it would make it vanish with no trace. (A
+          // column reconciled to 'synced' and then locally re-edited to 'updated' makes
+          // resolveCardColumnId distrust it and fall back to a dead queued column id,
+          // which is exactly how a card CREATE reaches a 404 here.)
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
           if (item.id) await db.syncQueue.delete(item.id);
+          clearFailure(item.id);
+        } else if (status === 404 || status === 410) {
+          // Same status, but a CREATE — surface it instead (status: 'failed' lights up
+          // SyncStatusIndicator's red banner + retry button), same treatment as 400/422.
+          console.error(`Sync Push: CREATE returned ${status}, marking failed instead of dropping:`, item.entity, item.entityId);
+          if (item.id) {
+            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'not_found' });
+          }
           clearFailure(item.id);
         } else if (status === 400 || status === 422) {
           // [BACKUP] 2026-08-23 — 400/422 previously fell through to recordFailure()
@@ -804,12 +997,39 @@ export const syncPush = async () => {
             await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'forbidden' });
           }
           clearFailure(item.id);
+        } else if (!(error as { response?: unknown })?.response) {
+          // Transport failure: the request never got a reply at all (network
+          // drop, DNS failure, timeout) — not the server rejecting this
+          // item's payload. Don't burn a retry attempt on it (recordFailure
+          // is for the server saying no, not for the network being gone),
+          // and stop the whole run instead of walking the rest of the queue:
+          // every item after this one would fail the exact same way for a
+          // reason that belongs to none of them. The next syncPush call
+          // (periodic retry, or the next local write) starts over from here.
+          if (item.id) {
+            const since = transportFailureSince.get(item.id) ?? Date.now();
+            transportFailureSince.set(item.id, since);
+            if (Date.now() - since >= TRANSPORT_FAILURE_CEILING_MS) {
+              // Stuck for ~10 real minutes, not just N attempts — surface it
+              // the same way a genuine server rejection does (status:
+              // 'failed' lights up SyncStatusIndicator's red banner + retry
+              // button; retryFailedSyncItems re-enables it), without ever
+              // touching `attempts`, which stays reserved for real rejections.
+              console.error('Sync Push: transport failure persisted past the 10min ceiling, marking failed:', item.entity, item.entityId);
+              await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'network' });
+              transportFailureSince.delete(item.id);
+            }
+          }
+          console.error('Sync Push: transport failure, stopping run:', item.entity, item.entityId, error);
+          break;
         } else {
           await recordFailure(item, error);
           console.error('Sync Push Failed for item:', item, error);
         }
       }
     }
+
+    return pushedAny;
   } finally {
     isSyncing = false;
     // If a push was requested while we were busy, run it now
@@ -831,7 +1051,11 @@ export const retryFailedSyncItems = async (): Promise<void> => {
     .filter(item => item.userId === currentUserId).toArray();
   for (const item of failed) {
     if (!item.id) continue;
-    failureCounts.delete(item.id);
+    // clearFailure(), not a bare failureCounts.delete(): it also drops any
+    // stale transportFailureSince entry, so a fresh transport failure right
+    // after this retry gets its own 10-minute window instead of inheriting
+    // one that may already be nearly (or fully) elapsed.
+    clearFailure(item.id);
     await db.syncQueue.update(item.id, { status: 'pending' as const, attempts: 0 });
   }
   // The liveQuery count doesn't change on status updates, so useSync won't re-fire — push explicitly

@@ -5,10 +5,15 @@ vi.mock('../../kanbanSSE', () => ({
   broadcast: vi.fn(),
 }));
 
+vi.mock('../../kanbanPermissions', () => ({
+  assertBelongsToBoard: vi.fn().mockResolvedValue(undefined),
+}));
+
 import prisma from '../../../plugins/prisma';
 import { createColumn, updateColumn, reorderColumns, deleteColumn } from '../column.service';
 import { makeKanbanColumn, makeKanbanBoard } from '../../../__tests__/factories';
-import { NotFoundError, BadRequestError } from '../../../utils/errors';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../../../utils/errors';
+import { assertBelongsToBoard } from '../../kanbanPermissions';
 
 // Cast for type-safe mock access
 const prismaMock = prisma as any;
@@ -37,6 +42,10 @@ beforeEach(() => {
     if (typeof fn === 'function') return fn(prismaMock);
     return Promise.all(fn);
   });
+
+  // clearAllMocks does not drop queued `...Once` implementations: reset explicitly
+  (assertBelongsToBoard as any).mockReset();
+  (assertBelongsToBoard as any).mockResolvedValue(undefined);
 });
 
 // ─── createColumn ──────────────────────────────────────────────
@@ -74,6 +83,37 @@ describe('createColumn', () => {
       data: { boardId: board.id, title: 'To Do', position: 0 },
     });
     expect(result).toEqual(expectedColumn);
+  });
+
+  it('computes the max position and creates the column inside one transaction', async () => {
+    const board = makeKanbanBoard();
+
+    // Same rationale as the equivalent test in card.service.test.ts:
+    // setup.ts's default $transaction mock hands the callback prismaMock
+    // itself, so a call to prismaMock.kanbanColumn.* can't be told apart from
+    // a call made outside the transaction. Use a distinct `tx` double so the
+    // assertions below can only pass if createColumn actually runs
+    // aggregate/create through the transaction's client.
+    const tx = {
+      kanbanColumn: {
+        aggregate: vi.fn().mockResolvedValue({ _max: { position: 1 } }),
+        create: vi.fn().mockResolvedValue(makeKanbanColumn({ boardId: board.id, position: 2 })),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    await createColumn(board.id, 'Review');
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.kanbanColumn.aggregate).toHaveBeenCalledWith({
+      where: { boardId: board.id },
+      _max: { position: true },
+    });
+    expect(tx.kanbanColumn.create).toHaveBeenCalledWith({
+      data: { boardId: board.id, title: 'Review', position: 2 },
+    });
+    expect(prismaMock.kanbanColumn.aggregate).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanColumn.create).not.toHaveBeenCalled();
   });
 });
 
@@ -163,6 +203,40 @@ describe('reorderColumns', () => {
       data: { position: 0 },
     });
   });
+
+  it('asserts every column id belongs to the board before writing', async () => {
+    const board = makeKanbanBoard();
+    const col1 = makeKanbanColumn({ boardId: board.id, position: 0 });
+    const col2 = makeKanbanColumn({ boardId: board.id, position: 1 });
+
+    prismaMock.kanbanColumn.update.mockResolvedValue({});
+
+    await reorderColumns(board.id, [
+      { id: col1.id, position: 1 },
+      { id: col2.id, position: 0 },
+    ]);
+
+    expect(assertBelongsToBoard).toHaveBeenCalledWith(board.id, {
+      columnIds: [col1.id, col2.id],
+    });
+  });
+
+  it('does not write anything when a column belongs to another board', async () => {
+    const board = makeKanbanBoard();
+    const foreign = makeKanbanColumn();
+
+    prismaMock.kanbanColumn.update.mockResolvedValue({});
+    (assertBelongsToBoard as any).mockRejectedValueOnce(
+      new ForbiddenError('errors.common.accessDenied')
+    );
+
+    const promise = reorderColumns(board.id, [{ id: foreign.id, position: 0 }]);
+
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+    expect(prismaMock.kanbanColumn.update).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 // ─── deleteColumn ──────────────────────────────────────────────
@@ -174,15 +248,18 @@ describe('deleteColumn', () => {
 
     prismaMock.kanbanColumn.findUnique.mockResolvedValue({
       boardId: board.id,
+      isCompleted: false,
       _count: { cards: 0 },
     });
     prismaMock.kanbanColumn.delete.mockResolvedValue(column);
 
     await deleteColumn(column.id);
 
+    // isCompleted is now part of the select: deleteColumn has to know whether it is
+    // removing the board's completed column in order to promote a replacement.
     expect(prismaMock.kanbanColumn.findUnique).toHaveBeenCalledWith({
       where: { id: column.id },
-      select: { boardId: true, _count: { select: { cards: true } } },
+      select: { boardId: true, isCompleted: true, _count: { select: { cards: true } } },
     });
     expect(prismaMock.kanbanColumn.delete).toHaveBeenCalledWith({
       where: { id: column.id },
@@ -201,6 +278,128 @@ describe('deleteColumn', () => {
     await expect(deleteColumn(column.id)).rejects.toThrow('errors.kanban.columnHasCards');
     expect(prismaMock.kanbanColumn.delete).not.toHaveBeenCalled();
   });
+
+  it('promotes the new last column when the deleted one was the board only completed column', async () => {
+    const board = makeKanbanBoard();
+    const column = makeKanbanColumn({ boardId: board.id, isCompleted: true });
+
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      isCompleted: true,
+      _count: { cards: 0 },
+    });
+
+    // setup.ts's default $transaction hands the callback prismaMock itself, so a call
+    // through the transaction cannot be told apart from one outside it. A distinct `tx`
+    // double makes the assertions below pass only if the delete and the promotion really
+    // run inside the same transaction.
+    const tx = {
+      kanbanColumn: {
+        delete: vi.fn().mockResolvedValue(column),
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn().mockResolvedValue({ id: 'col-new-last' }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    await deleteColumn(column.id);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.kanbanColumn.delete).toHaveBeenCalledWith({ where: { id: column.id } });
+    expect(tx.kanbanColumn.findFirst).toHaveBeenCalledWith({
+      where: { boardId: board.id },
+      orderBy: [{ position: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    expect(tx.kanbanColumn.update).toHaveBeenCalledWith({
+      where: { id: 'col-new-last' },
+      data: { isCompleted: true },
+    });
+    // The promotion must not leak outside the transaction.
+    expect(prismaMock.kanbanColumn.update).not.toHaveBeenCalled();
+  });
+
+  it('promotes nothing when the deleted column was not the completed one', async () => {
+    const board = makeKanbanBoard();
+    const column = makeKanbanColumn({ boardId: board.id, isCompleted: false });
+
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      isCompleted: false,
+      _count: { cards: 0 },
+    });
+
+    const tx = {
+      kanbanColumn: {
+        delete: vi.fn().mockResolvedValue(column),
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    await deleteColumn(column.id);
+
+    // A board the user deliberately left with no completed column stays that way:
+    // task 5.1 removed the read-path backfill precisely because it fought the user.
+    expect(tx.kanbanColumn.findFirst).not.toHaveBeenCalled();
+    expect(tx.kanbanColumn.update).not.toHaveBeenCalled();
+  });
+
+  it('promotes nothing when another completed column survives the delete', async () => {
+    const board = makeKanbanBoard();
+    const column = makeKanbanColumn({ boardId: board.id, isCompleted: true });
+
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      isCompleted: true,
+      _count: { cards: 0 },
+    });
+
+    const tx = {
+      kanbanColumn: {
+        delete: vi.fn().mockResolvedValue(column),
+        count: vi.fn().mockResolvedValue(1), // a second completed column remains
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    await deleteColumn(column.id);
+
+    expect(tx.kanbanColumn.count).toHaveBeenCalledWith({
+      where: { boardId: board.id, isCompleted: true },
+    });
+    expect(tx.kanbanColumn.update).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when the deleted completed column was the board last one', async () => {
+    const board = makeKanbanBoard();
+    const column = makeKanbanColumn({ boardId: board.id, isCompleted: true });
+
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({
+      boardId: board.id,
+      isCompleted: true,
+      _count: { cards: 0 },
+    });
+
+    const tx = {
+      kanbanColumn: {
+        delete: vi.fn().mockResolvedValue(column),
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn().mockResolvedValue(null), // no columns left on the board
+        update: vi.fn(),
+      },
+    };
+    prismaMock.$transaction = vi.fn((fn: any) => fn(tx));
+
+    await expect(deleteColumn(column.id)).resolves.toBeUndefined();
+    expect(tx.kanbanColumn.update).not.toHaveBeenCalled();
+  });
+
 
   it('throws NotFoundError when column does not exist', async () => {
     prismaMock.kanbanColumn.findUnique.mockResolvedValue(null);

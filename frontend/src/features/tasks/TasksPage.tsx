@@ -8,6 +8,7 @@ import clsx from 'clsx';
 import { updateNote } from '../notes/noteService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 
@@ -25,7 +26,8 @@ export default function TasksPage() {
             updateNote(id, { isReminderDone: isDone }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
-        }
+        },
+        ...LOCAL_FIRST,
     });
 
     if (!tasks) return <div className="p-8 text-center text-neutral-500">{t('common.loading')}</div>;

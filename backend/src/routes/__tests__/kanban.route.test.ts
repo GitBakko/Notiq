@@ -33,6 +33,7 @@ vi.mock('../../services/kanban/index', () => ({
   getLinkedBoardsForNote: vi.fn(),
   getArchivedCards: vi.fn(),
   unarchiveCard: vi.fn(),
+  executeBulkArchive: vi.fn(),
   linkTaskListToBoard: vi.fn(),
   unlinkTaskListFromBoard: vi.fn(),
   searchUserTaskLists: vi.fn(),
@@ -436,6 +437,25 @@ describe('PUT /api/kanban/cards/:id', () => {
     );
   });
 
+  it('strips noteId at the schema layer, before it reaches the service', async () => {
+    const updated = { id: 'card-1', title: 'Updated card' };
+    mockKanbanService.updateCard.mockResolvedValue(updated);
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kanban/cards/card-1',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { title: 'Updated card', noteId: 'note-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockKanbanService.updateCard).toHaveBeenCalledWith(
+      'card-1',
+      { title: 'Updated card' },
+      TEST_USER.id,
+    );
+  });
+
   it('returns 400 with invalid priority value', async () => {
     const res = await app.inject({
       method: 'PUT',
@@ -444,6 +464,19 @@ describe('PUT /api/kanban/cards/:id', () => {
       payload: { priority: 'INVALID' },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 with an empty-string assigneeId, without reaching the service', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kanban/cards/card-1',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { assigneeId: '' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.payload).message).toBe('Validation error');
+    expect(mockKanbanService.updateCard).not.toHaveBeenCalled();
   });
 });
 
@@ -482,6 +515,19 @@ describe('PUT /api/kanban/cards/:id/move', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('returns 400 with an empty-string toColumnId, without reaching the service', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kanban/cards/card-1/move',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { toColumnId: '', position: 0 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.payload).message).toBe('Validation error');
+    expect(mockKanbanService.moveCard).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/kanban/cards/:id', () => {
@@ -496,6 +542,18 @@ describe('DELETE /api/kanban/cards/:id', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual({ success: true });
+  });
+
+  it('forwards the caller as actorId so card:deleted carries an actor', async () => {
+    mockKanbanService.deleteCard.mockResolvedValue(undefined);
+
+    await app.inject({
+      method: 'DELETE',
+      url: '/api/kanban/cards/card-1',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    expect(mockKanbanService.deleteCard).toHaveBeenCalledWith('card-1', TEST_USER.id);
   });
 });
 
@@ -648,5 +706,39 @@ describe('POST /api/kanban/boards/:id/chat', () => {
       payload: { content: '' },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ── Bulk Archive ─────────────────────────────────────────────────
+
+describe('POST /api/kanban/boards/:id/bulk-archive', () => {
+  it('accepts 1000 card ids', async () => {
+    mockKanbanService.executeBulkArchive.mockResolvedValue(1000);
+    const cardIds = Array.from({ length: 1000 }, () => crypto.randomUUID());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/kanban/boards/board-1/bulk-archive',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { cardIds },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload)).toEqual({ archived: 1000 });
+    expect(mockKanbanService.executeBulkArchive).toHaveBeenCalledWith('board-1', cardIds);
+  });
+
+  it('rejects 1001 card ids without reaching the service', async () => {
+    const cardIds = Array.from({ length: 1001 }, () => crypto.randomUUID());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/kanban/boards/board-1/bulk-archive',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { cardIds },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockKanbanService.executeBulkArchive).not.toHaveBeenCalled();
   });
 });

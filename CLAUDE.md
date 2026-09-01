@@ -72,6 +72,7 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 - **i18n:** TUTTE le stringhe utente via `t('key')`. Aggiungere SEMPRE a `en.json` E `it.json`.
 - **Styling:** Tailwind utilities + `clsx()`. SEMPRE aggiungere varianti `dark:`.
 - **Nuovo entity Dexie:** incrementare version in `db.ts`, aggiungere in syncPull + syncPush.
+- **Mutation local-first:** se `mutationFn` scrive su Dexie, spreddare `...LOCAL_FIRST` (`lib/networkMode.ts`) nell'oggetto passato a `useMutation`/`useQuery` — senza, TanStack Query la mette in pausa offline e la mutation semplicemente non gira.
 - **Nuova TipTap extension strutturale:** DEVE essere aggiunta sia in `Editor.tsx` CHE in `hocuspocus.ts`.
 - **Chat components:** usare `useChatContext()` dal `ChatContext` condiviso, MAI aprire una connessione WS diretta per componente.
 - **Nuova sottocartella `uploads/`:** richiede route esplicita in `app.ts` (gli static file NON sono serviti con wildcard).

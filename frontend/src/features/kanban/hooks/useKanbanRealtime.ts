@@ -80,6 +80,28 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
     abortRef.current = abortController;
 
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+
+    // [BACKUP] 2026-08-31 — the old code only retried from the catch block, with a
+    // flat setTimeout(connect, 5000). A non-OK response (401/403/502) and a clean
+    // stream end both returned bare, killing realtime for the whole session:
+    //
+    //   if (!response.ok || !response.body) return;
+    //   ...
+    //   } catch (err: unknown) {
+    //     if (err instanceof Error && err.name === 'AbortError') return;
+    //     reconnectTimeout = setTimeout(connect, 5000);
+    //   }
+    //
+    // Now every exit path schedules a reconnect except a deliberate abort.
+    // Bounded exponential backoff: 2s, 4s, 8s, 16s, capped at 30s, retried for as
+    // long as the board stays mounted. The cleanup's abort() stops it for good.
+    function scheduleReconnect(): void {
+      if (abortController.signal.aborted) return;
+      const delay = Math.min(30_000, 2000 * 2 ** attempt);
+      attempt += 1;
+      reconnectTimeout = setTimeout(connect, delay);
+    }
 
     async function connect(): Promise<void> {
       try {
@@ -88,7 +110,13 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
           signal: abortController.signal,
         });
 
-        if (!response.ok || !response.body) return;
+        if (!response.ok || !response.body) {
+          scheduleReconnect();
+          return;
+        }
+
+        // Connected: reset the backoff so the next drop retries quickly.
+        attempt = 0;
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -113,9 +141,12 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
             }
           }
         }
+
+        // Clean EOF: the server closed the stream. Reconnect.
+        scheduleReconnect();
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') return;
-        reconnectTimeout = setTimeout(connect, 5000);
+        scheduleReconnect();
       }
     }
 

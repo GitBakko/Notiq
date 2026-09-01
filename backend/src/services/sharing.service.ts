@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { createFriendship, getFriendship } from './friendship.service';
+import { disconnectUser } from './kanbanSSE';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import { snapshotPreviousVersion } from './noteVersion.service';
 
@@ -571,9 +572,18 @@ export const shareKanbanBoard = async (
   if (!targetUser) throw new NotFoundError('errors.user.notFound');
   if (targetUser.id === ownerId) throw new BadRequestError('errors.sharing.cannotShareSelf');
 
+  // Re-sharing must not knock an active collaborator back to PENDING: they would
+  // lose access on the spot (assertBoardAccess requires ACCEPTED) until they
+  // re-accept. DECLINED and missing rows do go (back) to PENDING.
+  const existingShare = await prisma.sharedKanbanBoard.findUnique({
+    where: { boardId_userId: { boardId, userId: targetUser.id } },
+    select: { status: true },
+  });
+  const nextStatus = existingShare?.status === 'ACCEPTED' ? 'ACCEPTED' : 'PENDING';
+
   const share = await prisma.sharedKanbanBoard.upsert({
     where: { boardId_userId: { boardId, userId: targetUser.id } },
-    update: { permission, status: 'PENDING' },
+    update: { permission, status: nextStatus },
     create: { boardId, userId: targetUser.id, permission, status: 'PENDING' },
     include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
@@ -637,6 +647,9 @@ export const revokeKanbanBoardShare = async (
   } catch {
     // Record may not exist — treat as success
   }
+
+  // Kick any SSE stream the revoked user still has open on this board
+  disconnectUser(boardId, targetUserId);
 
   // Clean up kanban reminders for the revoked user
   try {

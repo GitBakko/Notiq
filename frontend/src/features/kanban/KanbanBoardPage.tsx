@@ -9,7 +9,6 @@ import {
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
-import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
 import { useKanbanMutations } from './hooks/useKanbanMutations';
 import { useKanbanRealtime } from './hooks/useKanbanRealtime';
@@ -201,9 +200,11 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   }
 
   function handleDeleteColumn(columnId: string): void {
-    mutations.deleteColumn.mutate(columnId, {
-      onError: () => toast.error(t('kanban.column.hasCards')),
-    });
+    // The error message is now produced by the global MutationCache handler in
+    // lib/queryClient.ts. The old local message said "move or delete all cards
+    // first", which can never be true here: kanbanService.deleteColumn is a Dexie
+    // transaction that deletes the column's cards itself.
+    mutations.deleteColumn.mutate(columnId);
   }
 
   function handleToggleColumnCompletion(columnId: string, isCompleted: boolean): void {
@@ -236,10 +237,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (!file) return;
-    mutations.uploadCover.mutate(
-      { bid: boardId, file },
-      { onError: () => toast.error(t('kanban.cover.uploadError')) },
-    );
+    // Global handler surfaces the server message (e.g. errors.kanban.coverTooLarge).
+    mutations.uploadCover.mutate({ bid: boardId, file });
     e.target.value = '';
   }
 
@@ -295,10 +294,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (!file) return;
-    mutations.uploadAvatar.mutate(
-      { bid: boardId, file },
-      { onError: () => toast.error(t('common.genericError')) },
-    );
+    // Global handler surfaces the server message (e.g. errors.kanban.avatarTooLarge).
+    mutations.uploadAvatar.mutate({ bid: boardId, file });
     e.target.value = '';
   }
 
@@ -353,16 +350,31 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       return;
     }
 
-    // Optimistic UI + silent REST calls (bypass sync queue notifications)
-    for (const move of moves) {
-      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId);
-    }
-    for (const move of moves) {
+    // Optimistic UI + silent REST calls (bypass sync queue notifications).
+    // [BACKUP] 2026-08-31 — previously sent the literal sentinel `999` for
+    // every card in the loop, so the server piled them all onto the same
+    // out-of-range position. `moves` only holds cards from OTHER columns (filtered above),
+    // so `targetColumn.cards.length` is the correct append base; each
+    // successive card then lands one index further.
+    //
+    // [FIX 2026-08-31, round 1] Passing an explicit `appendBase + i` to
+    // handleMoveCardToColumn matters here: it's a useCallback memoized on
+    // localColumns, and this loop calls it N times synchronously with no
+    // render between iterations, so every call would otherwise read the
+    // same stale localColumns snapshot and compute the SAME append index
+    // for every card — see the callback's own comment in useBoardDnD.ts.
+    const targetColumn = board.columns.find(c => c.id === targetColumnId);
+    const appendBase = targetColumn ? targetColumn.cards.length : 0;
+
+    moves.forEach((move, i) => {
+      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId, appendBase + i);
+    });
+    moves.forEach((move, i) => {
       api.put(`/kanban/cards/${move.cardId}/move?silent=true`, {
         toColumnId: move.toColumnId,
-        position: 999,
+        position: appendBase + i,
       }).catch(() => {});
-    }
+    });
 
     // Grouped notification
     api.post(`/kanban/boards/${board.id}/bulk-move-notify`, { moves }).catch(() => {});

@@ -5,6 +5,23 @@ import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/erro
 import { broadcast } from '../kanbanSSE';
 import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
 
+/**
+ * Owner + ACCEPTED shares of a board. `shareWithUserIds` from the client is a
+ * *filter* over this set, never a grant list: without the intersection any
+ * writer can auto-share (status ACCEPTED, plus email) with arbitrary users.
+ */
+async function boardParticipantIds(boardId: string): Promise<Set<string>> {
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: {
+      ownerId: true,
+      shares: { where: { status: 'ACCEPTED' }, select: { userId: true } },
+    },
+  });
+  if (!board) throw new NotFoundError('errors.kanban.boardNotFound');
+  return new Set<string>([board.ownerId, ...board.shares.map((s) => s.userId)]);
+}
+
 // ─── Note Linking ──────────────────────────────────────────
 
 /**
@@ -21,6 +38,10 @@ export async function checkNoteSharingForBoard(
     select: { id: true, title: true, userId: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
+
+  // Only the note owner may link a note (see linkNoteToCard / linkNoteToBoard),
+  // so only the owner may probe its title, owner and sharing state.
+  if (note.userId !== requestingUserId) throw new ForbiddenError('errors.kanban.onlyOwnerCanLink');
 
   // Get board owner + accepted shares
   const board = await prisma.kanbanBoard.findUnique({
@@ -95,16 +116,20 @@ export async function linkNoteToCard(
 
   const boardId = card.column.boardId;
 
-  // Auto-share with selected users
+  // Auto-share, restricted to actual board participants
   if (shareWithUserIds && shareWithUserIds.length > 0) {
-    const { autoShareNoteForBoard } = await import('../sharing.service');
-    await autoShareNoteForBoard(
-      actorId,
-      noteId,
-      shareWithUserIds,
-      'READ',
-      card.column.board.title
-    );
+    const participants = await boardParticipantIds(boardId);
+    const targets = shareWithUserIds.filter((id) => participants.has(id));
+    if (targets.length > 0) {
+      const { autoShareNoteForBoard } = await import('../sharing.service');
+      await autoShareNoteForBoard(
+        actorId,
+        noteId,
+        targets,
+        'READ',
+        card.column.board.title
+      );
+    }
   }
 
   // Log activity
@@ -119,7 +144,7 @@ export async function linkNoteToCard(
   });
   if (rawUpdatedCard) {
     const updatedCard = transformCard(rawUpdatedCard);
-    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard });
+    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard, actorId });
     return updatedCard;
   }
 
@@ -162,7 +187,7 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
   });
   if (rawUpdatedCard) {
     const updatedCard = transformCard(rawUpdatedCard);
-    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard });
+    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard, actorId });
     return updatedCard;
   }
 
@@ -204,10 +229,14 @@ export async function linkNoteToBoard(
     },
   });
 
-  // Auto-share with selected users
+  // Auto-share, restricted to actual board participants
   if (shareWithUserIds && shareWithUserIds.length > 0) {
-    const { autoShareNoteForBoard } = await import('../sharing.service');
-    await autoShareNoteForBoard(actorId, noteId, shareWithUserIds, 'READ', board.title);
+    const participants = await boardParticipantIds(boardId);
+    const targets = shareWithUserIds.filter((id) => participants.has(id));
+    if (targets.length > 0) {
+      const { autoShareNoteForBoard } = await import('../sharing.service');
+      await autoShareNoteForBoard(actorId, noteId, targets, 'READ', board.title);
+    }
   }
 
   broadcast(boardId, { type: 'board:updated', boardId });
@@ -378,6 +407,19 @@ export async function linkTaskListToBoard(
     select: { id: true, title: true, userId: true },
   });
   if (!taskList) throw new NotFoundError('errors.tasks.listNotFound');
+
+  // Same rule as createBoardFromTaskList (board.service.ts): owner, or an
+  // ACCEPTED + WRITE share. Linking writes back onto the list's TaskItem rows,
+  // so this must run before any write below.
+  if (taskList.userId !== userId) {
+    const shared = await prisma.sharedTaskList.findUnique({
+      where: { taskListId_userId: { taskListId, userId } },
+      select: { status: true, permission: true },
+    });
+    if (!shared || shared.status !== 'ACCEPTED' || shared.permission !== 'WRITE') {
+      throw new ForbiddenError('errors.common.accessDenied');
+    }
+  }
 
   const updatedBoard = await prisma.kanbanBoard.update({
     where: { id: boardId },

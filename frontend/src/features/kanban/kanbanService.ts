@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard } from '../../lib/db';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../lib/api';
+import { computeColumnOrder } from './position';
 import type {
   KanbanBoard,
   KanbanBoardListItem,
@@ -23,6 +24,23 @@ const getUserId = () => {
   if (!userId) throw new Error('Not authenticated');
   return userId;
 };
+
+/**
+ * A Dexie kanbanBoards row belongs to the current user only if they own it
+ * (ownerId) or were stamped as its viewer on a shared row (viewerId — see
+ * LocalKanbanBoard in db.ts). Dexie is one IndexedDB per browser profile and
+ * survives logout, so a previous account's rows are still there when the
+ * next account logs in — any read of kanbanBoards straight from Dexie must
+ * gate on this or it leaks another account's board (title, shares[] with
+ * other users' names/emails, etc). Shared by useKanbanBoards (board list)
+ * and useKanbanBoard (single-board offline fallback).
+ */
+export function isBoardOwnedByUser(
+  board: { ownerId: string; viewerId?: string },
+  userId: string,
+): boolean {
+  return board.ownerId === userId || board.viewerId === userId;
+}
 
 // ── Field limits ────────────────────────────────────────────────────────
 // Mirror the Zod caps in backend/src/routes/kanban.ts. The backend rejects
@@ -252,20 +270,29 @@ export async function reorderColumns(_boardId: string, columns: { id: string; po
 export async function deleteColumn(columnId: string): Promise<void> {
   const userId = getUserId();
 
+  // [BACKUP] 2026-09-01 — previously: `const column = ...; if (!column) return;`
+  // inside the transaction bailed out when the column was absent from the local
+  // Dexie cache, skipping the sync-queue enqueue -> NO server DELETE was ever
+  // issued (silent no-op, no feedback), same bug class as deleteCard (v1.10.2)
+  // and moveCard (2026-08-31). Mirror them: ALWAYS enqueue the DELETE; local
+  // cleanup + board count update are best-effort.
+  const column = await db.kanbanColumns.get(columnId);
+
   await db.transaction('rw', db.kanbanColumns, db.kanbanCards, db.kanbanBoards, db.syncQueue, async () => {
-    const column = await db.kanbanColumns.get(columnId);
-    if (!column) return;
-
-    // Delete cards in this column
+    // Delete cards in this column, even when the column record itself is
+    // missing locally — cards can be cached under a columnId whose column row
+    // never made it into Dexie (best-effort hydration).
     await db.kanbanCards.where('columnId').equals(columnId).delete();
-    await db.kanbanColumns.delete(columnId);
+    await db.kanbanColumns.delete(columnId); // no-op if the column isn't cached locally
 
-    // Update board counts
-    const board = await db.kanbanBoards.get(column.boardId);
-    if (board) {
-      const remainingCols = await db.kanbanColumns.where('boardId').equals(column.boardId).count();
-      const remainingCards = await db.kanbanCards.where('boardId').equals(column.boardId).count();
-      await db.kanbanBoards.update(column.boardId, { columnCount: remainingCols, cardCount: remainingCards });
+    // Update board counts when we know which board the column belonged to
+    if (column) {
+      const board = await db.kanbanBoards.get(column.boardId);
+      if (board) {
+        const remainingCols = await db.kanbanColumns.where('boardId').equals(column.boardId).count();
+        const remainingCards = await db.kanbanCards.where('boardId').equals(column.boardId).count();
+        await db.kanbanBoards.update(column.boardId, { columnCount: remainingCols, cardCount: remainingCards });
+      }
     }
 
     await db.syncQueue.add({
@@ -369,18 +396,70 @@ export async function updateCard(
   });
 }
 
+/** Sibling ordering, identical to the server's [{position asc}, {createdAt asc}]. */
+export function byPosition(a: LocalKanbanCard, b: LocalKanbanCard): number {
+  return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
+}
+
 export async function moveCard(cardId: string, toColumnId: string, position: number): Promise<void> {
   const userId = getUserId();
   const now = new Date().toISOString();
 
-  await db.kanbanCards.update(cardId, { columnId: toColumnId, position, updatedAt: now, syncStatus: 'updated' });
-  await db.syncQueue.add({
-    type: 'UPDATE',
-    entity: 'KANBAN_CARD',
-    entityId: cardId,
-    userId,
-    data: { columnId: toColumnId, position },
-    createdAt: Date.now(),
+  // [BACKUP] 2026-08-31 — previously this wrote ONLY the moved card:
+  //   await db.kanbanCards.update(cardId, { columnId: toColumnId, position, ... });
+  // The siblings kept their old positions, so offline (and between the drag and
+  // the next syncPull) two cards shared a position and the column rendered in
+  // arbitrary order. Mirror the server's insert-and-shift instead.
+  await db.transaction('rw', db.kanbanCards, db.syncQueue, async () => {
+    const card = await db.kanbanCards.get(cardId);
+
+    // Source column: close the hole the card leaves behind.
+    if (card && card.columnId !== toColumnId) {
+      const source = (await db.kanbanCards.where('columnId').equals(card.columnId).toArray())
+        .filter((c) => c.id !== cardId)
+        .sort(byPosition);
+      for (let i = 0; i < source.length; i++) {
+        if (source[i].position === i) continue;
+        await db.kanbanCards.update(source[i].id, { position: i });
+      }
+    }
+
+    // Target column: insert-and-shift, exactly like moveCard in
+    // backend/src/services/kanban/card.service.ts.
+    const target = (await db.kanbanCards.where('columnId').equals(toColumnId).toArray()).sort(byPosition);
+    const order = computeColumnOrder(target.map((c) => c.id), cardId, position);
+    // The explicit <string, number> generic is required: without it TS types the
+    // .map() result as (string | number)[][] and the Map constructor rejects it.
+    const currentPosition = new Map<string, number>(target.map((c) => [c.id, c.position]));
+
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      if (id === cardId) continue; // the moved card is written last, with its sync flags
+      if (currentPosition.get(id) === i) continue; // unchanged sibling: leave it alone
+      await db.kanbanCards.update(id, { position: i });
+    }
+
+    // Always written, even when the card is not cached locally (Dexie update on
+    // a missing key is a no-op) — same contract as deleteCard.
+    await db.kanbanCards.update(cardId, {
+      columnId: toColumnId,
+      position: order.indexOf(cardId),
+      updatedAt: now,
+      syncStatus: 'updated',
+    });
+
+    // The queue carries the position the USER asked for, NOT the locally
+    // computed one: Dexie hydration is best-effort, so the local column can be
+    // empty while the server column is full — clamping here would send 0 for a
+    // drop meant for index 3. The server resequences with its own data.
+    await db.syncQueue.add({
+      type: 'UPDATE',
+      entity: 'KANBAN_CARD',
+      entityId: cardId,
+      userId,
+      data: { columnId: toColumnId, position },
+      createdAt: Date.now(),
+    });
   });
 }
 

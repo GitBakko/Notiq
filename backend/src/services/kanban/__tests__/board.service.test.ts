@@ -10,10 +10,6 @@ vi.mock('../helpers', async (importOriginal) => {
   };
 });
 
-vi.mock('../card.service', () => ({
-  archiveCompletedCards: vi.fn().mockResolvedValue(0),
-}));
-
 // Import service functions AFTER mocks are declared
 import {
   listBoards,
@@ -180,13 +176,6 @@ describe('board.service', () => {
       const column = makeKanbanColumn({ boardId: board.id });
       const card = makeKanbanCard({ columnId: column.id });
 
-      // archiveCompletedCards is already mocked to return 0
-
-      // Mock kanbanColumn.findMany for auto-complete check
-      m(prisma.kanbanColumn.findMany).mockResolvedValue([
-        { id: column.id, isCompleted: true } as any,
-      ]);
-
       m(prisma.kanbanBoard.findUnique).mockResolvedValue({
         ...board,
         noteId: null,
@@ -220,25 +209,57 @@ describe('board.service', () => {
       expect(result.columns[0].cards[0]).not.toHaveProperty('_count');
     });
 
+    it('orders cards and columns with a deterministic tiebreaker', async () => {
+      const user = makeUser();
+      const board = makeKanbanBoard({ ownerId: user.id });
+      const column = makeKanbanColumn({ boardId: board.id });
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([
+        { id: column.id, isCompleted: true } as any,
+      ]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue({
+        ...board,
+        noteId: null,
+        taskListId: null,
+        columns: [],
+        shares: [],
+        owner: { id: user.id, name: user.name, email: user.email, color: user.color, avatarUrl: user.avatarUrl },
+        note: null,
+        taskList: null,
+      } as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+
+      await getBoard(board.id);
+
+      const arg = m(prisma.kanbanBoard.findUnique).mock.calls[0][0] as any;
+      // Two cards can share a position (legacy rows written by the old moveCard),
+      // and a plain ORDER BY position then leaves their order to the planner.
+      expect(arg.include.columns.include.cards.orderBy).toEqual([
+        { position: 'asc' },
+        { createdAt: 'asc' },
+      ]);
+      // KanbanColumn has no createdAt in schema.prisma — id is the stable tiebreaker.
+      expect(arg.include.columns.orderBy).toEqual([{ position: 'asc' }, { id: 'asc' }]);
+    });
+
     it('throws NotFoundError when board does not exist', async () => {
-      // archiveCompletedCards already mocked
-      m(prisma.kanbanColumn.findMany).mockResolvedValue([]);
       m(prisma.kanbanBoard.findUnique).mockResolvedValue(null);
 
       await expect(getBoard('nonexistent-id')).rejects.toThrow('errors.kanban.boardNotFound');
     });
 
-    it('auto-marks last column as completed if none have isCompleted set', async () => {
+    it('performs NO writes — getBoard is a pure read', async () => {
       const user = makeUser();
       const board = makeKanbanBoard({ ownerId: user.id });
       const col1 = makeKanbanColumn({ boardId: board.id, position: 0, isCompleted: false });
       const col2 = makeKanbanColumn({ boardId: board.id, position: 1, isCompleted: false });
 
+      // Deliberately the exact shape that used to trigger the auto-heal write:
+      // two columns, NEITHER marked completed.
       m(prisma.kanbanColumn.findMany).mockResolvedValue([
         { id: col1.id, isCompleted: false },
         { id: col2.id, isCompleted: false },
       ] as any);
-
       m(prisma.kanbanColumn.update).mockResolvedValue({} as any);
 
       m(prisma.kanbanBoard.findUnique).mockResolvedValue({
@@ -254,13 +275,17 @@ describe('board.service', () => {
 
       m(prisma.kanbanCard.count).mockResolvedValue(0);
 
+      // No requestingUserId → the note-visibility branch is skipped entirely.
       await getBoard(board.id);
 
-      // Should update the LAST column (col2) to isCompleted: true
-      expect(prisma.kanbanColumn.update).toHaveBeenCalledWith({
-        where: { id: col2.id },
-        data: { isCompleted: true },
-      });
+      // No write of any kind on a GET.
+      expect(prisma.kanbanColumn.update).not.toHaveBeenCalled();
+      expect(prisma.kanbanCard.update).not.toHaveBeenCalled();
+      expect(prisma.kanbanCard.updateMany).not.toHaveBeenCalled();
+      expect(prisma.kanbanBoard.update).not.toHaveBeenCalled();
+
+      // And the read that only existed to feed the auto-heal is gone too.
+      expect(prisma.kanbanColumn.findMany).not.toHaveBeenCalled();
     });
 
     it('filters linked note visibility for requesting user', async () => {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Menu, FileDown, X, Book, FileText, PanelLeftClose, PanelLeftOpen, ChevronsLeft } from 'lucide-react';
 import NoteList from './NoteList';
@@ -91,6 +92,7 @@ export default function NotesPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
       setSelectedNoteId(newNote.id);
     },
+    ...LOCAL_FIRST,
   });
 
   const handleCreateNote = () => {

@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import {
   addConnection,
   broadcast,
+  disconnectUser,
   getPresenceUsers,
 } from '../kanbanSSE';
 import type { BoardUser, KanbanEvent } from '../kanbanSSE';
@@ -12,9 +13,23 @@ import type { BoardUser, KanbanEvent } from '../kanbanSSE';
 // ---------------------------------------------------------------------------
 
 /** Creates a mock ServerResponse that tracks writes and supports 'close' event. */
-function createMockResponse(): EventEmitter & { write: ReturnType<typeof vi.fn> } {
+function createMockResponse(): EventEmitter & {
+  write: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+} {
   const emitter = new EventEmitter();
   (emitter as any).write = vi.fn();
+  // A real ServerResponse exposes these; addConnection refuses a response already gone
+  (emitter as any).destroyed = false;
+  (emitter as any).writableEnded = false;
+  // A real ServerResponse emits 'close' when ended - and end() on one that is already
+  // destroyed or ended is a silent no-op, which is what makes a phantom unclearable.
+  (emitter as any).end = vi.fn(() => {
+    const e = emitter as any;
+    if (e.destroyed || e.writableEnded) return;
+    e.writableEnded = true;
+    emitter.emit('close');
+  });
   return emitter as any;
 }
 
@@ -388,5 +403,147 @@ describe('connection lifecycle', () => {
     const users = getPresenceUsers('board-multi');
     expect(users).toHaveLength(1);
     expect(users[0].id).toBe('user-2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// broadcast: linked-note stripping
+// ---------------------------------------------------------------------------
+describe('broadcast note stripping', () => {
+  function parsePayload(res: { write: ReturnType<typeof vi.fn> }) {
+    const call = res.write.mock.calls.find(
+      (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('data:')
+    );
+    return JSON.parse((call![0] as string).replace('data: ', '').trim());
+  }
+
+  it('removes the linked note from a card:created payload', () => {
+    const res = createMockResponse();
+    addConnection('board-note-c', res as any, createUser('user-1'));
+    res.write.mockClear();
+
+    broadcast('board-note-c', {
+      type: 'card:created',
+      boardId: 'board-note-c',
+      card: {
+        id: 'card-1',
+        title: 'Card',
+        noteId: 'note-1',
+        note: { id: 'note-1', title: 'Secret note title', userId: 'other-user' },
+      },
+    });
+
+    const parsed = parsePayload(res);
+    expect(parsed.card).not.toHaveProperty('note');
+    expect(parsed.card.noteId).toBe('note-1');
+    expect(parsed.card.title).toBe('Card');
+  });
+
+  it('removes the linked note from a card:updated payload', () => {
+    const res = createMockResponse();
+    addConnection('board-note-u', res as any, createUser('user-1'));
+    res.write.mockClear();
+
+    broadcast('board-note-u', {
+      type: 'card:updated',
+      boardId: 'board-note-u',
+      card: { id: 'card-2', note: { id: 'note-2', title: 'Secret' } },
+    });
+
+    expect(parsePayload(res).card).not.toHaveProperty('note');
+  });
+
+  it('keeps actorId on the serialized payload', () => {
+    const res = createMockResponse();
+    addConnection('board-actor', res as any, createUser('user-1'));
+    res.write.mockClear();
+
+    broadcast('board-actor', {
+      type: 'card:deleted',
+      boardId: 'board-actor',
+      cardId: 'card-3',
+      actorId: 'user-7',
+    });
+
+    expect(parsePayload(res).actorId).toBe('user-7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// disconnectUser
+// ---------------------------------------------------------------------------
+describe('disconnectUser', () => {
+  it('ends every connection belonging to the user and leaves the others open', () => {
+    const revokedTab1 = createMockResponse();
+    const revokedTab2 = createMockResponse();
+    const otherUser = createMockResponse();
+
+    addConnection('board-kick', revokedTab1 as any, createUser('user-revoked'));
+    addConnection('board-kick', revokedTab2 as any, createUser('user-revoked'));
+    addConnection('board-kick', otherUser as any, createUser('user-stays'));
+
+    disconnectUser('board-kick', 'user-revoked');
+
+    expect(revokedTab1.end).toHaveBeenCalled();
+    expect(revokedTab2.end).toHaveBeenCalled();
+    expect(otherUser.end).not.toHaveBeenCalled();
+
+    const remaining = getPresenceUsers('board-kick');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe('user-stays');
+  });
+
+  it('no longer writes broadcasts to the disconnected user', () => {
+    const revoked = createMockResponse();
+    const staying = createMockResponse();
+
+    addConnection('board-kick2', revoked as any, createUser('user-revoked'));
+    addConnection('board-kick2', staying as any, createUser('user-stays'));
+
+    disconnectUser('board-kick2', 'user-revoked');
+    revoked.write.mockClear();
+    staying.write.mockClear();
+
+    broadcast('board-kick2', { type: 'board:updated', boardId: 'board-kick2' });
+
+    expect(revoked.write).not.toHaveBeenCalled();
+    expect(staying.write).toHaveBeenCalled();
+  });
+
+  it('does nothing for a board with no connections', () => {
+    expect(() => disconnectUser('board-none', 'user-x')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addConnection: refuse a response that is already gone
+// ---------------------------------------------------------------------------
+describe('addConnection on a dead response', () => {
+  it('registers nothing when the socket died during the pre-connect awaits', () => {
+    const dead = createMockResponse();
+    // The route awaits assertBoardAccess + user lookup before calling addConnection.
+    // A client that navigates away in that window arrives here already destroyed.
+    (dead as any).destroyed = true;
+
+    addConnection('board-ghost', dead as any, createUser('ghost'));
+
+    expect(getPresenceUsers('board-ghost')).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no phantom that disconnectUser cannot clear', () => {
+    const dead = createMockResponse();
+    (dead as any).writableEnded = true;
+    const alive = createMockResponse();
+
+    addConnection('board-ghost2', dead as any, createUser('ghost'));
+    addConnection('board-ghost2', alive as any, createUser('real'));
+
+    // end() on an already-ended response is a no-op, so 'close' never fires and a
+    // phantom would survive disconnectUser forever - and getPresenceUsers gates
+    // notification delivery, so the ghost would silently lose every notification.
+    disconnectUser('board-ghost2', 'ghost');
+
+    expect(getPresenceUsers('board-ghost2').map((u) => u.id)).toEqual(['real']);
   });
 });

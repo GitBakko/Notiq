@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../../lib/networkMode';
 import * as kanbanService from '../kanbanService';
 import { syncPush } from '../../sync/syncService';
 import type { KanbanCardPriority } from '../types';
@@ -21,6 +22,7 @@ export function useKanbanMutations(boardId?: string) {
   const createBoard = useMutation({
     mutationFn: kanbanService.createBoard,
     onSuccess: () => flushSync(),
+    ...LOCAL_FIRST,
   });
 
   const deleteBoard = useMutation({
@@ -30,6 +32,7 @@ export function useKanbanMutations(boardId?: string) {
       queryClient.removeQueries({ queryKey: queryKeys.kanban.board(deletedId) });
       queryClient.removeQueries({ queryKey: queryKeys.kanban.boardChat(deletedId) });
     },
+    ...LOCAL_FIRST,
   });
 
   const updateBoard = useMutation({
@@ -39,6 +42,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const createColumn = useMutation({
@@ -48,6 +52,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const updateColumn = useMutation({
@@ -57,6 +62,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const deleteColumn = useMutation({
@@ -65,6 +71,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const reorderColumns = useMutation({
@@ -74,6 +81,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const createCard = useMutation({
@@ -83,6 +91,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const updateCard = useMutation({
@@ -101,6 +110,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const moveCard = useMutation({
@@ -110,6 +120,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const deleteCard = useMutation({
@@ -118,6 +129,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   const duplicateCard = useMutation({
@@ -126,6 +138,7 @@ export function useKanbanMutations(boardId?: string) {
       flushSync();
       invalidateBoard();
     },
+    ...LOCAL_FIRST,
   });
 
   // Server-only mutations (no Dexie, no syncPush)

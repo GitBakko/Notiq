@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { getNotebooks, createNotebook, updateNotebook, deleteNotebook, type Notebook } from './notebookService';
 import { Plus, Book, Pencil, Trash2, Calendar, Menu } from 'lucide-react';
 import { format } from 'date-fns';
@@ -26,6 +27,7 @@ export default function NotebooksPage() {
   const { data: notebooks, isLoading } = useQuery({
     queryKey: queryKeys.notebooks.all,
     queryFn: getNotebooks,
+    ...LOCAL_FIRST,
   });
 
   const createMutation = useMutation({
@@ -38,6 +40,7 @@ export default function NotebooksPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   const updateMutation = useMutation({
@@ -50,6 +53,7 @@ export default function NotebooksPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   const deleteMutation = useMutation({
@@ -62,6 +66,7 @@ export default function NotebooksPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   if (isLoading) {

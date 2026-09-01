@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import toast from 'react-hot-toast';
 import { Archive, Eye } from 'lucide-react';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Button } from '../../../components/ui/Button';
 import api from '../../../lib/api';
+import { getApiErrorMessage } from '../../../utils/errorUtils';
 
 interface BulkArchiveDialogProps {
   isOpen: boolean;
@@ -55,6 +57,8 @@ export default function BulkArchiveDialog({
       setPreviewCards(cards);
       setHasPreviewedOnce(true);
       onPreview(new Set(cards.map((c) => c.id)));
+    } catch (err) {
+      toast.error(getApiErrorMessage(err));
     } finally {
       setIsPreviewing(false);
     }
@@ -70,6 +74,8 @@ export default function BulkArchiveDialog({
       onPreview(new Set());
       onArchived();
       handleClose();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err));
     } finally {
       setIsArchiving(false);
     }

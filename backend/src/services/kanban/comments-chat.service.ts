@@ -2,6 +2,7 @@ import prisma from '../../plugins/prisma';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { broadcast, getPresenceUsers } from '../kanbanSSE';
 import { notifyBoardUsersTiered, boardChatEmailDebounce, BOARD_CHAT_EMAIL_DEBOUNCE_MS } from './notifications';
+import { assertBoardAccess } from '../kanbanPermissions';
 
 // Re-usable select for chat message author info
 const chatAuthorSelect = {
@@ -40,7 +41,8 @@ export async function createComment(
     select: {
       title: true,
       assigneeId: true,
-      column: { select: { boardId: true } },
+      // board.title is needed by the notifications.kanbanCommentAdded template
+      column: { select: { boardId: true, board: { select: { title: true } } } },
     },
   });
   if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
@@ -76,7 +78,13 @@ export async function createComment(
       cardTitle: card.title,
       commenterName,
       localizationKey: 'notifications.kanbanCommentAdded',
-      localizationArgs: { commenterName, cardTitle: card.title },
+      // Key names MUST match the {{placeholders}} in notifications.kanbanCommentAdded
+      // (backend/src/utils/notificationI18n.ts + locales): authorName, cardTitle, boardTitle.
+      localizationArgs: {
+        authorName: commenterName,
+        cardTitle: card.title,
+        boardTitle: card.column.board.title,
+      },
     },
     {
       type: 'KANBAN_COMMENT',
@@ -99,17 +107,31 @@ export async function deleteComment(commentId: string, userId: string) {
     select: {
       authorId: true,
       content: true,
-      card: { select: { id: true, title: true, column: { select: { boardId: true } } } },
+      // board.title is needed by the notifications.kanbanCommentDeleted template
+      card: {
+        select: {
+          id: true,
+          title: true,
+          column: { select: { boardId: true, board: { select: { title: true } } } },
+        },
+      },
       author: { select: { name: true, email: true } },
     },
   });
   if (!comment) throw new NotFoundError('errors.kanban.commentNotFound');
+
+  const boardId = comment.card.column.boardId;
+
+  // The DELETE /comments/:id route carries no board id, so it cannot check
+  // access itself: a revoked or demoted user must not still be able to delete
+  // (and notify the whole board about) their old comments.
+  await assertBoardAccess(boardId, userId, 'WRITE');
+
   if (comment.authorId !== userId) throw new ForbiddenError('errors.kanban.notYourComment');
 
   await prisma.kanbanComment.delete({ where: { id: commentId } });
 
   // Broadcast deletion for real-time UI update
-  const boardId = comment.card.column.boardId;
   broadcast(boardId, {
     type: 'comment:deleted',
     boardId,
@@ -132,7 +154,13 @@ export async function deleteComment(commentId: string, userId: string) {
       cardTitle: comment.card.title,
       deleterName,
       localizationKey: 'notifications.kanbanCommentDeleted',
-      localizationArgs: { deleterName, cardTitle: comment.card.title },
+      // Key names MUST match the {{placeholders}} in notifications.kanbanCommentDeleted:
+      // authorName, cardTitle, boardTitle.
+      localizationArgs: {
+        authorName: deleterName,
+        cardTitle: comment.card.title,
+        boardTitle: comment.card.column.board.title,
+      },
     },
     {
       type: 'KANBAN_COMMENT_DELETED',
@@ -232,7 +260,8 @@ export async function createBoardChatMessage(
           boardTitle: board.title,
           authorName,
           localizationKey: 'notifications.kanbanBoardChat',
-          localizationArgs: { authorName, boardTitle: board.title },
+          // notifications.kanbanBoardChat interpolates {{senderName}}, not {{authorName}}.
+          localizationArgs: { senderName: authorName, boardTitle: board.title },
         }
       );
 

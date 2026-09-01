@@ -1,9 +1,12 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../../plugins/prisma';
 import logger from '../../utils/logger';
 import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
 import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
+import { computeColumnOrder } from './position';
 import { notifyBoardUsers, notifyBoardUsersTiered } from './notifications';
+import { assertBelongsToBoard } from '../kanbanPermissions';
 
 // ─── Card CRUD ──────────────────────────────────────────────
 
@@ -20,21 +23,31 @@ export async function createCard(
   });
   if (!column) throw new NotFoundError('errors.kanban.columnNotFound');
 
-  const maxPos = await prisma.kanbanCard.aggregate({
-    where: { columnId },
-    _max: { position: true },
-  });
-  const position = (maxPos._max.position ?? -1) + 1;
+  // aggregate + create in ONE transaction: a read-then-write split across two
+  // round trips lets two concurrent creates read the same max and write the
+  // same position.
+  // NOTE: this makes the pair atomic, not serialized — at PostgreSQL's default
+  // READ COMMITTED two transactions can still read the same max. Upgrade path
+  // if it ever bites in production: @@unique([columnId, position]) on
+  // KanbanCard plus a retry, or isolationLevel: 'Serializable'.
+  const card = await prisma.$transaction(async (tx) => {
+    const maxPos = await tx.kanbanCard.aggregate({
+      where: { columnId },
+      _max: { position: true },
+    });
+    const position = (maxPos._max.position ?? -1) + 1;
 
-  const card = await prisma.kanbanCard.create({
-    data: { ...(id ? { id } : {}), columnId, title, description, position },
-    select: cardWithAssigneeSelect,
+    return tx.kanbanCard.create({
+      data: { ...(id ? { id } : {}), columnId, title, description, position },
+      select: cardWithAssigneeSelect,
+    });
   });
 
   broadcast(column.boardId, {
     type: 'card:created',
     boardId: column.boardId,
     card,
+    actorId,
   });
 
   if (actorId) {
@@ -52,7 +65,6 @@ export async function updateCard(
     assigneeId?: string | null;
     dueDate?: string | null;
     priority?: string | null;
-    noteId?: string | null;
   },
   actorId: string
 ) {
@@ -63,11 +75,17 @@ export async function updateCard(
   });
   if (!currentCard) throw new NotFoundError('errors.kanban.cardNotFound');
 
+  // A card may only be assigned to someone who is already on the board: otherwise
+  // any writer can push notifications and reminders onto arbitrary users.
+  // Truthy check on purpose — `null` means "unassign" and needs no membership.
+  if (data.assigneeId) {
+    await assertBelongsToBoard(currentCard.column.boardId, { userIds: [data.assigneeId] });
+  }
+
   const updateData: Record<string, unknown> = {};
   if (data.title !== undefined) updateData.title = data.title;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
-  if (data.noteId !== undefined) updateData.noteId = data.noteId;
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.dueDate !== undefined) {
     updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
@@ -82,7 +100,7 @@ export async function updateCard(
 
   const boardId = currentCard.column.boardId;
 
-  broadcast(boardId, { type: 'card:updated', boardId, card });
+  broadcast(boardId, { type: 'card:updated', boardId, card, actorId });
 
   // Log activity for specific field changes
   if (data.assigneeId !== undefined) {
@@ -199,36 +217,150 @@ export async function moveCard(
 
   const boardId = card.column.boardId;
 
-  await prisma.$transaction(async (tx) => {
-    // Shift cards in target column to make room
-    await tx.kanbanCard.updateMany({
-      where: { columnId: toColumnId, position: { gte: newPosition } },
-      data: { position: { increment: 1 } },
-    });
+  // The target column must live on the same board as the card: without this the
+  // caller can inject a card into any board whose column id they can guess.
+  if (targetColumn.boardId !== boardId) {
+    logger.warn(
+      { cardId, toColumnId, boardId, targetBoardId: targetColumn.boardId },
+      'Rejected cross-board card move'
+    );
+    throw new NotFoundError('errors.kanban.columnNotFound');
+  }
 
-    // Move the card
-    await tx.kanbanCard.update({
+  // [BACKUP] 2026-08-31 — the previous body was three updateMany calls:
+  //   1. increment every position >= newPosition in the target column
+  //   2. update the card to (toColumnId, newPosition)
+  //   3. decrement every position > card.position in the source column
+  // Step 3 used card.position (the PRE-move value) against rows step 1 had
+  // already shifted. With A=0 B=1 C=2 D=3 and A moved to index 2 the result was
+  // A=2, C=2 (collision) and a hole at position 1. Replaced by a read-then-diff
+  // resequence: the column order is computed in memory and only the rows that
+  // actually change position are written.
+  //
+  // That fixed a single-user resequence but is still racy under concurrency:
+  // at READ COMMITTED (no row locks) two moves on the same column each read
+  // the same pre-state and each skip rows the other one changed, producing a
+  // duplicate position + a hole. Worked counterexample: on [A0, B1, C2, D3],
+  // T1 moves A to index 3 and writes B:0, C:1, D:2, A:3. T2, holding a stale
+  // read of the same pre-state, moves B to index 0 and writes B:0, A:1 —
+  // skipping C and D, which in its read were already at 2 and 3. Commit T1
+  // then T2 and the column is A=1, B=0, C=1, D=2: a duplicate at 1 and a
+  // hole at 3.
+  // Locking every candidate row up front, ORDERED BY id (not by the
+  // move-dependent computed position), makes two concurrent moves request
+  // the same rows in the same order: the second blocks on the lock until the
+  // first commits, instead of racing it. This narrows the window to
+  // uncontended reads/writes; it does not add retry or serializable
+  // isolation. What is intentionally left open:
+  //   - FOR UPDATE is not a predicate lock: a createCard committing between
+  //     the lock and the ordering read produces a row that is visible to
+  //     the read, unprotected, and updated outside the ascending-id order.
+  //   - The deadlock-freedom argument is exact for the lock statement, not
+  //     for the whole transaction — the source-column repair loop writes in
+  //     position order, and archiveCompletedCards / executeBulkArchive
+  //     acquire locks in plan order via updateMany.
+  //   - The lock covers KanbanCard rows only, not KanbanColumn, so a
+  //     concurrent deleteColumn on the target still races the final write.
+  const { order, isCrossColumn, fromColumnTitle, fromColumnIsCompleted } = await prisma.$transaction(async (tx) => {
+    // Lock candidate rows before any ordering read: the card's own row (in
+    // case a concurrent move already relocated it — see the liveCard reread
+    // below) plus every row currently in the source and target columns.
+    // Ordering by id keeps the lock order identical across concurrent moves
+    // regardless of which cards are actually being reordered, which is what
+    // prevents a Postgres deadlock (40P01) between two moves that touch the
+    // same column pair from opposite directions.
+    const lockColumnIds = Array.from(new Set([card.columnId, toColumnId]));
+    await tx.$queryRaw`
+      SELECT id FROM "KanbanCard"
+      WHERE id = ${cardId} OR "columnId" IN (${Prisma.join(lockColumnIds)})
+      ORDER BY id
+      FOR UPDATE
+    `;
+
+    // Re-read the card now that its row is locked. `card` above was read
+    // BEFORE this transaction opened; a concurrent move landing in that
+    // window could have changed its columnId, and deciding isCrossColumn
+    // from the stale value would write `position` without `columnId`,
+    // stranding the card in a foreign column. sourceColumnId (not the outer
+    // card.columnId) drives the source-column repair below.
+    // NOTE: if the live columnId turns out to be a THIRD column — this exact
+    // card relocated elsewhere by another transaction in the sliver between
+    // the outer read and the lock above — that column's rows are not part
+    // of lockColumnIds and are not locked here. That residual window is far
+    // narrower than the bug this task closes (it requires a second move of
+    // this specific card, not just any card in the column, to land in that
+    // sliver).
+    // Selects the source column's title/isCompleted too, at zero extra cost
+    // (same query): the post-transaction cross-column branch below used to
+    // read these off the same pre-transaction `card`, which is exactly the
+    // staleness this reread exists to close for columnId — isCompleted
+    // drives a real write (TaskItem.isChecked), not just log text, so it
+    // needs to be fresh for the same reason columnId does.
+    const liveCard = await tx.kanbanCard.findUnique({
       where: { id: cardId },
-      data: { columnId: toColumnId, position: newPosition },
+      select: { columnId: true, column: { select: { isCompleted: true, title: true } } },
+    });
+    if (!liveCard) throw new NotFoundError('errors.kanban.cardNotFound');
+    const sourceColumnId = liveCard.columnId;
+    const isCrossColumn = sourceColumnId !== toColumnId;
+
+    // Cross-column: close the hole the card leaves behind in the source column.
+    // Twin of deleteCard's repack loop below (same file) — same read-then-diff
+    // shape, minus the `id: { not: cardId }` exclude (deleteCard's card is
+    // already physically gone by this point). Kept duplicated rather than
+    // extracted: the two loops differ only by that exclude, moveCard had just
+    // been stabilised with tests pinned to its exact call sequence, and two
+    // callers didn't justify the extraction risk. Keep the two in sync by hand.
+    if (isCrossColumn) {
+      const sourceCards = await tx.kanbanCard.findMany({
+        where: { columnId: sourceColumnId, archivedAt: null, id: { not: cardId } },
+        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, position: true },
+      });
+      for (let i = 0; i < sourceCards.length; i++) {
+        if (sourceCards[i].position === i) continue;
+        await tx.kanbanCard.update({ where: { id: sourceCards[i].id }, data: { position: i } });
+      }
+    }
+
+    // The target column as it is now. Archived cards are excluded on purpose:
+    // getBoard() filters archivedAt: null, so they are never rendered and must
+    // not consume positions.
+    const targetCards = await tx.kanbanCard.findMany({
+      where: { columnId: toColumnId, archivedAt: null },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, position: true },
     });
 
-    // If moving within the same column, close the gap at the old position
-    if (card.columnId === toColumnId) {
-      await tx.kanbanCard.updateMany({
-        where: {
-          columnId: card.columnId,
-          position: { gt: card.position },
-          id: { not: cardId },
-        },
-        data: { position: { decrement: 1 } },
-      });
-    } else {
-      // Close gap in source column
-      await tx.kanbanCard.updateMany({
-        where: { columnId: card.columnId, position: { gt: card.position } },
-        data: { position: { decrement: 1 } },
+    const nextOrder = computeColumnOrder(targetCards.map((c) => c.id), cardId, newPosition);
+    // The explicit <string, number> generic is required: without it TS types the
+    // .map() result as (string | number)[][] and the Map constructor rejects it.
+    const currentPosition = new Map<string, number>(targetCards.map((c) => [c.id, c.position]));
+
+    for (let i = 0; i < nextOrder.length; i++) {
+      const id = nextOrder[i];
+      // Rows that do not actually move are NOT written. KanbanCard.updatedAt is
+      // @updatedAt and archiveCompletedCards() filters on `updatedAt <= cutoff`
+      // as the 7-day archive clock: rewriting the whole column would reset that
+      // clock for every card on every single drag.
+      // (On a cross-column move the moved card is absent from currentPosition,
+      // so it is always written — together with its new columnId.)
+      if (currentPosition.get(id) === i) continue;
+      await tx.kanbanCard.update({
+        where: { id },
+        data:
+          id === cardId && isCrossColumn
+            ? { columnId: toColumnId, position: i }
+            : { position: i },
       });
     }
+
+    return {
+      order: nextOrder,
+      isCrossColumn,
+      fromColumnTitle: liveCard.column.title,
+      fromColumnIsCompleted: liveCard.column.isCompleted,
+    };
   });
 
   broadcast(boardId, {
@@ -236,25 +368,30 @@ export async function moveCard(
     boardId,
     cardId,
     toColumnId,
-    position: newPosition,
+    // The position actually written, not the one requested: computeColumnOrder
+    // clamps an out-of-range index (e.g. an append) into the column.
+    position: order.indexOf(cardId),
+    actorId,
   });
 
-  // Cross-column move: log activity + auto-assign card to the mover
-  if (actorId && card.columnId !== toColumnId) {
+  // Cross-column move: log activity + auto-assign card to the mover.
+  // Uses the transaction's isCrossColumn (decided from the row read AFTER
+  // the lock), not a recompute against the outer, pre-transaction `card`.
+  if (actorId && isCrossColumn) {
     await prisma.kanbanCard.update({
       where: { id: cardId },
       data: { assigneeId: actorId },
     });
 
     await logCardActivity(cardId, actorId, 'MOVED', {
-      fromColumnTitle: card.column.title,
+      fromColumnTitle,
       toColumnTitle: targetColumn.title,
     });
 
     // Sync linked TaskItem checked status based on isCompleted columns
     if (card.taskItemId) {
-      const movedIntoCompleted = targetColumn.isCompleted && !card.column.isCompleted;
-      const movedOutOfCompleted = !targetColumn.isCompleted && card.column.isCompleted;
+      const movedIntoCompleted = targetColumn.isCompleted && !fromColumnIsCompleted;
+      const movedOutOfCompleted = !targetColumn.isCompleted && fromColumnIsCompleted;
 
       if (movedIntoCompleted) {
         await prisma.taskItem.update({
@@ -282,19 +419,19 @@ export async function moveCard(
         boardId,
         'KANBAN_CARD_MOVED',
         'Card Moved',
-        `${actorName} moved "${card.title}" from "${card.column.title}" to "${targetColumn.title}"`,
+        `${actorName} moved "${card.title}" from "${fromColumnTitle}" to "${targetColumn.title}"`,
         {
           boardId,
           cardId,
           cardTitle: card.title,
           actorName,
-          fromColumn: card.column.title,
+          fromColumn: fromColumnTitle,
           toColumn: targetColumn.title,
           localizationKey: 'notifications.kanbanCardMoved',
           localizationArgs: {
             actorName,
             cardTitle: card.title,
-            fromColumn: card.column.title,
+            fromColumn: fromColumnTitle,
             toColumn: targetColumn.title,
           },
         },
@@ -303,7 +440,7 @@ export async function moveCard(
           data: (_email, locale) => ({
             actorName,
             cardTitle: card.title,
-            fromColumn: card.column.title,
+            fromColumn: fromColumnTitle,
             toColumn: targetColumn.title,
             boardId,
             locale,
@@ -325,7 +462,7 @@ export async function moveCard(
 export async function deleteCard(cardId: string, actorId?: string) {
   const card = await prisma.kanbanCard.findUnique({
     where: { id: cardId },
-    select: { columnId: true, position: true, title: true, column: { select: { boardId: true, title: true } } },
+    select: { columnId: true, title: true, column: { select: { boardId: true, title: true } } },
   });
   if (!card) throw new NotFoundError('errors.kanban.cardNotFound');
 
@@ -336,17 +473,76 @@ export async function deleteCard(cardId: string, actorId?: string) {
   // If we want to keep history after deletion, we'd need a board-level log.
   // For now, activities are tied to the card lifecycle.
 
+  // [BACKUP] 2026-08-31 — the previous body was a blind updateMany:
+  //   updateMany({ where: { columnId, position: { gt: card.position } }, data: { position: { decrement: 1 } } })
+  // Same defect class moveCard had before task 2.2/2.7: no archivedAt filter
+  // (archived cards were counted and shifted even though the frontend only
+  // ever sees live ones — getBoard() filters archivedAt: null), and no diff
+  // (every row below the deleted card was rewritten regardless of whether
+  // its index actually changed). Since KanbanCard.updatedAt is @updatedAt
+  // and Prisma applies it on updateMany, every delete reset the 7-day
+  // auto-archive clock — archiveCompletedCards() filters on updatedAt — for
+  // the whole lower part of the column, so completed cards on an active
+  // board never reached the archive. Replaced with the same read-then-diff
+  // resequence moveCard uses: read the live rows, write only the ones whose
+  // index actually changed.
   await prisma.$transaction(async (tx) => {
+    // Lock the card's row plus every row currently in its column, ordered by
+    // id, before any read — same primitive moveCard's FOR UPDATE lock uses
+    // (task 2.7). Two concurrent deleteCards on the same column don't
+    // strictly need this to stay safe: Prisma's own row lock on the DELETE
+    // plus a P2025 on a since-deleted row turns that race into a transient
+    // error + retry, not silent corruption. But an unlocked deleteCard
+    // racing a (now-locked) moveCard on the same column is a real lost
+    // update: moveCard can commit a fresh position for a row after this
+    // transaction's own repack read below has already captured that row's
+    // stale position, and this transaction's later UPDATE would silently
+    // overwrite moveCard's fresh write — the exact corruption class task
+    // 2.7 closed for moveCard-vs-moveCard, just reachable from the other
+    // side. The lock closes that window for the price of one extra query.
+    await tx.$queryRaw`
+      SELECT id FROM "KanbanCard"
+      WHERE id = ${cardId} OR "columnId" = ${card.columnId}
+      ORDER BY id
+      FOR UPDATE
+    `;
+
+    // Re-read after the lock: a concurrent move could have relocated this
+    // card to a different column in the window between the outer read above
+    // and this transaction opening (same residual documented in moveCard —
+    // narrower still, since it needs a second move of this exact card in
+    // that sliver).
+    const liveCard = await tx.kanbanCard.findUnique({
+      where: { id: cardId },
+      select: { columnId: true },
+    });
+    if (!liveCard) throw new NotFoundError('errors.kanban.cardNotFound');
+    const columnId = liveCard.columnId;
+
     await tx.kanbanCard.delete({ where: { id: cardId } });
 
-    // Reposition remaining cards in the column
-    await tx.kanbanCard.updateMany({
-      where: { columnId: card.columnId, position: { gt: card.position } },
-      data: { position: { decrement: 1 } },
+    // Repack the live cards left in the column. archivedAt: null excludes
+    // archived cards — they consume no position, matching getBoard(). Only
+    // rows whose index actually changed are written (see the note above on
+    // the archive-clock reset). Twin of moveCard's source-column repair loop
+    // above (`isCrossColumn` block) — same shape, minus the `id: { not:
+    // cardId }` exclude since the card is already deleted by this point.
+    // Kept duplicated rather than extracted: the two loops differ only by
+    // that exclude, moveCard had just been stabilised with tests pinned to
+    // its exact call sequence, and two callers didn't justify the extraction
+    // risk. Keep the two in sync by hand.
+    const remaining = await tx.kanbanCard.findMany({
+      where: { columnId, archivedAt: null },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, position: true },
     });
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].position === i) continue;
+      await tx.kanbanCard.update({ where: { id: remaining[i].id }, data: { position: i } });
+    }
   });
 
-  broadcast(boardId, { type: 'card:deleted', boardId, cardId });
+  broadcast(boardId, { type: 'card:deleted', boardId, cardId, actorId });
 }
 
 // ─── Card Activities ────────────────────────────────────────
@@ -368,15 +564,20 @@ export async function getCardActivities(cardId: string, page: number, limit: num
 const ARCHIVE_AFTER_DAYS = 7;
 
 /**
- * Lazy archive: find cards in completed columns that haven't been updated
- * in ≥7 days and set archivedAt = now().
+ * Archive cards sitting in completed columns that haven't been updated in ≥7 days.
+ * Called hourly from app.ts. Pass a boardId to scope it to a single board.
+ *
+ * [BACKUP] 2026-09-01 — previously this was invoked from getBoard() on every read,
+ * making GET /api/kanban/boards/:id a write endpoint. Moved to a scheduled job.
  */
-export async function archiveCompletedCards(boardId: string): Promise<number> {
+export async function archiveCompletedCards(boardId?: string): Promise<number> {
   const cutoffDate = new Date(Date.now() - ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000);
 
-  // Find completed columns for this board
+  // Find completed columns (optionally scoped to one board)
+  // ponytail: unscoped, this loads every completed column id into one IN list
+  // (~1 per board). Batch by board if the board count ever makes that query fat.
   const completedColumns = await prisma.kanbanColumn.findMany({
-    where: { boardId, isCompleted: true },
+    where: boardId ? { boardId, isCompleted: true } : { isCompleted: true },
     select: { id: true },
   });
 
@@ -394,7 +595,7 @@ export async function archiveCompletedCards(boardId: string): Promise<number> {
   });
 
   if (result.count > 0) {
-    logger.info({ boardId, count: result.count }, 'Lazy-archived completed cards');
+    logger.info({ boardId: boardId ?? 'ALL', count: result.count }, 'Archived completed cards');
   }
 
   return result.count;
@@ -471,6 +672,10 @@ export async function previewBulkArchive(boardId: string, olderThanDays: number)
     },
     select: { id: true, title: true, updatedAt: true },
     orderBy: { updatedAt: 'asc' },
+    // The exec endpoint this preview feeds (executeBulkArchive) is capped at
+    // 1000 card ids (bulkArchiveExecSchema.cardIds.max(1000)) — the preview
+    // must not promise more than exec can accept.
+    take: 1000,
   });
 
   return cards;

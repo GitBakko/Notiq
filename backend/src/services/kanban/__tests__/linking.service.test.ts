@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import prisma from '../../../plugins/prisma';
+import { ForbiddenError } from '../../../utils/errors';
 import {
   makeUser,
   makeNote,
@@ -116,6 +117,32 @@ describe('checkNoteSharingForBoard', () => {
       checkNoteSharingForBoard('n1', 'missing-board', 'u1')
     ).rejects.toThrow('errors.kanban.boardNotFound');
   });
+
+  it('throws ForbiddenError when the requester does not own the note', async () => {
+    const snooper = setupUser();
+    const victim = setupUser();
+    const victimNote = makeNote({ userId: victim.id, title: 'Secret roadmap' });
+
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: victimNote.id,
+      title: victimNote.title,
+      userId: victim.id,
+    });
+    // Deliberately answerable: the guard must fire before this is ever read.
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: victim.id,
+      owner: { id: victim.id, name: victim.name, email: victim.email },
+      shares: [],
+    });
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+
+    const promise = checkNoteSharingForBoard(victimNote.id, 'board-1', snooper.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.kanban.onlyOwnerCanLink');
+
+    // The board must never even be queried for a note the caller cannot see.
+    expect(prismaMock.kanbanBoard.findUnique).not.toHaveBeenCalled();
+  });
 });
 
 // ═════════════════════════════════════════════════════════════
@@ -214,7 +241,7 @@ describe('linkNoteToCard', () => {
     ).rejects.toThrow('errors.kanban.onlyOwnerCanLink');
   });
 
-  it('calls autoShareNoteForBoard when shareWithUserIds are provided', async () => {
+  it('calls autoShareNoteForBoard with the board participants among shareWithUserIds', async () => {
     const user = setupUser();
     const note = makeNote({ userId: user.id });
 
@@ -236,6 +263,11 @@ describe('linkNoteToCard', () => {
 
     prismaMock.kanbanCard.update.mockResolvedValue({ id: 'card-1' });
 
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: user.id,
+      shares: [{ userId: 'other-user-1' }, { userId: 'other-user-2' }],
+    });
+
     const { autoShareNoteForBoard } = await import('../../sharing.service');
 
     await linkNoteToCard('card-1', note.id, user.id, ['other-user-1', 'other-user-2']);
@@ -247,6 +279,73 @@ describe('linkNoteToCard', () => {
       'READ',
       'Board Title'
     );
+  });
+
+  it('auto-shares only with users who are actually on the board', async () => {
+    const owner = setupUser();
+    const participant = setupUser();
+    const outsider = setupUser();
+    const note = makeNote({ userId: owner.id });
+    const board = makeKanbanBoard({ ownerId: owner.id });
+
+    prismaMock.kanbanCard.findUnique
+      .mockResolvedValueOnce({
+        noteId: null,
+        column: { boardId: board.id, board: { title: board.title } },
+      })
+      .mockResolvedValueOnce({ id: 'card-1', _count: { comments: 0 } });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: note.id,
+      title: note.title,
+      userId: owner.id,
+    });
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [{ userId: participant.id }],
+    });
+
+    const { autoShareNoteForBoard } = await import('../../sharing.service');
+
+    await linkNoteToCard('card-1', note.id, owner.id, [participant.id, outsider.id]);
+
+    expect(autoShareNoteForBoard).toHaveBeenCalledWith(
+      owner.id,
+      note.id,
+      [participant.id],
+      'READ',
+      board.title
+    );
+  });
+
+  it('does not call autoShareNoteForBoard when no requested user is on the board', async () => {
+    const owner = setupUser();
+    const outsider = setupUser();
+    const note = makeNote({ userId: owner.id });
+    const board = makeKanbanBoard({ ownerId: owner.id });
+
+    prismaMock.kanbanCard.findUnique
+      .mockResolvedValueOnce({
+        noteId: null,
+        column: { boardId: board.id, board: { title: board.title } },
+      })
+      .mockResolvedValueOnce({ id: 'card-1', _count: { comments: 0 } });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: note.id,
+      title: note.title,
+      userId: owner.id,
+    });
+    prismaMock.kanbanCard.update.mockResolvedValue({});
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({
+      ownerId: owner.id,
+      shares: [],
+    });
+
+    const { autoShareNoteForBoard } = await import('../../sharing.service');
+
+    await linkNoteToCard('card-1', note.id, owner.id, [outsider.id]);
+
+    expect(autoShareNoteForBoard).not.toHaveBeenCalled();
   });
 });
 
@@ -422,6 +521,40 @@ describe('linkNoteToBoard', () => {
     await expect(
       linkNoteToBoard('board-1', 'missing-note', 'user-1')
     ).rejects.toThrow('errors.notes.notFound');
+  });
+
+  it('auto-shares only with users who are actually on the board', async () => {
+    const owner = setupUser();
+    const participant = setupUser();
+    const outsider = setupUser();
+    const note = makeNote({ userId: owner.id });
+    const board = makeKanbanBoard({ ownerId: owner.id });
+
+    prismaMock.kanbanBoard.findUnique
+      .mockResolvedValueOnce({ noteId: null, title: board.title })
+      .mockResolvedValueOnce({ ownerId: owner.id, shares: [{ userId: participant.id }] });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: note.id,
+      title: note.title,
+      userId: owner.id,
+    });
+    prismaMock.kanbanBoard.update.mockResolvedValue({
+      noteId: note.id,
+      noteLinkedById: owner.id,
+      note: { id: note.id, title: note.title, userId: owner.id },
+    });
+
+    const { autoShareNoteForBoard } = await import('../../sharing.service');
+
+    await linkNoteToBoard(board.id, note.id, owner.id, [participant.id, outsider.id]);
+
+    expect(autoShareNoteForBoard).toHaveBeenCalledWith(
+      owner.id,
+      note.id,
+      [participant.id],
+      'READ',
+      board.title
+    );
   });
 });
 
@@ -621,6 +754,86 @@ describe('linkTaskListToBoard', () => {
     await expect(
       linkTaskListToBoard('missing-board', 'tl-1', 'user-1')
     ).rejects.toThrow('errors.kanban.boardNotFound');
+  });
+
+  it('throws ForbiddenError and writes nothing when the task list belongs to someone else', async () => {
+    const attacker = setupUser();
+    const victim = setupUser();
+    const victimList = makeTaskList({ userId: victim.id });
+
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ taskListId: null });
+    prismaMock.taskList.findUnique.mockResolvedValue({
+      id: victimList.id,
+      title: victimList.title,
+      userId: victim.id,
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue(null);
+
+    const promise = linkTaskListToBoard('board-1', victimList.id, attacker.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+
+    // The write must not happen — neither the link nor the TaskItem sync.
+    expect(prismaMock.kanbanBoard.update).not.toHaveBeenCalled();
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+    expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenError when the share is READ-only', async () => {
+    const collaborator = setupUser();
+    const victim = setupUser();
+    const victimList = makeTaskList({ userId: victim.id });
+
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ taskListId: null });
+    prismaMock.taskList.findUnique.mockResolvedValue({
+      id: victimList.id,
+      title: victimList.title,
+      userId: victim.id,
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue({
+      status: 'ACCEPTED',
+      permission: 'READ',
+    });
+
+    const promise = linkTaskListToBoard('board-1', victimList.id, collaborator.id);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.accessDenied');
+
+    expect(prismaMock.kanbanBoard.update).not.toHaveBeenCalled();
+  });
+
+  it('allows linking a task list shared with ACCEPTED + WRITE', async () => {
+    const collaborator = setupUser();
+    const victim = setupUser();
+    const sharedList = makeTaskList({ userId: victim.id });
+
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ taskListId: null });
+    prismaMock.taskList.findUnique.mockResolvedValue({
+      id: sharedList.id,
+      title: sharedList.title,
+      userId: victim.id,
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue({
+      status: 'ACCEPTED',
+      permission: 'WRITE',
+    });
+    prismaMock.kanbanBoard.update.mockResolvedValue({
+      taskListId: sharedList.id,
+      taskListLinkedById: collaborator.id,
+      taskList: { id: sharedList.id, title: sharedList.title, userId: victim.id },
+    });
+    prismaMock.kanbanColumn.findMany.mockResolvedValue([]);
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+    prismaMock.taskItem.findMany.mockResolvedValue([]);
+
+    await linkTaskListToBoard('board-1', sharedList.id, collaborator.id);
+
+    expect(prismaMock.kanbanBoard.update).toHaveBeenCalled();
+    expect(prismaMock.sharedTaskList.findUnique).toHaveBeenCalledWith({
+      where: { taskListId_userId: { taskListId: sharedList.id, userId: collaborator.id } },
+      select: { status: true, permission: true },
+    });
   });
 });
 

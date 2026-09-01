@@ -31,6 +31,10 @@ vi.mock('../notifications', () => ({
   BOARD_CHAT_EMAIL_DEBOUNCE_MS: 30 * 60 * 1000,
 }));
 
+vi.mock('../../kanbanPermissions', () => ({
+  assertBoardAccess: vi.fn().mockResolvedValue({ isOwner: true }),
+}));
+
 // ─── Import SUT (after mocks) ─────────────────────────────────────────
 
 import {
@@ -44,6 +48,21 @@ import {
 import { NotFoundError, ForbiddenError } from '../../../utils/errors';
 import { broadcast, getPresenceUsers } from '../../kanbanSSE';
 import { notifyBoardUsersTiered } from '../notifications';
+import { assertBoardAccess } from '../../kanbanPermissions';
+import { resolveNotification } from '../../../utils/notificationI18n';
+
+/** Reads localizationKey/localizationArgs off the notifyBoardUsersTiered call and renders it. */
+function renderTieredNotification(callIndex = 0): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (notifyBoardUsersTiered as any).mock.calls[callIndex][5];
+  return resolveNotification(
+    data.localizationKey,
+    data.localizationArgs,
+    'en',
+    'FallbackTitle',
+    'FallbackBody',
+  ).body;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -80,6 +99,10 @@ function chatWithAuthor(chat: ReturnType<typeof makeKanbanBoardChat>, author: Re
 describe('comments-chat.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // clearAllMocks does not drop queued `...Once` implementations: reset explicitly
+    (assertBoardAccess as any).mockReset();
+    (assertBoardAccess as any).mockResolvedValue({ isOwner: true });
   });
 
   // ═══════════════════════════════════════════════════════
@@ -143,7 +166,7 @@ describe('comments-chat.service', () => {
       mockedPrisma.kanbanCard.findUnique.mockResolvedValue({
         title: card.title,
         assigneeId: null,
-        column: { boardId: board.id },
+        column: { boardId: board.id, board: { title: 'Test Board' } },
       });
 
       const comment = makeKanbanComment({ cardId: card.id, authorId: user.id, content: 'Hello' });
@@ -177,7 +200,7 @@ describe('comments-chat.service', () => {
       mockedPrisma.kanbanCard.findUnique.mockResolvedValue({
         title: 'Test Card',
         assigneeId: null,
-        column: { boardId },
+        column: { boardId, board: { title: 'Test Board' } },
       });
 
       const comment = makeKanbanComment({ cardId: 'card-1', authorId: user.id });
@@ -201,7 +224,7 @@ describe('comments-chat.service', () => {
       mockedPrisma.kanbanCard.findUnique.mockResolvedValue({
         title: 'My Card',
         assigneeId: null,
-        column: { boardId },
+        column: { boardId, board: { title: 'Test Board' } },
       });
 
       const comment = makeKanbanComment({ cardId: 'card-2', authorId: user.id, content: 'Nice' });
@@ -226,6 +249,34 @@ describe('comments-chat.service', () => {
         expect.objectContaining({ type: 'KANBAN_COMMENT' }),
       );
     });
+
+    it('passes localizationArgs whose keys match the kanbanCommentAdded template', async () => {
+      const user = makeUser({ name: 'Alice' });
+      const boardId = 'board-args';
+
+      mockedPrisma.kanbanCard.findUnique.mockResolvedValue({
+        title: 'My Card',
+        assigneeId: null,
+        column: { boardId, board: { title: 'My Board' } },
+      });
+
+      const comment = makeKanbanComment({ cardId: 'card-args', authorId: user.id });
+      mockedPrisma.kanbanComment.create.mockResolvedValue(commentWithAuthor(comment, user));
+
+      await createComment('card-args', user.id, 'Nice');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (notifyBoardUsersTiered as any).mock.calls[0][5];
+      expect(data.localizationArgs).toEqual({
+        authorName: 'Alice',
+        cardTitle: 'My Card',
+        boardTitle: 'My Board',
+      });
+      expect(renderTieredNotification()).toBe(
+        'Alice commented on "My Card" in board "My Board"',
+      );
+      expect(renderTieredNotification()).not.toContain('{{');
+    });
   });
 
   // ═══════════════════════════════════════════════════════
@@ -241,7 +292,7 @@ describe('comments-chat.service', () => {
       mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
         authorId: user.id,
         content: 'To delete',
-        card: { id: cardId, title: 'Card Title', column: { boardId } },
+        card: { id: cardId, title: 'Card Title', column: { boardId, board: { title: 'Test Board' } } },
         author: { name: user.name, email: user.email },
       });
       mockedPrisma.kanbanComment.delete.mockResolvedValue({});
@@ -272,7 +323,7 @@ describe('comments-chat.service', () => {
       mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
         authorId: otherUserId,
         content: 'Not yours',
-        card: { id: 'card-1', title: 'Card', column: { boardId: 'board-1' } },
+        card: { id: 'card-1', title: 'Card', column: { boardId: 'board-1', board: { title: 'Test Board' } } },
         author: { name: 'Other', email: 'other@test.com' },
       });
 
@@ -290,7 +341,7 @@ describe('comments-chat.service', () => {
       mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
         authorId: user.id,
         content: 'Deleted content',
-        card: { id: cardId, title: 'My Card', column: { boardId } },
+        card: { id: cardId, title: 'My Card', column: { boardId, board: { title: 'Test Board' } } },
         author: { name: user.name, email: user.email },
       });
       mockedPrisma.kanbanComment.delete.mockResolvedValue({});
@@ -312,6 +363,77 @@ describe('comments-chat.service', () => {
         }),
         expect.objectContaining({ type: 'KANBAN_COMMENT_DELETED' }),
       );
+    });
+
+    it('passes localizationArgs whose keys match the kanbanCommentDeleted template', async () => {
+      const user = makeUser({ name: 'Carol' });
+      const boardId = 'board-del-args';
+
+      mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
+        authorId: user.id,
+        content: 'Bye',
+        card: {
+          id: 'card-del-args',
+          title: 'My Card',
+          column: { boardId, board: { title: 'My Board' } },
+        },
+        author: { name: user.name, email: user.email },
+      });
+      mockedPrisma.kanbanComment.delete.mockResolvedValue({});
+
+      await deleteComment('comment-del-args', user.id);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (notifyBoardUsersTiered as any).mock.calls[0][5];
+      expect(data.localizationArgs).toEqual({
+        authorName: 'Carol',
+        cardTitle: 'My Card',
+        boardTitle: 'My Board',
+      });
+      expect(renderTieredNotification()).toBe(
+        'Carol deleted a comment on "My Card" in board "My Board"',
+      );
+      expect(renderTieredNotification()).not.toContain('{{');
+    });
+
+    it('re-validates board WRITE access before deleting', async () => {
+      const user = makeUser();
+      const boardId = 'board-del-3';
+
+      mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
+        authorId: user.id,
+        content: 'Mine',
+        card: { id: 'card-del-3', title: 'Card', column: { boardId, board: { title: 'Board' } } },
+        author: { name: user.name, email: user.email },
+      });
+      mockedPrisma.kanbanComment.delete.mockResolvedValue({});
+
+      await deleteComment('comment-3', user.id);
+
+      expect(assertBoardAccess).toHaveBeenCalledWith(boardId, user.id, 'WRITE');
+    });
+
+    it('does not delete when board access has been revoked', async () => {
+      const user = makeUser();
+      const boardId = 'board-del-4';
+
+      mockedPrisma.kanbanComment.findUnique.mockResolvedValue({
+        authorId: user.id,
+        content: 'Mine',
+        card: { id: 'card-del-4', title: 'Card', column: { boardId } },
+        author: { name: user.name, email: user.email },
+      });
+      mockedPrisma.kanbanComment.delete.mockResolvedValue({});
+      (assertBoardAccess as any).mockRejectedValueOnce(
+        new ForbiddenError('errors.common.accessDenied')
+      );
+
+      const promise = deleteComment('comment-4', user.id);
+      await expect(promise).rejects.toThrow(ForbiddenError);
+      await expect(promise).rejects.toThrow('errors.common.accessDenied');
+
+      expect(mockedPrisma.kanbanComment.delete).not.toHaveBeenCalled();
+      expect(notifyBoardUsersTiered).not.toHaveBeenCalled();
     });
   });
 
@@ -561,6 +683,48 @@ describe('comments-chat.service', () => {
       await createBoardChatMessage(boardId, author.id, 'Test');
 
       expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('passes localizationArgs whose keys match the kanbanBoardChat template', async () => {
+      const { createNotification } = await import('../../notification.service');
+      const author = makeUser({ name: 'Sender' });
+      const recipient = makeUser();
+      const boardId = 'board-chat-args';
+
+      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id, content: 'Hi' });
+      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(chatWithAuthor(chatMsg, author));
+      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({
+        title: 'My Board',
+        ownerId: recipient.id,
+        shares: [],
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (getPresenceUsers as any).mockReturnValue([]);
+      mockedPrisma.user.findUnique.mockResolvedValue({
+        lastActiveAt: new Date(Date.now() - 10 * 60 * 1000),
+        email: recipient.email,
+        locale: 'en',
+        emailNotificationsEnabled: false,
+      });
+
+      await createBoardChatMessage(boardId, author.id, 'Hi');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (createNotification as any).mock.calls[0][4];
+      expect(data.localizationArgs).toEqual({
+        senderName: 'Sender',
+        boardTitle: 'My Board',
+      });
+
+      const body = resolveNotification(
+        data.localizationKey,
+        data.localizationArgs,
+        'en',
+        'FallbackTitle',
+        'FallbackBody',
+      ).body;
+      expect(body).toBe('Sender sent a message in board "My Board"');
+      expect(body).not.toContain('{{');
     });
   });
 });

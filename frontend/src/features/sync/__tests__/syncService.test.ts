@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // vi.hoisted() — variables available inside vi.mock() factory functions
@@ -30,6 +30,7 @@ const { mockDb, mockApi, mockAuthStore } = vi.hoisted(() => {
         return table;
       }),
       toArray: vi.fn().mockResolvedValue([]),
+      put: vi.fn().mockResolvedValue(undefined),
       bulkPut: vi.fn().mockResolvedValue(undefined),
       bulkDelete: vi.fn().mockResolvedValue(undefined),
       bulkGet: vi.fn().mockResolvedValue([]),
@@ -109,6 +110,7 @@ const resetAllTableMocks = () => {
       table.orderBy.mockImplementation(() => table);
       // Reset terminal methods
       table.toArray.mockResolvedValue([]);
+      table.put.mockResolvedValue(undefined);
       table.bulkPut.mockResolvedValue(undefined);
       table.bulkDelete.mockResolvedValue(undefined);
       table.bulkGet.mockResolvedValue([]);
@@ -223,6 +225,35 @@ describe('syncPull', () => {
       await syncPull();
 
       expect(mockDb.notebooks.bulkDelete).toHaveBeenCalledWith(['nb-old']);
+    });
+
+    it('prevents zombie resurrection for deleted notebooks', async () => {
+      const serverNotebooks = [
+        { id: 'nb-zombie', name: 'Zombie', userId: 'user-1', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+        { id: 'nb-alive', name: 'Alive', userId: 'user-1', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+      ];
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/notebooks') return Promise.resolve({ data: serverNotebooks });
+        return Promise.resolve({ data: [] });
+      });
+
+      // No dirty notebooks
+      mockDb.notebooks.toArray.mockResolvedValue([]);
+
+      // syncQueue has a pending DELETE for nb-zombie
+      mockDb.syncQueue.toArray.mockResolvedValue([
+        { id: 100, type: 'DELETE', entity: 'NOTEBOOK', entityId: 'nb-zombie', userId: 'user-1', createdAt: Date.now() },
+      ]);
+
+      await syncPull();
+
+      // nb-zombie should NOT be in the bulkPut call
+      const bulkPutCall = mockDb.notebooks.bulkPut.mock.calls[0]?.[0];
+      expect(bulkPutCall).toBeDefined();
+      const ids = bulkPutCall.map((n: { id: string }) => n.id);
+      expect(ids).not.toContain('nb-zombie');
+      expect(ids).toContain('nb-alive');
     });
   });
 
@@ -588,6 +619,201 @@ describe('syncPull', () => {
         ]),
       );
     });
+
+    it('stamps viewerId on every board row it writes (list scoping)', async () => {
+      const boardsList = [
+        {
+          id: 'kb-owned', title: 'Mine', description: null, coverImage: null,
+          avatarUrl: null, ownerId: 'user-1', columnCount: 0, cardCount: 0,
+          ownership: 'owned' as const, createdAt: '2026-01-01', updatedAt: '2026-01-01',
+        },
+        {
+          id: 'kb-shared', title: 'Theirs', description: null, coverImage: null,
+          avatarUrl: null, ownerId: 'user-2', columnCount: 0, cardCount: 0,
+          ownership: 'shared' as const, permission: 'WRITE' as const,
+          createdAt: '2026-01-01', updatedAt: '2026-01-01',
+        },
+      ];
+
+      // A separate board reachable only via the 'accepted share' pull (the
+      // other of the two write sites this task stamps), so this test can't pass
+      // by exercising just one of them.
+      const acceptedShareBoard = {
+        id: 'kb-shared-accept', title: 'AcceptedShare', ownerId: 'user-3',
+        columns: [], _sharedPermission: 'READ' as const,
+      };
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: boardsList });
+        if (url === '/kanban/boards/kb-owned') return Promise.resolve({ data: { id: 'kb-owned', columns: [] } });
+        if (url === '/kanban/boards/kb-shared') return Promise.resolve({ data: { id: 'kb-shared', columns: [] } });
+        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [acceptedShareBoard] });
+        return Promise.resolve({ data: [] });
+      });
+
+      mockDb.kanbanBoards.toArray.mockResolvedValue([]);
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      await syncPull();
+
+      // Owned pull site
+      expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'kb-owned', viewerId: 'user-1' }),
+          expect.objectContaining({ id: 'kb-shared', viewerId: 'user-1' }),
+        ]),
+      );
+      // Accepted-share pull site — a separate bulkPut call, so a separate assertion
+      expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'kb-shared-accept', viewerId: 'user-1' }),
+        ]),
+      );
+    });
+
+    // Fix round 1 finding 2: a board pruned here while a tab already has it
+    // open must still get its query invalidated — useSync does that off
+    // syncPull's return value, so the return value has to actually carry the
+    // ids syncPull deletes, not just the bulkDelete calls.
+    it('returns the ids of boards it prunes (owned and shared) for cache invalidation', async () => {
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned on the server anymore
+        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [] }); // nothing shared accepted anymore
+        return Promise.resolve({ data: [] });
+      });
+
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      // Four sequential db.kanbanBoards.toArray() calls inside syncPull's kanban
+      // section, in this order: dirtyBoards (owned block), allLocalSyncedBoards
+      // (owned block — this is where the owned prune candidate must show up),
+      // dirtyBoards (shared block's own zombie-prevention guard — task 2 of the
+      // offline-first hardening pass), localSharedBoards (shared block — the
+      // shared prune candidate).
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { id: 'kb-gone-owned', ownership: 'owned', ownerId: 'user-1', syncStatus: 'synced' },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { id: 'kb-gone-shared', ownership: 'shared', viewerId: 'user-1', syncStatus: 'synced' },
+        ]);
+
+      const prunedIds = await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-owned']);
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-shared']);
+      expect(prunedIds).toEqual(['kb-gone-owned', 'kb-gone-shared']);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Shared kanban boards pull — same zombie-prevention guard as the main
+  // "kanban boards" block above, applied to the '/share/kanbans/accepted'
+  // pull. A prior commit on this branch claimed all seven kanban entities
+  // already had this guard; that audit covered the main block and missed
+  // this one.
+  // -----------------------------------------------------------------
+  describe('shared kanban boards', () => {
+    it('prevents zombie resurrection for a locally-deleted shared board with a pending DELETE', async () => {
+      const pendingDelete = {
+        id: 906, type: 'DELETE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared-z1',
+        userId: 'user-1', data: {}, createdAt: Date.now(),
+      };
+      // Blanket value: every db.syncQueue.toArray() call in this run sees it (same
+      // approach the 'shared notes' zombie test above uses) — harmless for the
+      // other entity types' pending-delete checks since no id collides.
+      mockDb.syncQueue.toArray.mockResolvedValue([pendingDelete]);
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned
+        if (url === '/share/kanbans/accepted') {
+          return Promise.resolve({
+            data: [
+              { id: 'kb-shared-z1', title: 'Zombie', columns: [], _sharedPermission: 'READ' },
+              { id: 'kb-shared-ok', title: 'Fine', columns: [], _sharedPermission: 'READ' },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      await syncPull();
+
+      const allBulkPuts = mockDb.kanbanBoards.bulkPut.mock.calls.flatMap(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock call inspection
+        (c: unknown[]) => c[0] as any[],
+      );
+      const putIds = allBulkPuts.map((b: { id: string }) => b.id);
+      expect(putIds).not.toContain('kb-shared-z1');
+      expect(putIds).toContain('kb-shared-ok');
+    });
+
+    // Fix round 2: the staleness check above derived sharedServerIds from
+    // sharedBoardsMapped (the array already filtered by the dirty guard just
+    // added), not from the raw server response the main "Kanban Boards Pull"
+    // block above uses. A dirty shared board is excluded from
+    // sharedBoardsMapped by design (so bulkPut doesn't clobber it) -- but that
+    // also made it vanish from sharedServerIds, so this local-only staleness
+    // check saw a board the server still lists as "not in sharedServerIds" and
+    // pruned it: bulkDelete, cascaded columns/cards, and prunedBoardIds. The
+    // bulkPut skip a few lines below is correct and untouched -- the bug is
+    // entirely in what feeds the stale-id computation.
+    it('does not prune a locally-dirty shared board that the server still returns', async () => {
+      const dirtyBoard = {
+        id: 'kb-shared-dirty', ownership: 'shared' as const, ownerId: 'user-2', viewerId: 'user-1',
+        syncStatus: 'updated' as const, title: 'Local Edit',
+      };
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned
+        if (url === '/share/kanbans/accepted') {
+          return Promise.resolve({
+            data: [
+              { id: 'kb-shared-dirty', title: 'Server Copy', columns: [], _sharedPermission: 'WRITE' },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      // Four sequential db.kanbanBoards.toArray() calls (see the "returns the
+      // ids of boards it prunes" test's comment above for the full order):
+      // main-dirtyBoards, main-allLocalSyncedBoards, shared-dirtyBoards (the
+      // dirty row must show up here so it's excluded from sharedBoardsMapped),
+      // shared-localSharedBoards (the SAME row shows up again here as the
+      // local staleness check's candidate).
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([dirtyBoard])
+        .mockResolvedValueOnce([dirtyBoard]);
+
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      const prunedIds = await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkDelete).not.toHaveBeenCalledWith(['kb-shared-dirty']);
+      expect(prunedIds).not.toContain('kb-shared-dirty');
+    });
   });
 
   // -----------------------------------------------------------------
@@ -619,6 +845,37 @@ describe('syncPull', () => {
         ]),
       );
     });
+
+    it('prevents zombie resurrection for deleted tags', async () => {
+      const serverTags = [
+        { id: 'tag-zombie', name: 'zombie', userId: 'user-1' },
+        { id: 'tag-alive', name: 'alive', userId: 'user-1' },
+      ];
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/tags') return Promise.resolve({ data: serverTags });
+        return Promise.resolve({ data: [] });
+      });
+
+      // No dirty tags
+      mockDb.tags.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      // syncQueue has a pending DELETE for tag-zombie
+      mockDb.syncQueue.toArray.mockResolvedValue([
+        { id: 101, type: 'DELETE', entity: 'TAG', entityId: 'tag-zombie', userId: 'user-1', createdAt: Date.now() },
+      ]);
+
+      await syncPull();
+
+      // tag-zombie should NOT be in the bulkPut call
+      const bulkPutCall = mockDb.tags.bulkPut.mock.calls[0]?.[0];
+      expect(bulkPutCall).toBeDefined();
+      const ids = bulkPutCall.map((t: { id: string }) => t.id);
+      expect(ids).not.toContain('tag-zombie');
+      expect(ids).toContain('tag-alive');
+    });
   });
 
   // -----------------------------------------------------------------
@@ -628,8 +885,9 @@ describe('syncPull', () => {
     it('handles API errors gracefully without crashing', async () => {
       mockApi.get.mockRejectedValue(new Error('Network error'));
 
-      // Should not throw
-      await expect(syncPull()).resolves.toBeUndefined();
+      // Should not throw. Fix round 1: syncPull now always resolves an array
+      // (the ids it pruned, possibly none) instead of undefined.
+      await expect(syncPull()).resolves.toEqual([]);
     });
 
     it('continues pulling other entities when shared notes fail', async () => {
@@ -650,7 +908,7 @@ describe('syncPull', () => {
       mockDb.notes.bulkGet.mockResolvedValue([]);
 
       // Should not throw
-      await expect(syncPull()).resolves.toBeUndefined();
+      await expect(syncPull()).resolves.toEqual([]);
 
       // Other endpoints were still called
       expect(mockApi.get).toHaveBeenCalledWith('/notebooks');
@@ -737,7 +995,7 @@ describe('syncPush', () => {
       // The local note is shared
       mockDb.notes.get.mockResolvedValue({ id: 'shared-note', ownership: 'shared' });
 
-      await syncPush();
+      const result = await syncPush();
 
       // Should NOT call any API method
       expect(mockApi.post).not.toHaveBeenCalled();
@@ -745,6 +1003,9 @@ describe('syncPush', () => {
       expect(mockApi.delete).not.toHaveBeenCalled();
       // Should remove from queue
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(4);
+      // Task 5: dropping a shared item is NOT a server change — must not
+      // trigger useSync's kanban invalidation.
+      expect(result).toBe(false);
     });
   });
 
@@ -891,7 +1152,16 @@ describe('syncPush', () => {
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(99);
     });
 
-    it('skips shared kanban boards — removes from queue without API call', async () => {
+    // Task 4 of the offline-first hardening pass: this used to skip ANY queued
+    // item for a shared board and delete it without ever calling the API. The
+    // backend explicitly authorizes this (assertBoardAccess(id, userId,
+    // 'WRITE')) and the UI offers a rename to a WRITE collaborator — before
+    // this branch the mutation never even reached Dexie (paused offline); once
+    // LOCAL_FIRST let it land, this skip made it look like it saved, then the
+    // next pull silently reverted it with no error, because the item was
+    // deleted, not failed. An unauthorized case still fails loudly: a 403 is
+    // already handled as terminal above.
+    it('pushes an UPDATE for a shared kanban board (WRITE collaborator) instead of silently dropping it', async () => {
       const queueItem = {
         id: 41, type: 'UPDATE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared',
         userId: 'user-1', data: { title: 'Edit' },
@@ -899,14 +1169,18 @@ describe('syncPush', () => {
       };
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
-      mockDb.kanbanBoards.get.mockResolvedValue({ id: 'kb-shared', ownership: 'shared' });
+      mockDb.kanbanBoards.get.mockResolvedValue({
+        id: 'kb-shared', ownership: 'shared',
+        updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockDb.syncQueue.count.mockResolvedValue(0);
 
-      await syncPush();
+      const result = await syncPush();
 
-      expect(mockApi.post).not.toHaveBeenCalled();
-      expect(mockApi.put).not.toHaveBeenCalled();
-      expect(mockApi.delete).not.toHaveBeenCalled();
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/boards/kb-shared', { title: 'Edit' });
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(41);
+      expect(result).toBe(true);
     });
 
     it('pushes CREATE kanban column with board-based URL', async () => {
@@ -947,6 +1221,168 @@ describe('syncPush', () => {
         id: 'card-new', title: 'Fix bug',
       }));
     });
+
+    it('resolves the card CREATE columnId from Dexie after a real board-CREATE reconciliation round-trip', async () => {
+      const baseTime = Date.now();
+      const boardItem = {
+        id: 61, type: 'CREATE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'board-new',
+        userId: 'user-1',
+        data: { id: 'board-new', title: 'New Board', _localColumnIds: ['local-col-uuid'] },
+        createdAt: baseTime,
+      };
+      // Queued while the board was still offline: this column id dies the moment
+      // the board CREATE above round-trips and its reconciliation rewrites the
+      // Dexie column ids.
+      const cardItem = {
+        id: 62, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-orphan',
+        userId: 'user-1',
+        data: { id: 'card-orphan', columnId: 'local-col-uuid', title: 'Orphan' },
+        createdAt: baseTime + 1000,
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([boardItem, cardItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+
+      // Board CREATE's response carries the server-generated column, driving the
+      // REAL reconciliation loop in the KANBAN_BOARD/CREATE branch.
+      mockApi.post.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') {
+          return Promise.resolve({ data: { columns: [{ id: 'server-col-uuid', position: 0 }] } });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      // Reconciliation looks up cards currently in the local column...
+      mockDb.kanbanCards.toArray.mockResolvedValue([{ id: 'card-orphan', columnId: 'local-col-uuid' }]);
+      // ...and the local column row it is about to replace with the server one.
+      // Keyed because the same table mock answers both the pre- and post-
+      // reconciliation lookups later in this same syncPush() run.
+      mockDb.kanbanColumns.get.mockImplementation((id: string) => {
+        if (id === 'local-col-uuid') {
+          return Promise.resolve({ id: 'local-col-uuid', title: 'To Do', boardId: 'board-new', position: 0, isCompleted: false, syncStatus: 'created' });
+        }
+        if (id === 'server-col-uuid') {
+          return Promise.resolve({ id: 'server-col-uuid', title: 'To Do', boardId: 'board-new', position: 0, isCompleted: false, syncStatus: 'synced' });
+        }
+        return Promise.resolve(null);
+      });
+      // The card CREATE branch's own Dexie read: what a real Dexie would show
+      // after the reconciliation's db.kanbanCards.update() ran (asserted below).
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-orphan',
+        columnId: 'server-col-uuid',
+        updatedAt: new Date(baseTime - 1000).toISOString(),
+      });
+
+      await syncPush();
+
+      // Pins that the reconciliation itself ran and repointed the card...
+      expect(mockDb.kanbanCards.update).toHaveBeenCalledWith('card-orphan', { columnId: 'server-col-uuid' });
+      expect(mockDb.kanbanColumns.put).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'server-col-uuid', syncStatus: 'synced' }),
+      );
+      // ...and that it ran BEFORE the card CREATE (board is item 1, card is item 2).
+      expect(mockApi.post).toHaveBeenNthCalledWith(1, '/kanban/boards', expect.objectContaining({ id: 'board-new' }));
+      expect(mockApi.post).toHaveBeenNthCalledWith(
+        2,
+        '/kanban/columns/server-col-uuid/cards',
+        expect.objectContaining({ id: 'card-orphan', title: 'Orphan' }),
+      );
+    });
+
+    it('falls back to the queued columnId for a card CREATE when the Dexie column is not yet synced (queue-order inversion)', async () => {
+      const baseTime = Date.now();
+      // Entirely ordinary offline sequence:
+      // 1. Add a card to "To Do" (col-A, already synced).
+      // 2. Add a new column "Blocked" (col-B, still local-only).
+      // 3. Drag the card into "Blocked" — Dexie's card row now says col-B,
+      //    even though col-B's own CREATE (item 2 below) has not reached the
+      //    server yet. Item 1 (the card CREATE) is what we're pushing here,
+      //    and it must NOT trust col-B just because Dexie already shows it.
+      const cardCreateItem = {
+        id: 63, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-x',
+        userId: 'user-1', data: { id: 'card-x', columnId: 'col-A', title: 'Task' },
+        createdAt: baseTime,
+      };
+      const columnCreateItem = {
+        id: 64, type: 'CREATE' as const, entity: 'KANBAN_COLUMN' as const, entityId: 'col-B',
+        userId: 'user-1', data: { id: 'col-B', boardId: 'board-1', title: 'Blocked' },
+        createdAt: baseTime + 1000,
+      };
+      const moveItem = {
+        id: 65, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-x',
+        userId: 'user-1', data: { columnId: 'col-B', position: 0 },
+        createdAt: baseTime + 2000,
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([cardCreateItem, columnCreateItem, moveItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      // Dexie already reflects the final local state (the move already happened
+      // optimistically, offline, before any of this was pushed).
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-x', columnId: 'col-B', updatedAt: new Date(baseTime - 1000).toISOString(),
+      });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'col-B', title: 'Blocked', boardId: 'board-1', position: 1, isCompleted: false, syncStatus: 'created' });
+      mockApi.post.mockResolvedValue({ data: {} });
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.post).toHaveBeenNthCalledWith(
+        1,
+        '/kanban/columns/col-A/cards',
+        expect.objectContaining({ id: 'card-x', title: 'Task' }),
+      );
+    });
+
+    it('resolves the card MOVE toColumnId from Dexie, not from the stale queued payload', async () => {
+      const queueItem = {
+        id: 66, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-move',
+        userId: 'user-1',
+        // Queued while the destination board was still offline: this column id
+        // died when that board CREATE round-tripped and rewrote the Dexie ids.
+        data: { columnId: 'local-col-uuid', position: 2 },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-move', columnId: 'server-col-uuid', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'server-col-uuid', syncStatus: 'synced' });
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/cards/card-move/move', {
+        toColumnId: 'server-col-uuid', position: 2,
+      });
+    });
+
+    it('falls back to the queued toColumnId for a card MOVE when the Dexie column is not yet synced', async () => {
+      const queueItem = {
+        id: 67, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-move-2',
+        userId: 'user-1', data: { columnId: 'col-A', position: 0 },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      // Dexie already shows the card in the brand-new column (optimistic local
+      // move), but that column's own CREATE has not round-tripped yet.
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-move-2', columnId: 'col-B', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'col-B', syncStatus: 'created' });
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/cards/card-move-2/move', {
+        toColumnId: 'col-A', position: 0,
+      });
+    });
   });
 
   // -----------------------------------------------------------------
@@ -963,10 +1399,13 @@ describe('syncPush', () => {
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockApi.delete.mockRejectedValue({ response: { status: 404 } });
 
-      await syncPush();
+      const result = await syncPush();
 
       // Item should be removed from queue
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(100);
+      // Task 5: the server rejecting a delete of an already-gone resource is
+      // not evidence anything changed — must not trigger kanban invalidation.
+      expect(result).toBe(false);
     });
 
     it('handles 410 gracefully — removes item from queue', async () => {
@@ -979,9 +1418,35 @@ describe('syncPush', () => {
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockApi.put.mockRejectedValue({ response: { status: 410 } });
 
-      await syncPush();
+      const result = await syncPush();
 
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(101);
+      // Task 5: same as 404 — dropped, not pushed.
+      expect(result).toBe(false);
+    });
+
+    // Task 3 of the offline-first hardening pass: silently dropping a 404/410
+    // CREATE means the user's card (or column/board) never existed and nothing
+    // ever tells them. A column reconciled to 'synced' and then locally edited
+    // to 'updated' makes resolveCardColumnId distrust it and fall back to a
+    // dead queued id — making this path reachable for a CREATE, not just a
+    // stale DELETE/UPDATE. A CREATE must surface instead of vanishing.
+    it('marks an orphaned CREATE failed on 404 instead of silently dropping it', async () => {
+      const queueItem = {
+        id: 102, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-orphan',
+        userId: 'user-1', data: { columnId: 'col-dead', title: 'Never existed' },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockRejectedValue({ response: { status: 404 } });
+
+      await syncPush();
+
+      // Surfaced (status: 'failed' lights up SyncStatusIndicator's red banner +
+      // retry button), not silently deleted.
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(102, expect.objectContaining({ status: 'failed' }));
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(102);
     });
 
     it('marks a queue item failed immediately on 400 validation error (no infinite retry)', async () => {
@@ -1033,6 +1498,107 @@ describe('syncPush', () => {
       // Should NOT delete from queue — will retry on next sync
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
     });
+
+    it('stops the whole run on a transport failure (no response) instead of burning every remaining item', async () => {
+      const items = [
+        { id: 110, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1', userId: 'user-1', data: { title: 'A' }, createdAt: 1 },
+        { id: 111, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-2', userId: 'user-1', data: { title: 'B' }, createdAt: 2 },
+        { id: 112, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-3', userId: 'user-1', data: { title: 'C' }, createdAt: 3 },
+      ];
+
+      mockDb.syncQueue.toArray.mockResolvedValue(items);
+      // First call is the transport failure that trips the break; would-be
+      // later calls resolve, so if the loop wrongly kept going we'd see it.
+      let putCallCount = 0;
+      mockApi.put.mockImplementation(() => {
+        putCallCount++;
+        return Promise.reject(new Error('Network Error')); // no `.response` — transport failure
+      });
+
+      await syncPush();
+
+      // Only item 1 was ever attempted — items 2 and 3 were never touched.
+      expect(putCallCount).toBe(1);
+      expect(mockApi.put).toHaveBeenCalledWith('/notes/note-1', { title: 'A' });
+      expect(mockApi.put).not.toHaveBeenCalledWith('/notes/note-2', expect.anything());
+      expect(mockApi.put).not.toHaveBeenCalledWith('/notes/note-3', expect.anything());
+      // Nothing was persisted for any of the three items: the triggering item
+      // doesn't burn an attempt either (a transport failure isn't evidence its
+      // payload is bad), and items 2/3 were never reached to have anything recorded.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Return value (task 5 — gates useSync's post-push kanban invalidation:
+  // it must reflect whether server state actually changed, not merely
+  // whether the call ran without throwing)
+  // -----------------------------------------------------------------
+  describe('return value', () => {
+    it('resolves true when every queued item pushes successfully', async () => {
+      const queueItem = {
+        id: 400, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { title: 'A' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', updatedAt: new Date(0).toISOString() });
+
+      await expect(syncPush()).resolves.toBe(true);
+    });
+
+    it('resolves false when the queue is empty (nothing to push)', async () => {
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+
+      await expect(syncPush()).resolves.toBe(false);
+    });
+
+    it('resolves true when earlier items succeeded before a transport failure breaks the run', async () => {
+      const items = [
+        { id: 401, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-ok', userId: 'user-1', data: { title: 'A' }, createdAt: 1 },
+        { id: 402, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-fail', userId: 'user-1', data: { title: 'B' }, createdAt: 2 },
+      ];
+      mockDb.syncQueue.toArray.mockResolvedValue(items);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-ok', updatedAt: new Date(0).toISOString() });
+      let putCallCount = 0;
+      mockApi.put.mockImplementation(() => {
+        putCallCount++;
+        if (putCallCount === 1) return Promise.resolve({ data: {} }); // note-ok succeeds
+        return Promise.reject(new Error('Network Error')); // note-fail: transport failure, breaks the loop
+      });
+
+      await expect(syncPush()).resolves.toBe(true);
+    });
+
+    it('resolves false when the very first item is a transport failure (nothing pushed before the break)', async () => {
+      const queueItem = {
+        id: 403, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-fail',
+        userId: 'user-1', data: { title: 'A' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.put.mockRejectedValue(new Error('Network Error'));
+
+      await expect(syncPush()).resolves.toBe(false);
+    });
+
+    it('resolves false when a second concurrent call hits the already-syncing guard', async () => {
+      let resolveFirst!: () => void;
+      const firstCallPromise = new Promise<void>(resolve => { resolveFirst = resolve; });
+      const queueItem = {
+        id: 404, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-slow',
+        userId: 'user-1', data: { id: 'note-slow', title: 'Slow' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockImplementation(() => firstCallPromise.then(() => ({ data: {} })));
+      mockDb.notes.get.mockResolvedValue({ id: 'note-slow', updatedAt: new Date(0).toISOString() });
+
+      const first = syncPush();
+      await expect(syncPush()).resolves.toBe(false); // guarded by isSyncing, returns immediately
+
+      resolveFirst();
+      await first;
+    });
   });
 
   // -----------------------------------------------------------------
@@ -1076,6 +1642,66 @@ describe('syncPush', () => {
 
       // API should have been called only ONCE
       expect(postCallCount).toBe(1);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Offline guard
+  // -----------------------------------------------------------------
+  describe('offline guard', () => {
+    // navigator.onLine is a getter on Navigator.prototype, not an own
+    // property of the instance — Object.getOwnPropertyDescriptor(navigator,
+    // 'onLine') returns undefined, so an afterEach guarded on that descriptor
+    // never restores anything and a value set here leaks into later,
+    // unrelated tests. vi.spyOn(..., 'get') + vi.restoreAllMocks() replaces
+    // the prototype getter for the spy's lifetime and genuinely undoes it.
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('does no work at all when navigator.onLine is false', async () => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+
+      const queueItem = {
+        id: 210, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-offline',
+        userId: 'user-1', data: { id: 'note-offline', title: 'Offline' },
+        createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+
+      const result = await syncPush();
+
+      // Bails out before even reading the queue — nothing was attempted.
+      expect(mockDb.syncQueue.toArray).not.toHaveBeenCalled();
+      expect(mockApi.post).not.toHaveBeenCalled();
+      // Task 5: false tells useSync there is nothing to invalidate for this call.
+      expect(result).toBe(false);
+    });
+
+    it('restores navigator.onLine after the previous test instead of leaking false into this one', () => {
+      // No spy set up in THIS test — if afterEach's restore were a no-op
+      // (the bug being guarded against), this would still read false from
+      // the previous test's override.
+      expect(navigator.onLine).toBe(true);
+    });
+
+    it('processes the queue normally once back online', async () => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+
+      const queueItem = {
+        id: 211, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-online',
+        userId: 'user-1', data: { id: 'note-online', title: 'Online' },
+        createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockResolvedValue({ data: {} });
+      mockDb.notes.get.mockResolvedValue({
+        id: 'note-online', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+
+      await syncPush();
+
+      expect(mockApi.post).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1183,12 +1809,14 @@ describe('syncPush', () => {
         { id: 500, type: 'CREATE', entity: 'NOTE', entityId: 'x', userId: 'user-1', data: {}, createdAt: Date.now() },
       ]);
 
-      await syncPush();
+      const result = await syncPush();
 
       // Should bail out immediately
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockApi.delete).not.toHaveBeenCalled();
+      // Consistent with the offline-guard sibling test — false, not undefined.
+      expect(result).toBe(false);
     });
   });
 
@@ -1221,13 +1849,77 @@ describe('syncPush', () => {
 
       expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
     });
+
+    // Task 5 of the offline-first hardening pass: retryFailedSyncItems cleared
+    // failureCounts directly instead of calling the existing clearFailure()
+    // helper, which also clears transportFailureSince. A retried item that
+    // hits a FRESH transport failure right after being retried was judged
+    // against the OLD "stuck since" timestamp from before the retry — able to
+    // trip the 10-minute ceiling on attempt one, mislabeling a brand-new blip
+    // as a persisted outage.
+    describe('transportFailureSince', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('is cleared on retry, not just the backoff count', async () => {
+        vi.useFakeTimers();
+        const item = {
+          id: 970, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-retry-stale',
+          userId: 'user-1', data: { title: 'X' }, attempts: 4, createdAt: Date.now(),
+        };
+        mockDb.notes.get.mockResolvedValue({ id: 'note-retry-stale', ownership: 'owned' });
+
+        // 1) A transport failure stamps the "stuck since" timestamp (T0) —
+        // item stays pending, not failed yet.
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]);
+        mockApi.put.mockRejectedValueOnce(new Error('Network Error')); // no `.response`
+        await syncPush();
+
+        // 2) A real server rejection reaches MAX_RETRIES (attempts was
+        // already 4) and marks the item 'failed' via recordFailure, which
+        // only clears failureCounts — T0 is now stale AND the item is
+        // terminal, the exact combination a real queue can reach.
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]);
+        mockApi.put.mockRejectedValueOnce({ response: { status: 500 } });
+        await syncPush();
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(970, expect.objectContaining({ status: 'failed' }));
+        mockDb.syncQueue.update.mockClear();
+
+        // 3) Real time passes well past the 10-minute ceiling, measured from T0.
+        vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+
+        // 4) User clicks retry. retryFailedSyncItems finds the item, resets
+        // it, and fires its own immediate follow-up push — which hits a
+        // FRESH transport failure (network still down). If T0 wasn't
+        // cleared, this single fresh blip looks like it's already been down
+        // for 10+ minutes.
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]); // retryFailedSyncItems' own query
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]); // its follow-up syncPush()
+        mockApi.put.mockRejectedValue(new Error('Network Error')); // no `.response`, from here on
+        await retryFailedSyncItems();
+        await vi.advanceTimersByTimeAsync(0); // let the fire-and-forget follow-up push settle
+
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(970, expect.objectContaining({
+          status: 'failed', lastError: 'network',
+        }));
+      });
+    });
   });
 
   // -----------------------------------------------------------------
   // Failure persistence (M2 sync surfacing)
   // -----------------------------------------------------------------
   describe('failure persistence', () => {
-    it('persists attempts and lastError on push failure', async () => {
+    // The three tests below used to reject with a bare `new Error(...)` — no
+    // `.response` — and assert that `attempts` incremented. That was exactly
+    // the bug this task fixes: a response-less rejection is a transport
+    // failure (network gone), not the server rejecting the payload, so it
+    // must NOT burn a retry attempt — see the "transport failure" test above
+    // for the queue-wide consequence. These now reject with a `.response`
+    // (a real server answer, e.g. a transient 500) to exercise recordFailure
+    // on the failure mode it actually models: the server saying no.
+    it('persists attempts and lastError on push failure with a server response', async () => {
       const queueItem = {
         id: 901, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f1',
         userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
@@ -1235,20 +1927,20 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.notes.get.mockResolvedValue({ id: 'note-f1', ownership: 'owned' });
-      mockApi.put.mockRejectedValue(new Error('Network Error'));
+      mockApi.put.mockRejectedValue(Object.assign(new Error('Internal Server Error'), { response: { status: 500 } }));
 
       await syncPush();
 
       expect(mockDb.syncQueue.update).toHaveBeenCalledWith(901, expect.objectContaining({
         attempts: 1,
         status: 'pending',
-        lastError: 'Network Error',
+        lastError: 'Internal Server Error',
       }));
       // Item must stay in the queue
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(901);
     });
 
-    it('marks item failed (terminal) when persisted attempts reach MAX_RETRIES', async () => {
+    it('marks item failed (terminal) when persisted attempts reach MAX_RETRIES via repeated server responses', async () => {
       // attempts: 4 persisted → this failure is the 5th → terminal
       const queueItem = {
         id: 902, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f2',
@@ -1258,7 +1950,7 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.notes.get.mockResolvedValue({ id: 'note-f2', ownership: 'owned' });
-      mockApi.put.mockRejectedValue(new Error('Still down'));
+      mockApi.put.mockRejectedValue(Object.assign(new Error('Still down'), { response: { status: 503 } }));
 
       await syncPush();
 
@@ -1269,7 +1961,7 @@ describe('syncPush', () => {
       }));
     });
 
-    it('stringifies non-Error rejections into lastError', async () => {
+    it('stringifies non-Error rejections into lastError (server response, not transport failure)', async () => {
       const queueItem = {
         id: 906, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f5',
         userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
@@ -1277,13 +1969,34 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.notes.get.mockResolvedValue({ id: 'note-f5', ownership: 'owned' });
-      mockApi.put.mockRejectedValue('plain string failure');
+      // Not `instanceof Error`, but still a server answer (has `.response`) —
+      // exercises recordFailure's `String(error)` fallback without tripping
+      // the response-less-error break.
+      mockApi.put.mockRejectedValue({ response: { status: 500 }, toString: () => 'plain string failure' });
 
       await syncPush();
 
       expect(mockDb.syncQueue.update).toHaveBeenCalledWith(906, expect.objectContaining({
         lastError: 'plain string failure',
       }));
+    });
+
+    it('does NOT burn an attempt on the triggering item for a transport failure (no response)', async () => {
+      const queueItem = {
+        id: 907, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f6',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-f6', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error')); // no `.response`
+
+      await syncPush();
+
+      // recordFailure is never reached for a transport failure — nothing is
+      // persisted, so the item comes back exactly as-is on the next attempt.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
     });
 
     it('skips items with status=failed entirely (no API call)', async () => {
@@ -1300,6 +2013,71 @@ describe('syncPush', () => {
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(mockApi.delete).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Transport failure ceiling (fix round 1, finding 2): a persistently
+  // transport-failing item never reaches recordFailure, so without this it
+  // would head-of-line-block the queue forever with zero backoff and no
+  // signal ever reaching the user. Wall-clock elapsed since the FIRST
+  // transport failure, not attempt count — see the comment above
+  // transportFailureSince in syncService.ts for why.
+  // -----------------------------------------------------------------
+  describe('transport failure ceiling', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('marks a persistently transport-failing item failed once stuck past the 10-minute ceiling', async () => {
+      vi.useFakeTimers();
+      const queueItem = {
+        id: 950, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-stuck',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-stuck', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error')); // no `.response`, every call
+
+      // First push establishes the "stuck since" timestamp — not failed yet.
+      await syncPush();
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+
+      // Real elapsed time past the ceiling, network still down, push again.
+      vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+      await syncPush();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(950, expect.objectContaining({
+        status: 'failed',
+        lastError: 'network',
+      }));
+      // Still never charged against `attempts` — a transport failure is
+      // never evidence the payload itself was rejected.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(950, expect.objectContaining({
+        attempts: expect.anything(),
+      }));
+    });
+
+    it('does not trip the ceiling on a few ordinary blips well under 10 minutes apart', async () => {
+      vi.useFakeTimers();
+      const queueItem = {
+        id: 951, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-blip',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-blip', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error'));
+
+      await syncPush();
+      vi.advanceTimersByTime(30_000); // matches useSync's 30s periodic retry cadence
+      await syncPush();
+      vi.advanceTimersByTime(30_000);
+      await syncPush();
+
+      // A minute of blips is well under the 10-minute ceiling — the item
+      // stays completely untouched, exactly like a single blip.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
     });
   });

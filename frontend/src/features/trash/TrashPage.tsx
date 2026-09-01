@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { restoreNote, permanentlyDeleteNote, type Note } from '../notes/noteService';
 import { Trash2, RefreshCw, Menu, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +34,7 @@ export default function TrashPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   const deleteMutation = useMutation({
@@ -45,6 +47,7 @@ export default function TrashPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   const handleEmptyTrash = () => {
