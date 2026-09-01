@@ -185,7 +185,7 @@ e chiamarlo dai tre call site, più l'equivalente per la task list. B1 in più r
 **salvare** il titolo (`metadata: { noteId }` e risoluzione per utente in lettura) e una migration
 one-shot per le righe già scritte.
 
-### `addConnection` registra su socket già morti, e ciò spegne le notifiche per sempre
+### `addConnection` registra su socket già morti, e ciò spegne le notifiche per sempre — CORRETTO `6bf866c`
 
 La route fa due round-trip Prisma prima di `addConnection`; se il client abortisce in quella
 finestra, `addConnection` registra comunque connessione + heartbeat da 30s, e il listener `close`
@@ -203,7 +203,7 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
 
 ### Residui dei tre task appena chiusi
 
-- **C1** — `deleteCard` riceve `actorId` ma **la route non glielo passa** (`routes/kanban.ts:483-488`),
+- **C1** (CORRETTO `c8b795a`) — `deleteCard` riceve `actorId` ma **la route non glielo passa** (`routes/kanban.ts:483-488`),
   quindi `card:deleted` viaggia sempre senza attore. Il test esistente passa lo stesso perché non è
   stato aggiornato. Una riga, ma finché resta così il 4.2 non potrà filtrare l'eco proprio sul
   percorso dove la riconciliazione locale è più forte.
