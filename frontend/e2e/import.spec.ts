@@ -3,70 +3,35 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { execSync } from 'child_process';
-import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-// Read current version so addInitScript can suppress the "What's New" modal.
-// The modal fires when lastSeenVersion !== CURRENT_VERSION; setting them equal suppresses it.
-const CURRENT_VERSION: string = JSON.parse(fs.readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8')).version;
+import { registerAndLogin } from './helpers';
 
 /**
- * Create a verified user directly in PostgreSQL and login via the UI.
- * This bypasses the registration flow which requires SMTP for email verification.
- * Password: 'password123' hashed with bcrypt (10 rounds).
+ * Create a user and log in, forcing English so the assertions on UI text hold.
+ *
+ * [BACKUP] 2026-09-01 — this used to seed the user straight into PostgreSQL with
+ * `docker cp` + `docker exec` against a container hard-coded as `notiq-db`, with the
+ * database user and name hard-coded too. It only ever worked on a machine running the
+ * dev compose stack: the first CI run of this suite failed all four Import specs with
+ * "No such container: notiq-db", since CI runs Postgres as a service container.
+ *
+ * Its docblock justified the detour by saying registration needs SMTP. It does not:
+ * registerAndLogin in ./helpers registers through the API with an invitation code and
+ * then flips isVerified through the admin API, which is exactly the same shortcut with
+ * no dependency on the local Docker daemon. Every other spec in this suite already
+ * uses it.
  */
 async function createUserAndLogin(
   page: Page,
   options?: { name?: string }
 ): Promise<{ email: string; password: string }> {
-  const email = `test-${uuidv4()}@example.com`;
-  const password = 'password123';
-  const name = options?.name ?? 'Test User';
-  const userId = uuidv4();
-  const notebookId = uuidv4();
-
-  // bcrypt hash of 'password123' with 10 rounds
-  const bcryptHash = String.raw`$2b$10$e0GXtGXk8iAe861m.diEuuUBOXKMxjjgVlxEoIpUxM1LtV4JbIDN.`;
-
-  // Create user + notebook directly in DB via a temp SQL file (avoids shell escaping issues with bcrypt $ signs)
-  const tmpSqlPath = path.join(os.tmpdir(), `seed-${userId}.sql`);
-  const sql = [
-    `INSERT INTO "User" (id, email, password, name, role, "isVerified", "tokenVersion", "createdAt")`,
-    `VALUES ('${userId}', '${email}', '${bcryptHash}', '${name}', 'USER', true, 0, NOW());`,
-    `INSERT INTO "Notebook" (id, name, "userId", "createdAt", "updatedAt")`,
-    `VALUES ('${notebookId}', 'First Notebook', '${userId}', NOW(), NOW());`,
-  ].join('\n');
-  fs.writeFileSync(tmpSqlPath, sql, 'utf-8');
-
-  const containerSqlPath = `/tmp/seed-${userId}.sql`;
-  try {
-    // Copy SQL file into the Docker container and execute it (unique file name avoids parallel test conflicts)
-    execSync(`docker cp "${tmpSqlPath}" notiq-db:${containerSqlPath}`, { timeout: 10000 });
-    execSync(`docker exec notiq-db psql -U user -d evernote_clone -f ${containerSqlPath}`, { timeout: 10000 });
-  } finally {
-    if (fs.existsSync(tmpSqlPath)) fs.unlinkSync(tmpSqlPath);
-    try { execSync(`docker exec notiq-db rm -f ${containerSqlPath}`, { timeout: 5000 }); } catch { /* ignore */ }
-  }
-
-  // Suppress "What's New" modal by marking the current version as seen, and force English locale.
-  // The modal shows when lastSeenVersion !== CURRENT_VERSION; they must match to suppress it.
-  await page.addInitScript((ver) => {
-    localStorage.setItem('lastSeenVersion', ver);
+  // Must run before the first navigation. registerAndLogin already pins lastSeenVersion
+  // to suppress the "What's New" modal; the locale is what it does not set.
+  await page.addInitScript(() => {
     localStorage.setItem('i18nextLng', 'en');
-  }, CURRENT_VERSION);
+  });
 
-  // Login via UI
-  await page.goto('/login');
-  await page.fill('#email', email);
-  await page.fill('#password', password);
-  await page.click('button[type="submit"]');
-  await expect(page).toHaveURL(/\/notes/, { timeout: 15000 });
-  await expect(page.getByTestId('sidebar-item-notes')).toBeVisible({ timeout: 30000 });
-
-  return { email, password };
+  const user = await registerAndLogin(page, { name: options?.name });
+  return { email: user.email, password: user.password };
 }
 
 /**
