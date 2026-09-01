@@ -84,10 +84,6 @@ jobs:
   e2e:
     name: E2E (Playwright, chromium)
     runs-on: ubuntu-latest
-    # The suite has never run in CI: land it non-blocking, read the first report,
-    # then remove this line in a follow-up commit once the real state is known.
-    continue-on-error: true
-
     services:
       postgres:
         image: postgres:15
