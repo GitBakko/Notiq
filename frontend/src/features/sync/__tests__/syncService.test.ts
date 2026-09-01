@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // vi.hoisted() — variables available inside vi.mock() factory functions
@@ -1312,6 +1312,36 @@ describe('syncPush', () => {
       // Should NOT delete from queue — will retry on next sync
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
     });
+
+    it('stops the whole run on a transport failure (no response) instead of burning every remaining item', async () => {
+      const items = [
+        { id: 110, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1', userId: 'user-1', data: { title: 'A' }, createdAt: 1 },
+        { id: 111, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-2', userId: 'user-1', data: { title: 'B' }, createdAt: 2 },
+        { id: 112, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-3', userId: 'user-1', data: { title: 'C' }, createdAt: 3 },
+      ];
+
+      mockDb.syncQueue.toArray.mockResolvedValue(items);
+      // First call is the transport failure that trips the break; would-be
+      // later calls resolve, so if the loop wrongly kept going we'd see it.
+      let putCallCount = 0;
+      mockApi.put.mockImplementation(() => {
+        putCallCount++;
+        return Promise.reject(new Error('Network Error')); // no `.response` — transport failure
+      });
+
+      await syncPush();
+
+      // Only item 1 was ever attempted — items 2 and 3 were never touched.
+      expect(putCallCount).toBe(1);
+      expect(mockApi.put).toHaveBeenCalledWith('/notes/note-1', { title: 'A' });
+      expect(mockApi.put).not.toHaveBeenCalledWith('/notes/note-2', expect.anything());
+      expect(mockApi.put).not.toHaveBeenCalledWith('/notes/note-3', expect.anything());
+      // Nothing was persisted for any of the three items: the triggering item
+      // doesn't burn an attempt either (a transport failure isn't evidence its
+      // payload is bad), and items 2/3 were never reached to have anything recorded.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+    });
   });
 
   // -----------------------------------------------------------------
@@ -1355,6 +1385,53 @@ describe('syncPush', () => {
 
       // API should have been called only ONCE
       expect(postCallCount).toBe(1);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Offline guard
+  // -----------------------------------------------------------------
+  describe('offline guard', () => {
+    const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+
+    afterEach(() => {
+      if (originalOnLine) Object.defineProperty(navigator, 'onLine', originalOnLine);
+    });
+
+    it('does no work at all when navigator.onLine is false', async () => {
+      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+
+      const queueItem = {
+        id: 210, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-offline',
+        userId: 'user-1', data: { id: 'note-offline', title: 'Offline' },
+        createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+
+      await syncPush();
+
+      // Bails out before even reading the queue — nothing was attempted.
+      expect(mockDb.syncQueue.toArray).not.toHaveBeenCalled();
+      expect(mockApi.post).not.toHaveBeenCalled();
+    });
+
+    it('processes the queue normally once back online', async () => {
+      Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+
+      const queueItem = {
+        id: 211, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-online',
+        userId: 'user-1', data: { id: 'note-online', title: 'Online' },
+        createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockResolvedValue({ data: {} });
+      mockDb.notes.get.mockResolvedValue({
+        id: 'note-online', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+
+      await syncPush();
+
+      expect(mockApi.post).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1506,7 +1583,15 @@ describe('syncPush', () => {
   // Failure persistence (M2 sync surfacing)
   // -----------------------------------------------------------------
   describe('failure persistence', () => {
-    it('persists attempts and lastError on push failure', async () => {
+    // The three tests below used to reject with a bare `new Error(...)` — no
+    // `.response` — and assert that `attempts` incremented. That was exactly
+    // the bug this task fixes: a response-less rejection is a transport
+    // failure (network gone), not the server rejecting the payload, so it
+    // must NOT burn a retry attempt — see the "transport failure" test above
+    // for the queue-wide consequence. These now reject with a `.response`
+    // (a real server answer, e.g. a transient 500) to exercise recordFailure
+    // on the failure mode it actually models: the server saying no.
+    it('persists attempts and lastError on push failure with a server response', async () => {
       const queueItem = {
         id: 901, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f1',
         userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
@@ -1514,20 +1599,20 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.notes.get.mockResolvedValue({ id: 'note-f1', ownership: 'owned' });
-      mockApi.put.mockRejectedValue(new Error('Network Error'));
+      mockApi.put.mockRejectedValue(Object.assign(new Error('Internal Server Error'), { response: { status: 500 } }));
 
       await syncPush();
 
       expect(mockDb.syncQueue.update).toHaveBeenCalledWith(901, expect.objectContaining({
         attempts: 1,
         status: 'pending',
-        lastError: 'Network Error',
+        lastError: 'Internal Server Error',
       }));
       // Item must stay in the queue
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(901);
     });
 
-    it('marks item failed (terminal) when persisted attempts reach MAX_RETRIES', async () => {
+    it('marks item failed (terminal) when persisted attempts reach MAX_RETRIES via repeated server responses', async () => {
       // attempts: 4 persisted → this failure is the 5th → terminal
       const queueItem = {
         id: 902, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f2',
@@ -1537,7 +1622,7 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.notes.get.mockResolvedValue({ id: 'note-f2', ownership: 'owned' });
-      mockApi.put.mockRejectedValue(new Error('Still down'));
+      mockApi.put.mockRejectedValue(Object.assign(new Error('Still down'), { response: { status: 503 } }));
 
       await syncPush();
 
@@ -1548,7 +1633,7 @@ describe('syncPush', () => {
       }));
     });
 
-    it('stringifies non-Error rejections into lastError', async () => {
+    it('stringifies non-Error rejections into lastError (server response, not transport failure)', async () => {
       const queueItem = {
         id: 906, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f5',
         userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
@@ -1556,13 +1641,34 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.notes.get.mockResolvedValue({ id: 'note-f5', ownership: 'owned' });
-      mockApi.put.mockRejectedValue('plain string failure');
+      // Not `instanceof Error`, but still a server answer (has `.response`) —
+      // exercises recordFailure's `String(error)` fallback without tripping
+      // the response-less-error break.
+      mockApi.put.mockRejectedValue({ response: { status: 500 }, toString: () => 'plain string failure' });
 
       await syncPush();
 
       expect(mockDb.syncQueue.update).toHaveBeenCalledWith(906, expect.objectContaining({
         lastError: 'plain string failure',
       }));
+    });
+
+    it('does NOT burn an attempt on the triggering item for a transport failure (no response)', async () => {
+      const queueItem = {
+        id: 907, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-f6',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-f6', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error')); // no `.response`
+
+      await syncPush();
+
+      // recordFailure is never reached for a transport failure — nothing is
+      // persisted, so the item comes back exactly as-is on the next attempt.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
     });
 
     it('skips items with status=failed entirely (no API call)', async () => {

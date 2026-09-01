@@ -613,6 +613,12 @@ async function resolveCardColumnId(cardId: string, queuedColumnId: string | unde
 }
 
 export const syncPush = async () => {
+  // ponytail: cheap bail-out before touching Dexie or the queue at all. Does
+  // NOT cover a captive portal / connected-but-dead network — navigator.onLine
+  // stays true there — the response-less-error `break` below is what catches
+  // that case, by stopping the run after the first request that never gets a
+  // reply instead of relying on this flag to have caught it up front.
+  if (!navigator.onLine) return;
   if (isSyncing) {
     // Instead of silently dropping, schedule a follow-up push
     syncPushScheduled = true;
@@ -877,6 +883,17 @@ export const syncPush = async () => {
             await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'forbidden' });
           }
           clearFailure(item.id);
+        } else if (!(error as { response?: unknown })?.response) {
+          // Transport failure: the request never got a reply at all (network
+          // drop, DNS failure, timeout) — not the server rejecting this
+          // item's payload. Don't burn a retry attempt on it (recordFailure
+          // is for the server saying no, not for the network being gone),
+          // and stop the whole run instead of walking the rest of the queue:
+          // every item after this one would fail the exact same way for a
+          // reason that belongs to none of them. The next syncPush call
+          // (periodic retry, or the next local write) starts over from here.
+          console.error('Sync Push: transport failure, stopping run:', item.entity, item.entityId, error);
+          break;
         } else {
           await recordFailure(item, error);
           console.error('Sync Push Failed for item:', item, error);
