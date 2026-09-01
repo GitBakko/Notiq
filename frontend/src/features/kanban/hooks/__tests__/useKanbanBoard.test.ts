@@ -144,4 +144,53 @@ describe('useKanbanBoard — offline fallback', () => {
 
     expect(result).toBe(serverBoard);
   });
+
+  // Fix round 1 finding 3: column position has no uniqueness constraint (two
+  // columns created offline, or a concurrent reorder, can collide) — the
+  // server breaks ties with id asc, so reassembly must too.
+  it('breaks a column position tie with id, matching the server order', async () => {
+    mockGetBoard.mockRejectedValue(new Error('Network Error'));
+    boards.push({ id: 'board-1', title: 'B', description: null, coverImage: null, avatarUrl: null, ownerId: 'user-1', ownership: 'owned', createdAt: 't0', updatedAt: 't1' });
+    columns.push({ id: 'col-z', title: 'Z', position: 0, boardId: 'board-1', isCompleted: false });
+    columns.push({ id: 'col-a', title: 'A', position: 0, boardId: 'board-1', isCompleted: false });
+
+    const result = await runQueryFn();
+
+    expect(result.columns.map((c: { id: string }) => c.id)).toEqual(['col-a', 'col-z']);
+  });
+
+  // Fix round 1 finding 4: pins the reasoning the report makes in prose —
+  // without these assertions, fabricating share.id or dropping the
+  // 'ACCEPTED' literal (or any of the null/0 defaults) would still pass
+  // every other test in this file.
+  it('reconstructs owner/shares from what Dexie stores and defaults the fields it does not', async () => {
+    mockGetBoard.mockRejectedValue(new Error('Network Error'));
+    boards.push({
+      id: 'board-1',
+      title: 'Shared Board',
+      description: null,
+      coverImage: null,
+      avatarUrl: null,
+      ownerId: 'user-2',
+      ownership: 'shared',
+      owner: { id: 'user-2', name: 'Owner Name', email: 'owner@example.com' }, // no avatarUrl, no color — never selected for this shape
+      shares: [{ userId: 'user-3', permission: 'WRITE', user: { id: 'user-3', name: 'Viewer', email: 'viewer@example.com' } }], // no id, no status — /kanban/boards only ever returns ACCEPTED ones
+      createdAt: 't0',
+      updatedAt: 't1',
+    });
+
+    const result = await runQueryFn();
+
+    expect(result.owner).toEqual({ id: 'user-2', name: 'Owner Name', email: 'owner@example.com', color: null, avatarUrl: null });
+    expect(result.shares).toEqual([
+      { id: 'user-3', userId: 'user-3', permission: 'WRITE', status: 'ACCEPTED', user: { id: 'user-3', name: 'Viewer', email: 'viewer@example.com' } },
+    ]);
+    expect(result.noteId).toBeNull();
+    expect(result.note).toBeNull();
+    expect(result.noteLinkedById).toBeNull();
+    expect(result.taskListId).toBeNull();
+    expect(result.taskList).toBeNull();
+    expect(result.taskListLinkedBy).toBeNull();
+    expect(result.archivedCardsCount).toBe(0);
+  });
 });

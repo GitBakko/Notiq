@@ -65,7 +65,21 @@ export function useSync() {
 
     const runSync = async () => {
       try {
-        await syncPull();
+        // Task 6 fix round 1: a board deleted on another device (or whose
+        // share got revoked) while this tab was already sitting on it just
+        // gets pruned from Dexie by syncPull — nothing else invalidates that
+        // board's query, so an already-mounted KanbanBoardPage would otherwise
+        // keep rendering the stale copy from cache indefinitely, and a
+        // mutation made in that window would queue and only surface as a
+        // silent drop at push time (syncPush deletes 404/410 queue items).
+        // Reusing useKanbanBoard's own navigate-away path here: invalidating
+        // forces a refetch, the refetch 404s, Dexie now has nothing left to
+        // reconstruct from (syncPull just deleted it), so the existing hook
+        // fallback rethrows and the page's existing effect navigates away.
+        const prunedBoardIds = await syncPull();
+        for (const boardId of prunedBoardIds ?? []) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
+        }
       } catch (error) {
         console.error('Periodic Pull failed:', error);
       }
@@ -86,5 +100,8 @@ export function useSync() {
     const intervalId = setInterval(runSync, 30000);
 
     return () => clearInterval(intervalId);
-  }, [token, pushAndInvalidate]);
+    // queryClient is already transitively tracked via pushAndInvalidate (which
+    // depends on it), listed explicitly too now that this effect also reads it
+    // directly for the per-board invalidation above.
+  }, [token, pushAndInvalidate, queryClient]);
 }

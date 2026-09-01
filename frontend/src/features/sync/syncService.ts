@@ -7,13 +7,22 @@ import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn,
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 
 export const syncPull = async () => {
+  // Task 6 fix round 1: board ids this pull actually deletes from Dexie (owned,
+  // no longer on server; or shared, no longer accepted) — a board someone had
+  // open in an already-mounted tab keeps rendering the stale copy forever
+  // otherwise, since nothing else invalidates that query on a pure prune (no
+  // queue item is pushed, so syncPush's own invalidation never fires for it).
+  // useSync reads this to invalidate just those board queries. Declared before
+  // the try/catch so a failure anywhere still returns whatever was pruned
+  // before the failure, instead of throwing away real deletions already made.
+  const prunedBoardIds: string[] = [];
   try {
     // Captured once, synchronously, before any await in this pull run — an
     // account switch mid-pull (logout+login while a request is in flight)
     // cannot leave a later write site stamping a different user than the one
     // this pull started under. Matches syncPush's own entry guard.
     const currentUserId = useAuthStore.getState().user?.id;
-    if (!currentUserId) return; // Cannot sync if not logged in
+    if (!currentUserId) return prunedBoardIds; // Cannot sync if not logged in
 
     // Pull Notebooks
     const notebooksRes = await api.get<Notebook[]>('/notebooks');
@@ -367,6 +376,7 @@ export const syncPull = async () => {
             }
             await db.kanbanCards.where('boardId').equals(boardId).delete();
           }
+          prunedBoardIds.push(...toDeleteIds);
         }
 
         if (boardsToPut.length > 0) await db.kanbanBoards.bulkPut(boardsToPut);
@@ -489,6 +499,7 @@ export const syncPull = async () => {
             await db.kanbanColumns.where('boardId').equals(boardId).delete();
             await db.kanbanCards.where('boardId').equals(boardId).delete();
           }
+          prunedBoardIds.push(...staleIds);
         }
 
         if (sharedBoardsMapped.length > 0) await db.kanbanBoards.bulkPut(sharedBoardsMapped);
@@ -532,6 +543,7 @@ export const syncPull = async () => {
   } catch (error) {
     console.error('Sync Pull Failed:', error);
   }
+  return prunedBoardIds;
 };
 
 

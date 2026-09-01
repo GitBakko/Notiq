@@ -55,3 +55,36 @@ describe('useSync — post-push kanban invalidation', () => {
     expect(mockQueryClient.invalidateQueries).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 6 fix round 1 (finding 2): syncPull can delete a board from Dexie (no
+// longer on the server, or share revoked) while a tab is already mounted on
+// it. Nothing else invalidates that board's query on a pure prune — no queue
+// item is pushed, so pushAndInvalidate never fires for it — so useSync must
+// invalidate each pruned board's own query off syncPull's return value.
+// ---------------------------------------------------------------------------
+describe('useSync — post-pull kanban invalidation', () => {
+  it('invalidates each board query syncPull reports as pruned', async () => {
+    mockSyncPull.mockResolvedValue(['board-a', 'board-b']);
+    mockSyncPush.mockResolvedValue(false);
+
+    renderHook(() => useSync());
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-a'] });
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-b'] });
+    });
+  });
+
+  it('invalidates nothing when syncPull prunes no boards', async () => {
+    mockSyncPull.mockResolvedValue([]);
+    mockSyncPush.mockResolvedValue(false);
+
+    renderHook(() => useSync());
+
+    await waitFor(() => expect(mockSyncPull).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockQueryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});

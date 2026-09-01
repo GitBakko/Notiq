@@ -12,8 +12,9 @@ import type { KanbanBoard, KanbanColumn, KanbanCard } from '../types';
  * reassemble, caller falls back to navigate-away).
  *
  * Ordering mirrors the server's getBoard() exactly (see
- * backend/src/services/kanban/board.service.ts): columns by position, cards by
- * [position, createdAt] via the same `byPosition` moveCard/duplicateCard use.
+ * backend/src/services/kanban/board.service.ts): columns by [position, id],
+ * cards by [position, createdAt] via the same `byPosition` moveCard/
+ * duplicateCard use.
  * Archived cards need no explicit filter — Dexie never holds one: getBoard()
  * only ever sends live cards (archivedAt: null) to hydrate from, and syncPull
  * prunes any local card the server stops listing for its board.
@@ -46,7 +47,11 @@ async function reconstructBoardFromDexie(boardId: string): Promise<KanbanBoard |
   });
 
   const columns: KanbanColumn[] = [...localColumns]
-    .sort((a, b) => a.position - b.position)
+    // Task 6 fix round 1: column position has no uniqueness constraint (same
+    // class of collision cards have), so match the server's own tiebreaker —
+    // getBoard() orders columns [{position:'asc'},{id:'asc'}] — instead of
+    // position alone.
+    .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
     .map((col) => ({
       id: col.id,
       title: col.title,

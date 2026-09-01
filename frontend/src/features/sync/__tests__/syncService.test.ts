@@ -674,6 +674,43 @@ describe('syncPull', () => {
         ]),
       );
     });
+
+    // Fix round 1 finding 2: a board pruned here while a tab already has it
+    // open must still get its query invalidated — useSync does that off
+    // syncPull's return value, so the return value has to actually carry the
+    // ids syncPull deletes, not just the bulkDelete calls.
+    it('returns the ids of boards it prunes (owned and shared) for cache invalidation', async () => {
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned on the server anymore
+        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [] }); // nothing shared accepted anymore
+        return Promise.resolve({ data: [] });
+      });
+
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      // Three sequential db.kanbanBoards.toArray() calls inside syncPull's kanban
+      // section, in this order: dirtyBoards (owned block), allLocalSyncedBoards
+      // (owned block — this is where the owned prune candidate must show up),
+      // localSharedBoards (shared block — the shared prune candidate).
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { id: 'kb-gone-owned', ownership: 'owned', ownerId: 'user-1', syncStatus: 'synced' },
+        ])
+        .mockResolvedValueOnce([
+          { id: 'kb-gone-shared', ownership: 'shared', viewerId: 'user-1', syncStatus: 'synced' },
+        ]);
+
+      const prunedIds = await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-owned']);
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-shared']);
+      expect(prunedIds).toEqual(['kb-gone-owned', 'kb-gone-shared']);
+    });
   });
 
   // -----------------------------------------------------------------
@@ -745,8 +782,9 @@ describe('syncPull', () => {
     it('handles API errors gracefully without crashing', async () => {
       mockApi.get.mockRejectedValue(new Error('Network error'));
 
-      // Should not throw
-      await expect(syncPull()).resolves.toBeUndefined();
+      // Should not throw. Fix round 1: syncPull now always resolves an array
+      // (the ids it pruned, possibly none) instead of undefined.
+      await expect(syncPull()).resolves.toEqual([]);
     });
 
     it('continues pulling other entities when shared notes fail', async () => {
@@ -767,7 +805,7 @@ describe('syncPull', () => {
       mockDb.notes.bulkGet.mockResolvedValue([]);
 
       // Should not throw
-      await expect(syncPull()).resolves.toBeUndefined();
+      await expect(syncPull()).resolves.toEqual([]);
 
       // Other endpoints were still called
       expect(mockApi.get).toHaveBeenCalledWith('/notebooks');
