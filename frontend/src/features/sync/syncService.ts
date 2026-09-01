@@ -523,7 +523,12 @@ export const syncPull = async () => {
         // reopen the exact cross-account bulkDelete this scoping exists to close.
         const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared')
           .filter(b => b.viewerId === currentUserId).toArray();
-        const sharedServerIds = new Set(sharedBoardsMapped.map(b => b.id));
+        // Fix round 2: derive from the RAW server response, not sharedBoardsMapped
+        // (which the dirty-row guard above already filtered) -- mirrors the main
+        // block's serverIds, which also comes from the raw serverBoards. Using the
+        // filtered array here excluded a dirty shared board from this set too, so
+        // this staleness check saw it as "gone from the server" and pruned it.
+        const sharedServerIds = new Set(sharedBoards.map(b => b.id));
         const staleIds = localSharedBoards.filter(b => !sharedServerIds.has(b.id)).map(b => b.id);
         if (staleIds.length > 0) {
           await db.kanbanBoards.bulkDelete(staleIds);

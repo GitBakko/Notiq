@@ -762,6 +762,58 @@ describe('syncPull', () => {
       expect(putIds).not.toContain('kb-shared-z1');
       expect(putIds).toContain('kb-shared-ok');
     });
+
+    // Fix round 2: the staleness check above derived sharedServerIds from
+    // sharedBoardsMapped (the array already filtered by the dirty guard just
+    // added), not from the raw server response the main "Kanban Boards Pull"
+    // block above uses. A dirty shared board is excluded from
+    // sharedBoardsMapped by design (so bulkPut doesn't clobber it) -- but that
+    // also made it vanish from sharedServerIds, so this local-only staleness
+    // check saw a board the server still lists as "not in sharedServerIds" and
+    // pruned it: bulkDelete, cascaded columns/cards, and prunedBoardIds. The
+    // bulkPut skip a few lines below is correct and untouched -- the bug is
+    // entirely in what feeds the stale-id computation.
+    it('does not prune a locally-dirty shared board that the server still returns', async () => {
+      const dirtyBoard = {
+        id: 'kb-shared-dirty', ownership: 'shared' as const, ownerId: 'user-2', viewerId: 'user-1',
+        syncStatus: 'updated' as const, title: 'Local Edit',
+      };
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned
+        if (url === '/share/kanbans/accepted') {
+          return Promise.resolve({
+            data: [
+              { id: 'kb-shared-dirty', title: 'Server Copy', columns: [], _sharedPermission: 'WRITE' },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      // Four sequential db.kanbanBoards.toArray() calls (see the "returns the
+      // ids of boards it prunes" test's comment above for the full order):
+      // main-dirtyBoards, main-allLocalSyncedBoards, shared-dirtyBoards (the
+      // dirty row must show up here so it's excluded from sharedBoardsMapped),
+      // shared-localSharedBoards (the SAME row shows up again here as the
+      // local staleness check's candidate).
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([dirtyBoard])
+        .mockResolvedValueOnce([dirtyBoard]);
+
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      const prunedIds = await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkDelete).not.toHaveBeenCalledWith(['kb-shared-dirty']);
+      expect(prunedIds).not.toContain('kb-shared-dirty');
+    });
   });
 
   // -----------------------------------------------------------------
