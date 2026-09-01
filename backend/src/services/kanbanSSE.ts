@@ -68,6 +68,14 @@ function broadcastPresence(boardId: string): void {
 // ─── Connection management ─────────────────────────────────────
 
 export function addConnection(boardId: string, res: ServerResponse, user: BoardUser): void {
+  // The route awaits assertBoardAccess and a user lookup before getting here, so a client
+  // that navigates away in that window arrives with the socket already gone. Registering it
+  // anyway is not merely a leak: the close listener below is attached too late to ever fire,
+  // so the entry and its heartbeat survive forever, disconnectUser cannot clear them
+  // (end() on a dead response is a no-op), and because getPresenceUsers gates notification
+  // delivery, that user silently stops receiving every notification for this board.
+  if (res.destroyed || res.writableEnded) return;
+
   if (!boardConnections.has(boardId)) {
     boardConnections.set(boardId, new Map());
   }

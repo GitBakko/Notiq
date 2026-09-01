@@ -19,8 +19,17 @@ function createMockResponse(): EventEmitter & {
 } {
   const emitter = new EventEmitter();
   (emitter as any).write = vi.fn();
-  // A real ServerResponse emits 'close' when ended
-  (emitter as any).end = vi.fn(() => emitter.emit('close'));
+  // A real ServerResponse exposes these; addConnection refuses a response already gone
+  (emitter as any).destroyed = false;
+  (emitter as any).writableEnded = false;
+  // A real ServerResponse emits 'close' when ended - and end() on one that is already
+  // destroyed or ended is a silent no-op, which is what makes a phantom unclearable.
+  (emitter as any).end = vi.fn(() => {
+    const e = emitter as any;
+    if (e.destroyed || e.writableEnded) return;
+    e.writableEnded = true;
+    emitter.emit('close');
+  });
   return emitter as any;
 }
 
@@ -503,5 +512,38 @@ describe('disconnectUser', () => {
 
   it('does nothing for a board with no connections', () => {
     expect(() => disconnectUser('board-none', 'user-x')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addConnection: refuse a response that is already gone
+// ---------------------------------------------------------------------------
+describe('addConnection on a dead response', () => {
+  it('registers nothing when the socket died during the pre-connect awaits', () => {
+    const dead = createMockResponse();
+    // The route awaits assertBoardAccess + user lookup before calling addConnection.
+    // A client that navigates away in that window arrives here already destroyed.
+    (dead as any).destroyed = true;
+
+    addConnection('board-ghost', dead as any, createUser('ghost'));
+
+    expect(getPresenceUsers('board-ghost')).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no phantom that disconnectUser cannot clear', () => {
+    const dead = createMockResponse();
+    (dead as any).writableEnded = true;
+    const alive = createMockResponse();
+
+    addConnection('board-ghost2', dead as any, createUser('ghost'));
+    addConnection('board-ghost2', alive as any, createUser('real'));
+
+    // end() on an already-ended response is a no-op, so 'close' never fires and a
+    // phantom would survive disconnectUser forever - and getPresenceUsers gates
+    // notification delivery, so the ghost would silently lose every notification.
+    disconnectUser('board-ghost2', 'ghost');
+
+    expect(getPresenceUsers('board-ghost2').map((u) => u.id)).toEqual(['real']);
   });
 });
