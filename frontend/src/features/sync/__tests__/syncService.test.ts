@@ -854,7 +854,7 @@ describe('syncPush', () => {
       // The local note is shared
       mockDb.notes.get.mockResolvedValue({ id: 'shared-note', ownership: 'shared' });
 
-      await syncPush();
+      const result = await syncPush();
 
       // Should NOT call any API method
       expect(mockApi.post).not.toHaveBeenCalled();
@@ -862,6 +862,9 @@ describe('syncPush', () => {
       expect(mockApi.delete).not.toHaveBeenCalled();
       // Should remove from queue
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(4);
+      // Task 5: dropping a shared item is NOT a server change — must not
+      // trigger useSync's kanban invalidation.
+      expect(result).toBe(false);
     });
   });
 
@@ -1018,12 +1021,15 @@ describe('syncPush', () => {
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockDb.kanbanBoards.get.mockResolvedValue({ id: 'kb-shared', ownership: 'shared' });
 
-      await syncPush();
+      const result = await syncPush();
 
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockApi.delete).not.toHaveBeenCalled();
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(41);
+      // Task 5: dropping a shared board is NOT a server change — must not
+      // trigger useSync's kanban invalidation.
+      expect(result).toBe(false);
     });
 
     it('pushes CREATE kanban column with board-based URL', async () => {
@@ -1242,10 +1248,13 @@ describe('syncPush', () => {
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockApi.delete.mockRejectedValue({ response: { status: 404 } });
 
-      await syncPush();
+      const result = await syncPush();
 
       // Item should be removed from queue
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(100);
+      // Task 5: the server rejecting a delete of an already-gone resource is
+      // not evidence anything changed — must not trigger kanban invalidation.
+      expect(result).toBe(false);
     });
 
     it('handles 410 gracefully — removes item from queue', async () => {
@@ -1258,9 +1267,11 @@ describe('syncPush', () => {
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockApi.put.mockRejectedValue({ response: { status: 410 } });
 
-      await syncPush();
+      const result = await syncPush();
 
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(101);
+      // Task 5: same as 404 — dropped, not pushed.
+      expect(result).toBe(false);
     });
 
     it('marks a queue item failed immediately on 400 validation error (no infinite retry)', async () => {
@@ -1623,12 +1634,14 @@ describe('syncPush', () => {
         { id: 500, type: 'CREATE', entity: 'NOTE', entityId: 'x', userId: 'user-1', data: {}, createdAt: Date.now() },
       ]);
 
-      await syncPush();
+      const result = await syncPush();
 
       // Should bail out immediately
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockApi.delete).not.toHaveBeenCalled();
+      // Consistent with the offline-guard sibling test — false, not undefined.
+      expect(result).toBe(false);
     });
   });
 
