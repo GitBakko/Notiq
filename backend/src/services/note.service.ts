@@ -336,6 +336,11 @@ export const deleteNote = async (userId: string, id: string) => {
     return tx.note.delete({ where: { id } });
   });
 
+  // Hocuspocus resolves note access once, at connect, and never re-checks: without this
+  // every collaborator keeps an editing session open on a note row that no longer
+  // exists, and their edits die in the store() catch instead of anywhere visible.
+  hocuspocus.hocuspocus.closeConnections(id);
+
   logEvent(userId, 'NOTE_DELETED', { noteId: id });
 
   return result;

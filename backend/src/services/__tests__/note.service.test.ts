@@ -11,10 +11,16 @@ import {
   getPublicNote,
   getNoteSizeBreakdown,
 } from '../note.service';
+import { hocuspocus } from '../../hocuspocus';
 
 // Additional mocks beyond setup.ts
 vi.mock('../../hocuspocus', () => ({
-  hocuspocus: { openDirectConnection: vi.fn() },
+  // `hocuspocus` is a @hocuspocus/server Server: closeConnections lives on its inner
+  // Hocuspocus instance (Server.hocuspocus), the same path getWsConnectionCount uses.
+  hocuspocus: {
+    openDirectConnection: vi.fn(),
+    hocuspocus: { closeConnections: vi.fn() },
+  },
   extensions: [],
 }));
 
@@ -538,6 +544,25 @@ describe('deleteNote', () => {
     expect(prismaMock.chatMessage.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1' } });
     expect(prismaMock.note.delete).toHaveBeenCalledWith({ where: { id: 'n1' } });
     expect(result).toEqual({ id: 'n1' });
+  });
+
+  // A3, third door: Hocuspocus resolves note access once, at connect. Without this the
+  // collaborators keep an editing session open on a note row that no longer exists.
+  it('closes the collaboration sessions left open on the deleted note', async () => {
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'n1', userId: 'user-1' });
+    prismaMock.note.delete.mockResolvedValue({ id: 'n1' });
+
+    await deleteNote('user-1', 'n1');
+
+    expect(hocuspocus.hocuspocus.closeConnections).toHaveBeenCalledWith('n1');
+  });
+
+  it('does not close any session when the ownership guard rejects', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(null);
+
+    await expect(deleteNote('stranger', 'n1')).rejects.toThrow('errors.notes.notFound');
+
+    expect(hocuspocus.hocuspocus.closeConnections).not.toHaveBeenCalled();
   });
 
   it('throws when note does not exist or user is not owner', async () => {

@@ -34,6 +34,10 @@ vi.mock('../settings.service', () => ({
   setSetting: vi.fn(),
 }));
 
+vi.mock('../../hocuspocus', () => ({
+  disconnectUserEverywhere: vi.fn(),
+}));
+
 vi.mock('../group.service', () => ({
   hasPendingGroupInvite: vi.fn().mockResolvedValue(false),
   processPendingGroupInvites: vi.fn().mockResolvedValue(undefined),
@@ -45,6 +49,7 @@ import { sendEmail, sendNotificationEmail } from '../email.service';
 import * as inviteService from '../invite.service';
 import * as settingsService from '../settings.service';
 import * as groupService from '../group.service';
+import { disconnectUserEverywhere } from '../../hocuspocus';
 
 const prismaMock = prisma as any;
 
@@ -590,6 +595,24 @@ describe('resetPassword', () => {
 
     const updateCall = prismaMock.user.update.mock.calls[0][0];
     expect(updateCall.data.tokenVersion).toEqual({ increment: 1 });
+  });
+
+  // A2: the bumped tokenVersion only stops NEW connections. Hocuspocus authorizes once,
+  // at connect, so the sessions already open survive the reset — which is exactly the
+  // ones someone resetting a password after a suspected theft wants gone.
+  it('kicks every live collaboration session the user holds', async () => {
+    await resetPassword(RAW_TOKEN, NEW_PASSWORD);
+
+    expect(disconnectUserEverywhere).toHaveBeenCalledWith(MOCK_USER_ID);
+  });
+
+  it('kicks nobody when the reset token is rejected', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(null);
+
+    await expect(resetPassword('bad-token', NEW_PASSWORD)).rejects.toThrow(
+      'auth.errors.invalidOrExpiredToken',
+    );
+    expect(disconnectUserEverywhere).not.toHaveBeenCalled();
   });
 
   it('should throw when reset token is invalid', async () => {

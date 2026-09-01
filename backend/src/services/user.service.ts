@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises';
 import { MultipartFile } from '@fastify/multipart';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { logEvent } from './audit.service';
+import { disconnectUserEverywhere } from '../hocuspocus';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads/avatars');
 
@@ -102,6 +103,10 @@ export const changePassword = async (userId: string, oldPassword: string, newPas
     data: { password: hashedPassword, tokenVersion: { increment: 1 } },
     select: { id: true, email: true, name: true },
   });
+
+  // Same as resetPassword: tokenVersion closes the door on new connections, this closes
+  // the ones already through it.
+  disconnectUserEverywhere(userId);
 
   logEvent(userId, 'PASSWORD_CHANGED');
 

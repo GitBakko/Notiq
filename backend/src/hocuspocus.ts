@@ -269,6 +269,57 @@ export function getWsConnectionCount(): number {
   return hocuspocus.hocuspocus.getConnectionsCount();
 }
 
+/**
+ * Kick every live collaboration session a user holds on one note.
+ *
+ * onAuthenticate resolves note access ONCE, at connect, and Hocuspocus never re-checks
+ * it: a collaborator whose share is revoked keeps `readOnly === false` on the live
+ * Connection and goes on WRITING to the note until they close the tab. Every site that
+ * removes or suspends note access has to call this. Mirrors disconnectUser() in
+ * kanbanSSE.ts, which does the same job for the board event streams.
+ *
+ * Connection.close() deliberately does NOT close the WebSocket: it removes the
+ * connection from the Document and sends a CLOSE message. That is what we want — the
+ * updates stop reaching the document immediately (so they are never persisted), and the
+ * client does not enter a reconnect loop, because the provider only retries on a real
+ * socket close. On the client the provider drops to isSynced === false, which makes
+ * NoteEditor fall back to the REST save path — where the share IS re-checked per
+ * request, and answers 403.
+ */
+export function disconnectUserFromNote(noteId: string, userId: string): void {
+  try {
+    const document = hocuspocus.hocuspocus.documents.get(noteId);
+    if (!document) return;
+    for (const connection of document.getConnections()) {
+      if (connection.context?.user?.id === userId) {
+        connection.close({ code: 4403, reason: 'Forbidden' });
+      }
+    }
+  } catch (err) {
+    logger.error({ err, noteId, userId }, 'disconnectUserFromNote failed — revoked user may still hold a live session');
+  }
+}
+
+/**
+ * Kick every collaboration session a user holds, on every note.
+ *
+ * Called where a user's credentials stop being valid, rather than where one share
+ * changes: a password change or reset bumps tokenVersion, which makes onAuthenticate
+ * refuse NEW connections but says nothing about the ones already open — those were
+ * authorized once, at connect. Without this, someone who changes their password
+ * precisely because they think a session was stolen leaves the thief editing every
+ * note they had open.
+ */
+export function disconnectUserEverywhere(userId: string): void {
+  try {
+    for (const noteId of hocuspocus.hocuspocus.documents.keys()) {
+      disconnectUserFromNote(noteId, userId);
+    }
+  } catch (err) {
+    logger.error({ err, userId }, 'disconnectUserEverywhere failed — user may still hold live sessions');
+  }
+}
+
 export const hocuspocus = new Server({
   // port: 1234, // Removed to prevent standalone listening
   extensions: [
@@ -423,16 +474,31 @@ export const hocuspocus = new Server({
 
       const readOnly = !isOwner && share?.permission === 'READ';
 
-      // Per-user connection limit
-      if (!userId || !trackWsConnect(userId)) {
-        throw new Error('Too many concurrent connections');
+      if (!userId) {
+        throw new Error('Not authorized');
       }
 
-      // Fetch user details for awareness (color + avatar)
+      // [BACKUP] 2026-09-01 — this lookup ran AFTER trackWsConnect and selected only
+      // name/color/avatarUrl. It now runs first and also reads tokenVersion, so an
+      // invalidated token is rejected without having to unwind the connection counter.
+      // Fetch user details for awareness (color + avatar), plus tokenVersion.
       const userDetails = await prisma.user.findUnique({
         where: { id: userId },
-        select: { name: true, color: true, avatarUrl: true }
+        select: { name: true, color: true, avatarUrl: true, tokenVersion: true },
       });
+
+      // app.ts checks tokenVersion on every REST request (app.ts:171-178); this hook
+      // never did — the field was declared on JwtPayload and never compared to anything
+      // — so a token stolen before a password change or reset went on opening NEW
+      // collaboration sessions forever, while every REST call answered 401.
+      if (!userDetails || (decoded.tokenVersion !== undefined && userDetails.tokenVersion !== decoded.tokenVersion)) {
+        throw new Error('Token invalidated');
+      }
+
+      // Per-user connection limit
+      if (!trackWsConnect(userId)) {
+        throw new Error('Too many concurrent connections');
+      }
 
       return {
         user: {

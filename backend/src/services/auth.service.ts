@@ -9,6 +9,7 @@ import * as groupService from './group.service';
 import { BadRequestError, UnauthorizedError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors';
 import { logEvent } from './audit.service';
 import logger from '../utils/logger';
+import { disconnectUserEverywhere } from '../hocuspocus';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -279,6 +280,11 @@ export const resetPassword = async (token: string, newPassword: string) => {
       tokenVersion: { increment: 1 },
     },
   });
+
+  // The bumped tokenVersion stops NEW connections; the collaboration sessions already
+  // open were authorized once, at connect, and would survive the reset. Whoever resets
+  // a password because they suspect a stolen session expects both to end.
+  disconnectUserEverywhere(user.id);
 
   // Audit: password reset completed
   logEvent(user.id, 'PASSWORD_RESET');

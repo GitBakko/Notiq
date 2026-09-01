@@ -36,7 +36,12 @@ vi.mock('../kanbanSSE', () => ({
   disconnectUser: vi.fn(),
 }));
 
+vi.mock('../../hocuspocus', () => ({
+  disconnectUserFromNote: vi.fn(),
+}));
+
 import { disconnectUser } from '../kanbanSSE';
+import { disconnectUserFromNote } from '../../hocuspocus';
 import * as auditService from '../audit.service';
 import * as emailService from '../email.service';
 import * as notificationService from '../notification.service';
@@ -221,6 +226,36 @@ describe('shareNote', () => {
     expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
     expect(notificationService.createNotification).not.toHaveBeenCalled();
   });
+
+  // The upsert resets status to PENDING on every update, so changing a permission is
+  // really a revoke. Without the kick, the target's open editor keeps writing with the
+  // OLD permission until they close the tab.
+  it('kicks the target off the live collaboration session, since the upsert suspends access', async () => {
+    prismaMock.note.findUnique.mockResolvedValue(sampleNote);
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(targetUser)
+      .mockResolvedValueOnce(ownerUser);
+    prismaMock.sharedNote.upsert.mockResolvedValue({
+      noteId: NOTE_ID,
+      userId: TARGET_USER_ID,
+      permission: 'READ',
+      status: 'PENDING',
+      user: targetUser,
+    });
+
+    await shareNote(OWNER_ID, NOTE_ID, targetUser.email, 'READ');
+
+    expect(disconnectUserFromNote).toHaveBeenCalledWith(NOTE_ID, TARGET_USER_ID);
+  });
+
+  it('does not kick anyone when the ownership guard rejects', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ ...sampleNote, userId: 'someone-else' });
+
+    await expect(shareNote(OWNER_ID, NOTE_ID, targetUser.email, 'READ')).rejects.toThrow(
+      'errors.notes.notFoundOrDenied',
+    );
+    expect(disconnectUserFromNote).not.toHaveBeenCalled();
+  });
 });
 
 // ===========================================================================
@@ -238,6 +273,26 @@ describe('revokeNoteShare', () => {
     expect(prismaMock.sharedNote.delete).toHaveBeenCalledWith({
       where: { noteId_userId: { noteId: NOTE_ID, userId: TARGET_USER_ID } },
     });
+  });
+
+  // A3: Hocuspocus resolves access once, at connect. Without this call the revoked
+  // collaborator keeps WRITING to the note until they close the tab.
+  it('kicks the revoked user off the live collaboration session', async () => {
+    prismaMock.note.findUnique.mockResolvedValue(sampleNote);
+    prismaMock.sharedNote.delete.mockResolvedValue({ noteId: NOTE_ID, userId: TARGET_USER_ID });
+
+    await revokeNoteShare(OWNER_ID, NOTE_ID, TARGET_USER_ID);
+
+    expect(disconnectUserFromNote).toHaveBeenCalledWith(NOTE_ID, TARGET_USER_ID);
+  });
+
+  it('does not kick anyone when the ownership guard rejects', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ ...sampleNote, userId: 'someone-else' });
+
+    await expect(revokeNoteShare(OWNER_ID, NOTE_ID, TARGET_USER_ID)).rejects.toThrow(
+      'errors.notes.notFoundOrDenied',
+    );
+    expect(disconnectUserFromNote).not.toHaveBeenCalled();
   });
 
   it('should throw when note does not exist', async () => {

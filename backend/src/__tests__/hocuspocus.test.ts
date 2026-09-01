@@ -22,22 +22,26 @@ vi.mock('../utils/logger', () => ({
   },
 }));
 
+// hocuspocus.ts does `new Server(...)` at module load, so the double must be a real
+// constructor (an arrow-function mockImplementation is not one). Copying the config
+// onto the instance is what makes hocuspocus.onAuthenticate reachable from the tests.
 vi.mock('@hocuspocus/server', () => ({
-  Server: vi.fn().mockImplementation((config: any) => ({
-    ...config,
-    _config: config,
-  })),
+  Server: vi.fn(function (this: Record<string, unknown>, config: Record<string, unknown>) {
+    Object.assign(this, config);
+    this._config = config;
+    this.hocuspocus = { documents: new Map(), getConnectionsCount: () => 0 };
+  }),
 }));
 
 vi.mock('@hocuspocus/extension-logger', () => ({
-  Logger: vi.fn(),
+  Logger: vi.fn(function () { /* constructed at module load */ }),
 }));
 
 vi.mock('@hocuspocus/extension-database', () => ({
-  Database: vi.fn().mockImplementation((config: any) => ({
-    fetch: config.fetch,
-    store: config.store,
-  })),
+  Database: vi.fn(function (this: Record<string, unknown>, config: Record<string, unknown>) {
+    this.fetch = config.fetch;
+    this.store = config.store;
+  }),
 }));
 
 vi.mock('@hocuspocus/transformer', () => ({
@@ -61,28 +65,32 @@ vi.mock('jsonwebtoken', () => ({
   },
 }));
 
-// Mock TipTap extensions
-vi.mock('@tiptap/starter-kit', () => ({ default: {} }));
-vi.mock('@tiptap/extension-table', () => ({ Table: { configure: vi.fn().mockReturnValue({}) } }));
-vi.mock('@tiptap/extension-table-row', () => ({ default: {} }));
-vi.mock('@tiptap/extension-table-cell', () => ({
-  default: { extend: vi.fn().mockReturnValue({}) },
-}));
-vi.mock('@tiptap/extension-table-header', () => ({
-  default: { extend: vi.fn().mockReturnValue({}) },
-}));
-vi.mock('@tiptap/extension-text-align', () => ({
-  default: { configure: vi.fn().mockReturnValue({}) },
-}));
-vi.mock('@tiptap/extension-text-style', () => ({
-  TextStyle: {},
-}));
-vi.mock('@tiptap/extension-font-family', () => ({
-  FontFamily: {},
-}));
+// Mock TipTap extensions. hocuspocus.ts chains .extend()/.configure() while building
+// the extension list at module load, so every double has to return something chainable
+// — these tests are about onAuthenticate and the Database hooks, not about serialization
+// (that is hocuspocus-table-roundtrip.test.ts, which uses the REAL extensions).
+// vi.hoisted: vi.mock factories are hoisted above every top-level binding, so the
+// helper has to be hoisted with them.
+const { chainable } = vi.hoisted(() => {
+  const chainable = (): Record<string, unknown> => ({
+    extend: () => chainable(),
+    configure: () => chainable(),
+  });
+  return { chainable };
+});
+
+vi.mock('@tiptap/starter-kit', () => ({ default: chainable() }));
+vi.mock('@tiptap/extension-table', () => ({ Table: chainable() }));
+vi.mock('@tiptap/extension-table-row', () => ({ default: chainable() }));
+vi.mock('@tiptap/extension-table-cell', () => ({ default: chainable() }));
+vi.mock('@tiptap/extension-table-header', () => ({ default: chainable() }));
+vi.mock('@tiptap/extension-text-align', () => ({ default: chainable() }));
+vi.mock('@tiptap/extension-image', () => ({ default: chainable() }));
+vi.mock('@tiptap/extension-text-style', () => ({ TextStyle: chainable() }));
+vi.mock('@tiptap/extension-font-family', () => ({ FontFamily: chainable() }));
 vi.mock('@tiptap/core', () => ({
-  Node: { create: vi.fn().mockReturnValue({}) },
-  Extension: { create: vi.fn().mockReturnValue({}) },
+  Node: { create: vi.fn(() => chainable()) },
+  Extension: { create: vi.fn(() => chainable()) },
 }));
 vi.mock('../utils/extractText', () => ({
   extractTextFromTipTapJson: vi.fn().mockReturnValue('extracted text'),
@@ -92,9 +100,12 @@ import prisma from '../plugins/prisma';
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { Database } from '@hocuspocus/extension-database';
+import jwt from 'jsonwebtoken';
+import { hocuspocus } from '../hocuspocus';
 
 const prismaMock = prisma as any;
 const TiptapMock = TiptapTransformer as any;
+const jwtMock = jwt as any;
 
 
 // Since hocuspocus.ts has complex module-level side effects, we test the logic patterns instead
@@ -166,55 +177,120 @@ describe('Hocuspocus store logic', () => {
   });
 });
 
-describe('Hocuspocus auth logic', () => {
-  it('should reject when no token provided', () => {
-    const token = '';
-    expect(!token).toBe(true);
-    // Would throw 'Not authorized'
+// [BACKUP] 2026-09-01 — this block held five tests that re-implemented the auth logic
+// inside the test body and asserted on their own copy ("// Would throw 'Forbidden'"),
+// so onAuthenticate itself had zero coverage. The Server mock returns the config
+// object, so the real hook is reachable: these call it.
+describe('Hocuspocus onAuthenticate', () => {
+  const NOTE_ID = 'note-1';
+  const OWNER_ID = 'owner-1';
+  const SHARED_ID = 'user-2';
+
+  function authenticate(token = 'a-token') {
+    return (hocuspocus as any).onAuthenticate({ token, documentName: NOTE_ID });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: NOTE_ID,
+      userId: OWNER_ID,
+      sharedWith: [],
+    });
+    prismaMock.user.findUnique.mockResolvedValue({
+      name: 'Owner',
+      color: '#123456',
+      avatarUrl: null,
+      tokenVersion: 3,
+    });
+    jwtMock.verify.mockReturnValue({ id: OWNER_ID, email: 'o@test.com', role: 'USER', tokenVersion: 3 });
   });
 
-  it('should identify owner correctly', () => {
-    const note = { userId: 'user-1', sharedWith: [] };
-    const userId = 'user-1';
-    const isOwner = note.userId === userId;
-    expect(isOwner).toBe(true);
+  it('rejects when no token is provided', async () => {
+    await expect((hocuspocus as any).onAuthenticate({ token: '', documentName: NOTE_ID }))
+      .rejects.toThrow('Not authorized');
   });
 
-  it('should identify accepted shared user', () => {
-    const note = {
-      userId: 'owner',
-      sharedWith: [{ userId: 'user-2', status: 'ACCEPTED', permission: 'WRITE' }],
-    };
-    const userId = 'user-2';
-    const isOwner = note.userId === userId;
-    const share = note.sharedWith.find((s: any) => s.userId === userId && s.status === 'ACCEPTED');
-    expect(isOwner).toBe(false);
-    expect(share).toBeDefined();
-    expect(share?.permission).toBe('WRITE');
+  it('authenticates the owner with write access', async () => {
+    const result = await authenticate();
+
+    expect(result.user.id).toBe(OWNER_ID);
+    expect(result.user.color).toBe('#123456');
+    expect(result.readOnly).toBe(false);
   });
 
-  it('should reject non-owner non-shared user', () => {
-    const note = {
-      userId: 'owner',
-      sharedWith: [{ userId: 'user-3', status: 'PENDING', permission: 'READ' }],
-    };
-    const userId = 'user-2';
-    const isOwner = note.userId === userId;
-    const share = note.sharedWith.find((s: any) => s.userId === userId && s.status === 'ACCEPTED');
-    expect(isOwner).toBe(false);
-    expect(share).toBeUndefined();
-    // Would throw 'Forbidden'
+  it('authenticates an ACCEPTED shared user and honours their permission', async () => {
+    jwtMock.verify.mockReturnValue({ id: SHARED_ID, email: 's@test.com', role: 'USER', tokenVersion: 3 });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: NOTE_ID,
+      userId: OWNER_ID,
+      sharedWith: [{ userId: SHARED_ID, status: 'ACCEPTED', permission: 'READ' }],
+    });
+
+    const result = await authenticate();
+
+    expect(result.user.id).toBe(SHARED_ID);
+    expect(result.readOnly).toBe(true);
   });
 
-  it('should set readOnly for READ permission shared user', () => {
-    const note = {
-      userId: 'owner',
-      sharedWith: [{ userId: 'user-2', status: 'ACCEPTED', permission: 'READ' }],
-    };
-    const userId = 'user-2';
-    const isOwner = note.userId === userId;
-    const share = note.sharedWith.find((s: any) => s.userId === userId && s.status === 'ACCEPTED');
-    const readOnly = !isOwner && share?.permission === 'READ';
-    expect(readOnly).toBe(true);
+  it('rejects a user whose share is only PENDING', async () => {
+    jwtMock.verify.mockReturnValue({ id: SHARED_ID, email: 's@test.com', role: 'USER', tokenVersion: 3 });
+    prismaMock.note.findUnique.mockResolvedValue({
+      id: NOTE_ID,
+      userId: OWNER_ID,
+      sharedWith: [{ userId: SHARED_ID, status: 'PENDING', permission: 'WRITE' }],
+    });
+
+    // onAuthenticate rewrites every failure to the same generic message on purpose —
+    // it must not tell a WS client why it was refused.
+    await expect(authenticate()).rejects.toThrow('Not authorized');
+  });
+
+  it('rejects when the note does not exist', async () => {
+    prismaMock.note.findUnique.mockResolvedValue(null);
+
+    await expect(authenticate()).rejects.toThrow('Not authorized');
+  });
+
+  // A2: app.ts:171-178 checks tokenVersion on every REST request; this hook never did,
+  // so a token stolen before a password change kept opening NEW sessions forever.
+  it('rejects a token whose tokenVersion is behind the user record', async () => {
+    jwtMock.verify.mockReturnValue({ id: OWNER_ID, email: 'o@test.com', role: 'USER', tokenVersion: 2 });
+    prismaMock.user.findUnique.mockResolvedValue({
+      name: 'Owner', color: '#123456', avatarUrl: null, tokenVersion: 3,
+    });
+
+    await expect(authenticate()).rejects.toThrow('Not authorized');
+  });
+
+  it('accepts a token that carries no tokenVersion at all (issued before the field existed)', async () => {
+    jwtMock.verify.mockReturnValue({ id: OWNER_ID, email: 'o@test.com', role: 'USER' });
+
+    const result = await authenticate();
+
+    expect(result.user.id).toBe(OWNER_ID);
+  });
+
+  it('rejects when the user record is gone', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+
+    await expect(authenticate()).rejects.toThrow('Not authorized');
+  });
+
+  // The per-user connection counter must not be charged for a rejected token, or the
+  // user burns their 10-connection budget on attempts that never became connections.
+  it('does not consume a connection slot when the token is invalidated', async () => {
+    jwtMock.verify.mockReturnValue({ id: OWNER_ID, email: 'o@test.com', role: 'USER', tokenVersion: 2 });
+    prismaMock.user.findUnique.mockResolvedValue({
+      name: 'Owner', color: '#123456', avatarUrl: null, tokenVersion: 3,
+    });
+
+    for (let i = 0; i < 15; i++) {
+      await expect(authenticate()).rejects.toThrow('Not authorized');
+    }
+
+    // Budget intact: a valid token still connects after 15 rejected attempts.
+    jwtMock.verify.mockReturnValue({ id: OWNER_ID, email: 'o@test.com', role: 'USER', tokenVersion: 3 });
+    await expect(authenticate()).resolves.toMatchObject({ user: { id: OWNER_ID } });
   });
 });

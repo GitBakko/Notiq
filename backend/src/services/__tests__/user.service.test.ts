@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import prisma from '../../plugins/prisma';
 import { makeUser } from '../../__tests__/factories';
 import { updateUser, uploadAvatar, getUser, changePassword } from '../user.service';
+import { disconnectUserEverywhere } from '../../hocuspocus';
 import { BadRequestError, NotFoundError } from '../../utils/errors';
 
 // Mock bcrypt
@@ -13,6 +14,10 @@ vi.mock('bcrypt', () => ({
 }));
 
 // Mock fs and stream/promises for uploadAvatar
+vi.mock('../../hocuspocus', () => ({
+  disconnectUserEverywhere: vi.fn(),
+}));
+
 vi.mock('fs', () => ({
   default: {
     existsSync: vi.fn(() => true),
@@ -343,6 +348,27 @@ describe('changePassword', () => {
       select: { id: true, email: true, name: true },
     });
     expect(result).toEqual({ id: user.id, email: user.email, name: user.name });
+  });
+
+  // A2: tokenVersion stops NEW connections; the collaboration sessions already open
+  // were authorized once, at connect, and would outlive the password change.
+  it('kicks every live collaboration session the user holds', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeUser({ id: 'user-1', password: '$2b$10$oldhash' }));
+    (bcrypt.compare as any).mockResolvedValue(true);
+    (bcrypt.hash as any).mockResolvedValue('$2b$10$newhash');
+    prismaMock.user.update.mockResolvedValue({ id: 'user-1' });
+
+    await changePassword('user-1', 'oldPassword123', 'newPassword456');
+
+    expect(disconnectUserEverywhere).toHaveBeenCalledWith('user-1');
+  });
+
+  it('kicks nobody when the old password is wrong', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeUser({ id: 'user-1', password: '$2b$10$oldhash' }));
+    (bcrypt.compare as any).mockResolvedValue(false);
+
+    await expect(changePassword('user-1', 'wrongPassword', 'newPassword')).rejects.toThrow();
+    expect(disconnectUserEverywhere).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundError when user does not exist', async () => {

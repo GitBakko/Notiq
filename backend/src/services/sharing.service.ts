@@ -8,6 +8,7 @@ import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors'
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { createFriendship, getFriendship } from './friendship.service';
 import { disconnectUser } from './kanbanSSE';
+import { disconnectUserFromNote } from '../hocuspocus';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import { snapshotPreviousVersion } from './noteVersion.service';
 
@@ -66,6 +67,11 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
       },
     },
   });
+
+  // The upsert above resets status to PENDING on every update, so a permission change is
+  // really a revoke: without this the target's open editor keeps writing with the OLD
+  // permission. A no-op when the upsert created the share — no session can exist yet.
+  disconnectUserFromNote(noteId, targetUser.id);
 
   // Audit Log
   await auditService.logEvent(ownerId, 'SHARE_SENT', { noteId, targetEmail, permission });
@@ -132,6 +138,11 @@ export const revokeNoteShare = async (ownerId: string, noteId: string, targetUse
   });
 
   auditService.logEvent(ownerId, 'SHARE_REVOKED', { shareId: deleted.id, type: 'note' });
+
+  // Kick any collaboration session the revoked user still holds on this note. Without
+  // it they keep writing to the note until they close the tab: onAuthenticate captured
+  // readOnly at connect and Hocuspocus never re-checks.
+  disconnectUserFromNote(noteId, targetUserId);
 
   return deleted;
 };
