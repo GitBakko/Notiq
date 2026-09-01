@@ -215,7 +215,7 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
 - **C3** — Dopo il revoke il client va in **reconnect loop su 403 all'infinito** (backoff cap 30s)
   continuando a mostrare la board stale, ed è espulso solo a `staleTime` scaduto **più** un focus.
   Serve un evento terminale (`access:revoked`) o lo stop del retry sul 403 specifico.
-- **C4** — `deleteColumn` non ha guardia sull'ultima colonna `isCompleted`, e la migration
+- **C4** (CORRETTO `1325d92`) — `deleteColumn` non aveva guardia sull'ultima colonna `isCompleted`, e la migration
   `20260228130000` ha aggiunto il campo con `DEFAULT false` **senza backfill**. Su quelle board
   l'auto-archiviazione è inerte per sempre, e con lei il tick del task item collegato, la chiusura
   dei reminder e il bulk-archive. Serve una migration one-shot più la guardia in `deleteColumn`.
