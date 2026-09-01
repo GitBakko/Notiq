@@ -12,6 +12,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { createNote } from '../notes/noteService';
 import toast from 'react-hot-toast';
 import NoteEditor from '../notes/NoteEditor';
@@ -74,7 +75,8 @@ export default function VaultPage() {
     },
     onError: () => {
       toast.error(t('notes.createFailed'));
-    }
+    },
+    ...LOCAL_FIRST,
   });
 
   const { importFile, isUploading, hiddenInput, notebookPickerModal } = useImport({

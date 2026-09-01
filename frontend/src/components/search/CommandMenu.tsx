@@ -9,6 +9,7 @@ import { getTags } from '../../features/tags/tagService';
 import { searchNotes, type SearchResult } from '../../features/search/searchService';
 import { useUIStore } from '../../store/uiStore';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -66,8 +67,8 @@ export default function CommandMenu() {
   });
 
   // Client-side data for notebooks/tags (small datasets, no need for server search)
-  const { data: notebooks } = useQuery({ queryKey: queryKeys.notebooks.all, queryFn: getNotebooks });
-  const { data: tags } = useQuery({ queryKey: queryKeys.tags.all, queryFn: getTags });
+  const { data: notebooks } = useQuery({ queryKey: queryKeys.notebooks.all, queryFn: getNotebooks, ...LOCAL_FIRST });
+  const { data: tags } = useQuery({ queryKey: queryKeys.tags.all, queryFn: getTags, ...LOCAL_FIRST });
 
   const filteredNotebooks = useMemo(() =>
     notebooks?.filter(nb => !search || nb.name.toLowerCase().includes(search.toLowerCase())).slice(0, 5),

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { createTag, deleteTag } from './tagService';
 import { Tag as TagIcon, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -45,7 +46,8 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
     onError: (error) => {
       const message = error instanceof Error ? error.message : t('tags.createFailed');
       toast.error(message);
-    }
+    },
+    ...LOCAL_FIRST,
   });
 
   const deleteMutation = useMutation({
@@ -55,7 +57,8 @@ export default function TagList({ onSelectTag, selectedTagId, hideHeader = false
     },
     onError: () => {
       toast.error(t('tags.deleteFailed'));
-    }
+    },
+    ...LOCAL_FIRST,
   });
 
   const handleCreate = (e: React.FormEvent) => {

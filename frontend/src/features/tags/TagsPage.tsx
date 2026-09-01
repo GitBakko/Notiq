@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { getTags, createTag, deleteTag, type Tag } from './tagService';
 import { Plus, Tag as TagIcon, Trash2, Menu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +27,7 @@ export default function TagsPage() {
   const { data: tags, isLoading } = useQuery({
     queryKey: queryKeys.tags.all,
     queryFn: getTags,
+    ...LOCAL_FIRST,
   });
 
   const createMutation = useMutation({
@@ -38,6 +40,7 @@ export default function TagsPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   const deleteMutation = useMutation({
@@ -53,6 +56,7 @@ export default function TagsPage() {
     onError: (error: Error) => {
       toast.error(error.message);
     },
+    ...LOCAL_FIRST,
   });
 
   if (isLoading) {

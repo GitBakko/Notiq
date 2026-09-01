@@ -11,6 +11,7 @@ import { updateNote } from '../notes/noteService';
 import { updateTaskItem } from '../tasks/taskListService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
+import { LOCAL_FIRST } from '../../lib/networkMode';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUIStore } from '../../store/uiStore';
 
@@ -47,6 +48,7 @@ export default function RemindersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
     },
+    ...LOCAL_FIRST,
   });
 
   const toggleKanbanTask = useToggleKanbanReminder();
