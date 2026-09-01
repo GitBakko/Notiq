@@ -955,8 +955,12 @@ describe('moveCard', () => {
   // A mocked Prisma has no real transaction isolation — two `moveCard` calls
   // in the same test process share one fake connection and can never
   // actually race each other, so no test here can reproduce the worked
-  // counterexample from task-2.7-brief.md (two real Postgres transactions
-  // reading the same pre-state under READ COMMITTED). These are SHAPE tests:
+  // counterexample (two real Postgres transactions reading the same
+  // pre-state under READ COMMITTED: on [A0, B1, C2, D3], T1 moves A to index
+  // 3 and writes B:0, C:1, D:2, A:3; T2, holding the same stale pre-state,
+  // moves B to index 0 and writes B:0, A:1 — skipping C and D, which in its
+  // read were already at 2 and 3; committing T1 then T2 leaves A=1, B=0,
+  // C=1, D=2, a duplicate at 1 and a hole at 3). These are SHAPE tests:
   // they assert the row lock is requested, ordered by id, before any read
   // that decides the new order — the property that makes two concurrent
   // moves serialize instead of racing. A real demonstration needs two
@@ -1023,7 +1027,7 @@ describe('moveCard', () => {
     // KanbanCard/columnId to lowercase and 500s on every drag. Neither the
     // mock nor tsc catches a "tidied" `FROM KanbanCard` — this is the
     // durable substitute for the one-off live-Postgres syntax check run for
-    // this task (see task-2.7-report.md).
+    // this task.
     expect(sql).toContain('"KanbanCard"');
     expect(sql).toContain('"columnId"');
     expect(values[0]).toBe('A'); // cardId is locked explicitly, by id
@@ -1246,7 +1250,7 @@ describe('deleteCard', () => {
     // KanbanCard/columnId to lowercase and 500s on every delete. Neither the
     // mock nor tsc catches a "tidied" `FROM KanbanCard` — this is the
     // durable substitute for the one-off live-Postgres syntax check run for
-    // this task (see task-2.8-report.md).
+    // this task.
     expect(sql).toContain('"KanbanCard"');
     expect(sql).toContain('"columnId"');
     expect(values).toEqual(['B', column.id]);

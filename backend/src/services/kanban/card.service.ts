@@ -239,13 +239,27 @@ export async function moveCard(
   // That fixed a single-user resequence but is still racy under concurrency:
   // at READ COMMITTED (no row locks) two moves on the same column each read
   // the same pre-state and each skip rows the other one changed, producing a
-  // duplicate position + a hole (worked counterexample in task-2.7-brief.md).
+  // duplicate position + a hole. Worked counterexample: on [A0, B1, C2, D3],
+  // T1 moves A to index 3 and writes B:0, C:1, D:2, A:3. T2, holding a stale
+  // read of the same pre-state, moves B to index 0 and writes B:0, A:1 —
+  // skipping C and D, which in its read were already at 2 and 3. Commit T1
+  // then T2 and the column is A=1, B=0, C=1, D=2: a duplicate at 1 and a
+  // hole at 3.
   // Locking every candidate row up front, ORDERED BY id (not by the
   // move-dependent computed position), makes two concurrent moves request
   // the same rows in the same order: the second blocks on the lock until the
   // first commits, instead of racing it. This narrows the window to
   // uncontended reads/writes; it does not add retry or serializable
-  // isolation — see task-2.7-report.md for what is intentionally left open.
+  // isolation. What is intentionally left open:
+  //   - FOR UPDATE is not a predicate lock: a createCard committing between
+  //     the lock and the ordering read produces a row that is visible to
+  //     the read, unprotected, and updated outside the ascending-id order.
+  //   - The deadlock-freedom argument is exact for the lock statement, not
+  //     for the whole transaction — the source-column repair loop writes in
+  //     position order, and archiveCompletedCards / executeBulkArchive
+  //     acquire locks in plan order via updateMany.
+  //   - The lock covers KanbanCard rows only, not KanbanColumn, so a
+  //     concurrent deleteColumn on the target still races the final write.
   const { order, isCrossColumn, fromColumnTitle, fromColumnIsCompleted } = await prisma.$transaction(async (tx) => {
     // Lock candidate rows before any ordering read: the card's own row (in
     // case a concurrent move already relocated it — see the liveCard reread
@@ -271,10 +285,10 @@ export async function moveCard(
     // NOTE: if the live columnId turns out to be a THIRD column — this exact
     // card relocated elsewhere by another transaction in the sliver between
     // the outer read and the lock above — that column's rows are not part
-    // of lockColumnIds and are not locked here. That residual window is
-    // documented in task-2.7-report.md; it is far narrower than the bug
-    // this task closes (it requires a second move of this specific card,
-    // not just any card in the column, to land in that sliver).
+    // of lockColumnIds and are not locked here. That residual window is far
+    // narrower than the bug this task closes (it requires a second move of
+    // this specific card, not just any card in the column, to land in that
+    // sliver).
     // Selects the source column's title/isCompleted too, at zero extra cost
     // (same query): the post-transaction cross-column branch below used to
     // read these off the same pre-transaction `card`, which is exactly the
@@ -293,7 +307,9 @@ export async function moveCard(
     // Twin of deleteCard's repack loop below (same file) — same read-then-diff
     // shape, minus the `id: { not: cardId }` exclude (deleteCard's card is
     // already physically gone by this point). Kept duplicated rather than
-    // extracted (see task-2.8-report.md); keep the two in sync by hand.
+    // extracted: the two loops differ only by that exclude, moveCard had just
+    // been stabilised with tests pinned to its exact call sequence, and two
+    // callers didn't justify the extraction risk. Keep the two in sync by hand.
     if (isCrossColumn) {
       const sourceCards = await tx.kanbanCard.findMany({
         where: { columnId: sourceColumnId, archivedAt: null, id: { not: cardId } },
@@ -491,9 +507,9 @@ export async function deleteCard(cardId: string, actorId?: string) {
 
     // Re-read after the lock: a concurrent move could have relocated this
     // card to a different column in the window between the outer read above
-    // and this transaction opening (same residual documented in moveCard /
-    // task-2.7-report.md — narrower still, since it needs a second move of
-    // this exact card in that sliver).
+    // and this transaction opening (same residual documented in moveCard —
+    // narrower still, since it needs a second move of this exact card in
+    // that sliver).
     const liveCard = await tx.kanbanCard.findUnique({
       where: { id: cardId },
       select: { columnId: true },
@@ -509,8 +525,10 @@ export async function deleteCard(cardId: string, actorId?: string) {
     // the archive-clock reset). Twin of moveCard's source-column repair loop
     // above (`isCrossColumn` block) — same shape, minus the `id: { not:
     // cardId }` exclude since the card is already deleted by this point.
-    // Kept duplicated rather than extracted (see task-2.8-report.md); keep
-    // the two in sync by hand.
+    // Kept duplicated rather than extracted: the two loops differ only by
+    // that exclude, moveCard had just been stabilised with tests pinned to
+    // its exact call sequence, and two callers didn't justify the extraction
+    // risk. Keep the two in sync by hand.
     const remaining = await tx.kanbanCard.findMany({
       where: { columnId, archivedAt: null },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
