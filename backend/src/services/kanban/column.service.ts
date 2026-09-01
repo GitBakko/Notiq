@@ -79,12 +79,43 @@ export async function reorderColumns(
 export async function deleteColumn(columnId: string) {
   const column = await prisma.kanbanColumn.findUnique({
     where: { id: columnId },
-    select: { boardId: true, _count: { select: { cards: true } } },
+    select: { boardId: true, isCompleted: true, _count: { select: { cards: true } } },
   });
   if (!column) throw new NotFoundError('errors.kanban.columnNotFound');
   if (column._count.cards > 0) throw new BadRequestError('errors.kanban.columnHasCards');
 
-  await prisma.kanbanColumn.delete({ where: { id: columnId } });
+  // [BACKUP] 2026-09-01 — era un `prisma.kanbanColumn.delete` nudo fuori transazione.
+  // Fino al task 5.1 getBoard rimarcava l'ultima colonna a ogni lettura, quindi cancellare
+  // la colonna "completed" si riparava da solo al fetch successivo. Quella scrittura sul
+  // percorso di lettura è sparita (annullava la modifica dell'utente nella stessa
+  // interazione), e senza nulla al suo posto una board resterebbe per sempre senza colonna
+  // completed: niente auto-archiviazione, il task item collegato non viene mai spuntato,
+  // i reminder non si chiudono mai. L'invariante si sposta qui, sulla scrittura che la rompe.
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanColumn.delete({ where: { id: columnId } });
+
+    // Solo se la colonna cancellata ERA quella completed: una board che l'utente ha
+    // deliberatamente lasciato senza resta com'è. E solo se non ne sopravvive un'altra.
+    if (column.isCompleted) {
+      const stillCompleted = await tx.kanbanColumn.count({
+        where: { boardId: column.boardId, isCompleted: true },
+      });
+      if (stillCompleted === 0) {
+        const last = await tx.kanbanColumn.findFirst({
+          where: { boardId: column.boardId },
+          orderBy: [{ position: 'desc' }, { id: 'desc' }],
+          select: { id: true },
+        });
+        // `last` è null quando si cancella l'ultima colonna della board: niente da promuovere.
+        if (last) {
+          await tx.kanbanColumn.update({
+            where: { id: last.id },
+            data: { isCompleted: true },
+          });
+        }
+      }
+    }
+  });
 
   broadcast(column.boardId, {
     type: 'column:deleted',
