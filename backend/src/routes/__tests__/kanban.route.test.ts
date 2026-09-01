@@ -543,6 +543,18 @@ describe('DELETE /api/kanban/cards/:id', () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual({ success: true });
   });
+
+  it('forwards the caller as actorId so card:deleted carries an actor', async () => {
+    mockKanbanService.deleteCard.mockResolvedValue(undefined);
+
+    await app.inject({
+      method: 'DELETE',
+      url: '/api/kanban/cards/card-1',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    expect(mockKanbanService.deleteCard).toHaveBeenCalledWith('card-1', TEST_USER.id);
+  });
 });
 
 // ── Comments ─────────────────────────────────────────────────────

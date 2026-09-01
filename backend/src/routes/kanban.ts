@@ -483,7 +483,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   fastify.delete('/cards/:id', async (request) => {
     const { id } = request.params as { id: string };
     await getCardWithAccess(id, request.user.id, 'WRITE');
-    await kanbanService.deleteCard(id);
+    await kanbanService.deleteCard(id, request.user.id);
     return { success: true };
   });
 
