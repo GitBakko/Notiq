@@ -70,6 +70,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # tsconfig.json is `{"files": [], "references": [...]}`, so a bare
+      # `tsc --noEmit` compiles nothing and always exits 0. Point at the app project.
+      - name: Typecheck
+        run: npx tsc -p tsconfig.app.json --noEmit
+
       - name: Test
         run: npm test
 
