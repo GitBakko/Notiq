@@ -144,11 +144,24 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 ---
 
-## Appendice — finding della review di 4.1 / 4.3 / 5.1 (2026-09-01)
+## Appendice — finding fuori piano (2026-09-01)
 
-Prodotti da nove reviewer a lenti distinte sui tre task appena chiusi. Ogni voce è stata verificata
-sul codice: nessuna è una congettura. **Nessuno di questi è stato corretto** — sono nuovi task, non
-debito noto.
+Diciassette finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
+a lenti distinte sui task 4.1 / 4.3 / 5.1, due dalle prime run della CI. Ognuno porta il codice
+citato e uno scenario utente concreto.
+
+**Scegli da qui, non dalla tabella di priorità dell'handoff, se le due liste sono in disaccordo.**
+
+| Gruppo | Finding | Stato |
+|---|---|---|
+| **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare` (scrive ancora sulla nota)**, A4 `deleteBoard` | tutti aperti |
+| **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | tutti aperti |
+| — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
+| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C4 `1325d92`; **C2 C3 C5 aperti** |
+| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
+| **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
+
+**Cinque corretti, dodici aperti.** Il più grave è **A3**.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
