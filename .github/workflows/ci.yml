@@ -75,3 +75,107 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    name: E2E (Playwright, chromium)
+    runs-on: ubuntu-latest
+    # The suite has never run in CI: land it non-blocking, read the first report,
+    # then remove this line in a follow-up commit once the real state is known.
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?schema=public"
+      JWT_SECRET: "ci-dummy-secret"
+      FRONTEND_URL: "http://localhost:5173"
+      LOG_LEVEL: "warn"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+
+      - name: Seed superadmin (e2e/helpers.ts logs in as superadmin@notiq.ai)
+        working-directory: backend
+        run: npx tsx src/scripts/create-superadmin.ts
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Start backend on :3001
+        working-directory: backend
+        run: |
+          node dist/app.js > backend.log 2>&1 &
+          echo $! > backend.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3001/health > /dev/null; then
+              echo "backend is up"
+              curl -s http://localhost:3001/health
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not become healthy in 60s"
+          cat backend.log
+          exit 1
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: frontend
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7
+
+      - name: Upload backend log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend/backend.log
+          retention-days: 7
