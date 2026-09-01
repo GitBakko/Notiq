@@ -55,14 +55,14 @@ L'ordine non è negoziabile e il motivo è che **l'opt-in rende raggiungibili bu
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **1** | Guardie anti-resurrezione per notebook e tag in `syncPull` | `` |
-| [ ] | **2** | `deleteColumn`: accodare il DELETE anche se la riga locale non c'è | `` |
-| [ ] | **3** | `LOCAL_FIRST` sulle 31 mutation local-first e sulle 4 query Dexie | `` |
-| [ ] | **4** | `syncPush`: guardia offline e uscita dal ciclo sul guasto di trasporto | `` |
-| [ ] | **5** | Invalidare la board dopo `syncPush`, non solo nell'`onSuccess` | `` |
-| [ ] | **6** | `useKanbanBoard`: ricostruire la board da Dexie quando la GET fallisce | `` |
-| [ ] | **7** | e2e offline reale con `setOffline(true)` | `` |
-| [ ] | **8** | Convenzione in CLAUDE.md | `` |
+| [x] | **1** | Guardie anti-resurrezione per notebook e tag in `syncPull` | `c5eed28` |
+| [x] | **2** | `deleteColumn`: accodare il DELETE anche se la riga locale non c'è | `598aa41` |
+| [x] | **3** | `LOCAL_FIRST` sulle 31 mutation local-first e sulle 4 query Dexie | `80739ba` |
+| [x] | **4** | `syncPush`: guardia offline e uscita dal ciclo sul guasto di trasporto | `c93760c..eda6fc0` |
+| [x] | **5** | Invalidare la board dopo `syncPush`, non solo nell'`onSuccess` | `c062aba..fdeb934` |
+| [x] | **6** | `useKanbanBoard`: ricostruire la board da Dexie quando la GET fallisce | `4754b09..9a4aae5` |
+| [x] | **7** | e2e offline reale con `setOffline(true)` | `0e74d57` |
+| [x] | **8** | Convenzione in CLAUDE.md | `cbedc3d` |
 
 ---
 
@@ -113,7 +113,7 @@ Oggi è irraggiungibile perché la mutation di delete è in pausa offline. Il Ta
 
 **File:**
 - Crea: `frontend/src/lib/networkMode.ts` (la costante, con il commento che spiega il perché e la via d'uscita)
-- Modifica: le 13 file con mutation local-first e query Dexie-backed (elenco completo nell'output del workflow `wontz8h37`, campo `map`, categoria `local-first`)
+- Modifica: i 9 file con mutation local-first, più i file delle 4 query Dexie-backed. ⚠️ La mappa del workflow elenca 13 file, ma 4 di essi (`syncService.ts`, `useSync.ts`, `CommandMenu.tsx`, `NoteEditor.tsx`) NON contengono alcun `useMutation` — sono osservazioni su query e plumbing registrate con lo stesso schema. Verificato dal controller: `grep -c "useMutation"` = 0 su tutti e quattro
 - Modifica: `frontend/src/lib/__tests__/queryClient.test.ts`
 
 - [ ] **Step 1 — La costante.** Un `export const LOCAL_FIRST = { networkMode: 'always' } as const;` con un commento che dice: cosa fa, perché è opt-in e non default, e la via d'uscita se un giorno si vuole invertire (flip del default + inversione della costante).
