@@ -390,3 +390,66 @@ describe('connection lifecycle', () => {
     expect(users[0].id).toBe('user-2');
   });
 });
+
+// ---------------------------------------------------------------------------
+// broadcast: linked-note stripping
+// ---------------------------------------------------------------------------
+describe('broadcast note stripping', () => {
+  function parsePayload(res: { write: ReturnType<typeof vi.fn> }) {
+    const call = res.write.mock.calls.find(
+      (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('data:')
+    );
+    return JSON.parse((call![0] as string).replace('data: ', '').trim());
+  }
+
+  it('removes the linked note from a card:created payload', () => {
+    const res = createMockResponse();
+    addConnection('board-note-c', res as any, createUser('user-1'));
+    res.write.mockClear();
+
+    broadcast('board-note-c', {
+      type: 'card:created',
+      boardId: 'board-note-c',
+      card: {
+        id: 'card-1',
+        title: 'Card',
+        noteId: 'note-1',
+        note: { id: 'note-1', title: 'Secret note title', userId: 'other-user' },
+      },
+    });
+
+    const parsed = parsePayload(res);
+    expect(parsed.card).not.toHaveProperty('note');
+    expect(parsed.card.noteId).toBe('note-1');
+    expect(parsed.card.title).toBe('Card');
+  });
+
+  it('removes the linked note from a card:updated payload', () => {
+    const res = createMockResponse();
+    addConnection('board-note-u', res as any, createUser('user-1'));
+    res.write.mockClear();
+
+    broadcast('board-note-u', {
+      type: 'card:updated',
+      boardId: 'board-note-u',
+      card: { id: 'card-2', note: { id: 'note-2', title: 'Secret' } },
+    });
+
+    expect(parsePayload(res).card).not.toHaveProperty('note');
+  });
+
+  it('keeps actorId on the serialized payload', () => {
+    const res = createMockResponse();
+    addConnection('board-actor', res as any, createUser('user-1'));
+    res.write.mockClear();
+
+    broadcast('board-actor', {
+      type: 'card:deleted',
+      boardId: 'board-actor',
+      cardId: 'card-3',
+      actorId: 'user-7',
+    });
+
+    expect(parsePayload(res).actorId).toBe('user-7');
+  });
+});

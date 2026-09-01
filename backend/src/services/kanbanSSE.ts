@@ -25,7 +25,10 @@ export function getSSEConnectionCount(): number {
   return count;
 }
 
-export type KanbanEvent =
+/** `actorId` = the user who caused the event; clients drop their own echo. */
+export type KanbanEvent = KanbanEventBody & { actorId?: string };
+
+type KanbanEventBody =
   | { type: 'card:moved'; boardId: string; cardId: string; toColumnId: string; position: number }
   | { type: 'card:created'; boardId: string; card: Record<string, unknown> }
   | { type: 'card:updated'; boardId: string; card: Record<string, unknown> }
@@ -99,10 +102,25 @@ export function addConnection(boardId: string, res: ServerResponse, user: BoardU
   setTimeout(() => broadcastPresence(boardId), 50);
 }
 
+/**
+ * `cardWithAssigneeSelect` includes the linked note (id + title). getBoard filters
+ * that per requesting user; a broadcast cannot - it writes one payload to every
+ * socket on the board. Strip it here, at the single chokepoint, instead of at each
+ * of the 21 broadcast call sites.
+ */
+function stripNote(event: KanbanEvent): KanbanEvent {
+  if (event.type === 'card:created' || event.type === 'card:updated') {
+    const { note: _note, ...card } = event.card;
+    return { ...event, card };
+  }
+  return event;
+}
+
+// [BACKUP] 2026-09-01 — broadcast serialized the raw event; it now serializes stripNote(event).
 export function broadcast(boardId: string, event: KanbanEvent): void {
   const connections = boardConnections.get(boardId);
   if (!connections) return;
-  const data = `data: ${JSON.stringify(event)}\n\n`;
+  const data = `data: ${JSON.stringify(stripNote(event))}\n\n`;
   for (const conn of connections.values()) {
     try {
       conn.res.write(data);

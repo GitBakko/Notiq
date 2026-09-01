@@ -615,6 +615,7 @@ describe('moveCard', () => {
       cardId: card.id,
       toColumnId: targetColumn.id,
       position: 0,
+      actorId: actor.id,
     });
   });
 
@@ -898,13 +899,14 @@ describe('moveCard', () => {
       data: { columnId: targetColumn.id, position: 1 },
     });
     // S1/S2 are already contiguous once M is gone: nothing to rewrite there.
-    // NOTE: the broadcast object carries no actorId — matching the service.
+    // The broadcast carries the mover's actorId so the client can drop its own echo.
     expect(broadcast).toHaveBeenCalledWith(board.id, {
       type: 'card:moved',
       boardId: board.id,
       cardId: 'M',
       toColumnId: targetColumn.id,
       position: 1,
+      actorId: actor.id,
     });
   });
 

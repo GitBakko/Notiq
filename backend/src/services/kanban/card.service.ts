@@ -47,6 +47,7 @@ export async function createCard(
     type: 'card:created',
     boardId: column.boardId,
     card,
+    actorId,
   });
 
   if (actorId) {
@@ -99,7 +100,7 @@ export async function updateCard(
 
   const boardId = currentCard.column.boardId;
 
-  broadcast(boardId, { type: 'card:updated', boardId, card });
+  broadcast(boardId, { type: 'card:updated', boardId, card, actorId });
 
   // Log activity for specific field changes
   if (data.assigneeId !== undefined) {
@@ -370,6 +371,7 @@ export async function moveCard(
     // The position actually written, not the one requested: computeColumnOrder
     // clamps an out-of-range index (e.g. an append) into the column.
     position: order.indexOf(cardId),
+    actorId,
   });
 
   // Cross-column move: log activity + auto-assign card to the mover.
@@ -540,7 +542,7 @@ export async function deleteCard(cardId: string, actorId?: string) {
     }
   });
 
-  broadcast(boardId, { type: 'card:deleted', boardId, cardId });
+  broadcast(boardId, { type: 'card:deleted', boardId, cardId, actorId });
 }
 
 // ─── Card Activities ────────────────────────────────────────

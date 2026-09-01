@@ -144,7 +144,7 @@ export async function linkNoteToCard(
   });
   if (rawUpdatedCard) {
     const updatedCard = transformCard(rawUpdatedCard);
-    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard });
+    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard, actorId });
     return updatedCard;
   }
 
@@ -187,7 +187,7 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
   });
   if (rawUpdatedCard) {
     const updatedCard = transformCard(rawUpdatedCard);
-    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard });
+    broadcast(boardId, { type: 'card:updated', boardId, card: updatedCard, actorId });
     return updatedCard;
   }
 
