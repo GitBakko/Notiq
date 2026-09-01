@@ -17,7 +17,7 @@ export const syncPull = async () => {
 
     // Pull Notebooks
     const notebooksRes = await api.get<Notebook[]>('/notebooks');
-    await db.transaction('rw', db.notebooks, async () => {
+    await db.transaction('rw', db.notebooks, db.syncQueue, async () => {
       const dirtyNotebooks = await db.notebooks.where('syncStatus').notEqual('synced').toArray();
       const dirtyIds = new Set(dirtyNotebooks.map(n => n.id));
 
@@ -26,11 +26,21 @@ export const syncPull = async () => {
         syncStatus: 'synced' as const
       }));
 
-      const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id));
+      // Zombie prevention (mirrors the notes pull): a locally-deleted notebook with
+      // a pending DELETE in the queue must not be resurrected by the server response.
+      const pendingDeletes = await db.syncQueue
+        .where('entity').equals('NOTEBOOK')
+        .and(item => item.type === 'DELETE')
+        .toArray();
+      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+
+      const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id) && !pendingDeleteIds.has(n.id));
 
       const allLocalSyncedNotebooks = await db.notebooks.where('syncStatus').equals('synced').toArray();
       const serverIds = new Set(serverNotebooks.map(n => n.id));
-      const toDeleteIds = allLocalSyncedNotebooks.filter(n => !serverIds.has(n.id)).map(n => n.id);
+      const toDeleteIds = allLocalSyncedNotebooks
+        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+        .map(n => n.id);
 
       await db.notebooks.bulkDelete(toDeleteIds);
       await db.notebooks.bulkPut(notebooksToPut);
@@ -38,7 +48,7 @@ export const syncPull = async () => {
 
     // Pull Tags
     const tagsRes = await api.get<Tag[]>('/tags');
-    await db.transaction('rw', db.tags, async () => {
+    await db.transaction('rw', db.tags, db.syncQueue, async () => {
       const dirtyTags = await db.tags.where('syncStatus').notEqual('synced').toArray();
       const dirtyIds = new Set(dirtyTags.map(t => t.id));
 
@@ -49,11 +59,21 @@ export const syncPull = async () => {
         syncStatus: 'synced' as const
       }));
 
-      const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id));
+      // Zombie prevention (mirrors the notes pull): a locally-deleted tag with a
+      // pending DELETE in the queue must not be resurrected by the server response.
+      const pendingDeletes = await db.syncQueue
+        .where('entity').equals('TAG')
+        .and(item => item.type === 'DELETE')
+        .toArray();
+      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+
+      const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id) && !pendingDeleteIds.has(t.id));
 
       const allLocalSyncedTags = await db.tags.where('syncStatus').equals('synced').toArray();
       const serverIds = new Set(serverTags.map(t => t.id));
-      const toDeleteIds = allLocalSyncedTags.filter(t => !serverIds.has(t.id)).map(t => t.id);
+      const toDeleteIds = allLocalSyncedTags
+        .filter(t => !serverIds.has(t.id) && !pendingDeleteIds.has(t.id))
+        .map(t => t.id);
 
       await db.tags.bulkDelete(toDeleteIds);
       await db.tags.bulkPut(tagsToPut);

@@ -226,6 +226,35 @@ describe('syncPull', () => {
 
       expect(mockDb.notebooks.bulkDelete).toHaveBeenCalledWith(['nb-old']);
     });
+
+    it('prevents zombie resurrection for deleted notebooks', async () => {
+      const serverNotebooks = [
+        { id: 'nb-zombie', name: 'Zombie', userId: 'user-1', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+        { id: 'nb-alive', name: 'Alive', userId: 'user-1', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+      ];
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/notebooks') return Promise.resolve({ data: serverNotebooks });
+        return Promise.resolve({ data: [] });
+      });
+
+      // No dirty notebooks
+      mockDb.notebooks.toArray.mockResolvedValue([]);
+
+      // syncQueue has a pending DELETE for nb-zombie
+      mockDb.syncQueue.toArray.mockResolvedValue([
+        { id: 100, type: 'DELETE', entity: 'NOTEBOOK', entityId: 'nb-zombie', userId: 'user-1', createdAt: Date.now() },
+      ]);
+
+      await syncPull();
+
+      // nb-zombie should NOT be in the bulkPut call
+      const bulkPutCall = mockDb.notebooks.bulkPut.mock.calls[0]?.[0];
+      expect(bulkPutCall).toBeDefined();
+      const ids = bulkPutCall.map((n: { id: string }) => n.id);
+      expect(ids).not.toContain('nb-zombie');
+      expect(ids).toContain('nb-alive');
+    });
   });
 
   // -----------------------------------------------------------------
@@ -675,6 +704,37 @@ describe('syncPull', () => {
           expect.objectContaining({ id: 'tag-2', name: 'work', syncStatus: 'synced' }),
         ]),
       );
+    });
+
+    it('prevents zombie resurrection for deleted tags', async () => {
+      const serverTags = [
+        { id: 'tag-zombie', name: 'zombie', userId: 'user-1' },
+        { id: 'tag-alive', name: 'alive', userId: 'user-1' },
+      ];
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/tags') return Promise.resolve({ data: serverTags });
+        return Promise.resolve({ data: [] });
+      });
+
+      // No dirty tags
+      mockDb.tags.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      // syncQueue has a pending DELETE for tag-zombie
+      mockDb.syncQueue.toArray.mockResolvedValue([
+        { id: 101, type: 'DELETE', entity: 'TAG', entityId: 'tag-zombie', userId: 'user-1', createdAt: Date.now() },
+      ]);
+
+      await syncPull();
+
+      // tag-zombie should NOT be in the bulkPut call
+      const bulkPutCall = mockDb.tags.bulkPut.mock.calls[0]?.[0];
+      expect(bulkPutCall).toBeDefined();
+      const ids = bulkPutCall.map((t: { id: string }) => t.id);
+      expect(ids).not.toContain('tag-zombie');
+      expect(ids).toContain('tag-alive');
     });
   });
 
