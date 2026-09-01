@@ -1345,6 +1345,77 @@ describe('syncPush', () => {
   });
 
   // -----------------------------------------------------------------
+  // Return value (task 5 — gates useSync's post-push kanban invalidation:
+  // it must reflect whether server state actually changed, not merely
+  // whether the call ran without throwing)
+  // -----------------------------------------------------------------
+  describe('return value', () => {
+    it('resolves true when every queued item pushes successfully', async () => {
+      const queueItem = {
+        id: 400, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { title: 'A' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', updatedAt: new Date(0).toISOString() });
+
+      await expect(syncPush()).resolves.toBe(true);
+    });
+
+    it('resolves false when the queue is empty (nothing to push)', async () => {
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+
+      await expect(syncPush()).resolves.toBe(false);
+    });
+
+    it('resolves true when earlier items succeeded before a transport failure breaks the run', async () => {
+      const items = [
+        { id: 401, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-ok', userId: 'user-1', data: { title: 'A' }, createdAt: 1 },
+        { id: 402, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-fail', userId: 'user-1', data: { title: 'B' }, createdAt: 2 },
+      ];
+      mockDb.syncQueue.toArray.mockResolvedValue(items);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-ok', updatedAt: new Date(0).toISOString() });
+      let putCallCount = 0;
+      mockApi.put.mockImplementation(() => {
+        putCallCount++;
+        if (putCallCount === 1) return Promise.resolve({ data: {} }); // note-ok succeeds
+        return Promise.reject(new Error('Network Error')); // note-fail: transport failure, breaks the loop
+      });
+
+      await expect(syncPush()).resolves.toBe(true);
+    });
+
+    it('resolves false when the very first item is a transport failure (nothing pushed before the break)', async () => {
+      const queueItem = {
+        id: 403, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-fail',
+        userId: 'user-1', data: { title: 'A' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.put.mockRejectedValue(new Error('Network Error'));
+
+      await expect(syncPush()).resolves.toBe(false);
+    });
+
+    it('resolves false when a second concurrent call hits the already-syncing guard', async () => {
+      let resolveFirst!: () => void;
+      const firstCallPromise = new Promise<void>(resolve => { resolveFirst = resolve; });
+      const queueItem = {
+        id: 404, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-slow',
+        userId: 'user-1', data: { id: 'note-slow', title: 'Slow' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockImplementation(() => firstCallPromise.then(() => ({ data: {} })));
+      mockDb.notes.get.mockResolvedValue({ id: 'note-slow', updatedAt: new Date(0).toISOString() });
+
+      const first = syncPush();
+      await expect(syncPush()).resolves.toBe(false); // guarded by isSyncing, returns immediately
+
+      resolveFirst();
+      await first;
+    });
+  });
+
+  // -----------------------------------------------------------------
   // Concurrency guard
   // -----------------------------------------------------------------
   describe('concurrency guard', () => {
@@ -1412,11 +1483,13 @@ describe('syncPush', () => {
       };
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
 
-      await syncPush();
+      const result = await syncPush();
 
       // Bails out before even reading the queue — nothing was attempted.
       expect(mockDb.syncQueue.toArray).not.toHaveBeenCalled();
       expect(mockApi.post).not.toHaveBeenCalled();
+      // Task 5: false tells useSync there is nothing to invalidate for this call.
+      expect(result).toBe(false);
     });
 
     it('restores navigator.onLine after the previous test instead of leaking false into this one', () => {

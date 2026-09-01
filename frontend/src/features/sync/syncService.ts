@@ -638,25 +638,36 @@ async function resolveCardColumnId(cardId: string, queuedColumnId: string | unde
   return dexieCol?.syncStatus === 'synced' ? dexieColumnId : queuedColumnId;
 }
 
-export const syncPush = async () => {
+/**
+ * Returns whether this call actually pushed at least one item to the server —
+ * NOT just whether it ran without throwing. Callers (useSync) use this to
+ * decide whether to invalidate the kanban react-query cache: invalidating
+ * after a run that pushed nothing (empty queue, offline, already-syncing,
+ * logged out) would be pointless at best and a refetch storm at worst, since
+ * syncPush also runs on every 30s tick whether or not there's anything to do.
+ * A transport-failure `break` partway through still returns true if earlier
+ * items in the same run succeeded — those did change server state.
+ */
+export const syncPush = async (): Promise<boolean> => {
   // ponytail: cheap bail-out before touching Dexie or the queue at all. Does
   // NOT cover a captive portal / connected-but-dead network — navigator.onLine
   // stays true there — the response-less-error `break` below is what catches
   // that case, by stopping the run after the first request that never gets a
   // reply instead of relying on this flag to have caught it up front.
-  if (!navigator.onLine) return;
+  if (!navigator.onLine) return false;
   if (isSyncing) {
     // Instead of silently dropping, schedule a follow-up push
     syncPushScheduled = true;
-    return;
+    return false;
   }
   isSyncing = true;
   syncPushScheduled = false;
+  let pushedAny = false;
   try {
     const currentUserId = useAuthStore.getState().user?.id;
-    if (!currentUserId) return; // Cannot sync if not logged in
+    if (!currentUserId) return false; // Cannot sync if not logged in
 
-    // Filter queue by userId. 
+    // Filter queue by userId.
     // We only process items that belong to the current user.
     // Legacy items without userId will be ignored (and potentially cleaned up later or stuck, which prevents leakage).
     const allQueue = await db.syncQueue.orderBy('createdAt').toArray();
@@ -809,6 +820,7 @@ export const syncPush = async () => {
         // If successful, remove from queue and clear backoff
         if (item.id) await db.syncQueue.delete(item.id);
         clearFailure(item.id);
+        pushedAny = true;
 
         // Update syncStatus of the entity ONLY if there are no more pending items for this entity
         if (item.type !== 'DELETE') {
@@ -940,6 +952,8 @@ export const syncPush = async () => {
         }
       }
     }
+
+    return pushedAny;
   } finally {
     isSyncing = false;
     // If a push was requested while we were busy, run it now
