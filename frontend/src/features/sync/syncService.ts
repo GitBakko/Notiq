@@ -787,13 +787,21 @@ export const syncPush = async (): Promise<boolean> => {
             await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
           }
         } else if (item.entity === 'KANBAN_BOARD') {
-          // Safety: never push shared boards to REST API
-          const localBoard = await db.kanbanBoards.get(item.entityId);
-          if (localBoard?.ownership === 'shared') {
-            if (item.id) await db.syncQueue.delete(item.id);
-            clearFailure(item.id);
-            continue;
-          }
+          // [BACKUP] 2026-09-01 — used to skip ANY queued item for a shared board
+          // and delete it without calling the API at all ("never push shared
+          // boards to REST API"). The backend explicitly authorizes a WRITE
+          // collaborator's board update (assertBoardAccess(id, userId, 'WRITE')
+          // in board.service.ts) and the UI offers a rename to one — dropping the
+          // queue item made the edit look like it saved, then the next pull
+          // silently reverted it, with no error surfaced (the item was deleted,
+          // not failed). An unauthorized case still fails loudly: a 403 is
+          // already handled as terminal below.
+          //   const localBoard = await db.kanbanBoards.get(item.entityId);
+          //   if (localBoard?.ownership === 'shared') {
+          //     if (item.id) await db.syncQueue.delete(item.id);
+          //     clearFailure(item.id);
+          //     continue;
+          //   }
           if (item.type === 'CREATE') {
             const boardData = item.data as Record<string, unknown>;
             const localColumnIds = (boardData._localColumnIds as string[] | undefined) || [];

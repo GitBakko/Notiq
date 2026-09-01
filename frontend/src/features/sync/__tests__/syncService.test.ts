@@ -1100,7 +1100,16 @@ describe('syncPush', () => {
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(99);
     });
 
-    it('skips shared kanban boards — removes from queue without API call', async () => {
+    // Task 4 of the offline-first hardening pass: this used to skip ANY queued
+    // item for a shared board and delete it without ever calling the API. The
+    // backend explicitly authorizes this (assertBoardAccess(id, userId,
+    // 'WRITE')) and the UI offers a rename to a WRITE collaborator — before
+    // this branch the mutation never even reached Dexie (paused offline); once
+    // LOCAL_FIRST let it land, this skip made it look like it saved, then the
+    // next pull silently reverted it with no error, because the item was
+    // deleted, not failed. An unauthorized case still fails loudly: a 403 is
+    // already handled as terminal above.
+    it('pushes an UPDATE for a shared kanban board (WRITE collaborator) instead of silently dropping it', async () => {
       const queueItem = {
         id: 41, type: 'UPDATE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared',
         userId: 'user-1', data: { title: 'Edit' },
@@ -1108,17 +1117,18 @@ describe('syncPush', () => {
       };
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
-      mockDb.kanbanBoards.get.mockResolvedValue({ id: 'kb-shared', ownership: 'shared' });
+      mockDb.kanbanBoards.get.mockResolvedValue({
+        id: 'kb-shared', ownership: 'shared',
+        updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockDb.syncQueue.count.mockResolvedValue(0);
 
       const result = await syncPush();
 
-      expect(mockApi.post).not.toHaveBeenCalled();
-      expect(mockApi.put).not.toHaveBeenCalled();
-      expect(mockApi.delete).not.toHaveBeenCalled();
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/boards/kb-shared', { title: 'Edit' });
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(41);
-      // Task 5: dropping a shared board is NOT a server change — must not
-      // trigger useSync's kanban invalidation.
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
     it('pushes CREATE kanban column with board-based URL', async () => {
