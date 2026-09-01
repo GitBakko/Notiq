@@ -3,8 +3,9 @@ import { useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
-import { syncPull } from '../features/sync/syncService';
+import { pullAndInvalidateBoards } from '../features/sync/syncInvalidation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { X, FileDown } from 'lucide-react';
@@ -23,6 +24,7 @@ export const useImport = (options?: UseImportOptions) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scopeRef = useRef<{ notebookId?: string; isVault?: boolean }>({});
   const user = useAuthStore((state) => state.user);
+  const queryClient = useQueryClient();
 
   const notebooks = useLiveQuery(async () => {
     if (!user?.id) return [];
@@ -103,7 +105,12 @@ export const useImport = (options?: UseImportOptions) => {
       const count = response.data.importedCount;
       toast.success(t('settings.importSuccess', { count }));
 
-      await syncPull();
+      // fix round 2: was a bare `await syncPull()` that dropped the return
+      // value — the one other syncPull caller (useSync) reported it and
+      // invalidated pruned board queries; this one didn't, silently reopening
+      // the exact "board deleted, tab still rendering it" window fix round 1
+      // closed. Shared helper now makes that the only way to call syncPull.
+      await pullAndInvalidateBoards(queryClient);
 
       options?.onSuccess?.(count);
     } catch (error) {

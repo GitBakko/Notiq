@@ -2,7 +2,8 @@ import { useCallback, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { db } from '../lib/db';
-import { syncPull, syncPush } from '../features/sync/syncService';
+import { syncPush } from '../features/sync/syncService';
+import { pullAndInvalidateBoards } from '../features/sync/syncInvalidation';
 import { useAuthStore } from '../store/authStore';
 import { queryKeys } from '../lib/queryKeys';
 
@@ -76,10 +77,10 @@ export function useSync() {
         // forces a refetch, the refetch 404s, Dexie now has nothing left to
         // reconstruct from (syncPull just deleted it), so the existing hook
         // fallback rethrows and the page's existing effect navigates away.
-        const prunedBoardIds = await syncPull();
-        for (const boardId of prunedBoardIds ?? []) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
-        }
+        // pullAndInvalidateBoards (fix round 2) does the pull + the loop —
+        // useImport needs the exact same two steps, so they now share it
+        // instead of each hand-rolling the loop over syncPull's return value.
+        await pullAndInvalidateBoards(queryClient);
       } catch (error) {
         console.error('Periodic Pull failed:', error);
       }
