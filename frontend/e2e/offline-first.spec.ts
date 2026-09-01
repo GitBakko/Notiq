@@ -166,4 +166,54 @@ test.describe('Offline-first mutations — real network outage', () => {
 
     await verifyContext.close();
   });
+
+  // Regression coverage for the useKanbanBoard fix (task 1 of the offline-first
+  // hardening pass): useKanbanBoard's query set no networkMode, so under
+  // TanStack v5's 'online' default the queryFn — including its own Dexie
+  // fallback — never ran at all while navigator.onLine was false. A paused
+  // query reports fetchStatus: 'paused', so isFetching (and therefore
+  // isLoading) stays false even though no data ever arrived; KanbanBoardPage's
+  // `if (!isLoading && (isError || !board)) navigate('/kanban')` effect then
+  // fired immediately and bounced the user out — the exact case the Dexie
+  // fallback (frontend/src/features/kanban/hooks/useKanbanBoard.ts) exists to
+  // handle, made unreachable by the missing networkMode.
+  //
+  // The board is opened for the FIRST time in this browser tab only AFTER
+  // going offline, so useKanbanBoard's query has no warm cache to fall back on
+  // — this is a genuinely cold `queryFn` invocation, not a cache hit that
+  // would render correctly regardless of networkMode. A full page reload
+  // would give an even colder start, but (like every other test in this file)
+  // real offline kills Vite dev's own asset fetches for reasons unrelated to
+  // this bug — client-side navigation (React Router, no network) into a board
+  // never fetched before is enough to exercise it.
+  test('a kanban board renders from Dexie instead of bouncing to the list when genuinely offline', async ({ page, context }) => {
+    test.setTimeout(60000);
+
+    await registerAndLogin(page, { name: 'Offline Kanban User' });
+
+    // Create the board WHILE ONLINE — kanbanService.createBoard is offline-first
+    // (writes board + default columns to Dexie immediately), so this is what the
+    // reconstruction below reads from. Its own detail view is never opened here,
+    // so useKanbanBoard's query for this boardId has not run yet in this tab.
+    await page.goto('/kanban');
+    await page.getByRole('button', { name: 'New Board' }).first().click();
+    await page.fill('input[placeholder="Board title"]', 'Offline Board');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+    await expect(page.getByText('Offline Board')).toBeVisible({ timeout: 5000 });
+
+    // --- Go REALLY offline ---
+    await context.setOffline(true);
+
+    // Client-side navigation into the board's detail — the first-ever mount of
+    // useKanbanBoard for this boardId, with the browser genuinely offline.
+    await page.getByText('Offline Board').click();
+
+    // Must render from the Dexie fallback, not bounce back to the board list.
+    await expect(page).toHaveURL(/boardId=/);
+    await expect(page.getByText('To Do')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('In Progress')).toBeVisible();
+    await expect(page.getByText('Done')).toBeVisible();
+
+    await context.setOffline(false);
+  });
 });

@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const { captured } = vi.hoisted(() => ({
   captured: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-query UseQueryOptions, not worth importing here
-    options: null as null | { queryFn: () => Promise<any> },
+    options: null as null | { queryFn: () => Promise<any>; networkMode?: string },
   },
 }));
 
@@ -25,7 +25,23 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 const { mockGetBoard } = vi.hoisted(() => ({ mockGetBoard: vi.fn() }));
-vi.mock('../../kanbanService', () => ({ getBoard: mockGetBoard, byPosition: (a: { position: number; createdAt: string }, b: { position: number; createdAt: string }) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) }));
+vi.mock('../../kanbanService', () => ({
+  getBoard: mockGetBoard,
+  byPosition: (a: { position: number; createdAt: string }, b: { position: number; createdAt: string }) => a.position - b.position || a.createdAt.localeCompare(b.createdAt),
+  // Real implementation is a one-liner (ownerId/viewerId match) — mirrored here
+  // rather than imported, same as byPosition above.
+  isBoardOwnedByUser: (board: { ownerId?: string; viewerId?: string }, userId: string) =>
+    board.ownerId === userId || board.viewerId === userId,
+}));
+
+// Mutable so a test can flip to a different account — see useKanbanBoards.test.tsx
+// for the same pattern applied to that sibling hook.
+const { currentUser } = vi.hoisted(() => ({
+  currentUser: { user: { id: 'user-1' } as { id: string } | undefined },
+}));
+vi.mock('../../../../store/authStore', () => ({
+  useAuthStore: { getState: () => ({ user: currentUser.user }) },
+}));
 
 // Chainable Dexie table mocks, same shape as the real .where('boardId').equals(id).toArray().
 const { mockDb, boards, columns, cards } = vi.hoisted(() => {
@@ -66,6 +82,7 @@ beforeEach(() => {
   columns.length = 0;
   cards.length = 0;
   captured.options = null;
+  currentUser.user = { id: 'user-1' };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -172,6 +189,7 @@ describe('useKanbanBoard — offline fallback', () => {
       coverImage: null,
       avatarUrl: null,
       ownerId: 'user-2',
+      viewerId: 'user-1', // stamped by syncPull's shared-board pull for the mocked current user
       ownership: 'shared',
       owner: { id: 'user-2', name: 'Owner Name', email: 'owner@example.com' }, // no avatarUrl, no color — never selected for this shape
       shares: [{ userId: 'user-3', permission: 'WRITE', user: { id: 'user-3', name: 'Viewer', email: 'viewer@example.com' } }], // no id, no status — /kanban/boards only ever returns ACCEPTED ones
@@ -192,5 +210,55 @@ describe('useKanbanBoard — offline fallback', () => {
     expect(result.taskList).toBeNull();
     expect(result.taskListLinkedBy).toBeNull();
     expect(result.archivedCardsCount).toBe(0);
+  });
+
+  // Regression: Dexie is one IndexedDB per browser profile and survives logout,
+  // so a previous account's board rows are still there when the next account
+  // logs in on the same browser. Without an ownership check here, the offline
+  // fallback would happily reassemble and render someone else's board —
+  // shares[] and all. Mirrors useKanbanBoards' own ownerId/viewerId filter.
+  it('returns null (rethrows the original error) when the cached board belongs to a different account', async () => {
+    mockGetBoard.mockRejectedValue(new Error('Network Error'));
+    boards.push({
+      id: 'board-1',
+      title: 'Not Mine',
+      description: null,
+      coverImage: null,
+      avatarUrl: null,
+      ownerId: 'user-2', // a different account than the mocked current user (user-1)
+      ownership: 'owned',
+      createdAt: 't0',
+      updatedAt: 't1',
+    });
+
+    await expect(runQueryFn()).rejects.toThrow('Network Error');
+  });
+
+  it('reconstructs the board when it is owned by the current user', async () => {
+    mockGetBoard.mockRejectedValue(new Error('Network Error'));
+    boards.push({
+      id: 'board-1',
+      title: 'Mine',
+      description: null,
+      coverImage: null,
+      avatarUrl: null,
+      ownerId: 'user-1', // matches the mocked current user
+      ownership: 'owned',
+      createdAt: 't0',
+      updatedAt: 't1',
+    });
+
+    const result = await runQueryFn();
+
+    expect(result.id).toBe('board-1');
+  });
+
+  // The offline fallback is the entire point of this hook — it must actually
+  // run while offline. TanStack Query v5 defaults queries to networkMode:
+  // 'online', which never invokes queryFn at all while navigator reports
+  // offline (see frontend/src/lib/networkMode.ts).
+  it('sets networkMode: "always" so the fallback can run while offline', () => {
+    useKanbanBoard('board-1');
+    expect(captured.options?.networkMode).toBe('always');
   });
 });

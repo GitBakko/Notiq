@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../../../lib/queryKeys';
-import { getBoard, byPosition } from '../kanbanService';
+import { getBoard, byPosition, isBoardOwnedByUser } from '../kanbanService';
 import { db } from '../../../lib/db';
 import type { LocalKanbanColumn, LocalKanbanCard } from '../../../lib/db';
 import type { KanbanBoard, KanbanColumn, KanbanCard } from '../types';
+import { useAuthStore } from '../../../store/authStore';
 
 /**
  * Rebuild a KanbanBoard from Dexie's three flat tables — inverts the mapping
@@ -19,9 +20,12 @@ import type { KanbanBoard, KanbanColumn, KanbanCard } from '../types';
  * only ever sends live cards (archivedAt: null) to hydrate from, and syncPull
  * prunes any local card the server stops listing for its board.
  */
-async function reconstructBoardFromDexie(boardId: string): Promise<KanbanBoard | null> {
+async function reconstructBoardFromDexie(boardId: string, userId: string | undefined): Promise<KanbanBoard | null> {
   const localBoard = await db.kanbanBoards.get(boardId);
-  if (!localBoard) return null;
+  // Dexie is one IndexedDB per browser profile and survives logout — without this
+  // check, a previous account's board (shares[] included) would render for whoever
+  // is logged in now. See isBoardOwnedByUser's doc comment (kanbanService.ts).
+  if (!localBoard || !userId || !isBoardOwnedByUser(localBoard, userId)) return null;
 
   const [localColumns, localCards] = await Promise.all([
     db.kanbanColumns.where('boardId').equals(boardId).toArray(),
@@ -124,7 +128,8 @@ export function useKanbanBoard(boardId: string | undefined) {
         // rethrows the original error so the page still navigates away.
         const status = (err as { response?: { status?: number } })?.response?.status;
         if (status !== 403) {
-          const local = await reconstructBoardFromDexie(boardId!);
+          const userId = useAuthStore.getState().user?.id;
+          const local = await reconstructBoardFromDexie(boardId!, userId);
           if (local) return local;
         }
         throw err;
@@ -191,5 +196,13 @@ export function useKanbanBoard(boardId: string | undefined) {
     },
     enabled: !!boardId,
     retry: false, // Don't retry 404s (deleted boards)
+    // Not LOCAL_FIRST (networkMode.ts) — that constant is documented for Dexie-only
+    // queryFns, and this one calls the network first. TanStack v5 defaults queries to
+    // networkMode: 'online', which never invokes queryFn while offline — pausing the
+    // fetch means the Dexie fallback above never runs either, since it lives inside
+    // this same queryFn. Without this, going offline bounces the user out of a board
+    // they have a perfectly good local copy of (KanbanBoardPage's navigate-away
+    // effect fires because a paused query never leaves isLoading).
+    networkMode: 'always',
   });
 }

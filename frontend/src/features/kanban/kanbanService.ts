@@ -25,6 +25,23 @@ const getUserId = () => {
   return userId;
 };
 
+/**
+ * A Dexie kanbanBoards row belongs to the current user only if they own it
+ * (ownerId) or were stamped as its viewer on a shared row (viewerId — see
+ * LocalKanbanBoard in db.ts). Dexie is one IndexedDB per browser profile and
+ * survives logout, so a previous account's rows are still there when the
+ * next account logs in — any read of kanbanBoards straight from Dexie must
+ * gate on this or it leaks another account's board (title, shares[] with
+ * other users' names/emails, etc). Shared by useKanbanBoards (board list)
+ * and useKanbanBoard (single-board offline fallback).
+ */
+export function isBoardOwnedByUser(
+  board: { ownerId: string; viewerId?: string },
+  userId: string,
+): boolean {
+  return board.ownerId === userId || board.viewerId === userId;
+}
+
 // ── Field limits ────────────────────────────────────────────────────────
 // Mirror the Zod caps in backend/src/routes/kanban.ts. The backend rejects
 // anything longer with a 400, and a 400 in the sync queue is permanent — so

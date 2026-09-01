@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../../lib/db';
 import type { LocalKanbanBoard } from '../../../lib/db';
 import { useAuthStore } from '../../../store/authStore';
+import { isBoardOwnedByUser } from '../kanbanService';
 
 export function useKanbanBoards() {
   const userId = useAuthStore((s) => s.user?.id);
@@ -16,7 +17,7 @@ export function useKanbanBoards() {
     return db.kanbanBoards
       .orderBy('updatedAt')
       .reverse()
-      .filter((b) => b.ownerId === userId || b.viewerId === userId)
+      .filter((b) => isBoardOwnedByUser(b, userId))
       .toArray();
   }, [userId]);
 

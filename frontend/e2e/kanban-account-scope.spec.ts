@@ -192,4 +192,53 @@ test.describe('Kanban board list — cross-account scoping', () => {
     await page.goto('/kanban');
     await expect(page.getByRole('heading', { name: 'Shared-With-B' })).toBeVisible({ timeout: 15000 });
   });
+
+  // Regression coverage for task 1(a) of the offline-first hardening pass:
+  // useKanbanBoard's Dexie fallback (reconstructBoardFromDexie) did a bare
+  // db.kanbanBoards.get(boardId) with no ownership check — unlike its sibling
+  // useKanbanBoards, which fail-closes on ownerId/viewerId (see the top of this
+  // file). Navigating STRAIGHT to another account's board detail URL, with the
+  // server unreachable so the fallback is what actually decides what renders,
+  // used to render A's board (title, shares[] with other users' names/emails)
+  // for B. It must redirect back to the list instead.
+  test('does not render a previous account\'s board when navigating straight to its detail URL', async ({ page }) => {
+    test.setTimeout(60000);
+
+    // Block the board-CREATE push — same reasoning as the first test in this
+    // file: keeps the row a dirty, never-synced Dexie write so this exercises
+    // the offline-fallback's ownership guard rather than the (unrelated) prune.
+    await page.route('**/api/kanban/boards', async (route) => {
+      if (route.request().method() === 'POST') { await route.abort(); return; }
+      await route.continue();
+    });
+
+    // --- User A creates a board and opens it, purely to learn its id from the URL ---
+    await registerAndLogin(page, { name: 'Scope Detail User A' });
+    await page.goto('/kanban');
+    await page.getByRole('button', { name: 'New Board' }).first().click();
+    await page.fill('input[placeholder="Board title"]', 'A-Detail-Board');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+    await expect(page.getByText('A-Detail-Board')).toBeVisible({ timeout: 5000 });
+    await page.getByText('A-Detail-Board').click();
+    await expect(page).toHaveURL(/boardId=/, { timeout: 5000 });
+    const boardId = new URL(page.url()).searchParams.get('boardId');
+    if (!boardId) throw new Error('board id missing from the URL after opening it');
+
+    // --- Logout does NOT clear Dexie — A's board row is still there ---
+    await page.click('button[title="Logout"]');
+    await expect(page).toHaveURL('/login', { timeout: 10000 });
+
+    // --- User B logs in on the SAME browser/IndexedDB ---
+    await registerAndLogin(page, { name: 'Scope Detail User B' });
+
+    // --- Now make the backend unreachable and go straight to A's board URL:
+    // the fallback (not the server response) is what has to make this call. ---
+    await page.route('**/api/**', route => route.abort());
+    await page.goto(`/kanban?boardId=${boardId}`);
+
+    // B must be bounced back to the list, never see A's board.
+    await expect(page).toHaveURL(/\/kanban$/, { timeout: 10000 });
+    await expect(page.getByText('A-Detail-Board')).not.toBeVisible();
+    await page.unroute('**/api/**');
+  });
 });
