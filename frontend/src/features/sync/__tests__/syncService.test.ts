@@ -1363,6 +1363,30 @@ describe('syncPush', () => {
       expect(result).toBe(false);
     });
 
+    // Task 3 of the offline-first hardening pass: silently dropping a 404/410
+    // CREATE means the user's card (or column/board) never existed and nothing
+    // ever tells them. A column reconciled to 'synced' and then locally edited
+    // to 'updated' makes resolveCardColumnId distrust it and fall back to a
+    // dead queued id — making this path reachable for a CREATE, not just a
+    // stale DELETE/UPDATE. A CREATE must surface instead of vanishing.
+    it('marks an orphaned CREATE failed on 404 instead of silently dropping it', async () => {
+      const queueItem = {
+        id: 102, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-orphan',
+        userId: 'user-1', data: { columnId: 'col-dead', title: 'Never existed' },
+        createdAt: Date.now(),
+      };
+
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockApi.post.mockRejectedValue({ response: { status: 404 } });
+
+      await syncPush();
+
+      // Surfaced (status: 'failed' lights up SyncStatusIndicator's red banner +
+      // retry button), not silently deleted.
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(102, expect.objectContaining({ status: 'failed' }));
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(102);
+    });
+
     it('marks a queue item failed immediately on 400 validation error (no infinite retry)', async () => {
       const queueItem = {
         id: 103, type: 'CREATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-toolong',

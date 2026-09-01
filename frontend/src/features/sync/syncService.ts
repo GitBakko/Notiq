@@ -941,10 +941,23 @@ export const syncPush = async (): Promise<boolean> => {
 
       } catch (error: unknown) {
         const status = (error as { response?: { status?: number } })?.response?.status;
-        if (status === 404 || status === 410) {
-          // Resource no longer exists on server — remove from queue to stop infinite retries
+        if ((status === 404 || status === 410) && item.type !== 'CREATE') {
+          // Resource no longer exists on server — remove from queue to stop infinite retries.
+          // NOT for a CREATE: a 404/410 there means the thing the user made never reached
+          // the server, so silently dropping it would make it vanish with no trace. (A
+          // column reconciled to 'synced' and then locally re-edited to 'updated' makes
+          // resolveCardColumnId distrust it and fall back to a dead queued column id,
+          // which is exactly how a card CREATE reaches a 404 here.)
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
           if (item.id) await db.syncQueue.delete(item.id);
+          clearFailure(item.id);
+        } else if (status === 404 || status === 410) {
+          // Same status, but a CREATE — surface it instead (status: 'failed' lights up
+          // SyncStatusIndicator's red banner + retry button), same treatment as 400/422.
+          console.error(`Sync Push: CREATE returned ${status}, marking failed instead of dropping:`, item.entity, item.entityId);
+          if (item.id) {
+            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'not_found' });
+          }
           clearFailure(item.id);
         } else if (status === 400 || status === 422) {
           // [BACKUP] 2026-08-23 — 400/422 previously fell through to recordFailure()
