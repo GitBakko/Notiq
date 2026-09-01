@@ -63,6 +63,8 @@ L'ordine non è negoziabile e il motivo è che **l'opt-in rende raggiungibili bu
 | [x] | **6** | `useKanbanBoard`: ricostruire la board da Dexie quando la GET fallisce | `4754b09..9a4aae5` |
 | [x] | **7** | e2e offline reale con `setOffline(true)` | `0e74d57` |
 | [x] | **8** | Convenzione in CLAUDE.md | `cbedc3d` |
+| [ ] | **9** | Distinguere una query in pausa da un risultato vuoto | `` |
+| [ ] | **10** | `tasklist.service.ts`: `aggregate`+`create` atomici | `` |
 
 ---
 
@@ -208,6 +210,43 @@ Le righe ci sono già: le scrive quella stessa `queryFn` nella sua passata di id
 
 - [ ] **Step 1 — Aggiungere una riga** a `### Convenzioni` in `CLAUDE.md`: una mutation la cui `mutationFn` scrive Dexie deve spreddare `LOCAL_FIRST`, altrimenti offline non gira.
 - [ ] **Step 2 — Commit.** `docs(claude): record the LOCAL_FIRST mutation convention`
+
+---
+
+### Task 9: Le query in pausa mostrano il ramo vuoto senza dirlo
+
+> **Origine:** non nel piano originale. Aggiunto il 2026-09-01 dalla review finale di branch, che l'ha classificato come lacuna dichiarata ma non coperta ("QUERIES: only 4 of 40 useQuery sites are addressed").
+
+**Perché:** una query messa in pausa da `networkMode: 'online'` ha `fetchStatus: 'paused'`, quindi `isFetching` è falso, quindi **`isLoading` è falso**. Ogni ramo scritto come `isLoading ? <spinner/> : render(data)` prende quindi il ramo di render con `data` a `undefined`, e mostra all'utente una schermata vuota **senza spinner, senza errore e senza messaggio**. L'utente non ha modo di distinguere "non c'è niente" da "non l'ho potuto caricare".
+Verificato dal controller: **39 `useQuery` nel frontend, 4 hanno `networkMode`/`LOCAL_FIRST`. Le altre 35 no.** Il task 3 di questo piano ne ha sistemate 4 perché erano Dexie-backed e servivano al fix delle mutation; le restanti leggono dal server e la loro pausa è corretta — **è il modo in cui la pausa viene comunicata a essere sbagliato**, non la pausa.
+
+**Severità:** medium · **Effort:** M · **Rischio:** nessun TIER 1, ma tocca molte pagine.
+
+**Attenzione a non risolverlo nel modo sbagliato.** Mettere `networkMode: 'always'` su tutte e 35 è **la soluzione sbagliata**: farebbe partire richieste destinate a fallire, e su quelle con `refetchInterval` (chat di board ogni 3s, notifiche ogni 30s, annunci ogni 5 min) produrrebbe una tempesta di richieste offline che oggi correttamente non partono. Il problema è di **presentazione**, non di comportamento.
+
+- [ ] **Step 1 — Misurare prima di decidere.** Elencare tutte e 35 le `useQuery` senza `networkMode`, e per ciascuna dire cosa vede l'utente oggi quando è in pausa: schermata vuota, lista vuota, o un empty-state che mente ("nessun elemento" invece di "non caricato"). Distinguere quelle che rendono contenuto primario da quelle che alimentano un widget secondario — le prime meritano un trattamento, le seconde forse no.
+- [ ] **Step 2 — Scegliere il meccanismo unico.** Serve un modo condiviso di distinguere "in pausa" da "vuoto". `useQuery` espone `fetchStatus === 'paused'`; la strada più economica è un piccolo hook o helper che i consumatori usino al posto del solo `isLoading`. Definirlo una volta e documentarlo, invece di lasciare che 35 pagine lo reinventino.
+- [ ] **Step 3 — Applicarlo alle pagine di contenuto primario**, con un messaggio i18n in `en.json` **e** `it.json` che dica che i dati non sono disponibili offline. Varianti `dark:` obbligatorie.
+- [ ] **Step 4 — Test:** una query in pausa deve produrre lo stato "non disponibile offline" e non l'empty-state. Verificare rosso prima.
+- [ ] **Step 5 — Commit.** `fix(offline): distinguish a paused query from an empty result`
+
+---
+
+### Task 10: `tasklist.service.ts` — `aggregate` + `create` fuori transazione
+
+> **Origine:** non nel piano originale. Segnalato dal task 2.6 del piano kanban, che trovò quattro siti `aggregate`/`_max`, ne corresse due (i suoi) e segnalò questi due senza toccarli — comportamento corretto, erano fuori scope.
+
+**Perché:** è la stessa forma di difetto che il task 2.6 ha corretto in `createCard` e `createColumn`. Due punti in `backend/src/services/tasklist.service.ts` leggono il massimo di `position` e poi creano una riga con `max + 1`, **senza transazione**: `addTaskItem` a riga ~205 (`taskItem.aggregate` → `taskItem.create`) e il blocco di auto-aggiunta al kanban a riga ~255 (`kanbanCard.aggregate` → `kanbanCard.create`). Due create concorrenti nella stessa lista leggono lo stesso massimo e scrivono la stessa posizione.
+
+**Severità:** low · **Effort:** S · **Rischio:** nessun TIER 1.
+
+**Sii onesto sul limite, come fu fatto per 2.6.** Avvolgere la coppia in `$transaction` la rende atomica ma **non chiude la corsa**: a READ COMMITTED due transazioni concorrenti leggono comunque lo stesso massimo. Il task 2.6 accettò quel residuo perché il resequence ripara un duplicato al primo move successivo e i create sono molto più rari dei move. Verificare se lo stesso argomento regge per le task list — **hanno un resequence che ripara?** Se non ce l'hanno, il residuo è diverso e va detto, non ereditato per analogia.
+
+- [ ] **Step 1 — Leggere come 2.6 ha risolto** `createCard`/`createColumn` in `backend/src/services/kanban/card.service.ts` e `column.service.ts`, e seguire quella forma.
+- [ ] **Step 2 — Verificare l'argomento dell'auto-riparazione** per le task list. Se non esiste un percorso che ricompatta le posizioni, dirlo nel report e valutare se serva qualcosa di più della transazione.
+- [ ] **Step 3 — Test di forma**, non di corsa: un mock Prisma non ha isolamento. Asserire che `aggregate` e `create` girino **dentro** la callback della transazione, usando un doppio `tx` distinto — `backend/src/__tests__/setup.ts` passa `mockPrisma` come `tx`, quindi senza un doppio distinto l'asserzione non discrimina. Due test in `card.service.test.ts` e `column.service.test.ts` fanno già esattamente questo: copiarne la forma.
+- [ ] **Step 4 — Conferma rossa:** spostare temporaneamente l'`aggregate` fuori dalla transazione e vedere il test fallire, poi ripristinare.
+- [ ] **Step 5 — Commit.** `fix(tasklist): create task items and linked cards atomically`
 
 ---
 

@@ -102,9 +102,9 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 |---|------|--------|--------|
 | [x] | **3.1** | Scope `useKanbanBoards` all'utente corrente e stampa `viewerId` in pull | `57f8152..d296ee8` |
 | [x] | **3.2** | Risolvere il `columnId` della card CREATE da Dexie invece che dal payload in coda | `121d665..93253d2` |
-| [ ] | **3.3** | Non scartare più in silenzio una CREATE che va in 404 | `` |
+| [x] | **3.3** | Non scartare più in silenzio una CREATE che va in 404 | `cf163f4` |
 | [ ] | **3.4** | Far restituire a `syncPush` la promise in volo e incatenare il refresh della board | `` |
-| [ ] | **3.5** | Rimuovere il guard "non pushare mai le board condivise" | `` |
+| [x] | **3.5** | Rimuovere il guard "non pushare mai le board condivise" | `c63b8d5` |
 | [ ] | **3.6** | Eliminare il pull duplicato delle board condivise e allargare il prune (stesso commit) | `` |
 | [ ] | **3.7** | Isolare notebooks, tags e notes in `syncPull` con try/catch propri | `` |
 
