@@ -1392,14 +1392,18 @@ describe('syncPush', () => {
   // Offline guard
   // -----------------------------------------------------------------
   describe('offline guard', () => {
-    const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
-
+    // navigator.onLine is a getter on Navigator.prototype, not an own
+    // property of the instance — Object.getOwnPropertyDescriptor(navigator,
+    // 'onLine') returns undefined, so an afterEach guarded on that descriptor
+    // never restores anything and a value set here leaks into later,
+    // unrelated tests. vi.spyOn(..., 'get') + vi.restoreAllMocks() replaces
+    // the prototype getter for the spy's lifetime and genuinely undoes it.
     afterEach(() => {
-      if (originalOnLine) Object.defineProperty(navigator, 'onLine', originalOnLine);
+      vi.restoreAllMocks();
     });
 
     it('does no work at all when navigator.onLine is false', async () => {
-      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
 
       const queueItem = {
         id: 210, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-offline',
@@ -1415,8 +1419,15 @@ describe('syncPush', () => {
       expect(mockApi.post).not.toHaveBeenCalled();
     });
 
+    it('restores navigator.onLine after the previous test instead of leaking false into this one', () => {
+      // No spy set up in THIS test — if afterEach's restore were a no-op
+      // (the bug being guarded against), this would still read false from
+      // the previous test's override.
+      expect(navigator.onLine).toBe(true);
+    });
+
     it('processes the queue normally once back online', async () => {
-      Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
 
       const queueItem = {
         id: 211, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-online',
@@ -1685,6 +1696,71 @@ describe('syncPush', () => {
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(mockApi.delete).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Transport failure ceiling (fix round 1, finding 2): a persistently
+  // transport-failing item never reaches recordFailure, so without this it
+  // would head-of-line-block the queue forever with zero backoff and no
+  // signal ever reaching the user. Wall-clock elapsed since the FIRST
+  // transport failure, not attempt count — see the comment above
+  // transportFailureSince in syncService.ts for why.
+  // -----------------------------------------------------------------
+  describe('transport failure ceiling', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('marks a persistently transport-failing item failed once stuck past the 10-minute ceiling', async () => {
+      vi.useFakeTimers();
+      const queueItem = {
+        id: 950, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-stuck',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-stuck', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error')); // no `.response`, every call
+
+      // First push establishes the "stuck since" timestamp — not failed yet.
+      await syncPush();
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+
+      // Real elapsed time past the ceiling, network still down, push again.
+      vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+      await syncPush();
+
+      expect(mockDb.syncQueue.update).toHaveBeenCalledWith(950, expect.objectContaining({
+        status: 'failed',
+        lastError: 'network',
+      }));
+      // Still never charged against `attempts` — a transport failure is
+      // never evidence the payload itself was rejected.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(950, expect.objectContaining({
+        attempts: expect.anything(),
+      }));
+    });
+
+    it('does not trip the ceiling on a few ordinary blips well under 10 minutes apart', async () => {
+      vi.useFakeTimers();
+      const queueItem = {
+        id: 951, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-blip',
+        userId: 'user-1', data: { title: 'X' }, createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-blip', ownership: 'owned' });
+      mockApi.put.mockRejectedValue(new Error('Network Error'));
+
+      await syncPush();
+      vi.advanceTimersByTime(30_000); // matches useSync's 30s periodic retry cadence
+      await syncPush();
+      vi.advanceTimersByTime(30_000);
+      await syncPush();
+
+      // A minute of blips is well under the 10-minute ceiling — the item
+      // stays completely untouched, exactly like a single blip.
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
     });
   });

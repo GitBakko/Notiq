@@ -544,6 +544,29 @@ let syncPushScheduled = false;
 const failureCounts = new Map<number, { count: number; nextRetryAt: number }>();
 const MAX_RETRIES = 5;
 
+// A transport failure (no `.response` -- see the `break` branch below) never
+// reaches recordFailure, so it gets zero backoff and never increments
+// `attempts`: a persistently-unreachable item (oversized payload reset by a
+// proxy, a broken deployment link) would otherwise be retried at full
+// frequency forever, head-of-line-blocking the whole queue with no signal
+// ever reaching SyncStatusIndicator's red banner (status never becomes
+// 'failed') and no escape hatch (retryFailedSyncItems only re-enables items
+// already 'failed'). Track wall-clock elapsed since the FIRST transport
+// failure for an item, not an attempt count -- retries aren't paced (a burst
+// of local writes can trigger many pushes within seconds), so counting
+// attempts would trip on activity level, not on how long the network has
+// actually been broken. 10 minutes matches the order of magnitude of
+// recordFailure's own worst-case backoff window (5-minute cap, ~7-10 min to
+// reach MAX_RETRIES): long enough that an ordinary wifi blip or captive
+// portal that clears in under a minute never trips it, short enough that
+// the user isn't left with a silently wedged queue for the rest of the day.
+// ponytail: in-memory only, resets on page reload (like failureCounts
+// without its Dexie-seeded `attempts` backstop) -- an item is never lost by
+// that, it just gets a fresh 10-minute window; add Dexie persistence only
+// if "reload resets the clock" turns out to matter in practice.
+const transportFailureSince = new Map<number, number>();
+const TRANSPORT_FAILURE_CEILING_MS = 10 * 60 * 1000;
+
 function shouldRetry(itemId: number | undefined): boolean {
   if (!itemId) return true;
   const info = failureCounts.get(itemId);
@@ -586,7 +609,10 @@ async function recordFailure(item: SyncQueueItem, error: unknown): Promise<void>
 }
 
 function clearFailure(itemId: number | undefined): void {
-  if (itemId) failureCounts.delete(itemId);
+  if (itemId) {
+    failureCounts.delete(itemId);
+    transportFailureSince.delete(itemId);
+  }
 }
 
 /**
@@ -892,6 +918,20 @@ export const syncPush = async () => {
           // every item after this one would fail the exact same way for a
           // reason that belongs to none of them. The next syncPush call
           // (periodic retry, or the next local write) starts over from here.
+          if (item.id) {
+            const since = transportFailureSince.get(item.id) ?? Date.now();
+            transportFailureSince.set(item.id, since);
+            if (Date.now() - since >= TRANSPORT_FAILURE_CEILING_MS) {
+              // Stuck for ~10 real minutes, not just N attempts — surface it
+              // the same way a genuine server rejection does (status:
+              // 'failed' lights up SyncStatusIndicator's red banner + retry
+              // button; retryFailedSyncItems re-enables it), without ever
+              // touching `attempts`, which stays reserved for real rejections.
+              console.error('Sync Push: transport failure persisted past the 10min ceiling, marking failed:', item.entity, item.entityId);
+              await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'network' });
+              transportFailureSince.delete(item.id);
+            }
+          }
           console.error('Sync Push: transport failure, stopping run:', item.entity, item.entityId, error);
           break;
         } else {
