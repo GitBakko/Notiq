@@ -112,9 +112,9 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **4.1** | Aggiungere `actorId` a `KanbanEvent` e togliere la nota collegata dentro `broadcast()` | `` |
+| [x] | **4.1** | Aggiungere `actorId` a `KanbanEvent` e togliere la nota collegata dentro `broadcast()` | `9edc138` |
 | [ ] | **4.2** | Filtrare lato client l'eco dei propri eventi | `` |
-| [ ] | **4.3** | `disconnectUser()` e chiusura degli stream sul revoke della board | `` |
+| [x] | **4.3** | `disconnectUser()` e chiusura degli stream sul revoke della board | `c238398` |
 | [ ] | **4.4** | Emettere `board:updated` da update, delete e dalle quattro route cover/avatar | `` |
 | [ ] | **4.5** | Fare invalidare la board query all'evento `connected` | `` |
 | [ ] | **4.6** | Allineare la union di eventi frontend a quella backend | `` |
@@ -123,7 +123,7 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **5.1** | Togliere le scritture da `getBoard` | `` |
+| [x] | **5.1** | Togliere le scritture da `getBoard` | `a67f35e` |
 | [ ] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve | `` |
 | [ ] | **5.3** | Rimuovere il poll a 3 secondi dalla chat di board | `` |
 | [ ] | **5.4** | Paginare chat e commenti dal più recente | `` |
@@ -138,9 +138,106 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [ ] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri | `` |
 | [ ] | **6.3** | Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board | `` |
 | [ ] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder | `` |
-| [ ] | **6.5** | Collegare la suite Playwright alla CI | `` |
+| [x] | **6.5** | Collegare la suite Playwright alla CI | `42d2b3d` (step 6-10 richiedono la PR) |
 
 **Totale: 44 task.**
+
+---
+
+## Appendice — finding della review di 4.1 / 4.3 / 5.1 (2026-09-01)
+
+Prodotti da nove reviewer a lenti distinte sui tre task appena chiusi. Ogni voce è stata verificata
+sul codice: nessuna è una congettura. **Nessuno di questi è stato corretto** — sono nuovi task, non
+debito noto.
+
+### Il tema: l'autorizzazione è verificata al connect e mai più
+
+Quattro finding sono lo stesso difetto attraverso quattro porte diverse. SSE e Hocuspocus
+autorizzano una volta, all'apertura dello stream, e non ricontrollano mai. Il task 4.3 ha chiuso
+UNA di quelle porte (revoke dello share kanban) chiamando `disconnectUser`. Le altre restano.
+
+| # | Porta | Cosa succede | File |
+|---|---|---|---|
+| **A1** | `deleteUser` (admin) | Account cancellato continua a ricevere card, commenti e chat della board finché tiene il tab aperto. Le REST 401ano, lo stream no. | `admin.service.ts:213` |
+| **A2** | reset/cambio password | `tokenVersion` viene incrementato e invalida ogni JWT, ma lo stream SSE già aperto dell'attaccante continua a consegnare tutto. L'utente crede di aver chiuso fuori il ladro. | `auth.service.ts:279`, `user.service.ts:102` |
+| **A3** | `revokeNoteShare` | **Peggiore delle altre: è bidirezionale.** Il collaboratore revocato mantiene la sessione Hocuspocus con `readOnly` catturato a `false` al connect, quindi **continua a scrivere sulla nota**. | `sharing.service.ts:115-137`, `hocuspocus.ts:394-449` |
+| **A4** | `deleteBoard` | Né chiude gli stream né emette nulla: i collaboratori restano su una board id morta con heartbeat vivo, e vengono espulsi solo dopo 5 min di `staleTime` **e** un focus di finestra. | `board.service.ts:259-261` |
+
+La correzione a chokepoint sarebbe una delle due: `disconnectUserEverywhere(userId)` che spazza
+tutte le board, chiamata dove `tokenVersion` cambia e da `deleteUser`; oppure una ri-autorizzazione
+sul tick di heartbeat SSE, che copre A1, A2, A4 e i futuri in un punto solo. A3 richiede il
+trattamento equivalente su Hocuspocus (`beforeHandleMessage`), ed è TIER 1.
+
+### Il titolo della nota esce lo stesso, da quattro strade che il 4.1 non tocca
+
+Il 4.1 ha tolto `note` dai payload SSE. Il titolo continua a raggiungere chi non ha accesso:
+
+| # | Strada | File |
+|---|---|---|
+| **B1** | `linkNoteToCard` **persiste** `noteTitle` in `metadata` dell'activity log, e `GET /cards/:id/activities` lo serve a chiunque abbia READ sulla board, senza filtro. Il titolo che il 4.1 nasconde sulla faccia della card è leggibile nella tab Activity **della stessa modale**. | `linking.service.ts:136-138,171-182`, `card.service.ts:550-560`, `routes/kanban.ts:492-497` |
+| **B2** | La risposta 200 di `updateCard` e `getArchivedCards` ritornano `cardWithAssigneeSelect` intero, `note` compresa. Non è dipinta a schermo oggi, ma arriva nel browser. | `card.service.ts:93-98,608-618` |
+| **B3** | `updateBoard` ritorna la nota di board non filtrata: la PUT dice a Bob ciò che la GET gli nasconde. | `board.service.ts:241-256` |
+| **B4** | La **task list** collegata alla board non è filtrata da nessuna parte — `getBoard` filtra solo i `noteId` — e il frontend ne rende il titolo incondizionatamente, accanto a una riga nota che ha il fallback "no access" esplicito. | `board.service.ts:171-172,185-224`, `KanbanBoardPage.tsx:789-799` |
+
+Forma corretta della correzione, la stessa che ha reso giusto `stripNote`: estrarre il filtro di
+`getBoard` (`board.service.ts:195-220`) in `filterNoteVisibility(cards, userId)` dentro `helpers.ts`
+e chiamarlo dai tre call site, più l'equivalente per la task list. B1 in più richiede di smettere di
+**salvare** il titolo (`metadata: { noteId }` e risoluzione per utente in lettura) e una migration
+one-shot per le righe già scritte.
+
+### `addConnection` registra su socket già morti, e ciò spegne le notifiche per sempre
+
+La route fa due round-trip Prisma prima di `addConnection`; se il client abortisce in quella
+finestra, `addConnection` registra comunque connessione + heartbeat da 30s, e il listener `close`
+viene agganciato troppo tardi per scattare mai. Verificato con il modulo vero: le connessioni
+fantasma si accumulano linearmente e `disconnectUser` **non può** ripulirle, perché `end()` su una
+response già distrutta è un no-op.
+
+Il danno non è la memoria. `getPresenceUsers` fa da gate all'invio delle notifiche
+(`if (activeOnBoard.has(uid)) continue`): l'utente fantasma smette di ricevere **ogni** notifica
+in-app ed email per assegnazioni, commenti e chat di quella board, per sempre, senza alcun modo di
+accorgersene o rimediare. Nemmeno revocare e ricondividere aiuta. Si ripulisce solo al restart.
+
+Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
+`if (res.destroyed || res.writableEnded) return;`. File: `kanbanSSE.ts:75-98`, `routes/kanban.ts:361-381`.
+
+### Residui dei tre task appena chiusi
+
+- **C1** — `deleteCard` riceve `actorId` ma **la route non glielo passa** (`routes/kanban.ts:483-488`),
+  quindi `card:deleted` viaggia sempre senza attore. Il test esistente passa lo stesso perché non è
+  stato aggiornato. Una riga, ma finché resta così il 4.2 non potrà filtrare l'eco proprio sul
+  percorso dove la riconciliazione locale è più forte.
+- **C2** — `actorId` identifica un **utente**, non una connessione. Con la soppressione ingenua che il
+  4.2 prescrive, il secondo tab o il secondo device dello stesso utente scarta gli update veri e
+  resta indietro fino a 5 minuti (`staleTime`). **Da risolvere dentro il 4.2**, non dopo: o si conia
+  un id per connessione da rimandare indietro sulle mutation, o si sopprime solo
+  `invalidateQueries` e mai la scrittura Dexie.
+- **C3** — Dopo il revoke il client va in **reconnect loop su 403 all'infinito** (backoff cap 30s)
+  continuando a mostrare la board stale, ed è espulso solo a `staleTime` scaduto **più** un focus.
+  Serve un evento terminale (`access:revoked`) o lo stop del retry sul 403 specifico.
+- **C4** — `deleteColumn` non ha guardia sull'ultima colonna `isCompleted`, e la migration
+  `20260228130000` ha aggiunto il campo con `DEFAULT false` **senza backfill**. Su quelle board
+  l'auto-archiviazione è inerte per sempre, e con lei il tick del task item collegato, la chiusura
+  dei reminder e il bulk-archive. Serve una migration one-shot più la guardia in `deleteColumn`.
+- **C5** — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
+  `['kanban-card-activities', cardId]`, mai `['kanban-comments', cardId]`. Con `staleTime` a 5 minuti
+  e nessun polling, chi guarda una card non vede mai arrivare i commenti altrui — ma il badge del
+  conteggio si aggiorna, perché viaggia sulla board query. Pre-esistente. Una riga.
+
+### Fuori scope kanban, trovato tracciando il percorso di lettura
+
+- **D1** — L'hook globale `onRequest` che scrive `lastActiveAt` (`app.ts:189-202`) **non può mai
+  scattare**: gira prima di `fastify.authenticate` registrato a livello di route, quindi
+  `request.user` è sempre `undefined`. Verificato sul DB di dev: **592 utenti, 590 con
+  `lastActiveAt` identico a `createdAt`**; i 2 restanti condividono un timestamp di backfill. Zero
+  scritture applicative in ~9 mesi. Conseguenze: `isOnlineInApp` è sempre falso, quindi ogni notifica
+  escala a email/push invece di fermarsi in-app (`notifications.ts:110`,
+  `comments-chat.service.ts:249`, `chat.service.ts:132`, `notification.service.ts:34`), e il tile
+  "utenti attivi" della dashboard admin conta in realtà gli utenti **registrati** negli ultimi 30
+  giorni (`admin.service.ts:39-45`). Correzione: spostare il touch dentro il decorator `authenticate`
+  subito dopo `jwtVerify()`.
+
+---
 
 ---
 
