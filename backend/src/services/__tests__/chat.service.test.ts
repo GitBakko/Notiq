@@ -10,9 +10,13 @@ vi.mock('../email.service', () => ({
   sendNotificationEmail: vi.fn(),
 }));
 
+// `hocuspocus` is a @hocuspocus/server Server instance: the documents Map lives on
+// its inner Hocuspocus instance (Server.hocuspocus.documents), NOT on the Server
+// itself. Mocking the flat shape is what let the "skip notification for active
+// users" test below pass while the production lookup silently found nothing.
 vi.mock('../../hocuspocus', () => ({
   hocuspocus: {
-    documents: new Map(),
+    hocuspocus: { documents: new Map() },
   },
 }));
 
@@ -29,7 +33,7 @@ const NOTE_ID = 'note-1';
 beforeEach(() => {
   vi.clearAllMocks();
   // Reset hocuspocus documents map
-  (hocuspocus as any).documents = new Map();
+  (hocuspocus as any).hocuspocus.documents = new Map();
 });
 
 describe('createMessage', () => {
@@ -159,7 +163,7 @@ describe('createMessage', () => {
         { context: { user: { id: collaboratorId } } },
       ],
     };
-    (hocuspocus as any).documents = new Map([[NOTE_ID, mockDocument]]);
+    (hocuspocus as any).hocuspocus.documents = new Map([[NOTE_ID, mockDocument]]);
 
     prismaMock.chatMessage.create.mockResolvedValue(mockMessage);
     prismaMock.note.findUnique.mockResolvedValue({

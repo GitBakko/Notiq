@@ -56,8 +56,13 @@ export const createMessage = async (userId: string, noteId: string, content: str
   const activeUserIds = new Set<string>();
 
   try {
-    const server = hocuspocus as { documents?: Map<string, { getConnections(): Array<{ context?: { user?: { id: string } } }> }> };
-    const document = server.documents?.get(noteId);
+    // [BACKUP] 2026-09-01 — read `hocuspocus.documents`, which does not exist:
+    // `hocuspocus` is a @hocuspocus/server Server, and the documents Map lives on its
+    // inner Hocuspocus instance (Server.hocuspocus.documents — the same path
+    // getWsConnectionCount already uses). The old lookup was always undefined, so
+    // activeUserIds stayed empty and EVERY note-chat message escalated to email and
+    // push even when the recipient had the note open in front of them.
+    const document = hocuspocus.hocuspocus.documents.get(noteId);
 
     if (document) {
       document.getConnections().forEach((conn) => {
