@@ -138,7 +138,7 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [ ] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri | `` |
 | [ ] | **6.3** | Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board | `` |
 | [ ] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder | `` |
-| [x] | **6.5** | Collegare la suite Playwright alla CI | `42d2b3d` (step 6-10 richiedono la PR) |
+| [x] | **6.5** | Collegare la suite Playwright alla CI | `42d2b3d..9f4c2f3` (step 1-10, job bloccante, 43/43 verdi) |
 
 **Totale: 44 task.**
 
@@ -223,6 +223,42 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
   `['kanban-card-activities', cardId]`, mai `['kanban-comments', cardId]`. Con `staleTime` a 5 minuti
   e nessun polling, chi guarda una card non vede mai arrivare i commenti altrui — ma il badge del
   conteggio si aggiorna, perché viaggia sulla board query. Pre-esistente. Una riga.
+
+
+### Quello che ha trovato la CI, che nessun audit poteva trovare — CORRETTI
+
+Il task 6.5 ha portato la suite Playwright in CI. Le prime tre run hanno prodotto due bug veri.
+Nessuno dei due era uno spec marcio, ed entrambi erano **invisibili leggendo il codice**.
+
+- **E1** (CORRETTO `0731e25`) — **le migration non riproducevano più `schema.prisma`.** Prima run:
+  41 falliti su 43, tutti lo stesso errore, sul login del superadmin alla prima riga dell'helper:
+  `PrismaClientKnownRequestError: The column (not available) does not exist in the current database`.
+  Un DB costruito da zero con `prisma migrate deploy` non aveva `User.color`, `Note.ydocState` né il
+  valore enum `NotificationType.CHAT_MESSAGE` — presenti in dev e in prod ma **mai catturati in una
+  migration** (applicati con `db push`) — e aveva `Attachment_noteId_fkey` e `TagsOnNotes_noteId_fkey`
+  a `RESTRICT` dove lo schema dice `CASCADE`.
+  **Non era un problema di CI.** Un restore di disaster recovery su database vuoto, o
+  `docker compose up` su volume pulito, produceva un'applicazione che non arrivava al login.
+  Era invisibile per costruzione: serviva un database creato da zero, e in questo repo non ne
+  partiva uno da mesi. Corretto con una migration idempotente, verificata in tre direzioni (DB da
+  zero che diffa pulito, no-op su dev, e `loginUser('superadmin@notiq.ai')` che torna a funzionare
+  sul DB fresco). Restano due `DROP INDEX` nel diff, **intenzionali e documentati nella migration**:
+  Prisma non può modellare un indice GIN su `Unsupported("tsvector")`.
+- **E2** (CORRETTO `24dc798`) — **`import.spec.ts` seminava gli utenti via `docker cp`.** Tutti e
+  quattro i suoi spec scrivevano un `.sql` temporaneo e chiamavano `docker cp` / `docker exec` verso
+  un container hardcoded `notiq-db`, con user e nome DB hardcoded: funzionava solo su una macchina
+  con lo stack compose acceso. Il docblock si giustificava dicendo che la registrazione richiede
+  SMTP — falso: `registerAndLogin` in `helpers.ts` registra via API con invite code e ribalta
+  `isVerified` via admin API, la stessa scorciatoia senza dipendenze dal demone Docker, e ogni altro
+  spec la usava già.
+
+**Esito:** run 1 → 2 passati / 41 falliti; run 2 → 39 / 4; run 3 → **43 passati**; run 4 → verde con
+il job **bloccante**. `continue-on-error` rimosso in `9f4c2f3`.
+
+**La lezione, per la prossima sessione.** Due sessioni di audit — 38 agent la prima, 13 la seconda —
+non hanno trovato E1, perché tutti leggevano il codice e nessuno poteva leggere un database che non
+esisteva. Vale come l'`offline-first.spec.ts` della sessione precedente: certe classi di difetto si
+manifestano solo se si costruisce davvero l'ambiente da zero.
 
 ### Fuori scope kanban, trovato tracciando il percorso di lettura
 
