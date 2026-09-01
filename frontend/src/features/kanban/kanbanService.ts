@@ -380,7 +380,7 @@ export async function updateCard(
 }
 
 /** Sibling ordering, identical to the server's [{position asc}, {createdAt asc}]. */
-function byPosition(a: LocalKanbanCard, b: LocalKanbanCard): number {
+export function byPosition(a: LocalKanbanCard, b: LocalKanbanCard): number {
   return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
 }
 
