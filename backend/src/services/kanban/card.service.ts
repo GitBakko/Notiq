@@ -647,6 +647,10 @@ export async function previewBulkArchive(boardId: string, olderThanDays: number)
     },
     select: { id: true, title: true, updatedAt: true },
     orderBy: { updatedAt: 'asc' },
+    // The exec endpoint this preview feeds (executeBulkArchive) is capped at
+    // 1000 card ids (bulkArchiveExecSchema.cardIds.max(1000)) — the preview
+    // must not promise more than exec can accept.
+    take: 1000,
   });
 
   return cards;

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import prisma from '../../plugins/prisma';
+import { ForbiddenError } from '../../utils/errors';
 import {
   shareNote,
   revokeNoteShare,
@@ -895,9 +896,9 @@ describe('shareKanbanBoard', () => {
       ownerId: 'someone-else',
     });
 
-    await expect(
-      shareKanbanBoard(OWNER_ID, SHARE_BOARD_ID, targetUser.email, 'READ')
-    ).rejects.toThrow('errors.common.notTheOwner');
+    const promise = shareKanbanBoard(OWNER_ID, SHARE_BOARD_ID, targetUser.email, 'READ');
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.notTheOwner');
 
     expect(prismaMock.sharedKanbanBoard.upsert).not.toHaveBeenCalled();
   });

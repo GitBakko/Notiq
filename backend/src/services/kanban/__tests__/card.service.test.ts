@@ -64,6 +64,7 @@ import {
   archiveCompletedCards,
   getArchivedCards,
   unarchiveCard,
+  previewBulkArchive,
 } from '../card.service';
 import { logCardActivity, transformCard } from '../helpers';
 import { broadcast } from '../../kanbanSSE';
@@ -771,7 +772,9 @@ describe('moveCard', () => {
       isCompleted: false,
     });
 
-    await expect(moveCard(card.id, foreignColumn.id, 0, actor.id)).rejects.toThrow(NotFoundError);
+    const promise = moveCard(card.id, foreignColumn.id, 0, actor.id);
+    await expect(promise).rejects.toThrow(NotFoundError);
+    await expect(promise).rejects.toThrow('errors.kanban.columnNotFound');
 
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
@@ -1327,6 +1330,37 @@ describe('archiveCompletedCards', () => {
 
     expect(result).toBe(0);
     expect(prismaMock.kanbanCard.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  previewBulkArchive
+// ═══════════════════════════════════════════════════════════════
+
+describe('previewBulkArchive', () => {
+  const board = makeKanbanBoard();
+
+  // The exec endpoint this feeds (POST /boards/:id/bulk-archive) is capped at
+  // 1000 card ids (bulkArchiveExecSchema.cardIds.max(1000)) — the preview must
+  // not promise more than that.
+  it('caps the query at 1000 cards, matching the exec endpoint\'s limit', async () => {
+    prismaMock.kanbanColumn.findMany.mockResolvedValue([{ id: 'col-done' }]);
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+
+    await previewBulkArchive(board.id, 7);
+
+    expect(prismaMock.kanbanCard.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 1000 }),
+    );
+  });
+
+  it('returns [] without querying cards when no completed columns exist', async () => {
+    prismaMock.kanbanColumn.findMany.mockResolvedValue([]);
+
+    const result = await previewBulkArchive(board.id, 7);
+
+    expect(result).toEqual([]);
+    expect(prismaMock.kanbanCard.findMany).not.toHaveBeenCalled();
   });
 });
 

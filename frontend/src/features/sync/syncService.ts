@@ -1046,7 +1046,11 @@ export const retryFailedSyncItems = async (): Promise<void> => {
     .filter(item => item.userId === currentUserId).toArray();
   for (const item of failed) {
     if (!item.id) continue;
-    failureCounts.delete(item.id);
+    // clearFailure(), not a bare failureCounts.delete(): it also drops any
+    // stale transportFailureSince entry, so a fresh transport failure right
+    // after this retry gets its own 10-minute window instead of inheriting
+    // one that may already be nearly (or fully) elapsed.
+    clearFailure(item.id);
     await db.syncQueue.update(item.id, { status: 'pending' as const, attempts: 0 });
   }
   // The liveQuery count doesn't change on status updates, so useSync won't re-fire — push explicitly

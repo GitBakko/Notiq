@@ -1797,6 +1797,62 @@ describe('syncPush', () => {
 
       expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
     });
+
+    // Task 5 of the offline-first hardening pass: retryFailedSyncItems cleared
+    // failureCounts directly instead of calling the existing clearFailure()
+    // helper, which also clears transportFailureSince. A retried item that
+    // hits a FRESH transport failure right after being retried was judged
+    // against the OLD "stuck since" timestamp from before the retry — able to
+    // trip the 10-minute ceiling on attempt one, mislabeling a brand-new blip
+    // as a persisted outage.
+    describe('transportFailureSince', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('is cleared on retry, not just the backoff count', async () => {
+        vi.useFakeTimers();
+        const item = {
+          id: 970, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-retry-stale',
+          userId: 'user-1', data: { title: 'X' }, attempts: 4, createdAt: Date.now(),
+        };
+        mockDb.notes.get.mockResolvedValue({ id: 'note-retry-stale', ownership: 'owned' });
+
+        // 1) A transport failure stamps the "stuck since" timestamp (T0) —
+        // item stays pending, not failed yet.
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]);
+        mockApi.put.mockRejectedValueOnce(new Error('Network Error')); // no `.response`
+        await syncPush();
+
+        // 2) A real server rejection reaches MAX_RETRIES (attempts was
+        // already 4) and marks the item 'failed' via recordFailure, which
+        // only clears failureCounts — T0 is now stale AND the item is
+        // terminal, the exact combination a real queue can reach.
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]);
+        mockApi.put.mockRejectedValueOnce({ response: { status: 500 } });
+        await syncPush();
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(970, expect.objectContaining({ status: 'failed' }));
+        mockDb.syncQueue.update.mockClear();
+
+        // 3) Real time passes well past the 10-minute ceiling, measured from T0.
+        vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+
+        // 4) User clicks retry. retryFailedSyncItems finds the item, resets
+        // it, and fires its own immediate follow-up push — which hits a
+        // FRESH transport failure (network still down). If T0 wasn't
+        // cleared, this single fresh blip looks like it's already been down
+        // for 10+ minutes.
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]); // retryFailedSyncItems' own query
+        mockDb.syncQueue.toArray.mockResolvedValueOnce([item]); // its follow-up syncPush()
+        mockApi.put.mockRejectedValue(new Error('Network Error')); // no `.response`, from here on
+        await retryFailedSyncItems();
+        await vi.advanceTimersByTimeAsync(0); // let the fire-and-forget follow-up push settle
+
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(970, expect.objectContaining({
+          status: 'failed', lastError: 'network',
+        }));
+      });
+    });
   });
 
   // -----------------------------------------------------------------

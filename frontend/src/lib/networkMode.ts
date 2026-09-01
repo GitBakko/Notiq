@@ -2,7 +2,7 @@
  * TanStack Query v5 defaults every mutation/query to `networkMode: 'online'`:
  * when `onlineManager.isOnline()` is false, `mutationFn`/`queryFn` is never
  * invoked at all — it just sits paused. That default is correct for calls
- * that hit the API directly, but Notiq is offline-first: most mutations only
+ * that hit the API directly, but Notiq is offline-first: many mutations only
  * write to Dexie and enqueue to `syncQueue` (see `frontend/src/lib/db.ts`),
  * with no network call in the function body. Under the default, those do
  * nothing while the browser reports offline — silently breaking the app's

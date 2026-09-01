@@ -428,7 +428,9 @@ describe('comments-chat.service', () => {
         new ForbiddenError('errors.common.accessDenied')
       );
 
-      await expect(deleteComment('comment-4', user.id)).rejects.toThrow(ForbiddenError);
+      const promise = deleteComment('comment-4', user.id);
+      await expect(promise).rejects.toThrow(ForbiddenError);
+      await expect(promise).rejects.toThrow('errors.common.accessDenied');
 
       expect(mockedPrisma.kanbanComment.delete).not.toHaveBeenCalled();
       expect(notifyBoardUsersTiered).not.toHaveBeenCalled();
