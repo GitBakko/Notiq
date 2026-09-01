@@ -146,22 +146,23 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 ## Appendice — finding fuori piano (2026-09-01)
 
-Diciassette finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
-a lenti distinte sui task 4.1 / 4.3 / 5.1, due dalle prime run della CI. Ognuno porta il codice
-citato e uno scenario utente concreto.
+Venti finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
+a lenti distinte sui task 4.1 / 4.3 / 5.1, due dalle prime run della CI, tre trovati tracciando il
+percorso di A3. Ognuno porta il codice citato e uno scenario utente concreto.
 
 **Scegli da qui, non dalla tabella di priorità dell'handoff, se le due liste sono in disaccordo.**
 
 | Gruppo | Finding | Stato |
 |---|---|---|
-| **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare` (scrive ancora sulla nota)**, A4 `deleteBoard` | tutti aperti |
+| **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **A3 corretto**, A2 **corretto lato WebSocket** (resta SSE), A1 A4 aperti |
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | tutti aperti |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
 | **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C4 `1325d92`; **C2 C3 C5 aperti** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
+| **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Cinque corretti, dodici aperti.** Il più grave è **A3**.
+**Nove corretti, undici aperti.** I più gravi rimasti sono **B1** e **D1**.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
@@ -172,14 +173,106 @@ UNA di quelle porte (revoke dello share kanban) chiamando `disconnectUser`. Le a
 | # | Porta | Cosa succede | File |
 |---|---|---|---|
 | **A1** | `deleteUser` (admin) | Account cancellato continua a ricevere card, commenti e chat della board finché tiene il tab aperto. Le REST 401ano, lo stream no. | `admin.service.ts:213` |
-| **A2** | reset/cambio password | `tokenVersion` viene incrementato e invalida ogni JWT, ma lo stream SSE già aperto dell'attaccante continua a consegnare tutto. L'utente crede di aver chiuso fuori il ladro. | `auth.service.ts:279`, `user.service.ts:102` |
-| **A3** | `revokeNoteShare` | **Peggiore delle altre: è bidirezionale.** Il collaboratore revocato mantiene la sessione Hocuspocus con `readOnly` catturato a `false` al connect, quindi **continua a scrivere sulla nota**. | `sharing.service.ts:115-137`, `hocuspocus.ts:394-449` |
+| **A2** | reset/cambio password | `tokenVersion` viene incrementato e invalida ogni JWT, ma lo stream SSE già aperto dell'attaccante continua a consegnare tutto. L'utente crede di aver chiuso fuori il ladro. **Lato WebSocket era peggio ancora — vedi sotto: CORRETTO.** | `auth.service.ts:279`, `user.service.ts:102` |
+| **A3** | `revokeNoteShare` | **Peggiore delle altre: è bidirezionale.** Il collaboratore revocato mantiene la sessione Hocuspocus con `readOnly` catturato a `false` al connect, quindi **continua a scrivere sulla nota**. **CORRETTO.** | `sharing.service.ts:115-137`, `hocuspocus.ts:394-449` |
 | **A4** | `deleteBoard` | Né chiude gli stream né emette nulla: i collaboratori restano su una board id morta con heartbeat vivo, e vengono espulsi solo dopo 5 min di `staleTime` **e** un focus di finestra. | `board.service.ts:259-261` |
 
-La correzione a chokepoint sarebbe una delle due: `disconnectUserEverywhere(userId)` che spazza
-tutte le board, chiamata dove `tokenVersion` cambia e da `deleteUser`; oppure una ri-autorizzazione
-sul tick di heartbeat SSE, che copre A1, A2, A4 e i futuri in un punto solo. A3 richiede il
-trattamento equivalente su Hocuspocus (`beforeHandleMessage`), ed è TIER 1.
+**Aggiornamento 2026-09-01.** Il lato Hocuspocus è chiuso: `disconnectUserFromNote(noteId, userId)`
+e `disconnectUserEverywhere(userId)` esistono in `hocuspocus.ts`, e `onAuthenticate` verifica
+`tokenVersion`. Dettagli e decisioni nella sezione dedicata più sotto. La ri-autorizzazione su
+`beforeHandleMessage` è stata **scartata** con motivazione — leggila lì prima di riproporla.
+
+Resta il lato SSE, dove il chokepoint sarebbe uno dei due: un `disconnectUserFromAllBoards(userId)`
+in `kanbanSSE.ts` che spazza tutte le board, chiamato dove `tokenVersion` cambia e da `deleteUser`
+(speculare a quello che ora fa Hocuspocus); oppure una ri-autorizzazione sul tick di heartbeat SSE,
+che copre A1, la metà SSE di A2, A4 e i futuri in un punto solo.
+
+### A3 e la metà WebSocket di A2 — CORRETTI
+
+**Le due decisioni di progetto, e perché.**
+
+*Disconnect mirato invece di ri-autorizzare su `beforeHandleMessage`.* L'hook scatta su **ogni**
+messaggio in arrivo — update Yjs e awareness (movimento del cursore) — è awaited, e se rigetta
+**chiude la connessione**: un hiccup del DB caccerebbe fuori i collaboratori legittimi. Una cache
+con TTL lascerebbe comunque una finestra di scrittura dopo la revoca. Il disconnect mirato chiude
+all'istante e costa zero a runtime; il prezzo è che ogni sito che revoca deve ricordarsi di
+chiamarlo, e quel prezzo si paga con un test che pinna il call site.
+
+*Niente ramo "downgrade" con `connection.readOnly = true`.* Sarebbe possibile — `readOnly` è letto
+al momento di applicare il messaggio (`hocuspocus-server.cjs:1421,1447`), non solo alla costruzione,
+quindi flipparlo a caldo funziona. Ma in questo codebase **non esiste un downgrade**: `shareNote`
+(`sharing.service.ts:42-56`) è un `upsert` che sull'update rimette `status: 'PENDING'`, e
+`onAuthenticate` richiede `ACCEPTED`. Ogni cambio di permesso è quindi una revoca.
+
+**Quello che la libreria fa davvero, verificato su socket veri e non solo letto.**
+`Connection.close(event)` **non chiude la WebSocket** (`hocuspocus-server.cjs:1564-1573`): rimuove la
+connessione dal `Document`, spara i callback `onClose` e manda un *messaggio* CLOSE. Le tre
+conseguenze sono tutte quelle che servono:
+
+- gli update non raggiungono più il documento, quindi non vengono persistiti;
+- i callback cancellano `documentConnections[noteId]` (`:1877-1883`), quindi i messaggi successivi su
+  quel socket finiscono in `incomingMessageQueue` (`:1932-1935`) e non vengono mai applicati;
+- il client **non entra in reconnect loop** — il retry (`hocuspocus-provider.cjs:1548`) scatta solo
+  sulla chiusura vera del socket. Niente spirale come quella di C3 sul lato SSE.
+
+Provato con `@hocuspocus/server` e `@hocuspocus/provider` reali su un socket reale, 12 asserzioni:
+prima della revoca la scrittura del collaboratore arriva al server e all'owner; dopo, non arriva a
+nessuno dei due; `onConnect` resta fermo dopo 3 secondi; il provider riporta
+`isSynced=false isAuthenticated=false`; l'owner resta sincronizzato e continua a scrivere. Lo script
+è deliberatamente **fuori dal repo**: prova la semantica della libreria, non il nostro codice, e un
+test che apre una porta TCP in CI non vale la flakiness. Il rovescio è che un aggiornamento di
+`@hocuspocus/server` potrebbe cambiare quella semantica senza che lo unit test — che usa un
+`Document` finto — se ne accorga. È scritto nel docblock della primitiva.
+
+**Il feedback all'utente revocato non è stato scritto: c'era già.** Il client su CLOSE va a
+`isSynced = false`, `NoteEditor.tsx:159-167` cade sul fallback REST, `updateSharedNoteContent`
+(`sharing.service.ts:790-793`) ricontrolla lo share **a ogni richiesta** e risponde 403, e
+`notifySharedSaveFailure` mostra il toast.
+
+**Cosa è stato scritto.**
+
+| Dove | Cosa |
+|---|---|
+| `hocuspocus.ts` | `disconnectUserFromNote(noteId, userId)` — chiude le connessioni di un utente su una nota. Speculare a `disconnectUser` di `kanbanSSE.ts`. |
+| `hocuspocus.ts` | `disconnectUserEverywhere(userId)` — quattro righe che chiamano la primitiva su ogni documento. |
+| `hocuspocus.ts` | `onAuthenticate` confronta `tokenVersion`. Vedi sotto. |
+| `sharing.service.ts` | `revokeNoteShare` e `shareNote` chiamano `disconnectUserFromNote`. |
+| `note.service.ts` | `deleteNote` chiama `hocuspocus.hocuspocus.closeConnections(id)` (F2). |
+| `auth.service.ts`, `user.service.ts` | `resetPassword` e `changePassword` chiamano `disconnectUserEverywhere`. |
+
+**A2 era peggiore di com'è scritto nella tabella qui sopra.** `app.ts:171-178` verifica `tokenVersion`
+su ogni richiesta REST; `hocuspocus.ts` **non lo faceva mai** — il campo era dichiarato su
+`JwtPayload` (`:31`) e non veniva confrontato con niente. Quindi dopo un cambio password un token
+rubato non solo teneva viva la sessione: apriva **connessioni WebSocket nuove**, per sempre. Ora
+`onAuthenticate` lo confronta, riusando il `select` della lookup che c'era già (**zero query
+aggiuntive**), e quella lookup è stata spostata **sopra** `trackWsConnect` — altrimenti un token
+invalidato incrementerebbe il contatore per-utente senza mai decrementarlo, la stessa classe di bug
+di `addConnection` (`6bf866c`). C'è un test che pinna proprio quello: 15 tentativi rifiutati non
+consumano il budget da 10 connessioni.
+
+**Resta aperto:** il lato SSE di A2 (gli stream kanban di `kanbanSSE.ts`), più A1 e A4 interi.
+
+### I tre finding trovati tracciando A3 — CORRETTI
+
+- **F1** — `chat.service.ts:59` leggeva `hocuspocus.documents`. Su un `Server` di
+  `@hocuspocus/server` quella proprietà **non esiste**: la Map sta su `Server.hocuspocus.documents`,
+  il percorso che `getWsConnectionCount` usa già correttamente. `activeUserIds` era quindi sempre
+  vuoto e **ogni** messaggio della chat di nota escalava a email e push anche col destinatario che
+  aveva la nota aperta davanti. Fratello esatto di D1, stessa forma.
+  *Il test che copriva questo percorso passava con il bug dentro*, perché il mock replicava la forma
+  sbagliata che il codice leggeva. Corretto il mock, il test è diventato rosso da solo.
+- **F2** — `deleteNote` (`note.service.ts:333`) cancellava share e nota lasciando vive le sessioni:
+  i collaboratori scrivevano su una riga che non esisteva più e le loro modifiche morivano nel catch
+  di `store()`. Terza porta di A3. Una riga: `note.service.ts` importava già `hocuspocus`, e
+  `closeConnections(documentName)` usa internamente la stessa `Connection.close()`.
+- **F3** — i cinque test `Hocuspocus auth logic` **non chiamavano `onAuthenticate`**: riscrivevano
+  la logica dentro il corpo del test e asserivano sulla propria copia (`// Would throw 'Forbidden'`).
+  L'hook di autorizzazione aveva copertura zero. Sostituiti con nove test che chiamano l'hook vero —
+  il mock di `Server` restituisce la config, quindi è raggiungibile.
+  **Ancora da fare:** i blocchi `fetch logic` e `store logic` dello stesso file sono finti allo
+  stesso modo, sette test che non toccano `hocuspocus.ts`. La `fetch` con `ydocState` degenere e il
+  guard di `store()` sono TIER 1 e oggi non hanno copertura reale. Ora sono facili da scrivere,
+  perché il mock di `Database` cattura le due funzioni vere.
 
 ### Il titolo della nota esce lo stesso, da quattro strade che il 4.1 non tocca
 
