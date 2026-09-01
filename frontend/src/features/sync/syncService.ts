@@ -500,9 +500,10 @@ export const syncPull = async () => {
           .toArray();
         const pendingCardDeleteIds = new Set(pendingCardDeletes.map(i => i.entityId));
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .filter((b: any) => !dirtyBoardIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((b: any) => ({
             ...b,
             ownership: 'shared' as const,
@@ -539,9 +540,10 @@ export const syncPull = async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const board of sharedBoards as any[]) {
           if (board.columns) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const columns: LocalKanbanColumn[] = board.columns
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .filter((col: any) => !dirtyColumnIds.has(col.id) && !pendingColDeleteIds.has(col.id))
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .map((col: any) => ({
                 id: col.id,
                 title: col.title,
@@ -555,9 +557,10 @@ export const syncPull = async () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             for (const col of board.columns as any[]) {
               if (col.cards && col.cards.length > 0) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const cards: LocalKanbanCard[] = col.cards
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   .filter((card: any) => !dirtyCardIds.has(card.id) && !pendingCardDeleteIds.has(card.id))
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   .map((card: any) => ({
                     ...card,
                     columnId: col.id,
