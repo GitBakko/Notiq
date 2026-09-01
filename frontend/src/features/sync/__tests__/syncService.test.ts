@@ -692,15 +692,18 @@ describe('syncPull', () => {
       mockDb.notes.toArray.mockResolvedValue([]);
       mockDb.notes.bulkGet.mockResolvedValue([]);
 
-      // Three sequential db.kanbanBoards.toArray() calls inside syncPull's kanban
+      // Four sequential db.kanbanBoards.toArray() calls inside syncPull's kanban
       // section, in this order: dirtyBoards (owned block), allLocalSyncedBoards
       // (owned block — this is where the owned prune candidate must show up),
-      // localSharedBoards (shared block — the shared prune candidate).
+      // dirtyBoards (shared block's own zombie-prevention guard — task 2 of the
+      // offline-first hardening pass), localSharedBoards (shared block — the
+      // shared prune candidate).
       mockDb.kanbanBoards.toArray
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
           { id: 'kb-gone-owned', ownership: 'owned', ownerId: 'user-1', syncStatus: 'synced' },
         ])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
           { id: 'kb-gone-shared', ownership: 'shared', viewerId: 'user-1', syncStatus: 'synced' },
         ]);
@@ -710,6 +713,54 @@ describe('syncPull', () => {
       expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-owned']);
       expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-shared']);
       expect(prunedIds).toEqual(['kb-gone-owned', 'kb-gone-shared']);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Shared kanban boards pull — same zombie-prevention guard as the main
+  // "kanban boards" block above, applied to the '/share/kanbans/accepted'
+  // pull. A prior commit on this branch claimed all seven kanban entities
+  // already had this guard; that audit covered the main block and missed
+  // this one.
+  // -----------------------------------------------------------------
+  describe('shared kanban boards', () => {
+    it('prevents zombie resurrection for a locally-deleted shared board with a pending DELETE', async () => {
+      const pendingDelete = {
+        id: 906, type: 'DELETE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared-z1',
+        userId: 'user-1', data: {}, createdAt: Date.now(),
+      };
+      // Blanket value: every db.syncQueue.toArray() call in this run sees it (same
+      // approach the 'shared notes' zombie test above uses) — harmless for the
+      // other entity types' pending-delete checks since no id collides.
+      mockDb.syncQueue.toArray.mockResolvedValue([pendingDelete]);
+
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned
+        if (url === '/share/kanbans/accepted') {
+          return Promise.resolve({
+            data: [
+              { id: 'kb-shared-z1', title: 'Zombie', columns: [], _sharedPermission: 'READ' },
+              { id: 'kb-shared-ok', title: 'Fine', columns: [], _sharedPermission: 'READ' },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
+      mockDb.kanbanCards.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      await syncPull();
+
+      const allBulkPuts = mockDb.kanbanBoards.bulkPut.mock.calls.flatMap(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock call inspection
+        (c: unknown[]) => c[0] as any[],
+      );
+      const putIds = allBulkPuts.map((b: { id: string }) => b.id);
+      expect(putIds).not.toContain('kb-shared-z1');
+      expect(putIds).toContain('kb-shared-ok');
     });
   });
 

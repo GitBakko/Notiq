@@ -470,17 +470,48 @@ export const syncPull = async () => {
       const sharedKanbanRes = await api.get<any[]>('/share/kanbans/accepted');
       const sharedBoards = sharedKanbanRes.data;
 
-      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, async () => {
+      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
+        // Zombie prevention (mirrors the main "Kanban Boards Pull" block above): a
+        // locally-dirty row survives an overwrite, and a pending DELETE blocks
+        // resurrection. Without this, these three bulkPuts below applied no dirty
+        // filter and no pending-delete filter at all, running AFTER the main
+        // block's guarded pass over overlapping rows and silently clobbering it.
+        const dirtyBoards = await db.kanbanBoards.where('syncStatus').notEqual('synced').toArray();
+        const dirtyBoardIds = new Set(dirtyBoards.map(b => b.id));
+        const pendingBoardDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_BOARD')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingBoardDeleteIds = new Set(pendingBoardDeletes.map(i => i.entityId));
+
+        const dirtyColumns = await db.kanbanColumns.where('syncStatus').notEqual('synced').toArray();
+        const dirtyColumnIds = new Set(dirtyColumns.map(c => c.id));
+        const pendingColDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_COLUMN')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingColDeleteIds = new Set(pendingColDeletes.map(i => i.entityId));
+
+        const dirtyCards = await db.kanbanCards.where('syncStatus').notEqual('synced').toArray();
+        const dirtyCardIds = new Set(dirtyCards.map(c => c.id));
+        const pendingCardDeletes = await db.syncQueue
+          .where('entity').equals('KANBAN_CARD')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingCardDeleteIds = new Set(pendingCardDeletes.map(i => i.entityId));
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards.map((b: any) => ({
-          ...b,
-          ownership: 'shared' as const,
-          viewerId: currentUserId,
-          permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
-          syncStatus: 'synced' as const,
-          columnCount: b._count?.columns ?? b.columns?.length ?? 0,
-          cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
-        }));
+        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards
+          .filter((b: any) => !dirtyBoardIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
+          .map((b: any) => ({
+            ...b,
+            ownership: 'shared' as const,
+            viewerId: currentUserId,
+            permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
+            syncStatus: 'synced' as const,
+            columnCount: b._count?.columns ?? b.columns?.length ?? 0,
+            cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
+          }));
 
         // Remove stale shared boards no longer in server response. Scoped to rows
         // stamped for THIS viewer — a pre-upgrade row with no viewerId can't be told
@@ -509,28 +540,32 @@ export const syncPull = async () => {
         for (const board of sharedBoards as any[]) {
           if (board.columns) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const columns: LocalKanbanColumn[] = board.columns.map((col: any) => ({
-              id: col.id,
-              title: col.title,
-              position: col.position,
-              boardId: board.id,
-              isCompleted: col.isCompleted ?? false,
-              syncStatus: 'synced' as const,
-            }));
+            const columns: LocalKanbanColumn[] = board.columns
+              .filter((col: any) => !dirtyColumnIds.has(col.id) && !pendingColDeleteIds.has(col.id))
+              .map((col: any) => ({
+                id: col.id,
+                title: col.title,
+                position: col.position,
+                boardId: board.id,
+                isCompleted: col.isCompleted ?? false,
+                syncStatus: 'synced' as const,
+              }));
             if (columns.length > 0) await db.kanbanColumns.bulkPut(columns);
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             for (const col of board.columns as any[]) {
               if (col.cards && col.cards.length > 0) {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const cards: LocalKanbanCard[] = col.cards.map((card: any) => ({
-                  ...card,
-                  columnId: col.id,
-                  boardId: board.id,
-                  commentCount: card._count?.comments ?? 0,
-                  syncStatus: 'synced' as const,
-                }));
-                await db.kanbanCards.bulkPut(cards);
+                const cards: LocalKanbanCard[] = col.cards
+                  .filter((card: any) => !dirtyCardIds.has(card.id) && !pendingCardDeleteIds.has(card.id))
+                  .map((card: any) => ({
+                    ...card,
+                    columnId: col.id,
+                    boardId: board.id,
+                    commentCount: card._count?.comments ?? 0,
+                    syncStatus: 'synced' as const,
+                  }));
+                if (cards.length > 0) await db.kanbanCards.bulkPut(cards);
               }
             }
           }
