@@ -1337,6 +1337,29 @@ describe('archiveCompletedCards', () => {
     expect(result).toBe(0);
     expect(prismaMock.kanbanCard.updateMany).not.toHaveBeenCalled();
   });
+
+  it('archives across ALL boards when called with no boardId', async () => {
+    prismaMock.kanbanColumn.findMany.mockResolvedValue([{ id: 'col-a' }, { id: 'col-b' }]);
+    prismaMock.kanbanCard.updateMany.mockResolvedValue({ count: 5 });
+
+    const result = await archiveCompletedCards();
+
+    // toHaveBeenCalledWith ignores undefined-valued keys, so assert on the key set:
+    // the boardId filter must be ABSENT, not present-and-undefined.
+    const whereArg = prismaMock.kanbanColumn.findMany.mock.calls[0][0].where;
+    expect(Object.keys(whereArg)).toEqual(['isCompleted']);
+    expect(whereArg.isCompleted).toBe(true);
+
+    expect(prismaMock.kanbanCard.updateMany).toHaveBeenCalledWith({
+      where: {
+        columnId: { in: ['col-a', 'col-b'] },
+        archivedAt: null,
+        updatedAt: { lte: expect.any(Date) },
+      },
+      data: { archivedAt: expect.any(Date) },
+    });
+    expect(result).toBe(5);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

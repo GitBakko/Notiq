@@ -564,15 +564,20 @@ export async function getCardActivities(cardId: string, page: number, limit: num
 const ARCHIVE_AFTER_DAYS = 7;
 
 /**
- * Lazy archive: find cards in completed columns that haven't been updated
- * in ≥7 days and set archivedAt = now().
+ * Archive cards sitting in completed columns that haven't been updated in ≥7 days.
+ * Called hourly from app.ts. Pass a boardId to scope it to a single board.
+ *
+ * [BACKUP] 2026-09-01 — previously this was invoked from getBoard() on every read,
+ * making GET /api/kanban/boards/:id a write endpoint. Moved to a scheduled job.
  */
-export async function archiveCompletedCards(boardId: string): Promise<number> {
+export async function archiveCompletedCards(boardId?: string): Promise<number> {
   const cutoffDate = new Date(Date.now() - ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000);
 
-  // Find completed columns for this board
+  // Find completed columns (optionally scoped to one board)
+  // ponytail: unscoped, this loads every completed column id into one IN list
+  // (~1 per board). Batch by board if the board count ever makes that query fat.
   const completedColumns = await prisma.kanbanColumn.findMany({
-    where: { boardId, isCompleted: true },
+    where: boardId ? { boardId, isCompleted: true } : { isCompleted: true },
     select: { id: true },
   });
 
@@ -590,7 +595,7 @@ export async function archiveCompletedCards(boardId: string): Promise<number> {
   });
 
   if (result.count > 0) {
-    logger.info({ boardId, count: result.count }, 'Lazy-archived completed cards');
+    logger.info({ boardId: boardId ?? 'ALL', count: result.count }, 'Archived completed cards');
   }
 
   return result.count;

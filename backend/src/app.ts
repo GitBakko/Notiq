@@ -314,6 +314,7 @@ server.get('/uploads/:filename', async (request, reply) => {
 
 import { hocuspocus } from './hocuspocus';
 import { chatWss, authenticateFromUrl } from './chatWebSocket';
+import { archiveCompletedCards } from './services/kanban/card.service';
 import type { WebSocket } from 'ws';
 
 const start = async () => {
@@ -344,9 +345,24 @@ const start = async () => {
       }
     });
 
+    // Hourly maintenance: archive cards left >=7 days in a completed column.
+    // Was previously run inside every GET /api/kanban/boards/:id, i.e. a write on a read path.
+    // ponytail: plain unref'd setInterval, same pattern as utils/metrics.ts:57-61. Two known
+    // ceilings, both accepted: under pm2 cluster mode every worker schedules its own timer
+    // (updateMany is idempotent, so N sweeps converge on the same rows), and the first tick is
+    // one hour after boot, so a server restarting more often than hourly never sweeps. Move to a
+    // real scheduler with leader election only if a second periodic job appears.
+    const archiveTimer = setInterval(() => {
+      archiveCompletedCards().catch((err) =>
+        server.log.error({ err }, 'Scheduled kanban card archive failed')
+      );
+    }, 60 * 60 * 1000);
+    if (archiveTimer.unref) archiveTimer.unref(); // never hold the process open
+
     server.log.info('Server running on port 3001');
     server.log.info('Hocuspocus attached to /ws');
     server.log.info('Chat WebSocket attached to /chat-ws');
+    server.log.info('Kanban archive job scheduled (hourly)');
   } catch (err) {
     server.log.error(err);
     process.exit(1);
