@@ -10,7 +10,7 @@
  *
  * Spread this into any `useMutation`/`useQuery` whose fn only touches Dexie
  * (writes to `db.*` and/or `db.syncQueue`, no `api.*` call in the function).
- * It is opt-in, not the global default, because ~36 mutations in this app
+ * It is opt-in, not the global default, because 31 mutations in this app
  * *do* call the API directly and are correctly paused offline today (two of
  * them — `deleteCover`, `deleteAvatar` — would misbehave if forced to run
  * offline). Flipping the global default would silently change all of those.

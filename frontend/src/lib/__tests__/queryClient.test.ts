@@ -67,6 +67,14 @@ describe('handleMutationError', () => {
 // mutationCache is never wired to onlineManager's `online` event and a
 // paused mutation on it would stay pending forever, in a cache this whole
 // file shares across tests.
+//
+// ponytail: neither test calls client.clear() or unsubscribes the
+// MutationObserver -- deliberate, not an oversight. Each client/observer
+// pair is local to its own `it` and never shared, so there's nothing to
+// leak into other tests; the first test's forever-pending mutation is left
+// dangling on purpose (see the comment on that `void observer.mutate(...)`
+// below) rather than awaited. Add real teardown only if these tests ever
+// start sharing a client.
 describe('LOCAL_FIRST networkMode', () => {
   afterEach(() => {
     // Global singleton (module-level in query-core) — reset regardless of
