@@ -253,20 +253,29 @@ export async function reorderColumns(_boardId: string, columns: { id: string; po
 export async function deleteColumn(columnId: string): Promise<void> {
   const userId = getUserId();
 
+  // [BACKUP] 2026-09-01 — previously: `const column = ...; if (!column) return;`
+  // inside the transaction bailed out when the column was absent from the local
+  // Dexie cache, skipping the sync-queue enqueue -> NO server DELETE was ever
+  // issued (silent no-op, no feedback), same bug class as deleteCard (v1.10.2)
+  // and moveCard (2026-08-31). Mirror them: ALWAYS enqueue the DELETE; local
+  // cleanup + board count update are best-effort.
+  const column = await db.kanbanColumns.get(columnId);
+
   await db.transaction('rw', db.kanbanColumns, db.kanbanCards, db.kanbanBoards, db.syncQueue, async () => {
-    const column = await db.kanbanColumns.get(columnId);
-    if (!column) return;
-
-    // Delete cards in this column
+    // Delete cards in this column, even when the column record itself is
+    // missing locally — cards can be cached under a columnId whose column row
+    // never made it into Dexie (best-effort hydration).
     await db.kanbanCards.where('columnId').equals(columnId).delete();
-    await db.kanbanColumns.delete(columnId);
+    await db.kanbanColumns.delete(columnId); // no-op if the column isn't cached locally
 
-    // Update board counts
-    const board = await db.kanbanBoards.get(column.boardId);
-    if (board) {
-      const remainingCols = await db.kanbanColumns.where('boardId').equals(column.boardId).count();
-      const remainingCards = await db.kanbanCards.where('boardId').equals(column.boardId).count();
-      await db.kanbanBoards.update(column.boardId, { columnCount: remainingCols, cardCount: remainingCards });
+    // Update board counts when we know which board the column belonged to
+    if (column) {
+      const board = await db.kanbanBoards.get(column.boardId);
+      if (board) {
+        const remainingCols = await db.kanbanColumns.where('boardId').equals(column.boardId).count();
+        const remainingCards = await db.kanbanCards.where('boardId').equals(column.boardId).count();
+        await db.kanbanBoards.update(column.boardId, { columnCount: remainingCols, cardCount: remainingCards });
+      }
     }
 
     await db.syncQueue.add({

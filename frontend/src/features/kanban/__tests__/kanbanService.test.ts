@@ -18,6 +18,7 @@ const { mockDb, mockAuthStore } = vi.hoisted(() => {
           toArray: vi.fn().mockResolvedValue([]),
           sortBy: vi.fn().mockResolvedValue([]),
           delete: vi.fn().mockResolvedValue(0),
+          count: vi.fn().mockResolvedValue(0),
         })),
       })),
     };
@@ -47,7 +48,7 @@ vi.mock('../../../lib/api', () => ({
 }));
 vi.mock('../../../store/authStore', () => ({ useAuthStore: mockAuthStore }));
 
-import { deleteCard, createCard, moveCard, splitTextForCard, CARD_TITLE_MAX, CARD_DESCRIPTION_MAX } from '../kanbanService';
+import { deleteCard, deleteColumn, createCard, moveCard, splitTextForCard, CARD_TITLE_MAX, CARD_DESCRIPTION_MAX } from '../kanbanService';
 
 describe('splitTextForCard', () => {
   it('keeps a short single-line text as the title, with no description', () => {
@@ -143,6 +144,53 @@ describe('kanbanService.deleteCard', () => {
         entity: 'KANBAN_CARD',
         entityId: 'card-x',
         data: { columnId: 'col-1' },
+      }),
+    );
+  });
+});
+
+describe('kanbanService.deleteColumn', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.kanbanColumns.get.mockResolvedValue(null);
+    mockDb.kanbanBoards.get.mockResolvedValue(null);
+  });
+
+  it('enqueues a server DELETE and still cleans up cached cards even when the column is not in the local Dexie cache', async () => {
+    // A cold offline start (Dexie not hydrated) can reach this with no local
+    // column row at all — delete must still issue the server DELETE, and any
+    // card rows cached under this columnId must still be swept locally.
+    mockDb.kanbanColumns.get.mockResolvedValue(undefined);
+
+    await deleteColumn('col-x');
+
+    expect(mockDb.kanbanCards.where).toHaveBeenCalledWith('columnId');
+    expect(mockDb.syncQueue.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'DELETE',
+        entity: 'KANBAN_COLUMN',
+        entityId: 'col-x',
+      }),
+    );
+  });
+
+  it('deletes locally, updates board counts, and enqueues DELETE when the column IS in Dexie', async () => {
+    mockDb.kanbanColumns.get.mockResolvedValue({ id: 'col-x', boardId: 'board-1' });
+    mockDb.kanbanBoards.get.mockResolvedValue({ id: 'board-1', columnCount: 3, cardCount: 5 });
+
+    await deleteColumn('col-x');
+
+    expect(mockDb.kanbanColumns.delete).toHaveBeenCalledWith('col-x');
+    expect(mockDb.kanbanBoards.update).toHaveBeenCalledWith(
+      'board-1',
+      expect.objectContaining({ columnCount: expect.any(Number), cardCount: expect.any(Number) }),
+    );
+    expect(mockDb.syncQueue.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'DELETE',
+        entity: 'KANBAN_COLUMN',
+        entityId: 'col-x',
+        data: {},
       }),
     );
   });
