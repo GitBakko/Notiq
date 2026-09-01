@@ -102,6 +102,16 @@ export function addConnection(boardId: string, res: ServerResponse, user: BoardU
   setTimeout(() => broadcastPresence(boardId), 50);
 }
 
+/** Kick every open stream of a user who just lost access to the board. */
+export function disconnectUser(boardId: string, userId: string): void {
+  const connections = boardConnections.get(boardId);
+  if (!connections) return;
+  for (const conn of [...connections.values()]) {
+    // res.end() fires 'close', whose handler clears the heartbeat and the map entry
+    if (conn.user.id === userId) conn.res.end();
+  }
+}
+
 /**
  * `cardWithAssigneeSelect` includes the linked note (id + title). getBoard filters
  * that per requesting user; a broadcast cannot - it writes one payload to every

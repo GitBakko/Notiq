@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import {
   addConnection,
   broadcast,
+  disconnectUser,
   getPresenceUsers,
 } from '../kanbanSSE';
 import type { BoardUser, KanbanEvent } from '../kanbanSSE';
@@ -12,9 +13,14 @@ import type { BoardUser, KanbanEvent } from '../kanbanSSE';
 // ---------------------------------------------------------------------------
 
 /** Creates a mock ServerResponse that tracks writes and supports 'close' event. */
-function createMockResponse(): EventEmitter & { write: ReturnType<typeof vi.fn> } {
+function createMockResponse(): EventEmitter & {
+  write: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+} {
   const emitter = new EventEmitter();
   (emitter as any).write = vi.fn();
+  // A real ServerResponse emits 'close' when ended
+  (emitter as any).end = vi.fn(() => emitter.emit('close'));
   return emitter as any;
 }
 
@@ -451,5 +457,51 @@ describe('broadcast note stripping', () => {
     });
 
     expect(parsePayload(res).actorId).toBe('user-7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// disconnectUser
+// ---------------------------------------------------------------------------
+describe('disconnectUser', () => {
+  it('ends every connection belonging to the user and leaves the others open', () => {
+    const revokedTab1 = createMockResponse();
+    const revokedTab2 = createMockResponse();
+    const otherUser = createMockResponse();
+
+    addConnection('board-kick', revokedTab1 as any, createUser('user-revoked'));
+    addConnection('board-kick', revokedTab2 as any, createUser('user-revoked'));
+    addConnection('board-kick', otherUser as any, createUser('user-stays'));
+
+    disconnectUser('board-kick', 'user-revoked');
+
+    expect(revokedTab1.end).toHaveBeenCalled();
+    expect(revokedTab2.end).toHaveBeenCalled();
+    expect(otherUser.end).not.toHaveBeenCalled();
+
+    const remaining = getPresenceUsers('board-kick');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe('user-stays');
+  });
+
+  it('no longer writes broadcasts to the disconnected user', () => {
+    const revoked = createMockResponse();
+    const staying = createMockResponse();
+
+    addConnection('board-kick2', revoked as any, createUser('user-revoked'));
+    addConnection('board-kick2', staying as any, createUser('user-stays'));
+
+    disconnectUser('board-kick2', 'user-revoked');
+    revoked.write.mockClear();
+    staying.write.mockClear();
+
+    broadcast('board-kick2', { type: 'board:updated', boardId: 'board-kick2' });
+
+    expect(revoked.write).not.toHaveBeenCalled();
+    expect(staying.write).toHaveBeenCalled();
+  });
+
+  it('does nothing for a board with no connections', () => {
+    expect(() => disconnectUser('board-none', 'user-x')).not.toThrow();
   });
 });

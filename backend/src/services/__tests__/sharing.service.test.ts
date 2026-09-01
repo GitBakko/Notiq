@@ -12,6 +12,7 @@ import {
   respondToShareById,
   updateSharedNoteContent,
   shareKanbanBoard,
+  revokeKanbanBoardShare,
 } from '../sharing.service';
 
 vi.mock('../../utils/extractText', () => ({
@@ -31,6 +32,11 @@ vi.mock('../notification.service', () => ({
   createNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../kanbanSSE', () => ({
+  disconnectUser: vi.fn(),
+}));
+
+import { disconnectUser } from '../kanbanSSE';
 import * as auditService from '../audit.service';
 import * as emailService from '../email.service';
 import * as notificationService from '../notification.service';
@@ -901,5 +907,33 @@ describe('shareKanbanBoard', () => {
     await expect(promise).rejects.toThrow('errors.common.notTheOwner');
 
     expect(prismaMock.sharedKanbanBoard.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// revokeKanbanBoardShare
+// ===========================================================================
+
+describe('revokeKanbanBoardShare', () => {
+  const BOARD_ID = 'board-id-1';
+
+  it('disconnects the revoked user open SSE streams on that board', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ ownerId: OWNER_ID });
+    prismaMock.sharedKanbanBoard.delete.mockResolvedValue({ id: 'share-1' });
+    prismaMock.kanbanReminder.deleteMany.mockResolvedValue({ count: 0 });
+
+    await revokeKanbanBoardShare(OWNER_ID, BOARD_ID, TARGET_USER_ID);
+
+    expect(disconnectUser).toHaveBeenCalledWith(BOARD_ID, TARGET_USER_ID);
+  });
+
+  it('does not disconnect anyone when the caller is not the owner', async () => {
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ ownerId: 'someone-else' });
+
+    const promise = revokeKanbanBoardShare(OWNER_ID, BOARD_ID, TARGET_USER_ID);
+    await expect(promise).rejects.toThrow(ForbiddenError);
+    await expect(promise).rejects.toThrow('errors.common.notTheOwner');
+
+    expect(disconnectUser).not.toHaveBeenCalled();
   });
 });

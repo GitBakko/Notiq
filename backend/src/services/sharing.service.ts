@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { createFriendship, getFriendship } from './friendship.service';
+import { disconnectUser } from './kanbanSSE';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import { snapshotPreviousVersion } from './noteVersion.service';
 
@@ -646,6 +647,9 @@ export const revokeKanbanBoardShare = async (
   } catch {
     // Record may not exist — treat as success
   }
+
+  // Kick any SSE stream the revoked user still has open on this board
+  disconnectUser(boardId, targetUserId);
 
   // Clean up kanban reminders for the revoked user
   try {
