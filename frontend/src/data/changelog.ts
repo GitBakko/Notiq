@@ -11,6 +11,13 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.11.2',
+    date: '2026-09-02',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.linkedListWriteAccess' },
+    ],
+  },
+  {
     version: '1.11.1',
     date: '2026-09-02',
     entries: [

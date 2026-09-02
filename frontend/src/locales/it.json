@@ -804,6 +804,7 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "linkedListWriteAccess": "Spostare una card su una board non spunta più gli elementi di una task list collegata a cui non hai accesso — e chi possiede quella lista non può più restare chiuso fuori dal proprio checkbox",
       "chatMessageVisibility": "Un messaggio di chat arrivato a conversazione chiusa ora c'è quando la apri, invece di comparire solo nell'anteprima",
       "friendsListRefresh": "La lista amici si aggiorna da sola quando qualcuno accetta la tua richiesta, senza ricaricare la pagina",
       "collabSessionToken": "La sessione di modifica collaborativa non resta più attaccata a credenziali scadute — la riconnessione usa quelle aggiornate",

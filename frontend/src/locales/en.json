@@ -1166,6 +1166,7 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "linkedListWriteAccess": "Moving a card on a board no longer ticks or unticks items in a linked task list you do not have access to — and the person who owns that list can no longer be locked out of their own checkbox",
       "chatMessageVisibility": "A chat message that arrived while the conversation was closed is now there when you open it, instead of showing only in the preview",
       "friendsListRefresh": "Your friend list updates on its own once someone accepts your request, without reloading the page",
       "collabSessionToken": "A collaborative editing session no longer stays stuck on expired credentials — reconnecting now uses the current ones",
