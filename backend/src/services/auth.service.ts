@@ -10,6 +10,7 @@ import { BadRequestError, UnauthorizedError, ConflictError, NotFoundError, Forbi
 import { logEvent } from './audit.service';
 import logger from '../utils/logger';
 import { disconnectUserEverywhere } from '../hocuspocus';
+import { disconnectUserFromAllBoards } from './kanbanSSE';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -281,10 +282,13 @@ export const resetPassword = async (token: string, newPassword: string) => {
     },
   });
 
-  // The bumped tokenVersion stops NEW connections; the collaboration sessions already
-  // open were authorized once, at connect, and would survive the reset. Whoever resets
-  // a password because they suspect a stolen session expects both to end.
+  // The bumped tokenVersion stops NEW connections; the sessions already open were
+  // authorized once, at connect, and would survive the reset. Whoever resets a password
+  // because they suspect a stolen session expects both to end.
+  // The kanban heartbeat re-check is structurally blind to tokenVersion — board access is
+  // still valid, only the credentials died — so this is the one class needing a call site.
   disconnectUserEverywhere(user.id);
+  disconnectUserFromAllBoards(user.id);
 
   // Audit: password reset completed
   logEvent(user.id, 'PASSWORD_RESET');

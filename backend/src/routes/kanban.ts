@@ -374,12 +374,15 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       'X-Accel-Buffering': 'no',
     });
 
+    // tokenVersion is handed over so the heartbeat can re-check it: assertBoardAccess only
+    // sees the board and the share, so a password change would otherwise leave this stream
+    // delivering on a JWT that every REST route already refuses.
     addConnection(id, reply.raw, {
       id: userId,
       name: user?.name ?? null,
       color: user?.color ?? null,
       avatarUrl: user?.avatarUrl ?? null,
-    });
+    }, request.user.tokenVersion);
     reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
     request.raw.on('close', () => {

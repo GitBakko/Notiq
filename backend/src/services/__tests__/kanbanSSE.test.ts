@@ -4,9 +4,23 @@ import {
   addConnection,
   broadcast,
   disconnectUser,
+  disconnectUserFromAllBoards,
   getPresenceUsers,
 } from '../kanbanSSE';
 import type { BoardUser, KanbanEvent } from '../kanbanSSE';
+import { assertBoardAccess } from '../kanbanPermissions';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../utils/errors';
+import prisma from '../../plugins/prisma';
+
+vi.mock('../kanbanPermissions', () => ({ assertBoardAccess: vi.fn() }));
+
+const mockAssert = vi.mocked(assertBoardAccess);
+const mockPrisma = prisma as unknown as {
+  user: { findUnique: ReturnType<typeof vi.fn> };
+};
+
+/** The heartbeat interval is jittered into [25s, 30s); this clears any of them. */
+const ONE_TICK = 30_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,6 +53,8 @@ function createUser(id: string, name = `User ${id}`): BoardUser {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  mockAssert.mockResolvedValue({ isOwner: true });
+  mockPrisma.user.findUnique.mockResolvedValue({ tokenVersion: 1 });
 });
 
 afterEach(() => {
@@ -545,5 +561,179 @@ describe('addConnection on a dead response', () => {
     disconnectUser('board-ghost2', 'ghost');
 
     expect(getPresenceUsers('board-ghost2').map((u) => u.id)).toEqual(['real']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Heartbeat re-authorization
+//
+// The SSE route resolves access ONCE, at connect. These tests pin the tick that
+// re-resolves it, and - just as important - pin what it must NOT do when the
+// failure is infrastructural rather than a real revocation.
+// ---------------------------------------------------------------------------
+describe('heartbeat re-authorization', () => {
+  it('ends the stream when the board is gone (deleteBoard, or a cascade from deleteUser)', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-404', res as any, createUser('user-1'), 1);
+
+    mockAssert.mockRejectedValue(new NotFoundError('errors.kanban.boardNotFound'));
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(res.end).toHaveBeenCalled();
+    expect(getPresenceUsers('board-reauth-404')).toEqual([]);
+  });
+
+  it('ends the stream when the share is gone (revoke, or a cascade from deleteUser)', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-403', res as any, createUser('user-1'), 1);
+
+    mockAssert.mockRejectedValue(new ForbiddenError('errors.common.accessDenied'));
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it('ends the stream when tokenVersion was bumped after connect', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-tv', res as any, createUser('user-1'), 1);
+
+    // Board access is intact - only the credentials died. assertBoardAccess is
+    // structurally blind to this, which is why the tick checks it separately.
+    mockPrisma.user.findUnique.mockResolvedValue({ tokenVersion: 2 });
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it('ends the stream when the user row is gone', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-nouser', res as any, createUser('user-1'), 1);
+
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it('holds the stream open when the database is unreachable', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-db', res as any, createUser('user-1'), 1);
+
+    mockAssert.mockRejectedValue(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    // Evicting on an infra error would kick every legitimate collaborator at once.
+    expect(res.end).not.toHaveBeenCalled();
+    expect(res.write).toHaveBeenCalledWith(': heartbeat\n\n');
+  });
+
+  it('holds the stream open on an error class that is not an authorization denial', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-400', res as any, createUser('user-1'), 1);
+
+    // The allowlist is deliberately the two classes assertBoardAccess throws, NOT
+    // `instanceof AppError`. Widening it would mass-evict on any future error type.
+    mockAssert.mockRejectedValue(new BadRequestError('errors.common.badRequest'));
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it('writes the heartbeat before awaiting the re-authorization', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-slow', res as any, createUser('user-1'), 1);
+
+    // A hung DB (lock contention, autovacuum) never rejects, so the allowlist never
+    // runs. The keep-alive must not be starved behind it or a proxy reaps the stream.
+    mockAssert.mockImplementation(() => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    const heartbeats = res.write.mock.calls.filter((c: any[]) => c[0] === ': heartbeat\n\n');
+    expect(heartbeats.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('does not pile up re-authorizations while one is still in flight', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-pileup', res as any, createUser('user-1'), 1);
+
+    mockAssert.mockImplementation(() => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    // setInterval never awaits its callback: without a guard, a stalled DB queues
+    // one re-auth per tick per stream, unbounded.
+    expect(mockAssert).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the tokenVersion query when the connection carries no tokenVersion', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-notv', res as any, createUser('user-1'));
+
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it('re-authorizes with READ, against the board the connection is on', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-args', res as any, createUser('user-42'), 7);
+
+    await vi.advanceTimersByTimeAsync(ONE_TICK);
+
+    expect(mockAssert).toHaveBeenCalledWith('board-reauth-args', 'user-42', 'READ');
+  });
+
+  it('does not leak tokenVersion into the presence payload', async () => {
+    const res = createMockResponse();
+    addConnection('board-reauth-leak', res as any, createUser('user-1'), 9);
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    const presence = res.write.mock.calls.find(
+      (c: any[]) => typeof c[0] === 'string' && c[0].includes('presence:update'),
+    );
+    expect(presence).toBeDefined();
+    expect(presence![0]).not.toContain('tokenVersion');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// disconnectUserFromAllBoards
+// ---------------------------------------------------------------------------
+describe('disconnectUserFromAllBoards', () => {
+  it('ends the streams of that user on every board and leaves everyone else connected', () => {
+    const tabA = createMockResponse();
+    const tabB = createMockResponse();
+    const bystander = createMockResponse();
+
+    addConnection('board-all-1', tabA as any, createUser('user-revoked'));
+    addConnection('board-all-2', tabB as any, createUser('user-revoked'));
+    addConnection('board-all-2', bystander as any, createUser('user-stays'));
+
+    disconnectUserFromAllBoards('user-revoked');
+
+    expect(tabA.end).toHaveBeenCalled();
+    expect(tabB.end).toHaveBeenCalled();
+    expect(bystander.end).not.toHaveBeenCalled();
+    expect(getPresenceUsers('board-all-1')).toEqual([]);
+    expect(getPresenceUsers('board-all-2').map((u) => u.id)).toEqual(['user-stays']);
+  });
+
+  it('survives the board map shrinking underneath it', () => {
+    // disconnectUser's close handler deletes a board entry once its last connection
+    // goes, so the keys must be copied before iterating.
+    const only1 = createMockResponse();
+    const only2 = createMockResponse();
+
+    addConnection('board-shrink-1', only1 as any, createUser('solo'));
+    addConnection('board-shrink-2', only2 as any, createUser('solo'));
+
+    expect(() => disconnectUserFromAllBoards('solo')).not.toThrow();
+    expect(only1.end).toHaveBeenCalled();
+    expect(only2.end).toHaveBeenCalled();
+  });
+
+  it('does nothing for a user with no open streams', () => {
+    expect(() => disconnectUserFromAllBoards('nobody')).not.toThrow();
   });
 });

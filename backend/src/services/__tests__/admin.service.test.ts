@@ -6,7 +6,13 @@ import {
   getUsers,
   getAuditLogs,
   updateUser,
+  deleteUser,
 } from '../admin.service';
+import { disconnectUserEverywhere } from '../../hocuspocus';
+
+vi.mock('../../hocuspocus', () => ({
+  disconnectUserEverywhere: vi.fn(),
+}));
 
 const prismaMock = prisma as any;
 
@@ -550,5 +556,39 @@ describe('updateUser', () => {
       where: { id: 'u1' },
       data: {},
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteUser
+// ---------------------------------------------------------------------------
+describe('deleteUser', () => {
+  it('kicks every live collaboration session the deleted account holds', async () => {
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
+    prismaMock.pendingGroupInvite = { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) };
+    prismaMock.user.delete.mockResolvedValue({ id: 'user-gone' });
+
+    await deleteUser('user-gone');
+
+    // The REST routes 401 for a deleted account, but a Hocuspocus session was authorized
+    // once, at connect, and nothing re-checks it. The SSE side needs no call here: its
+    // heartbeat re-check sees the cascaded board/share row disappear on its own.
+    expect(disconnectUserEverywhere).toHaveBeenCalledWith('user-gone');
+  });
+
+  it('kicks only after the transaction commits', async () => {
+    const order: string[] = [];
+    prismaMock.$transaction.mockImplementation(async (fn: any) => {
+      await fn(prismaMock);
+      order.push('commit');
+    });
+    prismaMock.pendingGroupInvite = { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) };
+    prismaMock.user.delete.mockResolvedValue({ id: 'user-gone' });
+    (disconnectUserEverywhere as any).mockImplementation(() => order.push('kick'));
+
+    await deleteUser('user-gone');
+
+    // A rolled back delete must not have evicted anyone.
+    expect(order).toEqual(['commit', 'kick']);
   });
 });

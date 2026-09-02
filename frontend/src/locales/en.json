@@ -809,6 +809,8 @@
     "avatarUpdateFailed": "Failed to update group avatar"
   },
   "kanban": {
+    "accessRevoked": "Your access to this board was removed",
+    "boardDeletedRemotely": "This board was deleted",
     "title": "Kanban Boards",
     "shareBoard": "Share board",
     "newBoard": "New Board",

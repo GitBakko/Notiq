@@ -7,6 +7,7 @@ import { MultipartFile } from '@fastify/multipart';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { logEvent } from './audit.service';
 import { disconnectUserEverywhere } from '../hocuspocus';
+import { disconnectUserFromAllBoards } from './kanbanSSE';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads/avatars');
 
@@ -104,9 +105,11 @@ export const changePassword = async (userId: string, oldPassword: string, newPas
     select: { id: true, email: true, name: true },
   });
 
-  // Same as resetPassword: tokenVersion closes the door on new connections, this closes
-  // the ones already through it.
+  // Same as resetPassword: tokenVersion closes the door on new connections, these close
+  // the ones already through it. The kanban heartbeat would catch the streams within one
+  // tick, but a password change is the revocation with a live adversary — end it now.
   disconnectUserEverywhere(userId);
+  disconnectUserFromAllBoards(userId);
 
   logEvent(userId, 'PASSWORD_CHANGED');
 

@@ -34,6 +34,10 @@ vi.mock('../settings.service', () => ({
   setSetting: vi.fn(),
 }));
 
+vi.mock('../kanbanSSE', () => ({
+  disconnectUserFromAllBoards: vi.fn(),
+}));
+
 vi.mock('../../hocuspocus', () => ({
   disconnectUserEverywhere: vi.fn(),
 }));
@@ -50,6 +54,7 @@ import * as inviteService from '../invite.service';
 import * as settingsService from '../settings.service';
 import * as groupService from '../group.service';
 import { disconnectUserEverywhere } from '../../hocuspocus';
+import { disconnectUserFromAllBoards } from '../kanbanSSE';
 
 const prismaMock = prisma as any;
 
@@ -606,6 +611,15 @@ describe('resetPassword', () => {
     expect(disconnectUserEverywhere).toHaveBeenCalledWith(MOCK_USER_ID);
   });
 
+  // The kanban heartbeat re-check is blind to tokenVersion: board access is still
+  // perfectly valid, only the credentials died. This is the one revocation class the
+  // tick cannot see, which is why it needs a call site of its own.
+  it('kicks every live kanban event stream the user holds', async () => {
+    await resetPassword(RAW_TOKEN, NEW_PASSWORD);
+
+    expect(disconnectUserFromAllBoards).toHaveBeenCalledWith(MOCK_USER_ID);
+  });
+
   it('kicks nobody when the reset token is rejected', async () => {
     prismaMock.user.findFirst.mockResolvedValue(null);
 
@@ -613,6 +627,7 @@ describe('resetPassword', () => {
       'auth.errors.invalidOrExpiredToken',
     );
     expect(disconnectUserEverywhere).not.toHaveBeenCalled();
+    expect(disconnectUserFromAllBoards).not.toHaveBeenCalled();
   });
 
   it('should throw when reset token is invalid', async () => {

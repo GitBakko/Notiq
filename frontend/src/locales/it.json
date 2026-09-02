@@ -1064,6 +1064,8 @@
     "avatarUpdateFailed": "Impossibile aggiornare l'avatar del gruppo"
   },
   "kanban": {
+    "accessRevoked": "Il tuo accesso a questa bacheca è stato rimosso",
+    "boardDeletedRemotely": "Questa bacheca è stata eliminata",
     "title": "Kanban Boards",
     "shareBoard": "Condividi board",
     "newBoard": "Nuova Board",

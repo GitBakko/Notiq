@@ -9,6 +9,7 @@ import {
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
 import clsx from 'clsx';
+import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
 import { useKanbanMutations } from './hooks/useKanbanMutations';
 import { useKanbanRealtime } from './hooks/useKanbanRealtime';
@@ -60,15 +61,25 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const { data: board, isLoading, isError } = useKanbanBoard(boardId);
   const mutations = useKanbanMutations(boardId);
 
-  // Navigate back to list if board was deleted or doesn't exist
+  // Subscribe to SSE real-time updates + presence (only after board is confirmed to exist)
+  const { presenceUsers, highlightedCardIds: realtimeHighlights, accessDenied } = useKanbanRealtime(board ? boardId : undefined);
+
+  // Navigate back to list if board was deleted or doesn't exist.
+  // [BACKUP] 2026-09-02 — the condition used to be `(isError || !board)` alone. That misses
+  // the case the server now produces: the event stream is refused, but the board query still
+  // answers from the Dexie copy on a 404, so isError stays false and the page would sit on a
+  // fully-rendered ghost board indefinitely.
   useEffect(() => {
-    if (!isLoading && (isError || !board)) {
+    if (isLoading) return;
+    if (accessDenied) {
+      toast.error(t(accessDenied === 'revoked' ? 'kanban.accessRevoked' : 'kanban.boardDeletedRemotely'));
+      navigate('/kanban', { replace: true });
+      return;
+    }
+    if (isError || !board) {
       navigate('/kanban', { replace: true });
     }
-  }, [isLoading, isError, board, navigate]);
-
-  // Subscribe to SSE real-time updates + presence (only after board is confirmed to exist)
-  const { presenceUsers, highlightedCardIds: realtimeHighlights } = useKanbanRealtime(board ? boardId : undefined);
+  }, [isLoading, isError, board, accessDenied, navigate, t]);
 
   // Parse ?highlightCards=id1,id2 from URL (used when navigating from NoteEditor)
   const [searchParams, setSearchParams] = useSearchParams();

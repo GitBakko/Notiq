@@ -5,15 +5,26 @@ import { useAuthStore } from '../../../store/authStore';
 import { db } from '../../../lib/db';
 import type { KanbanSSEEvent, BoardPresenceUser } from '../types';
 
+/** Why the stream was closed for good, so the page can say so instead of looping. */
+export type KanbanAccessDenial = 'revoked' | 'deleted';
+
 interface UseKanbanRealtimeResult {
   presenceUsers: BoardPresenceUser[];
   highlightedCardIds: Set<string>;
+  accessDenied: KanbanAccessDenial | null;
 }
+
+/**
+ * 4xx is not uniformly definitive: a throttled or timed-out request is transient, and
+ * treating it as a revocation would throw a legitimate user off the board.
+ */
+const RETRYABLE_4XX = new Set([408, 425, 429]);
 
 export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtimeResult {
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
   const [presenceUsers, setPresenceUsers] = useState<BoardPresenceUser[]>([]);
+  const [accessDenied, setAccessDenied] = useState<KanbanAccessDenial | null>(null);
   const [highlightedCardIds, setHighlightedCardIds] = useState<Set<string>>(new Set());
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -72,9 +83,7 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
 
   useEffect(() => {
     if (!boardId) return;
-
-    const token = useAuthStore.getState().token;
-    if (!token) return;
+    if (!useAuthStore.getState().token) return;
 
     const abortController = new AbortController();
     abortRef.current = abortController;
@@ -105,12 +114,36 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
 
     async function connect(): Promise<void> {
       try {
+        // Read the token per attempt, not once: the axios interceptor refreshes the JWT
+        // behind the app's back, and a stream holding the old one would poll forever with
+        // a token that can never become valid again while the rest of the app is healthy.
+        const token = useAuthStore.getState().token;
+        if (!token) return;
+
         const response = await fetch(`/api/kanban/boards/${boardId}/events`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: abortController.signal,
         });
 
         if (!response.ok || !response.body) {
+          // [BACKUP] 2026-09-02 — this branch used to be an unconditional
+          // `scheduleReconnect(); return;`, which turned any definitive denial into an
+          // endless 2s/4s/8s/16s/30s loop while the page went on showing a board the user
+          // can no longer read. The server now ends these streams on revocation (the SSE
+          // heartbeat re-authorizes), so the loop had to stop being endless first.
+          const status = response.status;
+          if (status === 401) {
+            // Credentials are gone, not board access: same move the axios interceptor
+            // makes on any other 401.
+            useAuthStore.getState().logout();
+            return;
+          }
+          if (status === 403 || status === 404) {
+            setAccessDenied(status === 403 ? 'revoked' : 'deleted');
+            return;
+          }
+          if (status >= 400 && status < 500 && !RETRYABLE_4XX.has(status)) return;
+
           scheduleReconnect();
           return;
         }
@@ -157,10 +190,11 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
       abortRef.current = null;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       setPresenceUsers([]);
+      setAccessDenied(null);
     };
   }, [boardId, handleEvent]);
 
-  return { presenceUsers, highlightedCardIds };
+  return { presenceUsers, highlightedCardIds, accessDenied };
 }
 
 /** Write SSE events directly to Dexie so offline reads stay current */

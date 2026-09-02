@@ -1,4 +1,5 @@
 import prisma from '../plugins/prisma';
+import { disconnectUserEverywhere } from '../hocuspocus';
 
 export interface DashboardStats {
   kpi: {
@@ -228,4 +229,15 @@ export async function deleteUser(userId: string) {
     // Delete user — CASCADE handles all related data automatically
     await tx.user.delete({ where: { id: userId } });
   });
+
+  // Every REST route 401s for a deleted account, but a Hocuspocus session was authorized
+  // once, at connect, and nothing ever re-checks it: without this the deleted account keeps
+  // editing every note it had open. After the transaction on purpose — a rollback must not
+  // evict anyone.
+  //
+  // The kanban event streams need no call here: their heartbeat re-runs assertBoardAccess,
+  // which starts throwing the moment the cascade removes the board or the share row. That
+  // also covers the case no call site could reach — the OTHER users left on a board this
+  // account owned, whose ids are gone from the DB by the time the transaction commits.
+  disconnectUserEverywhere(userId);
 }
