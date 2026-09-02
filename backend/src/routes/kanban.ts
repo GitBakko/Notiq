@@ -496,7 +496,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     await getCardWithAccess(id, request.user.id, 'READ');
     const { page, limit } = paginationSchema.parse(request.query);
-    return await kanbanService.getCardActivities(id, page, limit);
+    return await kanbanService.getCardActivities(id, page, limit, request.user.id);
   });
 
   // ── Comments ────────────────────────────────────────────

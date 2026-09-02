@@ -3,7 +3,7 @@ import prisma from '../../plugins/prisma';
 import logger from '../../utils/logger';
 import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { broadcast } from '../kanbanSSE';
-import { logCardActivity, cardWithAssigneeSelect, transformCard } from './helpers';
+import { logCardActivity, cardWithAssigneeSelect, transformCard, accessibleNoteIds } from './helpers';
 import { computeColumnOrder } from './position';
 import { notifyBoardUsers, notifyBoardUsersTiered } from './notifications';
 import { assertBelongsToBoard } from '../kanbanPermissions';
@@ -547,8 +547,34 @@ export async function deleteCard(cardId: string, actorId?: string) {
 
 // ─── Card Activities ────────────────────────────────────────
 
-export async function getCardActivities(cardId: string, page: number, limit: number) {
-  return prisma.kanbanCardActivity.findMany({
+/** The two activity actions whose metadata is about a note the reader may not see. */
+const NOTE_ACTIONS = new Set(['NOTE_LINKED', 'NOTE_UNLINKED']);
+
+function metadataObject(metadata: unknown): Record<string, unknown> | null {
+  // logCardActivity writes Prisma.JsonNull when there is no metadata, which comes
+  // back as JS null — the majority shape in this table. Arrays are not produced by
+  // any writer, but `typeof [] === 'object'` would let one through the spread.
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
+  return metadata as Record<string, unknown>;
+}
+
+/**
+ * Card activity feed, with the linked note's title resolved per reader (B1).
+ *
+ * linkNoteToCard used to PERSIST the note title in metadata, and this endpoint
+ * served it to anyone with READ on the board — the title the board view hides on
+ * the face of the card was readable in the Activity tab of the same modal. The
+ * write side now stores only `noteId`; this side resolves the title for readers
+ * who may see it, and drops any title still sitting in a row written before the
+ * fix (or on a database where the scrub migration has not run yet).
+ */
+export async function getCardActivities(
+  cardId: string,
+  page: number,
+  limit: number,
+  userId: string
+) {
+  const activities = await prisma.kanbanCardActivity.findMany({
     where: { cardId },
     orderBy: { createdAt: 'desc' },
     skip: (page - 1) * limit,
@@ -556,6 +582,39 @@ export async function getCardActivities(cardId: string, page: number, limit: num
     include: {
       user: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
     },
+  });
+
+  const noteIds = activities
+    .filter((a) => NOTE_ACTIONS.has(a.action))
+    .map((a) => metadataObject(a.metadata)?.noteId)
+    .filter((id): id is string => typeof id === 'string');
+
+  // Same predicate getBoard uses, so the two views of the same note cannot disagree.
+  // No early return for a page without note activity: accessibleNoteIds already
+  // issues nothing for an empty list, and a second guard here only looked like it
+  // was doing the work — a mutation that removed it killed no test.
+  const accessible = await accessibleNoteIds(noteIds, userId);
+  const titles = new Map<string, string>();
+  if (accessible.size > 0) {
+    const notes = await prisma.note.findMany({
+      where: { id: { in: [...accessible] } },
+      select: { id: true, title: true },
+    });
+    for (const n of notes) titles.set(n.id, n.title);
+  }
+
+  return activities.map((a) => {
+    if (!NOTE_ACTIONS.has(a.action)) return a;
+    const meta = metadataObject(a.metadata);
+    if (!meta) return a;
+
+    // Drop first, resolve second: a legacy row keeps its title only if the reader
+    // is separately entitled to it, and a row with no noteId keeps none at all.
+    const { noteTitle: _persisted, ...rest } = meta;
+    const noteId = typeof meta.noteId === 'string' ? meta.noteId : null;
+    const title = noteId ? titles.get(noteId) : undefined;
+
+    return { ...a, metadata: title === undefined ? rest : { ...rest, noteTitle: title } };
   });
 }
 

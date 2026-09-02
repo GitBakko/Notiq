@@ -132,9 +132,13 @@ export async function linkNoteToCard(
     }
   }
 
-  // Log activity
+  // Log activity.
+  // [BACKUP] 2026-09-02 — metadata was { noteId, noteTitle: note.title }. The title
+  // was served by GET /cards/:id/activities to every board reader, which is a wider
+  // audience than the note's share list (B1). getCardActivities now resolves it
+  // from the id, per reader.
   await logCardActivity(cardId, actorId, 'NOTE_LINKED', {
-    metadata: { noteId, noteTitle: note.title },
+    metadata: { noteId },
   });
 
   // Broadcast update
@@ -160,7 +164,9 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
     select: {
       noteId: true,
       noteLinkedById: true,
-      note: { select: { title: true } },
+      // [BACKUP] 2026-09-02 — `note: { select: { title: true } }` was here to feed
+      // the title into the activity metadata. Nothing needs the title now, and a
+      // to-one relation is a separate SQL statement.
       column: { select: { boardId: true } },
     },
   });
@@ -168,7 +174,9 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
   if (!card.noteId) throw new BadRequestError('errors.kanban.cardNoLinkedNote');
   if (card.noteLinkedById !== actorId) throw new ForbiddenError('errors.kanban.onlyLinkerCanUnlinkNote');
 
-  const noteTitle = card.note?.title || '';
+  // Read the id BEFORE the update nulls it: it is the only thing that lets the
+  // read path resolve a title for whoever is entitled to one.
+  const unlinkedNoteId = card.noteId;
 
   await prisma.kanbanCard.update({
     where: { id: cardId },
@@ -177,8 +185,11 @@ export async function unlinkNoteFromCard(cardId: string, actorId: string) {
 
   const boardId = card.column.boardId;
 
+  // [BACKUP] 2026-09-02 — metadata was { noteTitle }, with no id at all: the row
+  // both leaked the title to every board reader and could not be filtered on read,
+  // because there was nothing to check access against (B1).
   await logCardActivity(cardId, actorId, 'NOTE_UNLINKED', {
-    metadata: { noteTitle },
+    metadata: { noteId: unlinkedNoteId },
   });
 
   const rawUpdatedCard = await prisma.kanbanCard.findUnique({

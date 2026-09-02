@@ -416,6 +416,41 @@ describe('POST /api/kanban/columns/:id/cards', () => {
   });
 });
 
+describe('GET /api/kanban/cards/:id/activities', () => {
+  // B1: the service resolves the linked note's title per reader, so it needs to
+  // know WHO is reading. Without this argument it cannot tell them apart and the
+  // whole filter is inert — the route is where that fact is pinned.
+  it('passes the requesting user to the service', async () => {
+    mockKanbanService.getCardActivities.mockResolvedValue([]);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kanban/cards/card-1/activities?page=2&limit=5',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockKanbanService.getCardActivities).toHaveBeenCalledWith(
+      'card-1',
+      2,
+      5,
+      TEST_USER.id,
+    );
+  });
+
+  it('requires READ access on the card', async () => {
+    mockKanbanService.getCardActivities.mockResolvedValue([]);
+
+    await app.inject({
+      method: 'GET',
+      url: '/api/kanban/cards/card-1/activities',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    expect(mockPermissions.getCardWithAccess).toHaveBeenCalledWith('card-1', TEST_USER.id, 'READ');
+  });
+});
+
 describe('PUT /api/kanban/cards/:id', () => {
   it('updates a card', async () => {
     const updated = { id: 'card-1', title: 'Updated card', priority: 'HIGH' };

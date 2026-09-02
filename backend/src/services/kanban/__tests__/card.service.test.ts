@@ -2,32 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mock sibling services BEFORE imports ────────────────────
 
-vi.mock('../helpers', () => ({
-  logCardActivity: vi.fn().mockResolvedValue(undefined),
-  cardWithAssigneeSelect: {
-    id: true,
-    title: true,
-    description: true,
-    position: true,
-    columnId: true,
-    assigneeId: true,
-    dueDate: true,
-    priority: true,
-    noteId: true,
-    noteLinkedById: true,
-    archivedAt: true,
-    taskItemId: true,
-    createdAt: true,
-    updatedAt: true,
-    assignee: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
-    note: { select: { id: true, title: true, userId: true } },
-    _count: { select: { comments: true } },
-  },
-  transformCard: vi.fn((card: any) => {
-    const { _count, ...rest } = card;
-    return { ...rest, commentCount: _count?.comments ?? 0 };
-  }),
-}));
+// The selects and accessibleNoteIds stay REAL: this file used to hand-copy
+// cardWithAssigneeSelect here, which meant every assertion about what the service
+// selects was really an assertion about this copy. That is the shape of the trap
+// that let three green suites hide their bug. Only logCardActivity is stubbed.
+vi.mock('../helpers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../helpers')>();
+  return {
+    ...actual,
+    logCardActivity: vi.fn().mockResolvedValue(undefined),
+    transformCard: vi.fn((card: any) => {
+      const { _count, ...rest } = card;
+      return { ...rest, commentCount: _count?.comments ?? 0 };
+    }),
+  };
+});
 
 vi.mock('../notifications', () => ({
   notifyBoardUsers: vi.fn().mockResolvedValue(undefined),
@@ -359,6 +348,23 @@ describe('updateCard', () => {
 
   beforeEach(() => {
     prismaMock.kanbanCard.findUnique.mockResolvedValue(currentCard);
+  });
+
+  // ─── B2 ────────────────────────────────────────────────────
+  //
+  // The 200 of a PATCH returned cardWithAssigneeSelect whole, note included, to a
+  // WRITE sharee with no access to that note. updateCard has an actorId but no
+  // reason to filter: no frontend consumer reads this response (syncService.ts:876
+  // discards it), so it stops selecting the relation — which also removes one SQL
+  // statement, since Prisma fetches a to-one relation separately.
+  it('does not select the linked note', async () => {
+    prismaMock.kanbanCard.update.mockResolvedValue(makeRawCardResult());
+
+    await updateCard('card-u1', { title: 'New Title' }, actor.id);
+
+    const select = prismaMock.kanbanCard.update.mock.calls[0][0].select;
+    expect(select).not.toHaveProperty('note');
+    expect(select).toHaveProperty('noteId', true);
   });
 
   it('updates title and description', async () => {
@@ -1293,11 +1299,180 @@ describe('getCardActivities', () => {
   it('respects page and limit parameters', async () => {
     prismaMock.kanbanCardActivity.findMany.mockResolvedValue([]);
 
-    await getCardActivities('card-a', 3, 5);
+    await getCardActivities('card-a', 3, 5, 'user-1');
 
     expect(prismaMock.kanbanCardActivity.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ skip: 10, take: 5 })
     );
+  });
+
+  // ─── B1 ────────────────────────────────────────────────────
+  //
+  // linkNoteToCard persisted the note TITLE into metadata, and this endpoint
+  // served it to anyone with READ on the board. The title the board view hides
+  // on the face of the card was readable in the Activity tab of the same modal.
+  // Reproduced over HTTP before the fix: superadmin@notiq.ai received
+  // {"noteTitle":"Nota senza titolo"} here while getting 404 errors.notes.notFound
+  // on that very note.
+
+  /** An activity row as the DB hands it back, with arbitrary metadata. */
+  function noteActivity(action: 'NOTE_LINKED' | 'NOTE_UNLINKED', metadata: unknown) {
+    return {
+      ...makeKanbanCardActivity({ cardId: 'card-a' }),
+      action,
+      metadata,
+      user: { id: 'u1', name: 'User', email: 'u@t.com', color: null, avatarUrl: null },
+    };
+  }
+
+  it('does not serve a persisted noteTitle to a user without note access', async () => {
+    // A legacy row: written before the fix, and still present on any database
+    // where the scrub migration has not run yet.
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_LINKED', { noteId: 'note-1', noteTitle: 'Q4 layoffs' }),
+    ]);
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+    prismaMock.note.findMany.mockResolvedValue([]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'outsider');
+
+    expect((result[0].metadata as Record<string, unknown>).noteTitle).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('Q4 layoffs');
+  });
+
+  it('resolves the title from noteId for a user who owns the note', async () => {
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_LINKED', { noteId: 'note-1' }),
+    ]);
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+    // accessibleNoteIds' ownership lookup, then the title lookup
+    prismaMock.note.findMany
+      .mockResolvedValueOnce([{ id: 'note-1' }])
+      .mockResolvedValueOnce([{ id: 'note-1', title: 'Q4 layoffs' }]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'owner');
+
+    expect((result[0].metadata as Record<string, unknown>).noteTitle).toBe('Q4 layoffs');
+  });
+
+  it('resolves the title for a user with an ACCEPTED share', async () => {
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_LINKED', { noteId: 'note-1' }),
+    ]);
+    prismaMock.sharedNote.findMany.mockResolvedValue([{ noteId: 'note-1' }]);
+    prismaMock.note.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'note-1', title: 'Q4 layoffs' }]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'sharee');
+
+    expect((result[0].metadata as Record<string, unknown>).noteTitle).toBe('Q4 layoffs');
+  });
+
+  it('keeps noteId, which every board reader already sees on the card', async () => {
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_LINKED', { noteId: 'note-1', noteTitle: 'Q4 layoffs' }),
+    ]);
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+    prismaMock.note.findMany.mockResolvedValue([]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'outsider');
+
+    expect((result[0].metadata as Record<string, unknown>).noteId).toBe('note-1');
+  });
+
+  it('redacts a legacy NOTE_UNLINKED row that carries a title and no noteId', async () => {
+    // Rows written before the fix have { noteTitle } and nothing else: there is no
+    // id to check access against, so the only safe answer is to serve nothing.
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_UNLINKED', { noteTitle: 'Q4 layoffs' }),
+    ]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'anyone');
+
+    expect((result[0].metadata as Record<string, unknown>).noteTitle).toBeUndefined();
+  });
+
+  it('leaves non-note activities untouched', async () => {
+    const moved = {
+      ...makeKanbanCardActivity({ cardId: 'card-a' }),
+      action: 'UPDATED',
+      metadata: { field: 'title', oldValue: 'a', newValue: 'b' },
+      user: { id: 'u1', name: 'User', email: 'u@t.com', color: null, avatarUrl: null },
+    };
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([moved]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'anyone');
+
+    expect(result[0].metadata).toEqual({ field: 'title', oldValue: 'a', newValue: 'b' });
+  });
+
+  it('issues no access queries when the page has no note activity', async () => {
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      {
+        ...makeKanbanCardActivity({ cardId: 'card-a' }),
+        action: 'CREATED',
+        metadata: null,
+        user: { id: 'u1', name: 'User', email: 'u@t.com', color: null, avatarUrl: null },
+      },
+    ]);
+
+    await getCardActivities('card-a', 1, 10, 'anyone');
+
+    expect(prismaMock.sharedNote.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.note.findMany).not.toHaveBeenCalled();
+  });
+
+  it('survives a metadata that is JSON null', async () => {
+    // logCardActivity writes Prisma.JsonNull for every activity with no metadata,
+    // which is jsonb 'null' — the majority shape in the table.
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_UNLINKED', null),
+    ]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'anyone');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].metadata).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  getArchivedCards
+// ═══════════════════════════════════════════════════════════════
+
+describe('getArchivedCards', () => {
+  // The other half of B2, and the one that only needs board READ
+  // (routes/kanban.ts:568-572) — so it is reachable by strictly more people than
+  // the PATCH. ArchivedCardsModal never reads card.note, so nothing is lost.
+  it('does not select the linked note', async () => {
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+
+    await getArchivedCards('board-1');
+
+    const select = prismaMock.kanbanCard.findMany.mock.calls[0][0].select;
+    expect(select).not.toHaveProperty('note');
+    expect(select).toHaveProperty('noteId', true);
+    // The column is what the modal actually renders; it must survive.
+    expect(select).toHaveProperty('column');
+  });
+
+  it('still transforms _count.comments into commentCount', async () => {
+    prismaMock.kanbanCard.findMany.mockResolvedValue([
+      {
+        id: 'card-1',
+        title: 'Archived',
+        noteId: null,
+        archivedAt: new Date(),
+        column: { id: 'col-1', title: 'Done' },
+        _count: { comments: 3 },
+      },
+    ]);
+
+    const result = await getArchivedCards('board-1');
+
+    expect(result[0]).toHaveProperty('commentCount', 3);
+    expect(result[0]).not.toHaveProperty('_count');
   });
 });
 

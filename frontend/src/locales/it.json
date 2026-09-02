@@ -1193,7 +1193,9 @@
       "DUE_DATE_REMOVED": "scadenza rimossa",
       "UPDATED": "aggiornato {{field}}",
       "NOTE_LINKED": "collegata nota \"{{noteTitle}}\"",
+      "NOTE_LINKED_NO_ACCESS": "ha collegato una nota",
       "NOTE_UNLINKED": "scollegata nota \"{{noteTitle}}\"",
+      "NOTE_UNLINKED_NO_ACCESS": "ha scollegato una nota",
       "DELETED": "card eliminata",
       "fieldTitle": "titolo",
       "fieldDescription": "descrizione"
@@ -1294,7 +1296,8 @@
       "linkedTo": "Collegata a",
       "searchTaskLists": "Cerca task list...",
       "noTaskLists": "Nessuna task list trovata",
-      "alreadyLinked": "Già collegata a una board"
+      "alreadyLinked": "Già collegata a una board",
+      "taskListNoAccess": "Task list collegata (nessun accesso)"
     },
     "mobile": {
       "swipeHint": "Scorri per navigare tra le colonne"

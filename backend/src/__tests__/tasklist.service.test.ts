@@ -264,3 +264,90 @@ describe('tasklist.service — deleteTaskItem', () => {
     await expect(deleteTaskItem('user-1', 'tl-1', 'item-1')).rejects.toThrow('errors.tasks.itemNotFound');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  N4 — the linked Kanban board, seen from the task-list side
+// ═══════════════════════════════════════════════════════════════
+//
+// The mirror of B4. getBoard filters the board's linked task list, but the task
+// list endpoints handed back `kanbanBoard: { id, title }` with no board check at
+// all — so filtering only one direction just moves the leak to the other
+// endpoint. Reachable because linkTaskListToBoard requires WRITE on the board and
+// ACCEPTED-WRITE on the list, so a list collaborator can attach a list to their
+// own private board and the list owner then reads that board's title.
+describe('getTaskLists — linked board visibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function listWithBoard(shares: { id: string }[], ownerId = 'other-user') {
+    return [
+      {
+        id: 'tl-1',
+        userId: 'user-1',
+        title: 'My list',
+        items: [],
+        sharedWith: [],
+        kanbanBoard: { id: 'board-1', title: 'BOARD SECRET', ownerId, shares },
+      },
+    ];
+  }
+
+  it('nulls the linked board for a user with no access to it', async () => {
+    prismaMock.taskList.findMany.mockResolvedValueOnce(listWithBoard([]));
+
+    const result = await getTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toBeNull();
+    expect(JSON.stringify(result)).not.toContain('BOARD SECRET');
+  });
+
+  it('keeps the linked board for its owner', async () => {
+    prismaMock.taskList.findMany.mockResolvedValueOnce(listWithBoard([], 'user-1'));
+
+    const result = await getTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toEqual({ id: 'board-1', title: 'BOARD SECRET' });
+  });
+
+  it('keeps the linked board for a user with an ACCEPTED share', async () => {
+    prismaMock.taskList.findMany.mockResolvedValueOnce(listWithBoard([{ id: 'share-1' }]));
+
+    const result = await getTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toEqual({ id: 'board-1', title: 'BOARD SECRET' });
+  });
+
+  it('asks the database only for shares that are ACCEPTED and the reader owns', async () => {
+    // The scoped `shares` sub-select IS the access check: a where clause that
+    // forgot the status would return a PENDING row and read as access.
+    prismaMock.taskList.findMany.mockResolvedValueOnce([]);
+
+    await getTaskLists('user-1');
+
+    const include = prismaMock.taskList.findMany.mock.calls[0][0].include;
+    expect(include.kanbanBoard.select.shares).toEqual({
+      where: { userId: 'user-1', status: 'ACCEPTED' },
+      select: { id: true },
+    });
+  });
+
+  it('does not leak the board ownerId or the share rows into the response', async () => {
+    prismaMock.taskList.findMany.mockResolvedValueOnce(listWithBoard([{ id: 'share-1' }]));
+
+    const result = await getTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).not.toHaveProperty('ownerId');
+    expect(result[0].kanbanBoard).not.toHaveProperty('shares');
+  });
+
+  it('leaves a list with no linked board alone', async () => {
+    prismaMock.taskList.findMany.mockResolvedValueOnce([
+      { id: 'tl-2', userId: 'user-1', title: 'No board', items: [], sharedWith: [], kanbanBoard: null },
+    ]);
+
+    const result = await getTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toBeNull();
+  });
+});

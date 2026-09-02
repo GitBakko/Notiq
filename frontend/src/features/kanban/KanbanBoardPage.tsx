@@ -797,18 +797,31 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           </div>
         )}
 
-        {/* Board-linked task list */}
-        {board.taskList && (
+        {/* Board-linked task list.
+            `taskList` is null when the reader has no access to it (the server
+            filters it the same way it filters the board note); `taskListId`
+            survives, so the row stays — otherwise a WRITE member who cannot read
+            the list would also lose the unlink button, which is a board-level
+            action they are entitled to. Mirrors the board-note row above. */}
+        {board.taskListId && (
           <div className="flex-shrink-0 border-b border-neutral-200/60 dark:border-neutral-800/40 px-4 py-2">
             <div className="flex items-center gap-2 text-sm">
-              <ListChecks size={14} className="text-blue-500 flex-shrink-0" />
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">{t('kanban.linking.linkedTo')}:</span>
-              <button
-                onClick={() => navigate('/tasks')}
-                className="text-blue-600 dark:text-blue-400 hover:underline truncate text-sm"
-              >
-                {board.taskList.title}
-              </button>
+              <ListChecks size={14} className={board.taskList ? 'text-blue-500 flex-shrink-0' : 'text-neutral-400 flex-shrink-0'} />
+              {board.taskList ? (
+                <>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">{t('kanban.linking.linkedTo')}:</span>
+                  <button
+                    onClick={() => navigate('/tasks')}
+                    className="text-blue-600 dark:text-blue-400 hover:underline truncate text-sm"
+                  >
+                    {board.taskList.title}
+                  </button>
+                </>
+              ) : (
+                <span className="text-xs text-neutral-400 dark:text-neutral-400 italic">
+                  {t('kanban.linking.taskListNoAccess')}
+                </span>
+              )}
               {!readOnly && (
                 <button
                   onClick={handleUnlinkTaskList}

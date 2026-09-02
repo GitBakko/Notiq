@@ -217,10 +217,15 @@ export function disconnectUserFromAllBoards(userId: string): void {
 }
 
 /**
- * `cardWithAssigneeSelect` includes the linked note (id + title). getBoard filters
- * that per requesting user; a broadcast cannot - it writes one payload to every
- * socket on the board. Strip it here, at the single chokepoint, instead of at each
- * of the 21 broadcast call sites.
+ * A broadcast writes ONE payload to every socket on the board, so it can never
+ * filter a linked note per recipient the way getBoard does. Strip it here, at the
+ * single chokepoint, instead of at each of the 21 broadcast call sites.
+ *
+ * Since 2026-09-02 this is a second line of defence rather than the only one:
+ * `cardWithAssigneeSelect` no longer carries the note at all (B2), and
+ * `cardWithNoteSelect` — the one that does — is used exclusively by getBoard,
+ * which never broadcasts. Keep it: it costs nothing, and it is what catches the
+ * next select that starts carrying a note into an event.
  */
 function stripNote(event: KanbanEvent): KanbanEvent {
   if (event.type === 'card:created' || event.type === 'card:updated') {

@@ -1,6 +1,6 @@
 import prisma from '../../plugins/prisma';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
-import { cardWithAssigneeSelect, transformCard } from './helpers';
+import { cardWithNoteSelect, transformCard, accessibleNoteIds } from './helpers';
 
 // ─── Board CRUD ─────────────────────────────────────────────
 
@@ -163,7 +163,7 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
           cards: {
             where: { archivedAt: null },
             orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-            select: cardWithAssigneeSelect,
+            select: cardWithNoteSelect,
           },
         },
       },
@@ -198,34 +198,37 @@ export async function getBoard(boardId: string, requestingUserId?: string) {
     if (board.noteId) noteIds.push(board.noteId);
 
     if (noteIds.length > 0) {
-      const uniqueNoteIds = [...new Set(noteIds)];
-
-      // Get notes the user can see (owned or shared-ACCEPTED)
-      const accessibleShares = await prisma.sharedNote.findMany({
-        where: { noteId: { in: uniqueNoteIds }, userId: requestingUserId, status: 'ACCEPTED' },
-        select: { noteId: true },
-      });
-      const accessibleNoteIds = new Set(accessibleShares.map((s) => s.noteId));
-
-      // Also add notes owned by the requesting user
-      const ownedNotes = await prisma.note.findMany({
-        where: { id: { in: uniqueNoteIds }, userId: requestingUserId },
-        select: { id: true },
-      });
-      for (const n of ownedNotes) accessibleNoteIds.add(n.id);
+      // [BACKUP] 2026-09-02 — the two lookups were inlined here. Extracted to
+      // accessibleNoteIds() so getCardActivities resolves visibility through the
+      // same predicate instead of growing a second definition of it (B1).
+      const accessible = await accessibleNoteIds(noteIds, requestingUserId);
 
       // Null out note data for cards the user can't access
       for (const col of board.columns) {
         for (const card of col.cards) {
-          if (card.noteId && !accessibleNoteIds.has(card.noteId)) {
+          if (card.noteId && !accessible.has(card.noteId)) {
             (card as Record<string, unknown>).note = null;
           }
         }
       }
 
       // Null out board-level note if user can't access it
-      if (board.noteId && !accessibleNoteIds.has(board.noteId)) {
+      if (board.noteId && !accessible.has(board.noteId)) {
         (board as Record<string, unknown>).note = null;
+      }
+    }
+
+    // Same treatment for the linked TASK LIST (B4). It is not a note and does not
+    // go through the batch above: a board has at most one, so one lookup, and only
+    // when it is linked and not owned by the reader. `taskListId` survives so the
+    // UI can still render the "no access" row in place of the title.
+    if (board.taskList && board.taskList.userId !== requestingUserId) {
+      const share = await prisma.sharedTaskList.findUnique({
+        where: { taskListId_userId: { taskListId: board.taskList.id, userId: requestingUserId } },
+        select: { status: true },
+      });
+      if (share?.status !== 'ACCEPTED') {
+        (board as Record<string, unknown>).taskList = null;
       }
     }
   }
@@ -256,7 +259,12 @@ export async function updateBoard(
         },
       },
       owner: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
-      note: { select: { id: true, title: true, userId: true } },
+      // [BACKUP] 2026-09-02 — this used to include
+      //   note: { select: { id: true, title: true, userId: true } }
+      // unfiltered, so the PUT handed a WRITE sharee the note title the GET hides
+      // from them (B3). updateBoard has no userId to filter against, and the
+      // response is discarded by the client (syncService.ts:842), so it stops
+      // asking. The title still reaches everyone entitled to it through getBoard.
     },
   });
 }

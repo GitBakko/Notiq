@@ -335,6 +335,98 @@ describe('board.service', () => {
       // The card's note should be nulled out since user can't access it
       expect(result.columns[0].cards[0].note).toBeNull();
     });
+
+    // ─── B4: the linked task list ────────────────────────────
+    //
+    // getBoard filtered noteIds and nothing else, so the board's linked TASK LIST
+    // title reached every board reader regardless of task-list access. The note
+    // row on the same screen has an explicit "no access" fallback; this one did not.
+
+    /** A board carrying a linked task list owned by `ownerId`, with no cards. */
+    function boardWithTaskList(ownerId: string, taskListId = 'tl-1') {
+      const owner = makeUser({ id: ownerId });
+      const board = makeKanbanBoard({ ownerId });
+      return {
+        ...board,
+        noteId: null,
+        taskListId,
+        columns: [],
+        shares: [],
+        owner: { id: owner.id, name: owner.name, email: owner.email, color: owner.color, avatarUrl: owner.avatarUrl },
+        note: null,
+        taskList: { id: taskListId, title: 'Secret Task List', userId: ownerId },
+      };
+    }
+
+    it('nulls the linked task list for a reader who cannot access it', async () => {
+      const owner = makeUser();
+      const reader = makeUser();
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue(boardWithTaskList(owner.id) as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+      // No accepted share on the task list
+      m(prisma.sharedTaskList.findUnique).mockResolvedValue(null as any);
+
+      const result = await getBoard('board-1', reader.id);
+
+      expect(result.taskList).toBeNull();
+    });
+
+    it('keeps the linked task list for its owner without querying shares', async () => {
+      const owner = makeUser();
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue(boardWithTaskList(owner.id) as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+
+      const result = await getBoard('board-1', owner.id);
+
+      expect(result.taskList).toMatchObject({ title: 'Secret Task List' });
+      expect(prisma.sharedTaskList.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('keeps the linked task list for a user with an ACCEPTED share', async () => {
+      const owner = makeUser();
+      const reader = makeUser();
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue(boardWithTaskList(owner.id) as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+      m(prisma.sharedTaskList.findUnique).mockResolvedValue({ status: 'ACCEPTED' } as any);
+
+      const result = await getBoard('board-1', reader.id);
+
+      expect(result.taskList).toMatchObject({ title: 'Secret Task List' });
+    });
+
+    it('nulls the linked task list for a PENDING share', async () => {
+      const owner = makeUser();
+      const reader = makeUser();
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue(boardWithTaskList(owner.id) as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+      m(prisma.sharedTaskList.findUnique).mockResolvedValue({ status: 'PENDING' } as any);
+
+      const result = await getBoard('board-1', reader.id);
+
+      expect(result.taskList).toBeNull();
+    });
+
+    it('keeps taskListId so the UI can still show a "no access" row', async () => {
+      const owner = makeUser();
+      const reader = makeUser();
+
+      m(prisma.kanbanColumn.findMany).mockResolvedValue([]);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue(boardWithTaskList(owner.id) as any);
+      m(prisma.kanbanCard.count).mockResolvedValue(0);
+      m(prisma.sharedTaskList.findUnique).mockResolvedValue(null as any);
+
+      const result = await getBoard('board-1', reader.id);
+
+      expect(result.taskListId).toBe('tl-1');
+    });
   });
 
   // ─── updateBoard ───────────────────────────────────────────
@@ -371,6 +463,29 @@ describe('board.service', () => {
       await expect(
         updateBoard('nonexistent', { title: 'X' })
       ).rejects.toThrow('Record to update not found.');
+    });
+
+    // ─── B3 ──────────────────────────────────────────────────
+    //
+    // updateBoard returned the board-level note unfiltered: the PUT told a WRITE
+    // sharee what the GET hid from them. It has no userId to filter against and
+    // no frontend consumer (syncService.ts:842 discards the response), so it
+    // stops asking for the note rather than learning to filter it.
+    it('does not include the linked note in the response', async () => {
+      const board = makeKanbanBoard({ title: 'Old Title' });
+
+      m(prisma.kanbanBoard.update).mockResolvedValue({
+        ...board,
+        title: 'New Title',
+        shares: [],
+        owner: { id: board.ownerId, name: 'User', email: 'user@test.com', color: null, avatarUrl: null },
+      } as any);
+
+      await updateBoard(board.id, { title: 'New Title' });
+
+      const include = m(prisma.kanbanBoard.update).mock.calls[0][0].include as Record<string, unknown>;
+      expect(include).not.toHaveProperty('note');
+      expect(include).not.toHaveProperty('taskList');
     });
   });
 

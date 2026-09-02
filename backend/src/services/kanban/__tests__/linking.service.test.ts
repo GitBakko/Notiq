@@ -188,8 +188,12 @@ describe('linkNoteToCard', () => {
     });
 
     // Verify activity log
+    // B1: the title must NOT be persisted. It was served by
+    // GET /cards/:id/activities to anyone with READ on the board, which is a
+    // wider audience than the note's own share list. Only the id is stored; the
+    // read path resolves the title for readers entitled to it.
     expect(logCardActivity).toHaveBeenCalledWith(card.id, user.id, 'NOTE_LINKED', {
-      metadata: { noteId: note.id, noteTitle: note.title },
+      metadata: { noteId: note.id },
     });
 
     // Verify broadcast
@@ -379,8 +383,12 @@ describe('unlinkNoteFromCard', () => {
       data: { noteId: null, noteLinkedById: null },
     });
 
+    // B1, and the harder half: this row used to carry the title and NO id, so a
+    // read-side filter had nothing to check access against and a scrub could not
+    // be reversed for anyone. It now carries the id, read off the card before the
+    // update nulls it.
     expect(logCardActivity).toHaveBeenCalledWith('card-1', user.id, 'NOTE_UNLINKED', {
-      metadata: { noteTitle: 'Linked Note' },
+      metadata: { noteId: 'note-1' },
     });
 
     expect(broadcast).toHaveBeenCalledWith('board-1', expect.objectContaining({

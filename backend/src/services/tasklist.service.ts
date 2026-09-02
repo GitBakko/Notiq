@@ -13,6 +13,45 @@ const ITEMS_INCLUDE = {
 
 // ── Internal helpers ──────────────────────────────────────────────
 
+/**
+ * The linked Kanban board, selected together with the facts needed to decide
+ * whether `userId` may see its title (N4 — the mirror of the board-side filter in
+ * getBoard). A task list can be attached to a board the reader has no share on:
+ * linkTaskListToBoard requires WRITE on the board and ACCEPTED-WRITE on the list,
+ * so a list collaborator can attach someone else's list to their own board.
+ *
+ * The scoped `shares` sub-select IS the check — it costs no extra round trip.
+ */
+const linkedBoardSelect = (userId: string) =>
+  ({
+    select: {
+      id: true,
+      title: true,
+      ownerId: true,
+      shares: { where: { userId, status: 'ACCEPTED' as const }, select: { id: true } },
+    },
+  }) as const;
+
+type LinkedBoard = {
+  id: string;
+  title: string;
+  ownerId: string;
+  shares: { id: string }[];
+} | null;
+
+/** Replace the linked board with `{ id, title }` if visible, `null` otherwise. */
+function withVisibleBoard<T extends { kanbanBoard?: LinkedBoard }>(
+  taskList: T,
+  userId: string
+): T & { kanbanBoard: { id: string; title: string } | null } {
+  const board = taskList.kanbanBoard;
+  const visible = !!board && (board.ownerId === userId || board.shares.length > 0);
+  return {
+    ...taskList,
+    kanbanBoard: visible ? { id: board!.id, title: board!.title } : null,
+  };
+}
+
 async function assertWriteAccess(userId: string, taskListId: string): Promise<void> {
   const taskList = await prisma.taskList.findUnique({
     where: { id: taskListId },
@@ -115,7 +154,8 @@ export const createTaskList = async (userId: string, title: string, id?: string)
 };
 
 export const getTaskLists = async (userId: string) => {
-  return prisma.taskList.findMany({
+  // [BACKUP] 2026-09-02 — kanbanBoard was `{ select: { id, title } }`, unfiltered.
+  const taskLists = await prisma.taskList.findMany({
     where: { userId, isTrashed: false },
     include: {
       items: ITEMS_INCLUDE,
@@ -124,10 +164,12 @@ export const getTaskLists = async (userId: string) => {
           user: { select: { id: true, name: true, email: true } },
         },
       },
-      kanbanBoard: { select: { id: true, title: true } },
+      kanbanBoard: linkedBoardSelect(userId),
     },
     orderBy: { updatedAt: 'desc' },
   });
+
+  return taskLists.map((tl) => withVisibleBoard(tl, userId));
 };
 
 export const getTaskList = async (userId: string, id: string) => {
@@ -407,11 +449,15 @@ export const getAcceptedSharedTaskLists = async (userId: string) => {
               user: { select: { id: true, name: true, email: true } },
             },
           },
-          kanbanBoard: { select: { id: true, title: true } },
+          // [BACKUP] 2026-09-02 — was `{ select: { id, title } }`, unfiltered (N4).
+          kanbanBoard: linkedBoardSelect(userId),
         },
       },
     },
   });
 
-  return shared.map((s) => ({ ...s.taskList, _sharedPermission: s.permission }));
+  return shared.map((s) => ({
+    ...withVisibleBoard(s.taskList, userId),
+    _sharedPermission: s.permission,
+  }));
 };

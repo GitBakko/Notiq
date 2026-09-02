@@ -240,10 +240,17 @@ export default function CardDetailModal({
         const field = meta?.field === 'title' ? t('kanban.activity.fieldTitle') : t('kanban.activity.fieldDescription');
         return t('kanban.activity.UPDATED', { field });
       }
+      // The server sends noteTitle only to readers who may see that note; everyone
+      // else gets the id and no title. The old fallback rendered `linked note "?"`,
+      // which reads as data loss rather than as a permission boundary.
       case 'NOTE_LINKED':
-        return t('kanban.activity.NOTE_LINKED', { noteTitle: meta?.noteTitle || '?' });
+        return meta?.noteTitle
+          ? t('kanban.activity.NOTE_LINKED', { noteTitle: meta.noteTitle })
+          : t('kanban.activity.NOTE_LINKED_NO_ACCESS');
       case 'NOTE_UNLINKED':
-        return t('kanban.activity.NOTE_UNLINKED', { noteTitle: meta?.noteTitle || '?' });
+        return meta?.noteTitle
+          ? t('kanban.activity.NOTE_UNLINKED', { noteTitle: meta.noteTitle })
+          : t('kanban.activity.NOTE_UNLINKED_NO_ACCESS');
       case 'DELETED':
         return t('kanban.activity.DELETED');
       default:
