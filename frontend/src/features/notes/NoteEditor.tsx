@@ -199,7 +199,20 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             const newProvider = new HocuspocusProvider({
                 url: import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws',
                 name: note.id,
-                token: useAuthStore.getState().token || '',
+                // [BACKUP] 2026-09-02 — era `token: useAuthStore.getState().token || ''`,
+                // cioe' il token LETTO UNA VOLTA SOLA alla costruzione del provider.
+                // Stesso difetto gia' corretto sul lato SSE kanban, su un trasporto
+                // diverso: il provider rimanda il token a ogni riapertura del socket
+                // (sendToken() -> getToken(), hocuspocus-provider.cjs:2036 e :2105),
+                // quindi ogni riconnessione ripresentava quello vecchio. Due
+                // conseguenze: se al mount il token non c'era ancora partiva una
+                // stringa vuota, che lato server e' il ramo `if (!token)` e riempie
+                // il log di "[onAuthenticate] Not authorized" a ogni ritentativo; e
+                // alla scadenza naturale del JWT, che l'interceptor axios rinnova
+                // lasciando l'app sana, la collaborazione restava attaccata a un
+                // token che non potra' mai piu' diventare valido.
+                // La libreria accetta una callback e la rivaluta a ogni tentativo.
+                token: () => useAuthStore.getState().token || '',
                 onSynced: () => {
                     // Sync handled by provider
                 },
