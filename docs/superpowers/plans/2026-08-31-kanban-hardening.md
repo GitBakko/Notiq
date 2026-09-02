@@ -154,15 +154,15 @@ percorso di A3. Ognuno porta il codice citato e uno scenario utente concreto.
 
 | Gruppo | Finding | Stato |
 |---|---|---|
-| **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **A3 corretto**, A2 **corretto lato WebSocket** (resta SSE), A1 A4 aperti |
+| **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **tutti e quattro corretti** — A3 e la metà WebSocket di A2 in `6481576`, A1 A4 e la metà SSE di A2 in `d640f20` |
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | tutti aperti |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
-| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C4 `1325d92`; **C2 C3 C5 aperti** |
-| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
+| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
+| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare, **G1 la rimozione da un gruppo non revoca gli share kanban** | entrambi aperti |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Nove corretti, undici aperti.** I più gravi rimasti sono **B1** e **D1**.
+**Tredici corretti, otto aperti.** I più gravi rimasti sono **B1** e **D1**.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
@@ -182,10 +182,10 @@ e `disconnectUserEverywhere(userId)` esistono in `hocuspocus.ts`, e `onAuthentic
 `tokenVersion`. Dettagli e decisioni nella sezione dedicata più sotto. La ri-autorizzazione su
 `beforeHandleMessage` è stata **scartata** con motivazione — leggila lì prima di riproporla.
 
-Resta il lato SSE, dove il chokepoint sarebbe uno dei due: un `disconnectUserFromAllBoards(userId)`
-in `kanbanSSE.ts` che spazza tutte le board, chiamato dove `tokenVersion` cambia e da `deleteUser`
-(speculare a quello che ora fa Hocuspocus); oppure una ri-autorizzazione sul tick di heartbeat SSE,
-che copre A1, la metà SSE di A2, A4 e i futuri in un punto solo.
+**Aggiornamento 2026-09-02.** Anche il lato SSE e' chiuso (`d640f20`), con la scelta OPPOSTA a quella
+di A3: ri-autorizzazione sul tick dell'heartbeat, piu' due call site per la sola classe che il tick non
+puo' vedere. Il confronto e' stato rifatto sui numeri dell'SSE invece che ereditato — sezione dedicata
+piu' sotto.
 
 ### A3 e la metà WebSocket di A2 — CORRETTI
 
@@ -251,6 +251,115 @@ di `addConnection` (`6bf866c`). C'è un test che pinna proprio quello: 15 tentat
 consumano il budget da 10 connessioni.
 
 **Resta aperto:** il lato SSE di A2 (gli stream kanban di `kanbanSSE.ts`), più A1 e A4 interi.
+
+### A1, A4 e la metà SSE di A2 — CORRETTI `d640f20`
+
+**La decisione, e perché non è quella di A3.** Sul lato Hocuspocus la ri-autorizzazione periodica
+è stata scartata; qui è stata scelta. Non è un'incoerenza: le due economie sono diverse e il
+confronto è stato rifatto da capo, con i numeri.
+
+*Il costo non esiste.* Misurato sul DB di dev, 300 iterazioni dopo warm-up:
+`assertBoardAccess` p50 **1,28 ms** (owner, 1 query) e **1,87 ms** (sharee, 2 query), la lookup di
+`tokenVersion` **0,89 ms**. Tick peggiore ≈ **2,76 ms**. A 200 stream aperti sono 552 ms di lavoro DB
+per finestra da 30 s: **1,84%**. A 3000 stream, 3,31%. Il contatore live diceva `sse: 0`. L'argomento
+che ha ucciso `beforeHandleMessage` — un hook che scatta a ogni battuta di tasto — non sopravvive a
+un intervallo di 30 secondi.
+
+*Il fallimento lo gestiamo noi.* `beforeHandleMessage` è avvolto da un `.catch(e => this.close(...))`
+incondizionato dentro `hocuspocus-server.cjs:1592-1618`: rigetta, e la **libreria** chiude. In
+`kanbanSSE.ts` la callback è nostra, quindi un errore di infrastruttura e una revoca vera sono
+distinguibili. Otto guasti indotti (ECONNREFUSED, P1000, P1003, P2010, timeout del pool, `Error`
+nudo) tengono lo stream aperto; ogni revoca vera lo chiude. E il profilo di rischio si **inverte**:
+una negazione falsa sull'SSE costa uno step di backoff da 2 s e si auto-ripara, su Hocuspocus costava
+una sessione di editing.
+
+*Il disconnect mirato non poteva chiudere A1.* `KanbanBoard.owner` è `onDelete: Cascade`
+(`schema.prisma:474`): cancellare un utente distrugge le board che possedeva, e i **collaboratori**
+restano su uno stream vivo. `deleteUser` fa `tx.user.delete()` senza enumerarle, quindi dopo la
+transazione gli id non esistono più — verificato: `boards still owned by victim in DB: 0`, e
+`after kicking victim only: count=1 presence=[collab] <- COLLAB STILL LIVE`. Il tick li raggiunge,
+perché è il *loro* controllo successivo a lanciare `NotFoundError`. **A1 conteneva A4.**
+
+*Ma il tick da solo non poteva chiudere A2,* e questo ha ribaltato la prima stesura della decisione,
+che assegnava A2 ai call site e toglieva `tokenVersion` dal tick. C'è un TOCTOU, riprodotto con
+moduli e socket veri: l'attaccante riapre `GET /boards/:id/events` in loop; una richiesta il cui
+`authenticate` ha già letto il vecchio `tokenVersion` chiama `addConnection` **dopo** che lo sweep è
+passato. `assertBoardAccess` è cieca a `tokenVersion`, quindi quello stream non viene mai più
+riesaminato: non 30 secondi, **per sempre**.
+
+```
+connect attempts=97  200=35  401=62
+TOCTOU window (authDone -> addConnection): n=35 min=9.33ms max=33.78ms
+SURVIVORS right after the T sweep: 3  presence=["Victim"]
+after tick #3 (prod: +90s): connections=3
+>>> streams still delivering board content: 3
+```
+
+Quindi **entrambi**: il tick verifica anche `tokenVersion` (finestra ≤ 1 tick), e i due call site
+accanto a `disconnectUserEverywhere` chiudono all'istante il caso con un avversario vivo.
+
+**Cosa è stato scritto.**
+
+| Dove | Cosa |
+|---|---|
+| `kanbanSSE.ts` | `reauthorize()` sul tick dell'heartbeat. Espelle **solo** su `ForbiddenError` e `NotFoundError`; su qualunque altro errore tiene aperto. |
+| `kanbanSSE.ts` | Heartbeat scritto **prima** dell'await (un DB in stallo non deve affamare il keep-alive), flag di rientranza (`setInterval` non attende la callback: un DB appeso accodava un re-auth per tick per stream), intervallo con jitter in `[25s, 30s)` (un restart pm2 non deve allineare in fase l'intera flotta). |
+| `kanbanSSE.ts` | Rimosso il `try/catch` attorno a `res.write`: era irraggiungibile. `write()` su una response distrutta ritorna `false`, non lancia — verificato `[hb#2] write() returned false (no throw)`. La pulizia è sempre venuta da `res.on('close')`. |
+| `kanbanSSE.ts` | `disconnectUserFromAllBoards(userId)`, speculare a `disconnectUserEverywhere`. |
+| `auth.service.ts`, `user.service.ts` | La chiamano dopo il bump di `tokenVersion`. |
+| `admin.service.ts` | `deleteUser` chiama `disconnectUserEverywhere` — il lato **note** di A1 era aperto quanto quello SSE. Dopo il commit della transazione: un rollback non deve espellere nessuno. |
+| `routes/kanban.ts` | Passa `tokenVersion` ad `addConnection`. **Non** dentro `BoardUser`, che viene trasmesso alla lettera dentro `presence:update`. |
+| `revokeSites.guard.test.ts` | Ogni file che incrementa `tokenVersion` deve importare `kanbanSSE`. È l'unica classe che il tick non può vedere; canarino sugli import, non asserzione sulle chiamate (quelle stanno nei test dei due service). |
+
+**Non è stato costruito** `disconnectAllFromBoard(boardId)`: l'unico consumatore sarebbe stato A4, che
+il tick copre con zero righe. `board.service.ts` non è stato toccato.
+
+**Le nove asserzioni negative sono state guadagnate per mutazione, non per run verde** (trappola 4).
+Nove mutazioni deliberate — allowlist allargata a `AppError`, kick su qualsiasi errore, heartbeat
+spostato dopo l'await, flag di rientranza rimosso, `tokenVersion` messo dentro `BoardUser`, query
+`tokenVersion` sempre eseguita, 5xx reso terminale, 429 reso terminale, token risollevato fuori da
+`connect` — e ognuna viene uccisa da un test.
+
+### C3 — CORRETTO `d640f20`
+
+Era **già in produzione**, non introdotto da questo lavoro: `sharing.service.ts:663` chiama
+`disconnectUser` dal task 4.3, quindi chi si vedeva revocare uno share kanban con la board aperta
+entrava già nel loop. Riprodotto contro il backend vivo: EOF pulito, poi `403` a 2s/4s/8s/16s/30s/30s,
+`connect attempts=6` in 65 secondi, nessun cap.
+
+Staccare gli stream lo rendeva molto peggiore, per una ragione precisa: **il 404**.
+`useKanbanBoard.ts:130` fa `if (status !== 403) reconstructBoardFromDexie(...)`, quindi su 404 la
+query risponde dalla copia locale, `isError` resta falso e `KanbanBoardPage.tsx` non naviga mai. Una
+board fantasma completa, a schermo per sempre, con una richiesta ogni 30 secondi.
+
+E lo status che il lavoro su A2 produce di più non è nessuno dei due: è **401**
+`auth.errors.tokenInvalidated` (`app.ts:176`). Il branch terminale è quindi 401 → `logout()`,
+403 → `accessRevoked`, 404 → `boardDeletedRemotely`, e **retry** su 5xx e su 408/425/429 — il throttling
+è transitorio, trattarlo come revoca butterebbe fuori un utente legittimo.
+
+**Bug indipendente trovato per strada:** l'hook catturava il token **una volta sola**, fuori da
+`connect()`. Alla scadenza naturale del JWT l'interceptor axios lo rinnova, l'app resta sana, e lo
+stream kanban continua a fare poll per sempre con un token che non potrà mai più diventare valido.
+Ora la lettura è per tentativo.
+
+**Non è stato costruito** un evento terminale `access:revoked`. Espellerebbe all'istante invece che
+dopo ~2 s, ma il riconnect fa già la domanda autorevole e riceve una risposta tipizzata: un nuovo tipo
+sul filo, un nuovo membro di `KanbanEventBody` e nuova gestione client per due secondi.
+
+### G1 — la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato
+
+Trovato tracciando la copertura del tick. Condividere una board con un gruppo **fa fan-out in righe
+`SharedKanbanBoard` individuali** (`routes/sharing.ts:305-326`); `group.service.ts:213 removeMember`
+cancella solo la riga `GroupMember`. Le righe di share restano `ACCEPTED`, quindi l'ex membro
+conserva l'accesso alla board — e il tick dell'heartbeat lo tiene aperto **correttamente**, perché
+`assertBoardAccess` vede un accesso legittimo.
+
+Non è un difetto SSE e non va inseguito allargando il guard test: è un buco del modello permessi,
+presente **anche in REST**. Nessuna delle due opzioni di progetto lo avrebbe chiuso. Il tetto del tick
+va letto così: *espelle sulle revoche che `assertBoardAccess` può vedere — riga utente, riga board,
+riga share sparite. Una revoca che lascia lo share `ACCEPTED` gli è invisibile e ha bisogno della
+propria chiamata di disconnect.*
+
 
 ### I tre finding trovati tracciando A3 — CORRETTI
 
