@@ -6,10 +6,12 @@ vi.mock('../services/notification.service', () => ({
 }));
 
 import prisma from '../plugins/prisma';
+import { cardWithAssigneeSelect } from '../services/kanban/helpers';
 import {
   createTaskList,
   getTaskList,
   getTaskLists,
+  getAcceptedSharedTaskLists,
   updateTaskList,
   deleteTaskList,
   addTaskItem,
@@ -176,6 +178,38 @@ describe('tasklist.service — addTaskItem', () => {
     prismaMock.sharedTaskList.findUnique.mockResolvedValueOnce(null);
 
     await expect(addTaskItem('user-1', 'tl-1', { text: 'Blocked' })).rejects.toThrow('errors.common.accessDenied');
+  });
+
+  it('auto-adds to the linked board with the shared card select, not a hand-copy', async () => {
+    // This branch used to carry its own 19-line copy of cardWithAssigneeSelect, note
+    // included, and it feeds broadcast('card:created') — one payload for every socket
+    // on the board, which cannot filter per recipient. stripNote caught it on the
+    // wire; a hand-copy of a security-relevant select outlives that guard. Pin the
+    // identity, not the contents: the contents are pinned in helpers.test.ts.
+    prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'user-1' });
+    prismaMock.taskItem.aggregate.mockResolvedValueOnce({ _max: { position: 0 } });
+    prismaMock.taskItem.create.mockResolvedValueOnce({ id: 'item-1', text: 'x', position: 1, taskListId: 'tl-1' });
+    prismaMock.taskList.findUnique.mockResolvedValueOnce({
+      id: 'tl-1', userId: 'user-1',
+      user: { id: 'user-1', name: 'User', email: 'u@t.com' }, sharedWith: [],
+    });
+    // the auto-add lookup: a linked board with one open column
+    prismaMock.taskList.findUnique.mockResolvedValueOnce({
+      kanbanBoard: { id: 'board-1', columns: [{ id: 'col-1' }] },
+    });
+    // setup.ts's kanbanCard mock has no aggregate; this branch needs one.
+    if (!prismaMock.kanbanCard.aggregate) prismaMock.kanbanCard.aggregate = vi.fn();
+    prismaMock.kanbanCard.aggregate.mockResolvedValueOnce({ _max: { position: null } });
+    prismaMock.kanbanCard.create.mockResolvedValueOnce({
+      id: 'card-1', title: 'x', noteId: null, _count: { comments: 0 },
+    });
+
+    await addTaskItem('user-1', 'tl-1', { text: 'x' });
+
+    expect(prismaMock.kanbanCard.create).toHaveBeenCalled();
+    const select = prismaMock.kanbanCard.create.mock.calls[0][0].select;
+    expect(select).toBe(cardWithAssigneeSelect);
+    expect(select).not.toHaveProperty('note');
   });
 });
 
@@ -349,5 +383,77 @@ describe('getTaskLists — linked board visibility', () => {
     const result = await getTaskLists('user-1');
 
     expect(result[0].kanbanBoard).toBeNull();
+  });
+});
+
+// The SECOND call site of the same filter. Without these, deleting the
+// withVisibleBoard() call from getAcceptedSharedTaskLists leaves the whole suite
+// green — a fix applied to one of two siblings and guarded on only one.
+describe('getAcceptedSharedTaskLists — linked board visibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function sharedRow(shares: { id: string }[], boardOwnerId = 'other-user') {
+    return [
+      {
+        permission: 'READ',
+        taskList: {
+          id: 'tl-1',
+          userId: 'owner-user',
+          title: 'Shared list',
+          items: [],
+          sharedWith: [],
+          user: { id: 'owner-user', name: 'Owner', email: 'o@t.com' },
+          kanbanBoard: { id: 'board-1', title: 'BOARD SECRET', ownerId: boardOwnerId, shares },
+        },
+      },
+    ];
+  }
+
+  it('nulls the linked board for a user with no access to it', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValueOnce(sharedRow([]));
+
+    const result = await getAcceptedSharedTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toBeNull();
+    expect(JSON.stringify(result)).not.toContain('BOARD SECRET');
+  });
+
+  it('keeps the linked board for a user with an ACCEPTED share', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValueOnce(sharedRow([{ id: 'share-1' }]));
+
+    const result = await getAcceptedSharedTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toEqual({ id: 'board-1', title: 'BOARD SECRET' });
+  });
+
+  it('keeps the linked board for the board owner', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValueOnce(sharedRow([], 'user-1'));
+
+    const result = await getAcceptedSharedTaskLists('user-1');
+
+    expect(result[0].kanbanBoard).toEqual({ id: 'board-1', title: 'BOARD SECRET' });
+  });
+
+  it('still carries _sharedPermission through the filter', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValueOnce(sharedRow([]));
+
+    const result = await getAcceptedSharedTaskLists('user-1');
+
+    expect(result[0]._sharedPermission).toBe('READ');
+  });
+
+  it('scopes the share sub-select to the reader and to ACCEPTED', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValueOnce([]);
+
+    await getAcceptedSharedTaskLists('user-1');
+
+    const args = prismaMock.sharedTaskList.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ userId: 'user-1', status: 'ACCEPTED' });
+    expect(args.select.taskList.include.kanbanBoard.select.shares).toEqual({
+      where: { userId: 'user-1', status: 'ACCEPTED' },
+      select: { id: true },
+    });
   });
 });

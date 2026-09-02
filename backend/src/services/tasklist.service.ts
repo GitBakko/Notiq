@@ -2,6 +2,7 @@ import prisma from '../plugins/prisma';
 import logger from '../utils/logger';
 import * as notificationService from './notification.service';
 import { NotFoundError, ForbiddenError } from '../utils/errors';
+import { cardWithAssigneeSelect } from './kanban/helpers';
 
 /** Reusable include for task items with checkedByUser */
 const ITEMS_INCLUDE = {
@@ -39,11 +40,18 @@ type LinkedBoard = {
   shares: { id: string }[];
 } | null;
 
-/** Replace the linked board with `{ id, title }` if visible, `null` otherwise. */
+/**
+ * Replace the linked board with `{ id, title }` if visible, `null` otherwise.
+ *
+ * The return type OMITS `kanbanBoard` before re-adding it: an intersection
+ * (`T & { kanbanBoard: … }`) would leave the compiler believing `ownerId` and
+ * `shares` are still on the object — the two authorization fields this function
+ * exists to strip — and a caller could then read a field that is not there.
+ */
 function withVisibleBoard<T extends { kanbanBoard?: LinkedBoard }>(
   taskList: T,
   userId: string
-): T & { kanbanBoard: { id: string; title: string } | null } {
+): Omit<T, 'kanbanBoard'> & { kanbanBoard: { id: string; title: string } | null } {
   const board = taskList.kanbanBoard;
   const visible = !!board && (board.ownerId === userId || board.shares.length > 0);
   return {
@@ -310,25 +318,12 @@ export const addTaskItem = async (
           taskItemId: item.id,
           dueDate: data.dueDate ? new Date(data.dueDate) : null,
         },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          position: true,
-          columnId: true,
-          assigneeId: true,
-          dueDate: true,
-          priority: true,
-          noteId: true,
-          noteLinkedById: true,
-          archivedAt: true,
-          taskItemId: true,
-          createdAt: true,
-          updatedAt: true,
-          assignee: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
-          note: { select: { id: true, title: true, userId: true } },
-          _count: { select: { comments: true } },
-        },
+        // [BACKUP] 2026-09-02 — this was a 19-line hand-copy of cardWithAssigneeSelect
+        // that still carried `note: { select: { id, title, userId } }`, and it feeds
+        // broadcast('card:created') three lines down. stripNote caught it on the wire,
+        // but a hand-copy of a security-relevant select is the drift that outlives the
+        // guard. Use the shared constant: it is now the note-free one by default.
+        select: cardWithAssigneeSelect,
       });
 
       // Broadcast SSE event for real-time kanban update

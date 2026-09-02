@@ -1282,7 +1282,7 @@ describe('getCardActivities', () => {
       { ...activity2, user: { id: 'u2', name: 'User2', email: 'u2@t.com', color: '#000', avatarUrl: null } },
     ]);
 
-    const result = await getCardActivities('card-a', 1, 10);
+    const result = await getCardActivities('card-a', 1, 10, 'user-1');
 
     expect(prismaMock.kanbanCardActivity.findMany).toHaveBeenCalledWith({
       where: { cardId: 'card-a' },

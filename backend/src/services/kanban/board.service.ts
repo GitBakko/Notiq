@@ -137,7 +137,11 @@ export async function createBoard(
   });
 }
 
-export async function getBoard(boardId: string, requestingUserId?: string) {
+// `requestingUserId` is REQUIRED, and that is a security property rather than a
+// style choice: every note and task-list redaction below sits behind `if
+// (requestingUserId)`, so an omitted argument would silently return the board
+// unfiltered. [BACKUP] 2026-09-02 — it used to be optional.
+export async function getBoard(boardId: string, requestingUserId: string) {
   // [BACKUP] 2026-09-01 — questa GET faceva due scritture:
   //   await archiveCompletedCards(boardId);              → ora job orario in app.ts
   //   try { ...kanbanColumn.update({ isCompleted: true }) } catch { ... }

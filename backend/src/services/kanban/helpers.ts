@@ -76,6 +76,13 @@ export async function accessibleNoteIds(
   noteIds: string[],
   userId: string
 ): Promise<Set<string>> {
+  // Prisma DROPS a `where` key whose value is undefined, so a missing userId would
+  // turn both lookups below into unscoped ones and this function would answer
+  // "everything is accessible" — the exact inverse of its job. Measured on the dev
+  // database: 3 notes in, 3 back. Throwing is deliberate; returning an empty set
+  // would hide the caller's bug behind a blank activity feed.
+  if (!userId) throw new Error('accessibleNoteIds called without a userId');
+
   const accessible = new Set<string>();
   if (noteIds.length === 0) return accessible;
 

@@ -117,6 +117,20 @@ describe('kanban helpers', () => {
       );
     });
 
+    it('refuses to run without a userId instead of failing open', async () => {
+      // Prisma DROPS a `where` key whose value is undefined, so
+      // `{ id: { in: ids }, userId: undefined }` returns EVERY note in the table and
+      // this helper would answer "all accessible". Verified against the dev database:
+      // 3 notes in, 3 out. Callers reach it through an optional parameter, so the
+      // guard is the thing that makes the class impossible rather than unlikely.
+      await expect(
+        accessibleNoteIds(['note-1'], undefined as unknown as string)
+      ).rejects.toThrow();
+
+      expect(prisma.note.findMany).not.toHaveBeenCalled();
+      expect(prisma.sharedNote.findMany).not.toHaveBeenCalled();
+    });
+
     it('issues no query at all for an empty id list', async () => {
       const result = await accessibleNoteIds([], 'user-1');
 

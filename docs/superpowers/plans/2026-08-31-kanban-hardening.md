@@ -146,24 +146,26 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 ## Appendice — finding fuori piano (2026-09-01, aggiornata il 2026-09-02)
 
-Ventuno finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
+Ventisette finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
 a lenti distinte sui task 4.1 / 4.3 / 5.1, due dalle prime run della CI, tre trovati tracciando il
-percorso di A3, uno (G1) trovato tracciando la copertura del tick SSE. Ognuno porta il codice citato e uno scenario utente concreto.
+percorso di A3, uno (G1) trovato tracciando la copertura del tick SSE, sei (N1-N6) dallo sweep di
+completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno scenario utente concreto.
 
 **Scegli da qui, non dalla tabella di priorità dell'handoff, se le due liste sono in disaccordo.**
 
 | Gruppo | Finding | Stato |
 |---|---|---|
 | **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **tutti e quattro corretti** — A3 e la metà WebSocket di A2 in `6481576`, A1 A4 e la metà SSE di A2 in `d640f20` |
-| **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | tutti aperti |
+| **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | **tutti e quattro corretti** `164baf6`, insieme a N4 |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
 | **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
+| **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`; **N1 N2 N3 N5 N6 aperti** |
 | **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | aperto |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Tredici corretti, otto aperti.** I più gravi rimasti sono **B1** e **D1**.
+**Diciotto corretti, nove aperti** (C2, C5, D1, G1, N1, N2, N3, N5, N6). Il più grave rimasto è il **cluster N1/N2/N3/N6**, che è peggio di tutta la B: perde il **corpo** della nota, non il titolo.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
@@ -396,11 +398,119 @@ Il 4.1 ha tolto `note` dai payload SSE. Il titolo continua a raggiungere chi non
 | **B3** | `updateBoard` ritorna la nota di board non filtrata: la PUT dice a Bob ciò che la GET gli nasconde. | `board.service.ts:241-256` |
 | **B4** | La **task list** collegata alla board non è filtrata da nessuna parte — `getBoard` filtra solo i `noteId` — e il frontend ne rende il titolo incondizionatamente, accanto a una riga nota che ha il fallback "no access" esplicito. | `board.service.ts:171-172,185-224`, `KanbanBoardPage.tsx:789-799` |
 
-Forma corretta della correzione, la stessa che ha reso giusto `stripNote`: estrarre il filtro di
-`getBoard` (`board.service.ts:195-220`) in `filterNoteVisibility(cards, userId)` dentro `helpers.ts`
-e chiamarlo dai tre call site, più l'equivalente per la task list. B1 in più richiede di smettere di
-**salvare** il titolo (`metadata: { noteId }` e risoluzione per utente in lettura) e una migration
-one-shot per le righe già scritte.
+### B1-B4 e N4 — CORRETTI `164baf6`
+
+**La forma prevista non era quella giusta, e il motivo cambia la stima.** Il piano diceva: estrarre
+il filtro di `getBoard` in `filterNoteVisibility(cards, userId)` e chiamarlo dai tre call site, con
+tre cambi di firma. Verificato prima di scrivere: **tre di quei call site non hanno un consumatore**.
+`syncService.ts:876` e `:842` fanno `await api.put(...)` e buttano la risposta,
+`useKanbanMutations.ts:156-165` invalida soltanto, e `ArchivedCardsModal` non legge mai `card.note`.
+
+Quindi B2 e B3 non avevano bisogno di un filtro: avevano bisogno di **smettere di selezionare la
+relazione**. Zero cambi di firma su `updateBoard` e `getArchivedCards`, e una query in **meno**:
+misurato col query-log di Prisma, `note` dentro `cardWithAssigneeSelect` è uno statement SQL a sé
+(p50 1,80 → 1,51 ms togliendolo). `cardWithAssigneeSelect` non porta più la nota;
+`cardWithNoteSelect` sì, e `getBoard` è il suo unico chiamante — il default è quello sicuro.
+
+**B1 era l'unico raggiungibile davvero, e il piano lo metteva per ultimo.** La matrice rifatta
+portandosi dietro la colonna `permission` dà una sola esposizione in tutto il DB di dev:
+`superadmin@notiq.ai` legge `{"noteTitle":"Nota senza titolo"}` da `/cards/:id/activities` mentre la
+API note gli risponde **404** sulla stessa nota. B2-updateCard e B3 stanno dietro **WRITE** e in dev
+non hanno istanze; restano classi di leak vere, non istanze vive.
+
+**`unlinkNoteFromCard` è la metà che ha deciso la migration.** Persisteva `{ noteTitle }` e
+**nessun id**, dopo aver già annullato `card.noteId`. Su quelle righe il filtro in lettura non ha
+niente su cui verificare l'accesso: andrebbero annullate per tutti comunque, lasciando il testo in
+chiaro in ogni `pg_dump` e in ogni ZIP di `npm run backup`. Ora scrive l'id, letto prima dell'update.
+
+**La risoluzione in lettura ha corretto anche un bug che nessuno aveva notato:** il titolo persistito
+era **stale**. Sulla riga reale di dev il metadata diceva `"Nota senza titolo"`, ma la nota oggi si
+chiama `"Proviamo va 2"` — la feed mostrava il titolo al momento del link, per sempre.
+
+**Verificato eseguendo, non deducendo** (e la prima verifica è servita: il server di dev girava
+codice vecchio perché il watcher di `tsx watch` era morto — `uptime` continuava a salire dopo un
+`touch`. Il leak che si vedeva era di prima):
+
+| Prova | Esito |
+|---|---|
+| lettore che 404a sulla nota | `{"noteId":"023114e9-…"}`, nessun titolo |
+| stesso lettore con share **ACCEPTED** | `noteTitle: "Proviamo va 2"` — risolto dalla nota, non dal metadata |
+| stesso lettore con share **PENDING** | nessun titolo |
+| `GET /boards/:id` senza accesso alla task list | `taskList: null`, `taskListId` conservato |
+| idem con `SharedTaskList` ACCEPTED | titolo di nuovo presente |
+| `GET /share/tasklists/accepted` senza accesso alla board | `kanbanBoard: null` |
+| `PUT /boards/:id` | nessuna chiave `note` |
+| `PUT /cards/:id` | nessuna chiave `note`, `noteId` conservato |
+
+Migration `20260902120000`: `metadata - 'noteTitle'`, idempotente per predicato. Provata con
+`prisma db execute` e non solo con psql, perché l'operatore `?` di jsonb è esattamente ciò che un
+executor può mangiare. Entrambe le guardie sono portanti, confermato guardando fallire le varianti
+più economiche con `cannot delete from scalar`. Applicata a dev: 2 righe → 0, `noteId` conservato.
+
+**Due cose che la review avversariale ha trovato dopo, e che valgono da sole.**
+
+*Prisma cancella una `where` con valore `undefined`.* `accessibleNoteIds(ids, undefined)` non
+filtrava niente: entrambe le lookup diventavano non scopate e la funzione rispondeva "tutto
+accessibile" — l'esatto inverso del suo lavoro. Misurato sul DB di dev: **3 note in ingresso, 3 in
+uscita**. Non era raggiungibile (TS vuole una stringa, e la route passa sempre `request.user.id`), ma
+`getBoard` aveva `requestingUserId?` **opzionale** e tutta la redazione stava dietro quel parametro.
+Ora il parametro è obbligatorio e la funzione lancia se manca. Vale come regola generale: **un
+predicato di sicurezza costruito con un campo che può essere `undefined` fallisce aperto in Prisma.**
+
+*I test non sono typechecked.* `backend/tsconfig.json` ha `"exclude": ["src/**/__tests__/**"]`,
+quindi un test che chiama una funzione con l'arità sbagliata **passa `tsc` e passa la CI**. È così che
+`getCardActivities('card-a', 1, 10)` è rimasto a tre argomenti dopo che la firma ne aveva quattro: a
+trovarlo è stato il guard a runtime, non il compilatore. Se aggiungi un parametro a un service,
+`grep` i test — il typecheck non ti copre lì.
+
+*Il prezzo di B1 che non era stato scritto:* se la nota collegata viene **cancellata**,
+`KanbanCard.note` è `onDelete: SetNull` ma la riga di activity sopravvive con `{noteId: <id morto>}`.
+Il titolo non è più risolvibile **per nessuno, proprietario compreso**. Prima della correzione il
+titolo persistito sopravviveva alla cancellazione della nota. È un caso in più, oltre a quello delle
+righe `NOTE_UNLINKED` legacy, in cui un lettore legittimo perde l'informazione.
+
+**Una mutazione è sopravvissuta**, e ha trovato codice morto: l'early return in `getCardActivities`
+per le pagine senza attività di nota non era pinnato da nessun test, perché `accessibleNoteIds`
+corto-circuita già su lista vuota. Rimosso invece che lasciato lì a sembrare una guardia.
+
+**`card.service.test.ts` ricopiava a mano `cardWithAssigneeSelect`**, con dentro `note`. Ogni
+asserzione su cosa selezionava il servizio era in realtà un'asserzione su quella copia — la forma
+esatta della trappola 4. Ora importa la costante vera.
+
+### N1-N6 — trovati sweepando per B, quasi tutti aperti
+
+Lo sweep di completezza sul lato B ha trovato sei percorsi che il piano non conosceva. **Solo N4 è
+stato corretto qui** (è lo specchio di B4: filtrarne uno solo sposta il leak sull'altro endpoint).
+
+| # | Cosa | File | Stato |
+|---|---|---|---|
+| **N1** | `getNote` accetta `sharedWith: { some: { userId } }` **senza filtro su `status`**: chi ha una share **PENDING o DECLINED** riceve titolo, `content` e `searchText` interi | `note.service.ts:150` | **aperto** |
+| **N2** | `getSharedNotes`, stessa omissione, stesso payload, secondo endpoint | `sharing.service.ts:252-270` | **aperto** |
+| **N3** | `getSharedTaskLists`: una share DECLINED riceve il titolo della lista e **il testo di ogni TaskItem** | `tasklist-sharing.service.ts:122` | **aperto** |
+| **N4** | `taskList.kanbanBoard` non filtrato: lo specchio di B4 | `tasklist.service.ts:175` e `:448` | **CORRETTO** `164baf6` |
+| **N5** | `moveCard` scrive `TaskItem.isChecked`/`checkedByUserId` sulla lista collegata **senza autorizzare la lista**: la spunta passa e resta stampato `checkedByUserId` mentre la GET sulla lista risponde 404 | `card.service.ts:399` e `:404` | **aperto** |
+| **N6** | `getSharedKanbans` e `getSharedNotebooks`, stessa omissione di `status` | `routes/sharing.ts:360-372`, `sharing.service.ts:391` | **aperto** |
+
+Riproduzione runtime di N1/N2, stesso utente stesso istante, share **DECLINED**:
+
+```
+-- board GET:   board.note = null | card.note = [null]
+-- notes GET:   title = SECRET_NOTE_TITLE_XYZ
+                content = ...SECRET_NOTE_BODY_XYZ...
+```
+
+**Il cluster N1/N2/N3/N6 è più grave di tutta la B** — perde il *corpo* della nota, non il titolo —
+ma ha causa radice diversa: manca `status: 'ACCEPTED'`, non manca un filtro di visibilità. Il
+predicato non esiste in forma condivisa: è inline a ogni controllo. Le due omissioni verificate riga
+per riga sono `note.service.ts:150` (`sharedWith: { some: { userId } }`) e
+`tasklist-sharing.service.ts:122` (`where: { userId }`). È il prossimo task, non un allargamento di
+questo.
+
+**Percorsi controllati e puliti**, così il prossimo non li ripercorre: SSE (`stripNote` funziona sul
+filo, e gli altri 18 eventi non portano né nota né task list), risposta di `move`, `getBoardsList`,
+preview del bulk archive, `getLinkedBoardsForNote` (filtra per board), `checkNoteSharingForBoard`
+(solo il proprietario), commenti e chat di card, notifiche kanban e `localizationArgs`, reminder,
+`search.service`, chat di nota, allegati, cronologia AI, versioni di nota, `onAuthenticate`.
 
 ### `addConnection` registra su socket già morti, e ciò spegne le notifiche per sempre — CORRETTO `6bf866c`
 
