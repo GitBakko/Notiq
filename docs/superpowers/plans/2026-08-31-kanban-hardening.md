@@ -160,12 +160,15 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
 | **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
-| **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**; **N5 aperto** |
+| **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**, **N5 corretto** `8da3123` |
+| **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | **tutti e quattro aperti** |
 | **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | aperto |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Ventidue corretti, cinque aperti** (C2, C5, D1, G1, N5).
+**Ventitre corretti, otto aperti** (C2, C5, D1, G1, P1, P2, P3, P4). Il conteggio e' cresciuto
+chiudendo N5: tracciarlo ha trovato quattro scritture della stessa famiglia, e **P1 e' piu'
+raggiungibile di N5 stesso**.
 
 ### Trovati verificando il deploy della v1.11.0 in produzione (2026-09-02)
 
@@ -518,7 +521,7 @@ stato corretto qui** (è lo specchio di B4: filtrarne uno solo sposta il leak su
 | **N2** | `getSharedNotes`, stessa omissione, stesso payload, secondo endpoint | `sharing.service.ts:252` | **CORRETTO** |
 | **N3** | `getSharedTaskLists`: una share DECLINED riceveva il titolo della lista e **il testo di ogni TaskItem** | `tasklist-sharing.service.ts:122` | **CORRETTO** |
 | **N4** | `taskList.kanbanBoard` non filtrato: lo specchio di B4 | `tasklist.service.ts:175` e `:448` | **CORRETTO** `164baf6` |
-| **N5** | `moveCard` scrive `TaskItem.isChecked`/`checkedByUserId` sulla lista collegata **senza autorizzare la lista**: la spunta passa e resta stampato `checkedByUserId` mentre la GET sulla lista risponde 404 | `card.service.ts:399` e `:404` | **aperto** |
+| **N5** | `moveCard` scrive `TaskItem.isChecked`/`checkedByUserId` sulla lista collegata **senza autorizzare la lista**: la spunta passa e resta stampato `checkedByUserId` mentre la GET sulla lista risponde 404 | `card.service.ts:397-400` e `:402-405` (il ramo apre a `:392`) | **CORRETTO** `8da3123` |
 | **N6** | `getSharedKanbans` e `getSharedNotebooks`, stessa omissione di `status` | `routes/sharing.ts:360`, `sharing.service.ts:391` | **CORRETTO** |
 
 Riproduzione runtime di N1/N2, stesso utente stesso istante, share **DECLINED**:
@@ -569,8 +572,85 @@ GET /api/notes/nc-note con PENDING  -> 404
 GET /api/notes/nc-note con ACCEPTED -> 200
 ```
 
-**Resta N5**, che è una scrittura e non una lettura: `moveCard` (`card.service.ts:399` e `:404`)
-spunta i `TaskItem` della lista collegata senza autorizzare la lista.
+### N5 — CORRETTO `8da3123`
+
+Era l'unica **scrittura** del gruppo, non una lettura, e il brief ne sbagliava la gravità in due
+modi — entrambi verificati sul codice.
+
+**Il danno non è la spunta, è l'identità.** `updateTaskItem` (`tasklist.service.ts:365-367`) gatea
+l'uncheck su `existing.checkedByUserId !== userId` **senza esenzione per il proprietario**: l'id
+dello sconosciuto chiudeva fuori la proprietaria dal proprio checkbox, e lo stato era annullabile
+solo dalla parte non autorizzata. `TaskItemRow.tsx:93-94` disabilita la casella lato client, quindi
+non è nemmeno un rifiuto a runtime: è una casella spenta con accanto l'avatar di un estraneo.
+
+**Il ramo `movedOutOfCompleted` era più largo del percorso autorizzato.** Scrive
+`checkedByUserId: null`, cioè despunta un item spuntato da altri — capacità che
+`PUT /api/tasklists/:id/items/:itemId` nega persino a un collaboratore ACCEPTED+WRITE legittimo
+(`errors.tasks.onlyCheckerCanUncheck`). E non aveva **nessuna** copertura di test.
+
+Due cose che allargano il raggio: `?silent=true` non arriva fin lì (il drag multiplo con marquee,
+`KanbanBoardPage.tsx:384`, usa quel flag e scriveva lo stesso), e la condizione è fabbricabile
+dall'attaccante — marcare una colonna `isCompleted` richiede solo WRITE sulla board
+(`routes/kanban.ts:423`).
+
+**Il fix salta, non lancia.** Quando quel codice gira la transazione ha già committato e il
+broadcast è già partito: un 403 lì sarebbe una bugia di successo parziale, e anticipare il check
+prima della transazione farebbe fallire la move stessa, che è un'azione di board a cui l'attore ha
+pieno diritto. È anche come il repo tratta ogni effetto collaterale della stessa forma
+(`linking.service.ts:447`, `tasklist.service.ts:277` avvolgono i propri sync in try/catch
+"non-critical"), ed è lo specchio in scrittura del filtro che `getBoard` (`board.service.ts:229-236`)
+già applica in lettura.
+
+**Il gate legge la lista dal TASK ITEM, mai da `board.taskListId`**, e non è pedanteria:
+`unlinkTaskListFromBoard` (`linking.service.ts:523-526`) azzera la FK della board e lascia
+`KanbanCard.taskItemId` penzolante, e il relink riempie solo le card che ce l'hanno assente
+(`linking.service.ts:482`). Una board può quindi linkare la lista B mentre le card vecchie puntano
+ancora a item di A: un check sulla board autorizzerebbe B e scriverebbe su A. C'è un test che pinna
+esattamente questo.
+
+**Scartata l'attribuzione a `taskListLinkedById`** (sembrava la correzione elegante: scrivere lo
+stesso, ma col nome di chi ha creato il link). È una credenziale stantia mai rivalidata — revocare
+la share non la tocca —, è nullable e il null **fallisce aperto**, il ramo uncheck non ha nessun id
+da riattribuire, e dopo un relink stamperebbe il linker di B su un item di A. Soprattutto:
+falsificherebbe l'attribuzione, mettendo accanto all'item il nome di chi non l'ha toccato.
+
+**Il costo, accettato e strumentato.** `shareKanbanBoard` non crea mai una riga `SharedTaskList`
+(unico upsert del backend: `tasklist-sharing.service.ts:34`, owner-only), quindi il drag dei
+collaboratori di board **non spunta più**. Non è un caso limite, è il pubblico normale della
+feature. Il rimedio è una azione sola e spetta alla persona giusta: la proprietaria condivide la
+lista. Da qui il `logger.warn` — è l'unico strumento che lo skip ha, perché niente sul filo lo
+riflette — e la stringa `kanban.linking.taskListNoAccess`, che ora dice che spostare le card non
+spunta gli elementi. **Se quel warn scatta per il PROPRIETARIO della board, il link punta alla lista
+di qualcun altro e va rivisto il modello, non il guard.**
+
+Sei mutazioni deliberate, tutte uccise dal test giusto: tolto `status === 'ACCEPTED'`, tolto
+`permission === 'WRITE'`, owner invertito, ramo uncheck scoperto, helper che consulta anche la
+board, deny che lancia invece di saltare. L'unico test che esisteva sul sync **passava col bug
+dentro**: non mockava nessuna autorizzazione. Ora sono nove.
+
+### P1-P4 — trovati tracciando N5, tutti aperti
+
+Chiudere N5 ha smentito la frase con cui era stato archiviato — *"l'unica del suo genere trovata
+finora"*. Cercando i fratelli della stessa forma (autorizza la risorsa A, poi scrive la risorsa B)
+ne sono usciti quattro. Ognuno verificato aprendo il file; la raggiungibilità di P4 no, ed è detto.
+
+| # | Cosa | File | Stato |
+|---|---|---|---|
+| **P1** | `reorderTaskItems` fa `taskItem.update({ where: { id: item.id } })` **senza scope su `taskListId`**, mentre i suoi due fratelli nello stesso file ce l'hanno (`updateTaskItem:361`, `deleteTaskItem:403`). Chi ha una share **READ-only** riceve legittimamente gli id degli item — `getTaskList` seleziona solo `status`, non `permission` — e li passa alla reorder della **propria** lista: `assertWriteAccess` passa sulla sua, le scritture atterrano sulla vittima. **Scalata READ→WRITE** | `tasklist.service.ts:414-431` | **aperto** |
+| **P2** | `addTaskItem` è lo specchio esatto di N5: autorizza la lista (`assertWriteAccess`), poi `kanbanCard.create` **più un frame SSE `card:created`** su una board mai autorizzata. Raggiungibile dalla proprietaria della lista, che passa sempre il gate | `tasklist.service.ts:250-343` | **aperto** |
+| **P3** | `updateNote` scrive `notebookId` senza mai verificarlo, mentre `createNote:39-41` lo verifica. Gli id dei notebook sono noti a chiunque abbia mai **ricevuto** un'offerta di share, anche dopo averla rifiutata (`sharing.service.ts:416-441`). Conseguenze: il conteggio note della vittima si gonfia (`notebook.service.ts:28-36` conta senza scope sul proprietario) e `Note.notebook` è `onDelete: Cascade`, quindi la nota estranea viene cancellata a cascata | `note.service.ts:184-227` | **aperto** |
+| **P4** | `updateNote` crea `TagsOnNotes` con un `tagId` mai verificato, mentre `addTagToNote` (`tag.service.ts:59-60`) lo verifica. È anche una **lettura**: la riga di associazione porta lo `userId` dell'attaccante, quindi passa il filtro di `getNote`, e `include: { tag: true }` restituisce la Tag intera della vittima. **Raggiungibilità NON confermata**: non è stato trovato nessun percorso che divulghi l'id di un tag altrui, quindi oggi serve indovinare un UUID | `note.service.ts:200-214` | **aperto** |
+
+**P1 andrebbe prima di N5 per priorità**, se si potesse tornare indietro: stesso costo di correzione
+(una riga di scope, la forma è già nei due fratelli) e raggiungibilità più alta, perché non richiede
+né un link board↔lista né una colonna `isCompleted`.
+
+**Il predicato ACCEPTED+WRITE su una task list è re-implementato quattro volte** —
+`tasklist.service.ts:73-80` (privato, non esportato), `board.service.ts:296-302`,
+`linking.service.ts:426-431` (byte-identico al precedente, e il suo commento dice di averlo copiato)
+e `linking.service.ts:545-551` come filtro Prisma. Il gate di N5 è il quinto. Quattro o più
+re-implementazioni sono la soglia oltre cui conviene un helper esportato: non è stato fatto qui
+perché avrebbe toccato quattro file per chiudere un difetto in uno solo.
 
 **Percorsi controllati e puliti**, così il prossimo non li ripercorre: SSE (`stripNote` funziona sul
 filo, e gli altri 18 eventi non portano né nota né task list), risposta di `move`, `getBoardsList`,
