@@ -112,10 +112,21 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     // Shared-note REST saves bypass the sync queue (recipients can't push via /notes),
     // so a failure would otherwise be invisible. Warn ONCE per failure streak.
     const sharedSaveFailedNotifiedRef = useRef(false);
-    const notifySharedSaveFailure = useCallback(() => {
+    // [BACKUP] 2026-09-02 — questa callback ignorava l'errore e mostrava sempre
+    // 'sync.sharedSaveFailed', che dice "verifica la connessione". Ma il caso piu'
+    // frequente NON e' la rete: e' il 403 di updateSharedNoteContent, che ricontrolla
+    // la condivisione a ogni richiesta. Dopo una revoca l'utente continua a scrivere
+    // nel proprio documento Yjs locale (e' local-first, digitare funziona sempre) e
+    // legge un messaggio che gli dice di controllare la connessione: crede sia un
+    // problema transitorio, continua a scrivere, e quel lavoro non arrivera' mai da
+    // nessuna parte. Un errore deve dire cosa e' successo, non mandare l'utente a
+    // cercare la causa dove non e'.
+    const notifySharedSaveFailure = useCallback((err?: unknown) => {
         if (sharedSaveFailedNotifiedRef.current) return;
         sharedSaveFailedNotifiedRef.current = true;
-        toast.error(t('sync.sharedSaveFailed'), { id: 'shared-save-failed' });
+        const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
+        const key = status === 403 ? 'sync.sharedSaveForbidden' : 'sync.sharedSaveFailed';
+        toast.error(t(key), { id: 'shared-save-failed' });
     }, [t]);
 
     // -- Save Effects --

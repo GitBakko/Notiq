@@ -1151,7 +1151,8 @@
     "retry": "Retry",
     "failedToast": "Some changes could not be synced. Use Retry in the sync bar.",
     "pendingToast": "Changes are taking longer than usual to sync",
-    "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection"
+    "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection",
+    "sharedSaveForbidden": "You no longer have access to this note — your latest changes were not saved"
   },
   "collaboration": {
     "you": "You",
