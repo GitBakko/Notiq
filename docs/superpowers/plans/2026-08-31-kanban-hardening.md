@@ -144,11 +144,11 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 ---
 
-## Appendice — finding fuori piano (2026-09-01)
+## Appendice — finding fuori piano (2026-09-01, aggiornata il 2026-09-02)
 
-Venti finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
+Ventuno finding, tutti **verificati sul codice**, nessuno congetturale: quindici da nove reviewer
 a lenti distinte sui task 4.1 / 4.3 / 5.1, due dalle prime run della CI, tre trovati tracciando il
-percorso di A3. Ognuno porta il codice citato e uno scenario utente concreto.
+percorso di A3, uno (G1) trovato tracciando la copertura del tick SSE. Ognuno porta il codice citato e uno scenario utente concreto.
 
 **Scegli da qui, non dalla tabella di priorità dell'handoff, se le due liste sono in disaccordo.**
 
@@ -158,7 +158,8 @@ percorso di A3. Ognuno porta il codice citato e uno scenario utente concreto.
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | tutti aperti |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
 | **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
-| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare, **G1 la rimozione da un gruppo non revoca gli share kanban** | entrambi aperti |
+| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
+| **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | aperto |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
@@ -168,7 +169,8 @@ percorso di A3. Ognuno porta il codice citato e uno scenario utente concreto.
 
 Quattro finding sono lo stesso difetto attraverso quattro porte diverse. SSE e Hocuspocus
 autorizzano una volta, all'apertura dello stream, e non ricontrollano mai. Il task 4.3 ha chiuso
-UNA di quelle porte (revoke dello share kanban) chiamando `disconnectUser`. Le altre restano.
+UNA di quelle porte (revoke dello share kanban) chiamando `disconnectUser`; **le altre tre sono state
+chiuse il 2026-09-01 e il 2026-09-02** — vedi le due sezioni dedicate più sotto.
 
 | # | Porta | Cosa succede | File |
 |---|---|---|---|
@@ -427,9 +429,10 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
   resta indietro fino a 5 minuti (`staleTime`). **Da risolvere dentro il 4.2**, non dopo: o si conia
   un id per connessione da rimandare indietro sulle mutation, o si sopprime solo
   `invalidateQueries` e mai la scrittura Dexie.
-- **C3** — Dopo il revoke il client va in **reconnect loop su 403 all'infinito** (backoff cap 30s)
-  continuando a mostrare la board stale, ed è espulso solo a `staleTime` scaduto **più** un focus.
-  Serve un evento terminale (`access:revoked`) o lo stop del retry sul 403 specifico.
+- **C3** (CORRETTO `d640f20`) — Dopo il revoke il client andava in **reconnect loop su 403
+  all'infinito** (backoff cap 30s) continuando a mostrare la board stale. Chiuso con il branch
+  terminale sui 4xx (401 → logout, 403/404 → espulsione, retry su 5xx e 408/425/429). L'evento
+  `access:revoked` è stato **valutato e scartato** — vedi la sezione `### C3` più sotto.
 - **C4** (CORRETTO `1325d92`) — `deleteColumn` non aveva guardia sull'ultima colonna `isCompleted`, e la migration
   `20260228130000` ha aggiunto il campo con `DEFAULT false` **senza backfill**. Su quelle board
   l'auto-archiviazione è inerte per sempre, e con lei il tick del task item collegato, la chiusura
