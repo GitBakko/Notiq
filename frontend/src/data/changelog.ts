@@ -11,6 +11,17 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.11.1',
+    date: '2026-09-02',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.chatMessageVisibility' },
+      { type: 'fix', titleKey: 'whatsNew.entries.friendsListRefresh' },
+      { type: 'fix', titleKey: 'whatsNew.entries.collabSessionToken' },
+      { type: 'fix', titleKey: 'whatsNew.entries.revokeToastClarity' },
+      { type: 'fix', titleKey: 'whatsNew.entries.declinedShareListing' },
+    ],
+  },
+  {
     version: '1.11.0',
     date: '2026-09-02',
     entries: [

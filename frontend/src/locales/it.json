@@ -804,6 +804,11 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "chatMessageVisibility": "Un messaggio di chat arrivato a conversazione chiusa ora c'è quando la apri, invece di comparire solo nell'anteprima",
+      "friendsListRefresh": "La lista amici si aggiorna da sola quando qualcuno accetta la tua richiesta, senza ricaricare la pagina",
+      "collabSessionToken": "La sessione di modifica collaborativa non resta più attaccata a credenziali scadute — la riconnessione usa quelle aggiornate",
+      "revokeToastClarity": "Se una condivisione è stata revocata mentre stavi scrivendo, il messaggio ora lo dice invece di dare la colpa alla connessione",
+      "declinedShareListing": "Chi ha rifiutato il tuo invito non compare più fra le persone che hanno accesso",
       "declinedShareAccess": "Una nota, un taccuino o una task list che hai rifiutato non è più leggibile — rifiutare un invito ora toglie davvero l'accesso",
       "revokeClosesAccess": "La revoca di una condivisione ha effetto immediato, anche per chi ha già la nota o la board aperta",
       "linkedNoteTitlePrivacy": "Il titolo di una nota collegata a una card Kanban è ora nascosto a chi non ha accesso a quella nota",

@@ -1166,6 +1166,11 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "chatMessageVisibility": "A chat message that arrived while the conversation was closed is now there when you open it, instead of showing only in the preview",
+      "friendsListRefresh": "Your friend list updates on its own once someone accepts your request, without reloading the page",
+      "collabSessionToken": "A collaborative editing session no longer stays stuck on expired credentials — reconnecting now uses the current ones",
+      "revokeToastClarity": "If a share was revoked while you were writing, the message now says so instead of blaming your connection",
+      "declinedShareListing": "Someone who declined your invitation is no longer listed among the people who have access",
       "declinedShareAccess": "A note, notebook or task list you declined is no longer readable — declining an invitation now actually removes your access",
       "revokeClosesAccess": "Revoking a share now takes effect immediately, including for someone who already has the note or board open",
       "linkedNoteTitlePrivacy": "The title of a note linked to a Kanban card is now hidden from people who don't have access to that note",
