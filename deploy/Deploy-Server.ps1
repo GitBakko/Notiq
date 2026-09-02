@@ -192,10 +192,37 @@ else {
 Write-Step 9 "Verifica..."
 if (-not $DryRun) {
     pm2 status $Pm2Name
-    try {
-        $r = Invoke-WebRequest -Uri 'http://localhost:3001/health' -UseBasicParsing -TimeoutSec 8
-        Write-Ok "backend health HTTP $($r.StatusCode)"
-    } catch { Write-Warn2 "health check locale non riuscito: $($_.Exception.Message)" }
+
+    # [BACKUP] 2026-09-02 — era una sonda SINGOLA su http://localhost:3001/health con
+    # -TimeoutSec 8. Due difetti, entrambi visti sul deploy della v1.11.0:
+    #
+    #   1. 'pm2 restart' ritorna appena pm2 ha forkato il processo, NON quando il
+    #      server e' in ascolto, e in questo script non c'e' nessuna attesa fra le due
+    #      cose. Node deve ancora caricare il grafo dei moduli, per giunta subito dopo
+    #      che 'npm ci' ha cancellato e reinstallato node_modules: cache del filesystem
+    #      fredda e antivirus che scansiona in accesso. La sonda perdeva la corsa e
+    #      dava ECONNREFUSED immediato — non un timeout scaduto, il che e' esattamente
+    #      la firma della corsa e non di un problema di binding.
+    #   2. 'localhost' su Windows risolve prima ::1, mentre app.ts fa
+    #      listen({ host: '0.0.0.0' }), cioe' solo IPv4. Usare 127.0.0.1 toglie di
+    #      mezzo la questione invece di dipendere dall'ordine di risoluzione.
+    #
+    # Il risultato era un WARN rosso su un deploy perfettamente riuscito: il tipo di
+    # falso allarme che la volta dopo fa ignorare un allarme vero.
+    $ok = $false
+    foreach ($i in 1..10) {
+        try {
+            $r = Invoke-WebRequest -Uri 'http://127.0.0.1:3001/health' -UseBasicParsing -TimeoutSec 5
+            Write-Ok "backend health HTTP $($r.StatusCode) (al tentativo $i)"
+            $ok = $true
+            break
+        } catch {
+            if ($i -lt 10) { Start-Sleep -Seconds 2 }
+        }
+    }
+    if (-not $ok) {
+        Write-Warn2 "health check locale non riuscito dopo ~20s — controlla: pm2 logs $Pm2Name --lines 50"
+    }
 }
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Magenta
