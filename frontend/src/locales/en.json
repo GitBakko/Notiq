@@ -1165,6 +1165,11 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "declinedShareAccess": "A note, notebook or task list you declined is no longer readable — declining an invitation now actually removes your access",
+      "revokeClosesAccess": "Revoking a share now takes effect immediately, including for someone who already has the note or board open",
+      "linkedNoteTitlePrivacy": "The title of a note linked to a Kanban card is now hidden from people who don't have access to that note",
+      "inAppNotifications": "Notifications no longer arrive by email when you are already looking at the note or board they are about",
+      "boardAccessFeedback": "Losing access to a board while you are viewing it now tells you, instead of leaving you on a copy that can no longer update",
       "kanbanTransformLimits": "Turning note items or a task list into Kanban cards no longer fails on long text — the full text is kept in the card description",
       "kanbanTransformNewBoard": "Creating a new board while converting a note no longer leaves you stuck on an empty column list",
       "kanbanFieldLimits": "Kanban titles and descriptions now stop at the length the server accepts, so an over-long title can no longer break syncing",

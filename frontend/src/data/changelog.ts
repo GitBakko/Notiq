@@ -11,6 +11,17 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.11.0',
+    date: '2026-09-02',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.declinedShareAccess' },
+      { type: 'fix', titleKey: 'whatsNew.entries.revokeClosesAccess' },
+      { type: 'fix', titleKey: 'whatsNew.entries.linkedNoteTitlePrivacy' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.inAppNotifications' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.boardAccessFeedback' },
+    ],
+  },
+  {
     version: '1.10.5',
     date: '2026-08-24',
     entries: [

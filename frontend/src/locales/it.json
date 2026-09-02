@@ -803,6 +803,11 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "declinedShareAccess": "Una nota, un taccuino o una task list che hai rifiutato non è più leggibile — rifiutare un invito ora toglie davvero l'accesso",
+      "revokeClosesAccess": "La revoca di una condivisione ha effetto immediato, anche per chi ha già la nota o la board aperta",
+      "linkedNoteTitlePrivacy": "Il titolo di una nota collegata a una card Kanban è ora nascosto a chi non ha accesso a quella nota",
+      "inAppNotifications": "Le notifiche non arrivano più via email quando stai già guardando la nota o la board a cui si riferiscono",
+      "boardAccessFeedback": "Se perdi l'accesso a una board mentre la stai guardando ora vieni avvisato, invece di restare su una copia che non può più aggiornarsi",
       "kanbanTransformLimits": "La trasformazione di elementi di una nota o di una task list in card Kanban non fallisce più con testi lunghi — il testo completo viene conservato nella descrizione della card",
       "kanbanTransformNewBoard": "Creare una nuova board durante la conversione di una nota non lascia più bloccati su una lista di colonne vuota",
       "kanbanFieldLimits": "Titoli e descrizioni Kanban si fermano alla lunghezza accettata dal server, così un titolo troppo lungo non blocca più la sincronizzazione",
