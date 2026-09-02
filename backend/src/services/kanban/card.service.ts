@@ -190,6 +190,58 @@ export async function updateCard(
   return card;
 }
 
+/**
+ * Does `actorId` hold write access to the task list that owns `taskItemId`?
+ *
+ * Same predicate as `linkTaskListToBoard` (linking.service.ts) and
+ * `createBoardFromTaskList` (board.service.ts): the list's owner, or an
+ * ACCEPTED + WRITE `SharedTaskList` row. Board access grants nothing here —
+ * `shareKanbanBoard` never writes a `SharedTaskList` row (the only upsert site
+ * in the backend is `tasklist-sharing.service.ts`, and it is owner-only), so a
+ * board sharee normally has no list access at all.
+ *
+ * Resolved from the TASK ITEM, never from `board.taskListId`.
+ * `unlinkTaskListFromBoard` clears the board's FK and leaves
+ * `KanbanCard.taskItemId` dangling, and a relink only fills in cards whose
+ * `taskItemId` is absent — so a board can link list B while its older cards
+ * still point at items of list A. A board-keyed check would authorize B and
+ * write to A, which is the same defect with extra steps.
+ *
+ * Denials are logged, not thrown. The caller's move has already committed and
+ * already been broadcast when this runs, so throwing would hand a 403 to a
+ * board member for an action they are entitled to perform. That makes this log
+ * line the only instrument the skip has: nothing on the wire reflects it, and
+ * a divergence between board and list persists until someone notices by hand.
+ * If it fires for a board OWNER, the link points at somebody else's list and
+ * the permission model — not this guard — is what needs revisiting.
+ */
+async function actorMayWriteLinkedTaskList(
+  taskItemId: string,
+  actorId: string,
+  context: { boardId: string; cardId: string }
+): Promise<boolean> {
+  const item = await prisma.taskItem.findUnique({
+    where: { id: taskItemId },
+    select: { taskListId: true, taskList: { select: { userId: true } } },
+  });
+  // Item deleted between the card read and here: nothing to sync, and the
+  // update would throw. Not an authorization denial, so it is not logged.
+  if (!item) return false;
+  if (item.taskList.userId === actorId) return true;
+
+  const shared = await prisma.sharedTaskList.findUnique({
+    where: { taskListId_userId: { taskListId: item.taskListId, userId: actorId } },
+    select: { status: true, permission: true },
+  });
+  if (shared && shared.status === 'ACCEPTED' && shared.permission === 'WRITE') return true;
+
+  logger.warn(
+    { ...context, taskItemId, taskListId: item.taskListId, actorId },
+    'TaskItem sync skipped: mover has no write access to the linked task list'
+  );
+  return false;
+}
+
 export async function moveCard(
   cardId: string,
   toColumnId: string,
@@ -393,12 +445,39 @@ export async function moveCard(
       const movedIntoCompleted = targetColumn.isCompleted && !fromColumnIsCompleted;
       const movedOutOfCompleted = !targetColumn.isCompleted && fromColumnIsCompleted;
 
-      if (movedIntoCompleted) {
+      // [BACKUP] 2026-09-02 — the two updates below used to run with no
+      // authorization on the task list whatsoever (finding N5). The route
+      // authorizes only the BOARD (getCardWithAccess -> assertBoardAccess), so
+      // a board WRITE sharee with zero access to the linked list flipped the
+      // checkbox and stamped their own id into checkedByUserId, while
+      // GET /api/tasklists/<id> answered that same user 404.
+      //
+      // The stamp is the load-bearing half, not the boolean: updateTaskItem
+      // (tasklist.service.ts) gates unchecking on
+      // `existing.checkedByUserId !== userId` with NO owner exemption, so the
+      // stranger's id locked the list OWNER out of her own checkbox — a state
+      // only the unauthorized party could undo. The movedOutOfCompleted branch
+      // is wider still: `checkedByUserId: null` unchecks an item somebody else
+      // checked, which the authorized path refuses even to a legitimate
+      // ACCEPTED+WRITE list collaborator ('errors.tasks.onlyCheckerCanUncheck').
+      //
+      // `?silent=true` does not reach this far up — the bulk marquee drag used
+      // that flag and still performed the write.
+      //
+      // The guard SKIPS rather than throws; see actorMayWriteLinkedTaskList for
+      // why, and for why it is keyed on the item and not on the board. The
+      // short-circuit keeps both queries off the path when neither branch would
+      // have written anything.
+      const mayWriteList =
+        (movedIntoCompleted || movedOutOfCompleted) &&
+        (await actorMayWriteLinkedTaskList(card.taskItemId, actorId, { boardId, cardId }));
+
+      if (movedIntoCompleted && mayWriteList) {
         await prisma.taskItem.update({
           where: { id: card.taskItemId },
           data: { isChecked: true, checkedByUserId: actorId },
         });
-      } else if (movedOutOfCompleted) {
+      } else if (movedOutOfCompleted && mayWriteList) {
         await prisma.taskItem.update({
           where: { id: card.taskItemId },
           data: { isChecked: false, checkedByUserId: null },

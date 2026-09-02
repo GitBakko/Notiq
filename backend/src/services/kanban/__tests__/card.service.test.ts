@@ -697,20 +697,42 @@ describe('moveCard', () => {
     });
   });
 
-  it('syncs linked TaskItem to checked when moved to completed column', async () => {
-    const taskItemId = 'task-item-1';
+  // ─── N5: the linked-TaskItem sync must authorize the LIST ────────────
+  //
+  // `moveCard` writes TaskItem.isChecked / checkedByUserId on the task list
+  // linked to the board. The route only authorizes the BOARD
+  // (routes/kanban.ts -> getCardWithAccess -> assertBoardAccess), and board
+  // sharing never creates a SharedTaskList row (the single upsert site in the
+  // backend is tasklist-sharing.service.ts, and it is owner-only). So a board
+  // WRITE sharee with zero access to the list used to flip the checkbox and
+  // stamp their own id into checkedByUserId, while GET /api/tasklists/<id>
+  // answered that same user 404.
+  //
+  // The stamp is the load-bearing half. tasklist.service.ts gates unchecking
+  // on `existing.checkedByUserId !== userId` with NO owner exemption, so the
+  // stranger's id locked the list OWNER out of her own checkbox, leaving a
+  // state only the unauthorized party could undo.
+
+  /** Wires every mock a cross-column move of a linked card needs. */
+  function arrangeLinkedMove(
+    opts: { taskItemId?: string; fromCompleted?: boolean; toCompleted?: boolean } = {}
+  ) {
+    const taskItemId = opts.taskItemId ?? 'task-item-1';
+    const fromCompleted = opts.fromCompleted ?? false;
+    const toCompleted = opts.toCompleted ?? true;
+
     prismaMock.kanbanCard.findUnique.mockResolvedValue({
       title: card.title,
       columnId: sourceColumn.id,
       position: 0,
       taskItemId,
-      column: { boardId: board.id, title: 'To Do', isCompleted: false },
+      column: { boardId: board.id, title: 'To Do', isCompleted: fromCompleted },
     });
     prismaMock.kanbanColumn.findUnique.mockResolvedValue({
       boardId: board.id,
       title: 'Done',
       position: 1,
-      isCompleted: true,
+      isCompleted: toCompleted,
     });
     prismaMock.kanbanCard.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.kanbanCard.update.mockResolvedValue({});
@@ -718,11 +740,147 @@ describe('moveCard', () => {
     prismaMock.user.findUnique.mockResolvedValue({ name: actor.name, email: actor.email });
     prismaMock.kanbanReminder.updateMany.mockResolvedValue({ count: 0 });
 
+    return { taskItemId, taskListId: 'task-list-1' };
+  }
+
+  /** The mover owns the task list the item belongs to. */
+  function listOwnedByActor(taskListId: string) {
+    prismaMock.taskItem.findUnique.mockResolvedValue({
+      taskListId,
+      taskList: { userId: actor.id },
+    });
+  }
+
+  /** The list belongs to someone else; `share` is what SharedTaskList returns. */
+  function listOwnedByOther(
+    taskListId: string,
+    share: { status: string; permission: string } | null
+  ) {
+    prismaMock.taskItem.findUnique.mockResolvedValue({
+      taskListId,
+      taskList: { userId: 'list-owner-not-the-actor' },
+    });
+    prismaMock.sharedTaskList.findUnique.mockResolvedValue(share);
+  }
+
+  it('syncs linked TaskItem to checked when moved to completed column', async () => {
+    const { taskItemId, taskListId } = arrangeLinkedMove();
+    listOwnedByActor(taskListId);
+
     await moveCard(card.id, targetColumn.id, 0, actor.id);
 
     expect(prismaMock.taskItem.update).toHaveBeenCalledWith({
       where: { id: taskItemId },
       data: { isChecked: true, checkedByUserId: actor.id },
+    });
+  });
+
+  it('syncs linked TaskItem to unchecked when moved out of a completed column', async () => {
+    const { taskItemId, taskListId } = arrangeLinkedMove({
+      fromCompleted: true,
+      toCompleted: false,
+    });
+    listOwnedByActor(taskListId);
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.update).toHaveBeenCalledWith({
+      where: { id: taskItemId },
+      data: { isChecked: false, checkedByUserId: null },
+    });
+  });
+
+  it('syncs linked TaskItem for an ACCEPTED WRITE sharee of the list', async () => {
+    const { taskItemId, taskListId } = arrangeLinkedMove();
+    listOwnedByOther(taskListId, { status: 'ACCEPTED', permission: 'WRITE' });
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.update).toHaveBeenCalledWith({
+      where: { id: taskItemId },
+      data: { isChecked: true, checkedByUserId: actor.id },
+    });
+  });
+
+  it('does not touch the linked TaskItem when the mover has no access to the list', async () => {
+    const { taskListId } = arrangeLinkedMove();
+    listOwnedByOther(taskListId, null);
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the linked TaskItem when the mover only has READ on the list', async () => {
+    const { taskListId } = arrangeLinkedMove();
+    listOwnedByOther(taskListId, { status: 'ACCEPTED', permission: 'READ' });
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the linked TaskItem when the share is still PENDING', async () => {
+    const { taskListId } = arrangeLinkedMove();
+    listOwnedByOther(taskListId, { status: 'PENDING', permission: 'WRITE' });
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+  });
+
+  // The uncheck branch is the worse half: it writes `checkedByUserId: null`,
+  // a capability the AUTHORIZED path refuses even to a legitimate WRITE
+  // collaborator (tasklist.service.ts, 'errors.tasks.onlyCheckerCanUncheck').
+  it('does not uncheck the linked TaskItem when the mover has no access to the list', async () => {
+    const { taskListId } = arrangeLinkedMove({ fromCompleted: true, toCompleted: false });
+    listOwnedByOther(taskListId, null);
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+  });
+
+  // Anti-bypass. The list MUST be resolved from the task item, never from
+  // `board.taskListId`: unlinkTaskListFromBoard clears the board's FK and
+  // leaves KanbanCard.taskItemId dangling, and a relink only fills in cards
+  // whose taskItemId is absent — so a board can link list B while its older
+  // cards still point at items of list A. A board-keyed gate would authorize
+  // B and write to A, which is this same defect with extra steps.
+  it('resolves the list from the task item, not from the board', async () => {
+    const { taskItemId, taskListId } = arrangeLinkedMove();
+    listOwnedByOther(taskListId, { status: 'ACCEPTED', permission: 'WRITE' });
+
+    await moveCard(card.id, targetColumn.id, 0, actor.id);
+
+    expect(prismaMock.taskItem.findUnique).toHaveBeenCalledWith({
+      where: { id: taskItemId },
+      select: { taskListId: true, taskList: { select: { userId: true } } },
+    });
+    expect(prismaMock.sharedTaskList.findUnique).toHaveBeenCalledWith({
+      where: { taskListId_userId: { taskListId, userId: actor.id } },
+      select: { status: true, permission: true },
+    });
+    expect(prismaMock.kanbanBoard.findUnique).not.toHaveBeenCalled();
+  });
+
+  // Skip, not throw. The sync is a side effect of a move that has already
+  // committed and already been broadcast, so refusing it must not fail the
+  // move for a board member who is entitled to make it.
+  it('completes the card move even when the TaskItem sync is denied', async () => {
+    const { taskListId } = arrangeLinkedMove();
+    listOwnedByOther(taskListId, null);
+
+    await expect(moveCard(card.id, targetColumn.id, 0, actor.id)).resolves.not.toThrow();
+
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+    expect(broadcast).toHaveBeenCalledWith(
+      board.id,
+      expect.objectContaining({ type: 'card:moved', cardId: card.id })
+    );
+    expect(prismaMock.kanbanCard.update).toHaveBeenCalledWith({
+      where: { id: card.id },
+      data: { assigneeId: actor.id },
     });
   });
 

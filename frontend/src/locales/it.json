@@ -1308,7 +1308,7 @@
       "searchTaskLists": "Cerca task list...",
       "noTaskLists": "Nessuna task list trovata",
       "alreadyLinked": "Già collegata a una board",
-      "taskListNoAccess": "Task list collegata (nessun accesso)"
+      "taskListNoAccess": "Task list collegata (nessun accesso — spostare le card non spunta i suoi elementi)"
     },
     "mobile": {
       "swipeHint": "Scorri per navigare tra le colonne"
