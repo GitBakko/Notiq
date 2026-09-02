@@ -135,16 +135,22 @@ export default function SharedWithMePage() {
   const { data: pendingFriendRequests = [] } = useQuery({
     queryKey: ['friends', 'pendingRequests'],
     queryFn: getPendingRequests,
+    refetchInterval: 30000,
   });
 
   const { data: sentFriendRequests = [] } = useQuery({
     queryKey: ['friends', 'sentRequests'],
     queryFn: getSentRequests,
+    refetchInterval: 30000,
   });
 
   const { data: friends = [] } = useQuery({
+    // NOTA: la stessa lista amici vive qui sotto ['friends', ...] e nella chat sotto
+    // ['chat', ...]. Due cache della stessa risorsa che possono discordare —
+    // invalidarne una non tocca l'altra. Vale la pena unificarle, ma non in questo fix.
     queryKey: ['friends', 'list'],
     queryFn: getFriends,
+    refetchInterval: 30000,
   });
 
   const acceptMutation = useMutation({

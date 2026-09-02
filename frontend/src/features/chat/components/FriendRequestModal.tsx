@@ -72,6 +72,12 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
     queryKey: ['chat', 'friends'],
     queryFn: getFriends,
     enabled: isOpen,
+    // Il backend non emette nessun segnale quando un'amicizia nasce: broadcastToUser
+    // ha un solo chiamante in tutto il backend, la presenza. Chi ha INVIATO la
+    // richiesta restava quindi con la lista amici ferma fino allo staleTime globale
+    // di 5 minuti, e l'unica cura sembrava ricaricare la pagina. Stesso auto-recupero
+    // che le query sorelle della feature hanno gia' (ConversationList.tsx:56).
+    refetchInterval: 30000,
   });
 
   const { data: suggestions = [] } = useQuery({
@@ -90,6 +96,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
     queryKey: ['chat', 'pendingRequests'],
     queryFn: getPendingRequests,
     enabled: isOpen,
+    refetchInterval: 30000, // una richiesta in arrivo e' azione altrui: vedi sopra
   });
 
   const friendIds = new Set(friends.map(f => f.id));

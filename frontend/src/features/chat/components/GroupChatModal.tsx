@@ -49,6 +49,7 @@ export default function GroupChatModal({ isOpen, onClose, onCreated }: GroupChat
     queryKey: ['chat', 'friends'],
     queryFn: getFriends,
     enabled: isOpen && step === 2,
+    refetchInterval: 30000, // stessa chiave e stesso motivo di FriendRequestModal
   });
 
   const toggleUser = (id: string) => {
