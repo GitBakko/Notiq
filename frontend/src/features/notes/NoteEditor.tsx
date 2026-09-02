@@ -787,7 +787,16 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 }
             }} />
 
-            <SharingModal isOpen={isSharingModalOpen} onClose={() => setIsSharingModalOpen(false)} noteId={note.id} sharedWith={note.sharedWith?.map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status as 'ACCEPTED' | 'PENDING' }))} />
+            {/* [BACKUP] 2026-09-02 — questa .map() non aveva il .filter() davanti, a
+                differenza dei tre call site gemelli (NotesPage:286, TaskListsPage:36
+                e :122). Una condivisione RIFIUTATA restava quindi elencata sotto
+                "Condiviso con", e senza badge, perche' SharingModal accende quello
+                ambra solo su 'PENDING': era indistinguibile da un collaboratore che
+                aveva accettato. Il proprietario non poteva sapere che l'altro aveva
+                detto di no. Il cast `as 'ACCEPTED' | 'PENDING'` e' cio' che impediva
+                a TypeScript di segnalarlo, ed e' il motivo per cui il filtro mancava
+                qui e non altrove. */}
+            <SharingModal isOpen={isSharingModalOpen} onClose={() => setIsSharingModalOpen(false)} noteId={note.id} sharedWith={note.sharedWith?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING').map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status as 'ACCEPTED' | 'PENDING' }))} />
 
             <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
 
