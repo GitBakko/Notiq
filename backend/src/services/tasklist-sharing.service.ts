@@ -117,18 +117,32 @@ export const revokeTaskListShare = async (
   });
 };
 
+/**
+ * The "shared with me" list for task lists — the invitation inbox, so PENDING
+ * rows belong here.
+ *
+ * [BACKUP] 2026-09-02 — this was `where: { userId }` with the task list's `items`
+ * included. Two defects (N3), and this was the sharpest of the four: it handed
+ * the text of EVERY TaskItem to anyone holding a share in any state, including
+ * someone who had DECLINED the invitation. The list screen renders a title, a
+ * sharer and an id (SharedWithMePage.tsx:48-62); the items themselves come from
+ * /api/tasklists, which checks access.
+ */
 export const getSharedTaskLists = async (userId: string) => {
   return prisma.sharedTaskList.findMany({
-    where: { userId },
-    include: {
+    where: { userId, status: { in: ['PENDING', 'ACCEPTED'] } },
+    select: {
+      id: true,
+      taskListId: true,
+      userId: true,
+      permission: true,
+      status: true,
+      createdAt: true,
       taskList: {
-        include: {
-          items: {
-            orderBy: { position: 'asc' },
-            include: {
-              checkedByUser: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
-            },
-          },
+        select: {
+          id: true,
+          title: true,
+          updatedAt: true,
           user: {
             select: { id: true, name: true, email: true, avatarUrl: true },
           },

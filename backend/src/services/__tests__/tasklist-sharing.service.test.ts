@@ -270,17 +270,34 @@ describe('getSharedTaskLists', () => {
     expect(result).toEqual(rows);
     expect(prismaMock.sharedTaskList.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: TARGET_USER_ID },
-        include: expect.objectContaining({
-          taskList: expect.objectContaining({
-            include: expect.objectContaining({
-              items: expect.any(Object),
-              user: expect.any(Object),
-            }),
-          }),
-        }),
+        where: { userId: TARGET_USER_ID, status: { in: ['PENDING', 'ACCEPTED'] } },
       }),
     );
+  });
+
+  // N3, and the sharpest of the four: this list pulled every TaskItem of every
+  // shared list and served it to holders of a share in ANY state. Reproduced over
+  // HTTP with a DECLINED share — the item texts came back in full. The Sharing
+  // Center renders a title, a sharer and an id (SharedWithMePage.tsx:48-62); the
+  // items are read from /api/tasklists, which does check access.
+  it('does not select the task items', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValue([]);
+
+    await getSharedTaskLists(TARGET_USER_ID);
+
+    const sel = prismaMock.sharedTaskList.findMany.mock.calls[0][0].select.taskList.select;
+    expect(sel).not.toHaveProperty('items');
+    expect(sel).toMatchObject({ id: true, title: true, updatedAt: true });
+    expect(sel.user.select).toMatchObject({ name: true, email: true });
+  });
+
+  it('leaves out DECLINED shares, which no screen renders', async () => {
+    prismaMock.sharedTaskList.findMany.mockResolvedValue([]);
+
+    await getSharedTaskLists(TARGET_USER_ID);
+
+    const where = prismaMock.sharedTaskList.findMany.mock.calls[0][0].where;
+    expect(where.status).toEqual({ in: ['PENDING', 'ACCEPTED'] });
   });
 
   it('should return an empty array when no shared task lists exist', async () => {

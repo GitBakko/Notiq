@@ -160,12 +160,12 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
 | **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
-| **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`; **N1 N2 N3 N5 N6 aperti** |
+| **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**; **N5 aperto** |
 | **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | aperto |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Diciotto corretti, nove aperti** (C2, C5, D1, G1, N1, N2, N3, N5, N6). Il più grave rimasto è il **cluster N1/N2/N3/N6**, che è peggio di tutta la B: perde il **corpo** della nota, non il titolo.
+**Ventidue corretti, cinque aperti** (C2, C5, D1, G1, N5). Il più grave rimasto è il **cluster N1/N2/N3/N6**, che è peggio di tutta la B: perde il **corpo** della nota, non il titolo.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
@@ -484,12 +484,12 @@ stato corretto qui** (è lo specchio di B4: filtrarne uno solo sposta il leak su
 
 | # | Cosa | File | Stato |
 |---|---|---|---|
-| **N1** | `getNote` accetta `sharedWith: { some: { userId } }` **senza filtro su `status`**: chi ha una share **PENDING o DECLINED** riceve titolo, `content` e `searchText` interi | `note.service.ts:150` | **aperto** |
-| **N2** | `getSharedNotes`, stessa omissione, stesso payload, secondo endpoint | `sharing.service.ts:252-270` | **aperto** |
-| **N3** | `getSharedTaskLists`: una share DECLINED riceve il titolo della lista e **il testo di ogni TaskItem** | `tasklist-sharing.service.ts:122` | **aperto** |
+| **N1** | `getNote` accettava `sharedWith: { some: { userId } }` **senza `status`**: chi aveva una share **PENDING o DECLINED** riceveva titolo, `content` e `searchText` interi | `note.service.ts:150` | **CORRETTO** |
+| **N2** | `getSharedNotes`, stessa omissione, stesso payload, secondo endpoint | `sharing.service.ts:252` | **CORRETTO** |
+| **N3** | `getSharedTaskLists`: una share DECLINED riceveva il titolo della lista e **il testo di ogni TaskItem** | `tasklist-sharing.service.ts:122` | **CORRETTO** |
 | **N4** | `taskList.kanbanBoard` non filtrato: lo specchio di B4 | `tasklist.service.ts:175` e `:448` | **CORRETTO** `164baf6` |
 | **N5** | `moveCard` scrive `TaskItem.isChecked`/`checkedByUserId` sulla lista collegata **senza autorizzare la lista**: la spunta passa e resta stampato `checkedByUserId` mentre la GET sulla lista risponde 404 | `card.service.ts:399` e `:404` | **aperto** |
-| **N6** | `getSharedKanbans` e `getSharedNotebooks`, stessa omissione di `status` | `routes/sharing.ts:360-372`, `sharing.service.ts:391` | **aperto** |
+| **N6** | `getSharedKanbans` e `getSharedNotebooks`, stessa omissione di `status` | `routes/sharing.ts:360`, `sharing.service.ts:391` | **CORRETTO** |
 
 Riproduzione runtime di N1/N2, stesso utente stesso istante, share **DECLINED**:
 
@@ -499,12 +499,48 @@ Riproduzione runtime di N1/N2, stesso utente stesso istante, share **DECLINED**:
                 content = ...SECRET_NOTE_BODY_XYZ...
 ```
 
-**Il cluster N1/N2/N3/N6 è più grave di tutta la B** — perde il *corpo* della nota, non il titolo —
-ma ha causa radice diversa: manca `status: 'ACCEPTED'`, non manca un filtro di visibilità. Il
-predicato non esiste in forma condivisa: è inline a ogni controllo. Le due omissioni verificate riga
-per riga sono `note.service.ts:150` (`sharedWith: { some: { userId } }`) e
-`tasklist-sharing.service.ts:122` (`where: { userId }`). È il prossimo task, non un allargamento di
-questo.
+### Il cluster N1/N2/N3/N6 — CORRETTO
+
+Era **più grave di tutta la B**: perdeva il *corpo* della nota, non il titolo. Causa radice diversa
+(manca `status`, non manca un filtro di visibilità) e **due fix diversi, non uno**:
+
+- **N1 `getNote`** è l'unico dove il fix è davvero il filtro: `sharedWith: { some: { userId } }` →
+  `{ userId, status: 'ACCEPTED' }`. Chi non ha accettato prende 404, come da `checkNoteAccess`.
+- **N2 / N3 / N6** sono liste di **inviti**: le righe PENDING **devono** restare, sono il motivo per
+  cui la pagina esiste. Filtrare per `ACCEPTED` avrebbe rotto l'accettazione degli inviti. Il difetto
+  vero era il **payload**: `include: { note: { include: … } }` tira dentro *ogni* scalare, `content` e
+  `searchText` compresi, e `getSharedTaskLists` tirava dentro ogni `TaskItem`. Il fix è un `select`
+  stretto — e il contratto era già scritto nel frontend, che dichiara
+  `note: { id, title, updatedAt, user: { name, email } }` (`SharedWithMePage.tsx:15-30`).
+- In più, **le righe DECLINED non venivano rese da nessuno**: `filterItems` (`:284-288`) tiene solo
+  PENDING e ACCEPTED. Erano esposizione a costo zero di utilità. Ora sono escluse a monte.
+
+**È la stessa lezione del gruppo B**, applicata due volte di fila: *prima di scrivere un filtro,
+guarda chi legge quel campo.* Su B ha eliminato due cambi di firma su tre; qui ha evitato di rompere
+il flusso degli inviti.
+
+Verificato eseguendo, con quattro share **DECLINED** vere sul backend vivo e i marker nel testo:
+
+```
+/api/share/notes       rows: 0   markers leaked: NONE
+/api/share/notebooks   rows: 0   markers leaked: NONE
+/api/share/tasklists   rows: 0   markers leaked: NONE
+/api/share/kanbans     rows: 1   markers leaked: NONE   (riga ACCEPTED preesistente, non la fixture)
+GET /api/notes/nc-note -> 404
+```
+
+e poi le stesse share portate a **PENDING**, per provare che l'invito continua a funzionare:
+
+```
+/notes      rows: 1  titoli: ['NC_SECRET_TITLE']     body/searchText leaked: NONE
+/notebooks  rows: 1  titoli: ['NC_SECRET_NOTEBOOK']  leaked: NONE
+/tasklists  rows: 1  titoli: ['NC_SECRET_LIST']      item text leaked: NONE
+GET /api/notes/nc-note con PENDING  -> 404
+GET /api/notes/nc-note con ACCEPTED -> 200
+```
+
+**Resta N5**, che è una scrittura e non una lettura: `moveCard` (`card.service.ts:399` e `:404`)
+spunta i `TaskItem` della lista collegata senza autorizzare la lista.
 
 **Percorsi controllati e puliti**, così il prossimo non li ripercorre: SSE (`stripNote` funziona sul
 filo, e gli altri 18 eventi non portano né nota né task list), risposta di `move`, `getBoardsList`,

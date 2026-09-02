@@ -332,7 +332,7 @@ describe('getNote', () => {
         id: 'n1',
         OR: [
           { userId: 'user-1' },
-          { sharedWith: { some: { userId: 'user-1' } } },
+          { sharedWith: { some: { userId: 'user-1', status: 'ACCEPTED' } } },
         ],
       },
       include: expect.objectContaining({
@@ -348,6 +348,33 @@ describe('getNote', () => {
 
     const result = await getNote('user-2', 'n1');
     expect(result).toEqual(note);
+  });
+
+  // N1. The share branch had no status filter, so a PENDING or DECLINED recipient
+  // received the note whole — title, content and searchText. Reproduced over HTTP:
+  // the same user, in the same moment, was told card.note = null by the board
+  // endpoint and handed the note's body by this one. checkNoteAccess (:13),
+  // getBoard and onAuthenticate all require ACCEPTED; this did not.
+  it('only counts an ACCEPTED share as access', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(null);
+
+    await getNote('user-2', 'n1');
+
+    const where = prismaMock.note.findFirst.mock.calls[0][0].where;
+    expect(where.OR).toContainEqual({
+      sharedWith: { some: { userId: 'user-2', status: 'ACCEPTED' } },
+    });
+  });
+
+  it('does not widen access for the note owner', async () => {
+    // The status filter must sit on the share branch only: an owner has no
+    // SharedNote row at all and must still get their own note.
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'n1', userId: 'user-1' });
+
+    await getNote('user-1', 'n1');
+
+    const where = prismaMock.note.findFirst.mock.calls[0][0].where;
+    expect(where.OR).toContainEqual({ userId: 'user-1' });
   });
 
   it('returns null when note does not exist or user has no access', async () => {

@@ -426,10 +426,7 @@ describe('getSharedNotes', () => {
     expect(result).toEqual(rows);
     expect(prismaMock.sharedNote.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: TARGET_USER_ID },
-        include: expect.objectContaining({
-          note: expect.objectContaining({ include: expect.any(Object) }),
-        }),
+        where: { userId: TARGET_USER_ID, status: { in: ['PENDING', 'ACCEPTED'] } },
       }),
     );
   });
@@ -440,6 +437,46 @@ describe('getSharedNotes', () => {
     const result = await getSharedNotes(TARGET_USER_ID);
 
     expect(result).toEqual([]);
+  });
+
+  // N2. `include: { note: { include: … } }` pulls EVERY scalar of the note —
+  // content and searchText included — and this list is served to holders of a
+  // share in any state. Reproduced over HTTP with a DECLINED share: the body of
+  // the note came back in full. The Sharing Center renders only the title, the
+  // sharer's name and the id (SharedWithMePage.tsx:15-30 declares exactly that
+  // shape), so the fix is to select what the client actually reads.
+  it('does not select the note body', async () => {
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+
+    await getSharedNotes(TARGET_USER_ID);
+
+    const noteSel = prismaMock.sharedNote.findMany.mock.calls[0][0].select.note.select;
+    expect(noteSel).not.toHaveProperty('content');
+    expect(noteSel).not.toHaveProperty('searchText');
+    expect(noteSel).not.toHaveProperty('ydocState');
+  });
+
+  it('still selects everything the Sharing Center renders', async () => {
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+
+    await getSharedNotes(TARGET_USER_ID);
+
+    const sel = prismaMock.sharedNote.findMany.mock.calls[0][0].select;
+    expect(sel).toMatchObject({ id: true, noteId: true, userId: true, permission: true, status: true });
+    expect(sel.note.select).toMatchObject({ id: true, title: true, updatedAt: true });
+    expect(sel.note.select.user.select).toMatchObject({ name: true, email: true });
+  });
+
+  it('leaves out DECLINED shares, which no screen renders', async () => {
+    // SharedWithMePage splits the list into PENDING and ACCEPTED
+    // (SharedWithMePage.tsx:284-288); a DECLINED row is fetched and dropped, so
+    // it is exposure with no purpose. PENDING must stay — it IS the invitation.
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+
+    await getSharedNotes(TARGET_USER_ID);
+
+    const where = prismaMock.sharedNote.findMany.mock.calls[0][0].where;
+    expect(where.status).toEqual({ in: ['PENDING', 'ACCEPTED'] });
   });
 });
 
@@ -627,9 +664,22 @@ describe('getSharedNotebooks', () => {
     expect(result).toEqual(rows);
     expect(prismaMock.sharedNotebook.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: TARGET_USER_ID },
+        where: { userId: TARGET_USER_ID, status: { in: ['PENDING', 'ACCEPTED'] } },
       }),
     );
+  });
+
+  // N6, the milder half: a notebook has no body, so this leaked a name rather
+  // than content. Same two defects nonetheless, and the same fix.
+  it('selects only what the Sharing Center renders, and skips DECLINED', async () => {
+    prismaMock.sharedNotebook.findMany.mockResolvedValue([]);
+
+    await getSharedNotebooks(TARGET_USER_ID);
+
+    const args = prismaMock.sharedNotebook.findMany.mock.calls[0][0];
+    expect(args.where.status).toEqual({ in: ['PENDING', 'ACCEPTED'] });
+    expect(args.select.notebook.select).toMatchObject({ id: true, name: true, updatedAt: true });
+    expect(args.select.notebook.select.user.select).toMatchObject({ name: true, email: true });
   });
 
   it('should return an empty array when no shared notebooks exist', async () => {

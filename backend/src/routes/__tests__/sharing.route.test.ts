@@ -727,6 +727,23 @@ describe('GET /api/sharing/kanbans', () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockShares);
   });
+
+  // N6, kanban half. This endpoint already selects narrowly, so it never leaked a
+  // body — but it listed shares in EVERY state, and a DECLINED row is fetched and
+  // then dropped by the client (SharedWithMePage.tsx:284-288). PENDING stays: it
+  // is the invitation the screen exists to show.
+  it('leaves out DECLINED shares', async () => {
+    mockPrisma.sharedKanbanBoard.findMany.mockResolvedValue([]);
+
+    await app.inject({
+      method: 'GET',
+      url: '/api/sharing/kanbans',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    const where = mockPrisma.sharedKanbanBoard.findMany.mock.calls[0][0].where;
+    expect(where.status).toEqual({ in: ['PENDING', 'ACCEPTED'] });
+  });
 });
 
 // ── Get Accepted Shared Kanban Boards ───────────────────────────────

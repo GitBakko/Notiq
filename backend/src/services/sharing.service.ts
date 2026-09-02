@@ -249,14 +249,37 @@ export const getAcceptedSharedNotes = async (userId: string) => {
   }));
 };
 
+/**
+ * The "shared with me" list for notes — the invitation inbox, so PENDING rows
+ * belong here and must not be filtered out.
+ *
+ * [BACKUP] 2026-09-02 — this was `where: { userId }` with
+ * `include: { note: { include: { user } } }`. Two defects (N2). The `include`
+ * pulled EVERY scalar of the note, `content` and `searchText` among them, and the
+ * missing status filter served that to anyone holding a share in ANY state — so a
+ * user who had DECLINED the invitation could still read the note's body. The list
+ * screen renders only a title, the sharer's name and an id
+ * (SharedWithMePage.tsx:15-30), and it drops DECLINED rows on the floor
+ * (`filterItems`, :284-288), so both the body and those rows were pure exposure.
+ */
 export const getSharedNotes = async (userId: string) => {
   return prisma.sharedNote.findMany({
     where: {
       userId,
+      status: { in: ['PENDING', 'ACCEPTED'] },
     },
-    include: {
+    select: {
+      id: true,
+      noteId: true,
+      userId: true,
+      permission: true,
+      status: true,
+      createdAt: true,
       note: {
-        include: {
+        select: {
+          id: true,
+          title: true,
+          updatedAt: true,
           user: {
             select: {
               id: true,
@@ -388,14 +411,25 @@ export const revokeNotebookShare = async (ownerId: string, notebookId: string, t
   return deleted;
 };
 
+/** Same shape and same reasoning as getSharedNotes above (N6). */
 export const getSharedNotebooks = async (userId: string) => {
   return prisma.sharedNotebook.findMany({
     where: {
       userId,
+      status: { in: ['PENDING', 'ACCEPTED'] },
     },
-    include: {
+    select: {
+      id: true,
+      notebookId: true,
+      userId: true,
+      permission: true,
+      status: true,
+      createdAt: true,
       notebook: {
-        include: {
+        select: {
+          id: true,
+          name: true,
+          updatedAt: true,
           user: {
             select: {
               id: true,

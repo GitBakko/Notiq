@@ -356,10 +356,15 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     }));
   });
 
-  // Get Shared Kanban Boards (all statuses)
+  // Get Shared Kanban Boards — the invitation inbox, so PENDING belongs here.
+  // [BACKUP] 2026-09-02 — the comment said "(all statuses)" and the query meant it.
+  // Unlike its siblings this one already selected narrowly, so it never carried a
+  // body; it did list DECLINED shares, which the client fetches and then drops
+  // (SharedWithMePage.tsx:284-288) — exposure of a board title to someone who
+  // refused it, for no rendered purpose (N6).
   fastify.get('/kanbans', async (request) => {
     const shares = await prisma.sharedKanbanBoard.findMany({
-      where: { userId: request.user.id },
+      where: { userId: request.user.id, status: { in: ['PENDING', 'ACCEPTED'] } },
       include: {
         board: {
           select: {

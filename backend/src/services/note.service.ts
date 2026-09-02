@@ -147,7 +147,12 @@ export const getNote = async (userId: string, id: string) => {
       id,
       OR: [
         { userId },
-        { sharedWith: { some: { userId } } }
+        // [BACKUP] 2026-09-02 — was `{ sharedWith: { some: { userId } } }`, with no
+        // status. A PENDING or DECLINED recipient received the note whole: title,
+        // content and searchText (N1). Every other access check in the codebase —
+        // checkNoteAccess above, getBoard's filter, Hocuspocus onAuthenticate —
+        // requires ACCEPTED; this one silently did not.
+        { sharedWith: { some: { userId, status: 'ACCEPTED' } } }
       ]
     },
     include: {
