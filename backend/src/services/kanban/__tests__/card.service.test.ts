@@ -1338,6 +1338,12 @@ describe('getCardActivities', () => {
 
     expect((result[0].metadata as Record<string, unknown>).noteTitle).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain('Q4 layoffs');
+    // Pin the FILTER, not just the absence of the title: without this, a version
+    // that drops every title unconditionally would also pass.
+    expect(prismaMock.sharedNote.findMany).toHaveBeenCalledWith({
+      where: { noteId: { in: ['note-1'] }, userId: 'outsider', status: 'ACCEPTED' },
+      select: { noteId: true },
+    });
   });
 
   it('resolves the title from noteId for a user who owns the note', async () => {
@@ -1421,6 +1427,20 @@ describe('getCardActivities', () => {
 
     expect(prismaMock.sharedNote.findMany).not.toHaveBeenCalled();
     expect(prismaMock.note.findMany).not.toHaveBeenCalled();
+  });
+
+  it('blanks a metadata shape it cannot redact key by key, instead of passing it through', async () => {
+    // A jsonb array cannot be redacted field by field. No writer produces one, so
+    // the branch is unreachable today; it is written fail-closed because the next
+    // writer is the one that would make it reachable.
+    prismaMock.kanbanCardActivity.findMany.mockResolvedValue([
+      noteActivity('NOTE_LINKED', [{ noteTitle: 'Q4 layoffs' }]),
+    ]);
+
+    const result = await getCardActivities('card-a', 1, 10, 'outsider');
+
+    expect(result[0].metadata).toBeNull();
+    expect(JSON.stringify(result)).not.toContain('Q4 layoffs');
   });
 
   it('survives a metadata that is JSON null', async () => {

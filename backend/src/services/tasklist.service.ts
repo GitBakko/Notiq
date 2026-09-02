@@ -21,7 +21,9 @@ const ITEMS_INCLUDE = {
  * linkTaskListToBoard requires WRITE on the board and ACCEPTED-WRITE on the list,
  * so a list collaborator can attach someone else's list to their own board.
  *
- * The scoped `shares` sub-select IS the check — it costs no extra round trip.
+ * The scoped `shares` sub-select IS the check. It is not free — Prisma resolves a
+ * nested relation with its own statement — but it rides inside the query that was
+ * already being made, so it costs no extra call from the service.
  */
 const linkedBoardSelect = (userId: string) =>
   ({

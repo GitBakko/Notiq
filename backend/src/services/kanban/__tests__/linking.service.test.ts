@@ -22,14 +22,20 @@ vi.mock('../../kanbanSSE', () => ({
 }));
 
 // Mock helpers — logCardActivity, transformCard, cardWithAssigneeSelect
-vi.mock('../helpers', () => ({
-  logCardActivity: vi.fn().mockResolvedValue(undefined),
-  cardWithAssigneeSelect: { id: true },
-  transformCard: vi.fn((card: any) => {
-    const { _count, ...rest } = card;
-    return { ...rest, commentCount: _count?.comments ?? 0 };
-  }),
-}));
+// Keep the selects real. `cardWithAssigneeSelect: { id: true }` was a stand-in, so
+// every assertion about what this service selects was an assertion about the
+// stand-in — the same shape as the mock that hid F1.
+vi.mock('../helpers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../helpers')>();
+  return {
+    ...actual,
+    logCardActivity: vi.fn().mockResolvedValue(undefined),
+    transformCard: vi.fn((card: any) => {
+      const { _count, ...rest } = card;
+      return { ...rest, commentCount: _count?.comments ?? 0 };
+    }),
+  };
+});
 
 import {
   checkNoteSharingForBoard,

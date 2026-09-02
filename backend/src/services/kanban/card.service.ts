@@ -606,7 +606,12 @@ export async function getCardActivities(
   return activities.map((a) => {
     if (!NOTE_ACTIONS.has(a.action)) return a;
     const meta = metadataObject(a.metadata);
-    if (!meta) return a;
+    // Fail CLOSED on a shape this code does not understand. Returning it untouched
+    // would be the wrong direction: an array or a scalar cannot be redacted key by
+    // key, so passing it through would serve whatever it holds. No writer produces
+    // those shapes today — which is exactly why the branch has to be decided here
+    // rather than left to whoever adds the writer that does.
+    if (!meta) return { ...a, metadata: null };
 
     // Drop first, resolve second: a legacy row keeps its title only if the reader
     // is separately entitled to it, and a row with no noteId keeps none at all.
