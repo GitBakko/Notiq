@@ -91,9 +91,27 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   }, [conversation, otherParticipant, t]);
 
   // ─── Initial messages load ─────────────────────────────
+  // [BACKUP] 2026-09-02 — questa useQuery non aveva NESSUNA opzione, quindi
+  // ereditava lo `staleTime: 5 minuti` globale di queryClient.ts:35 — e nessun punto
+  // del codice invalida mai `['chat','messages']` (zero call site). Il pannello
+  // restava congelato su una fotografia vecchia fino a 5 minuti, mentre la LISTA
+  // accanto mostrava l'anteprima aggiornata: chiavi diverse, e quella della lista e'
+  // invalidata a ogni `message:new` piu' un refetch ogni 30s. Un messaggio ricevuto
+  // mentre la conversazione era chiusa risultava quindi leggibile nell'anteprima e
+  // invisibile aprendola. I messaggi che arrivano via WebSocket finiscono in state
+  // locale (:145-149), che l'unmount butta via: al rientro vince la cache stale e
+  // sparivano anche quelli gia' letti. La chat e' online-only per scelta: qui il
+  // server e' l'unica verita', e va riletto a ogni apertura.
+  //
+  // `refetchOnWindowFocus: false` NON e' un dettaglio di gusto: con staleTime 0 il
+  // default v5 rifarebbe la fetch di pagina 1 a ogni focus della finestra, e
+  // l'effetto sotto RIMPIAZZA `allMessages` riportando `page` a 1 — chi avesse
+  // caricato lo scrollback all'indietro se lo vedrebbe azzerare cambiando scheda.
   const { data: initialMessages } = useQuery({
     queryKey: ['chat', 'messages', conversationId, 1],
     queryFn: () => getMessages(conversationId, 1),
+    staleTime: 0,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
