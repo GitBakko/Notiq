@@ -165,7 +165,37 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Ventidue corretti, cinque aperti** (C2, C5, D1, G1, N5). Il più grave rimasto è il **cluster N1/N2/N3/N6**, che è peggio di tutta la B: perde il **corpo** della nota, non il titolo.
+**Ventidue corretti, cinque aperti** (C2, C5, D1, G1, N5).
+
+### Trovati verificando il deploy della v1.11.0 in produzione (2026-09-02)
+
+Sei difetti, tutti **preesistenti** — nessuno e' una regressione del lavoro di hardening. Sono emersi
+perche' per la prima volta qualcuno ha percorso quei flussi da vicino, con due account veri, su
+dati veri. Vale come argomento: **la verifica manuale post-deploy trova cose che nessun audit del
+codice aveva trovato in cinque sessioni.**
+
+| # | Cosa | Stato |
+|---|---|---|
+| P1 | Il check di salute del deploy perdeva la corsa contro il boot e allarmava su un deploy riuscito | **corretto** `a032f6d` |
+| P2 | Una condivisione **rifiutata** restava elencata sotto "Condiviso con", senza badge, indistinguibile da chi aveva accettato | **corretto** `1b2daa0` |
+| P3 | Dopo una revoca il toast diceva "verifica la connessione": era un 403, e l'utente continuava a scrivere credendo a un problema di rete | **corretto** `5092516` |
+| P4 | **Un messaggio di chat ricevuto a conversazione chiusa era invisibile aprendola**, fino a 5 minuti | **corretto** `b37d0c2` |
+| P5 | Il token della sessione Hocuspocus era catturato una volta sola al mount — gemello di C3 su un altro trasporto | **corretto** `97fa69d` |
+| P6 | La lista amici non si aggiornava per chi aveva **inviato** la richiesta: nessun segnale dal backend | **corretto** `9fb28e0` |
+
+E quattro **aperti**, tutti trovati per strada:
+
+- **Paginazione a offset nella chat diretta**: "carica altri" usa `skip=(page-1)*limit` su una tabella
+  che cresce in coda, quindi un messaggio in arrivo durante lo scrollback fa saltare o duplicare
+  righe. Il service ha gia' la paginazione a cursore (`before`) e il frontend non la passa mai.
+- **Il finding 5.4 vale anche per la chat di NOTA** (`chat.service.ts:185`, `asc` + `skip/take`,
+  default `limit: 100`): pagina 1 sono i 100 piu' vecchi. La chat **diretta** invece e' a posto
+  (`desc` + `.reverse()`), verificato eseguendo su conversazioni da 10 e da 60 messaggi.
+- **La lista amici vive sotto due chiavi di cache diverse** (`['chat','friends']` e
+  `['friends','list']`): invalidarne una non tocca l'altra.
+- **`DECLINED` non esiste nel modello frontend delle condivisioni**: quattro modali lo escludono dal
+  tipo e cinque call site fanno `as` per forzarcelo dentro. Restano non filtrati `Sidebar.tsx:261` e
+  `SharedUsersModal.tsx:104`, che con `!== 'PENDING'` mette i rifiutati **fra chi ha accesso**. Il più grave rimasto è il **cluster N1/N2/N3/N6**, che è peggio di tutta la B: perde il **corpo** della nota, non il titolo.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
