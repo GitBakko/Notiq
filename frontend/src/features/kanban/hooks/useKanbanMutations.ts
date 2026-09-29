@@ -14,9 +14,13 @@ export function useKanbanMutations(boardId?: string) {
     }
   }
 
-  // Trigger sync after Dexie write (fire-and-forget)
+  // [BACKUP] 2026-09-29 — kanban 3.4: was `syncPush().catch(() => {})` followed by an
+  // immediate invalidateBoard() in every onSuccess. That refetched the board from the
+  // server before the write got there, so a quick second move jumped back for a while.
+  // Push, then refetch: syncPush now resolves only once what was queued is on the
+  // server (or the push gave up, e.g. offline — the refetch then falls back to Dexie).
   function flushSync(): void {
-    syncPush().catch(() => {});
+    void syncPush().catch(() => false).then(invalidateBoard);
   }
 
   const createBoard = useMutation({
@@ -38,59 +42,41 @@ export function useKanbanMutations(boardId?: string) {
   const updateBoard = useMutation({
     mutationFn: ({ id, ...data }: { id: string; title?: string; description?: string | null }) =>
       kanbanService.updateBoard(id, data),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const createColumn = useMutation({
     mutationFn: ({ boardId: bid, title }: { boardId: string; title: string }) =>
       kanbanService.createColumn(bid, title),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const updateColumn = useMutation({
     mutationFn: ({ columnId, ...data }: { columnId: string; title?: string; isCompleted?: boolean }) =>
       kanbanService.updateColumn(columnId, data),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const deleteColumn = useMutation({
     mutationFn: kanbanService.deleteColumn,
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const reorderColumns = useMutation({
     mutationFn: ({ boardId: bid, columns }: { boardId: string; columns: { id: string; position: number }[] }) =>
       kanbanService.reorderColumns(bid, columns),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const createCard = useMutation({
     mutationFn: ({ columnId, ...data }: { columnId: string; title: string; description?: string }) =>
       kanbanService.createCard(columnId, data),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
@@ -106,38 +92,26 @@ export function useKanbanMutations(boardId?: string) {
       dueDate?: string | null;
       priority?: KanbanCardPriority | null;
     }) => kanbanService.updateCard(cardId, data),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const moveCard = useMutation({
     mutationFn: ({ cardId, toColumnId, position }: { cardId: string; toColumnId: string; position: number }) =>
       kanbanService.moveCard(cardId, toColumnId, position),
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const deleteCard = useMutation({
     mutationFn: kanbanService.deleteCard,
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 
   const duplicateCard = useMutation({
     mutationFn: kanbanService.duplicateCard,
-    onSuccess: () => {
-      flushSync();
-      invalidateBoard();
-    },
+    onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });
 

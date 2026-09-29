@@ -1836,7 +1836,9 @@ describe('syncPush', () => {
       await expect(syncPush()).resolves.toBe(false);
     });
 
-    it('resolves false when a second concurrent call hits the already-syncing guard', async () => {
+    // Kanban 3.4: [BACKUP] 2026-09-29 — this test used to pin the old guard,
+    // `await syncPush()` resolving false at once while another run was going.
+    it('a concurrent call waits for the run in progress and shares its result', async () => {
       let resolveFirst!: () => void;
       const firstCallPromise = new Promise<void>(resolve => { resolveFirst = resolve; });
       const queueItem = {
@@ -1848,54 +1850,82 @@ describe('syncPush', () => {
       mockDb.notes.get.mockResolvedValue({ id: 'note-slow', updatedAt: new Date(0).toISOString() });
 
       const first = syncPush();
-      await expect(syncPush()).resolves.toBe(false); // guarded by isSyncing, returns immediately
+      const second = syncPush();
+      let secondSettled = false;
+      void second.then(() => { secondSettled = true; });
+
+      await new Promise(r => setTimeout(r, 0));
+      expect(secondSettled).toBe(false); // still waiting on the run in progress
 
       resolveFirst();
-      await first;
+      expect(second).toBe(first);
+      await expect(second).resolves.toBe(true);
     });
   });
 
   // -----------------------------------------------------------------
-  // Concurrency guard
+  // Concurrency guard — kanban 3.4: never two runs at once, and whatever
+  // was queued during a run is pushed before a concurrent caller resumes.
   // -----------------------------------------------------------------
   describe('concurrency guard', () => {
-    it('guards against concurrent sync — only one runs at a time', async () => {
-      let resolveFirst!: () => void;
-      const firstCallPromise = new Promise<void>(resolve => { resolveFirst = resolve; });
+    const noteCreate = (id: number, entityId: string) => ({
+      id, type: 'CREATE' as const, entity: 'NOTE' as const, entityId,
+      userId: 'user-1', data: { id: entityId, title: entityId }, createdAt: Date.now(),
+    });
 
-      const queueItem = {
-        id: 200, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-slow',
-        userId: 'user-1', data: { id: 'note-slow', title: 'Slow' },
-        createdAt: Date.now(),
-      };
-
-      let postCallCount = 0;
-      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
-      mockApi.post.mockImplementation(() => {
-        postCallCount++;
-        if (postCallCount === 1) {
-          return firstCallPromise.then(() => ({ data: {} }));
-        }
-        return Promise.resolve({ data: {} });
-      });
+    beforeEach(() => {
       mockDb.syncQueue.count.mockResolvedValue(0);
-      mockDb.notes.get.mockResolvedValue({
-        id: 'note-slow', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      mockDb.notes.get.mockResolvedValue({ id: 'n', updatedAt: new Date(0).toISOString() });
+    });
+
+    it('never runs two passes at once, and coalesces concurrent calls into one follow-up pass', async () => {
+      mockDb.syncQueue.toArray.mockResolvedValue([noteCreate(200, 'note-a')]);
+      let active = 0;
+      let maxActive = 0;
+      mockApi.post.mockImplementation(async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise(r => setTimeout(r, 5));
+        active--;
+        return { data: {} };
       });
 
-      // Start first sync (will hang on api.post)
+      await Promise.all([syncPush(), syncPush(), syncPush()]);
+
+      expect(maxActive).toBe(1);
+      // The first run's pass, plus ONE follow-up pass for the two calls made
+      // during it — not one per call.
+      expect(mockApi.post).toHaveBeenCalledTimes(2);
+    });
+
+    it('pushes what was queued during a run before the concurrent caller resumes', async () => {
+      let resolveFirst!: () => void;
+      const firstPost = new Promise<void>(resolve => { resolveFirst = resolve; });
+      mockDb.syncQueue.toArray
+        .mockResolvedValueOnce([noteCreate(201, 'note-first')])
+        .mockResolvedValue([noteCreate(202, 'note-second')]);
+      mockApi.post.mockImplementation((_url: string, body: { id: string }) =>
+        body.id === 'note-first' ? firstPost.then(() => ({ data: {} })) : Promise.resolve({ data: {} }),
+      );
+
       const first = syncPush();
-
-      // Start second sync immediately — should return early due to isSyncing guard
+      // e.g. the second of two quick kanban moves, queued while the first is in flight
       const second = syncPush();
-      await second; // second resolves immediately
-
-      // Resolve the first call
       resolveFirst();
-      await first;
+      await second;
 
-      // API should have been called only ONCE
-      expect(postCallCount).toBe(1);
+      expect(mockApi.post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ id: 'note-second' }));
+      await first;
+    });
+
+    it('starts a fresh run once the previous one is over', async () => {
+      mockDb.syncQueue.toArray.mockResolvedValue([noteCreate(203, 'note-c')]);
+      mockApi.post.mockResolvedValue({ data: {} });
+
+      await syncPush();
+      await syncPush();
+
+      expect(mockApi.post).toHaveBeenCalledTimes(2);
     });
   });
 
