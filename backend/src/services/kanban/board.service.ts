@@ -1,6 +1,9 @@
 import prisma from '../../plugins/prisma';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { cardWithNoteSelect, transformCard, accessibleNoteIds } from './helpers';
+import fs from 'fs';
+import logger from '../../utils/logger';
+import { resolveUploadPath } from '../../utils/uploadPaths';
 
 // ─── Board CRUD ─────────────────────────────────────────────
 
@@ -274,7 +277,29 @@ export async function updateBoard(
 }
 
 export async function deleteBoard(boardId: string) {
-  return prisma.kanbanBoard.delete({ where: { id: boardId } });
+  // [BACKUP] 2026-09-29 — 6.3: was a bare `return prisma.kanbanBoard.delete({ where: { id: boardId } });`.
+  // That left the cover/avatar files on disk forever: they live under uploads/kanban/,
+  // are served without authentication, and pruneAttachments only knows the Attachment
+  // table, so nothing else ever reaped them.
+  const board = await prisma.kanbanBoard.findUnique({
+    where: { id: boardId },
+    select: { coverImage: true, avatarUrl: true },
+  });
+
+  const deleted = await prisma.kanbanBoard.delete({ where: { id: boardId } });
+
+  for (const url of [board?.coverImage, board?.avatarUrl]) {
+    const filepath = resolveUploadPath(url);
+    if (!filepath) continue;
+    try {
+      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+    } catch (err) {
+      // The row is already gone — a stuck file must not turn into a failed request.
+      logger.warn({ err, boardId, filepath }, 'Failed to delete kanban board image file');
+    }
+  }
+
+  return deleted;
 }
 
 // ─── Create Board from Task List ────────────────────────────

@@ -8,6 +8,7 @@ import { assertBoardAccess, getColumnWithAccess, getCardWithAccess } from '../se
 import { addConnection } from '../services/kanbanSSE';
 import { ForbiddenError } from '../utils/errors';
 import prisma from '../plugins/prisma';
+import { UPLOADS_DIR, extensionForImageMime, resolveUploadPath } from '../utils/uploadPaths';
 
 // ─── Zod schemas ────────────────────────────────────────────
 
@@ -72,10 +73,8 @@ const paginationSchema = z.object({
 
 // ─── Upload helpers ─────────────────────────────────────────
 
-const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 const KANBAN_UPLOADS_DIR = path.join(UPLOADS_DIR, 'kanban');
 const KANBAN_AVATARS_DIR = path.join(UPLOADS_DIR, 'kanban', 'avatars');
-const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
 
@@ -172,7 +171,8 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     if (!data) {
       return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
-    if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
+    const ext = extensionForImageMime(data.mimetype);
+    if (!ext) {
       return reply.status(400).send({ message: 'errors.common.onlyImageFormatsAllowed' });
     }
 
@@ -198,15 +198,13 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       select: { coverImage: true },
     });
-    if (currentBoard?.coverImage) {
-      const oldFile = path.join(UPLOADS_DIR, currentBoard.coverImage.replace(/^\/uploads\//, ''));
-      if (fs.existsSync(oldFile)) {
-        fs.unlinkSync(oldFile);
-      }
+    const oldFile = resolveUploadPath(currentBoard?.coverImage);
+    if (oldFile && fs.existsSync(oldFile)) {
+      fs.unlinkSync(oldFile);
     }
 
-    // Save new file
-    const ext = path.extname(data.filename || '.jpg').toLowerCase();
+    // Save new file — the extension comes from the validated mimetype, never from
+    // data.filename (6.3: a PNG-typed upload named x.svg used to be stored as .svg).
     const filename = `${randomUUID()}${ext}`;
     const filepath = path.join(KANBAN_UPLOADS_DIR, filename);
     fs.writeFileSync(filepath, buffer);
@@ -228,11 +226,9 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       select: { coverImage: true },
     });
-    if (board?.coverImage) {
-      const oldFile = path.join(UPLOADS_DIR, board.coverImage.replace(/^\/uploads\//, ''));
-      if (fs.existsSync(oldFile)) {
-        fs.unlinkSync(oldFile);
-      }
+    const oldFile = resolveUploadPath(board?.coverImage);
+    if (oldFile && fs.existsSync(oldFile)) {
+      fs.unlinkSync(oldFile);
     }
 
     await prisma.kanbanBoard.update({
@@ -253,7 +249,8 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     if (!data) {
       return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
-    if (!ALLOWED_IMAGE_TYPES.has(data.mimetype)) {
+    const ext = extensionForImageMime(data.mimetype);
+    if (!ext) {
       return reply.status(400).send({ message: 'errors.common.onlyImageFormatsAllowed' });
     }
 
@@ -279,15 +276,13 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       select: { avatarUrl: true },
     });
-    if (currentBoard?.avatarUrl) {
-      const oldFile = path.join(UPLOADS_DIR, currentBoard.avatarUrl.replace(/^\/uploads\//, ''));
-      if (fs.existsSync(oldFile)) {
-        fs.unlinkSync(oldFile);
-      }
+    const oldFile = resolveUploadPath(currentBoard?.avatarUrl);
+    if (oldFile && fs.existsSync(oldFile)) {
+      fs.unlinkSync(oldFile);
     }
 
-    // Save new file
-    const ext = path.extname(data.filename || '.jpg').toLowerCase();
+    // Save new file — the extension comes from the validated mimetype, never from
+    // data.filename (6.3: a PNG-typed upload named x.svg used to be stored as .svg).
     const filename = `${randomUUID()}${ext}`;
     const filepath = path.join(KANBAN_AVATARS_DIR, filename);
     fs.writeFileSync(filepath, buffer);
@@ -309,11 +304,9 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       select: { avatarUrl: true },
     });
-    if (board?.avatarUrl) {
-      const oldFile = path.join(UPLOADS_DIR, board.avatarUrl.replace(/^\/uploads\//, ''));
-      if (fs.existsSync(oldFile)) {
-        fs.unlinkSync(oldFile);
-      }
+    const oldFile = resolveUploadPath(board?.avatarUrl);
+    if (oldFile && fs.existsSync(oldFile)) {
+      fs.unlinkSync(oldFile);
     }
 
     await prisma.kanbanBoard.update({
