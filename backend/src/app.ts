@@ -8,6 +8,7 @@ import fastifyMultipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 
 import { metrics } from './utils/metrics';
+import { touchLastActive } from './utils/lastActive';
 import authRoutes from './routes/auth';
 import notebookRoutes from './routes/notebooks';
 import noteRoutes from './routes/notes';
@@ -178,29 +179,15 @@ server.decorate('authenticate', async (request: FastifyRequest, reply: FastifyRe
         return reply.code(401).send({ message: 'auth.errors.tokenInvalidated' });
       }
     }
+    // Only a request that passed every check counts as activity.
+    touchLastActive(request.user.id, request.log);
   } catch (err) {
     return reply.code(401).send({ message: 'auth.errors.unauthorized' });
   }
 });
 
 
-const lastActiveCache = new Map<string, number>();
-
-server.addHook('onRequest', async (request: FastifyRequest) => {
-  if (request.user) {
-    const now = Date.now();
-    const lastUpdate = lastActiveCache.get(request.user.id) || 0;
-    if (now - lastUpdate > 5 * 60 * 1000) { // 5 minutes throttle
-      lastActiveCache.set(request.user.id, now);
-      prisma.user.update({
-        where: { id: request.user.id },
-        data: { lastActiveAt: new Date() }
-      }).catch((err) => {
-        request.log.warn({ err, userId: request.user.id }, 'lastActiveAt update failed');
-      }); // fire-and-forget
-    }
-  }
-});
+// [BACKUP] 2026-09-29 — D1: questo hook onRequest globale girava prima di fastify.authenticate, quindi request.user era sempre undefined e lastActiveAt non veniva mai scritto. Spostato dentro il decorator authenticate (utils/lastActive.ts).
 
 // Request metrics collection (in-memory, rolling 60-min window)
 server.addHook('onResponse', (request, reply, done) => {
