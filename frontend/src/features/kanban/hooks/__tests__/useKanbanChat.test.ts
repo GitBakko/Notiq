@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
-const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn(() => ({ data: [], isLoading: false })) }));
+const { mockUseQuery } = vi.hoisted(() => ({
+  mockUseQuery: vi.fn((_options: { refetchInterval?: unknown }) => ({ data: [], isLoading: false })),
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: mockUseQuery,
@@ -19,7 +21,7 @@ describe('useKanbanChat', () => {
   it('does not poll: new messages arrive through the SSE chat:message event', () => {
     renderHook(() => useKanbanChat('board-1'));
 
-    const options = mockUseQuery.mock.calls[0][0] as { refetchInterval?: unknown };
+    const options = mockUseQuery.mock.calls[0][0];
     expect(options.refetchInterval).toBeUndefined();
   });
 });
