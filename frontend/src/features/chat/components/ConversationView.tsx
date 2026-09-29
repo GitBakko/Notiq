@@ -46,7 +46,6 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
 
   // ─── State ─────────────────────────────────────────────
   const [allMessages, setAllMessages] = useState<DirectMessageDTO[]>([]);
-  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
@@ -117,7 +116,6 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   useEffect(() => {
     if (initialMessages) {
       setAllMessages(initialMessages);
-      setPage(1);
       setHasMore(initialMessages.length === 50);
       shouldAutoScrollRef.current = true;
     }
@@ -131,12 +129,17 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
   }, [allMessages]);
 
   // ─── Load more ────────────────────────────────────────
+  const oldestId = allMessages[0]?.id;
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const nextPage = page + 1;
-      const olderMessages = await getMessages(conversationId, nextPage);
+      // [BACKUP] 2026-09-29 — offset scrollback: `getMessages(conversationId, page + 1)`.
+      // The backend pages newest-first with skip = (page-1)*limit, so N messages
+      // arriving in the meantime shifted page 2 by N: rows were duplicated (the dedup
+      // below hid that) or skipped (nothing hid that). Ask for what is older than the
+      // oldest message we hold: allMessages is ascending, so that is allMessages[0].
+      const olderMessages = await getMessages(conversationId, 1, 50, oldestId);
       if (olderMessages.length === 0) {
         setHasMore(false);
       } else {
@@ -146,13 +149,12 @@ export default function ConversationView({ conversationId, onBack }: Conversatio
           const newMsgs = olderMessages.filter(m => !existingIds.has(m.id));
           return [...newMsgs, ...prev];
         });
-        setPage(nextPage);
         setHasMore(olderMessages.length === 50);
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [conversationId, page, loadingMore, hasMore]);
+  }, [conversationId, oldestId, loadingMore, hasMore]);
 
   // ─── WebSocket event handlers ─────────────────────────
   useEffect(() => {
