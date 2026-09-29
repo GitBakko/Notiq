@@ -371,17 +371,38 @@ export const syncPull = async () => {
             syncStatus: 'synced' as const,
           }));
 
-        // Remove boards no longer on server (owned only — shared handled below).
-        // Scoped to the current user's own rows: an unscoped scan here would treat
-        // another account's still-valid synced board as "not on my server list"
+        // [BACKUP] 2026-09-29 — 3.6: this prune used to skip shared rows ("shared handled
+        // below"). A second block then re-pulled /share/kanbans/accepted only to prune them
+        // and to rewrite rows this block had already written, worse: without shares/shareCount
+        // and with the archived cards back in Dexie. /kanban/boards already lists the ACCEPTED
+        // shared boards and the detail loop below pulls their columns and cards, so that block
+        // is gone (see git history) and its prune lives here, with the same scope.
+        // Derived from the RAW server response, not boardsToPut: a dirty row the server still
+        // lists must not be taken for a deleted one.
+        const serverIds = new Set(serverBoards.map(b => b.id));
+
+        // Owned rows. Scoped to the current user's own rows: an unscoped scan here would
+        // treat another account's still-valid synced board as "not on my server list"
         // and bulkDelete it (cascading to its columns/cards) the moment this user
         // pulls, race or not.
         const allLocalSyncedBoards = await db.kanbanBoards.where('syncStatus').equals('synced')
           .filter(b => b.ownership !== 'shared' && b.ownerId === currentUserId).toArray();
-        const serverIds = new Set(serverBoards.map(b => b.id));
-        const toDeleteIds = allLocalSyncedBoards
+        const ownedToDeleteIds = allLocalSyncedBoards
           .filter(b => !serverIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
           .map(b => b.id);
+
+        // Shared rows. Scoped to rows stamped for THIS viewer — a pre-upgrade row with no
+        // viewerId can't be told apart from another account's leftover share, so it is
+        // deliberately left out rather than guessed at (it stays hidden by useKanbanBoards).
+        // No syncStatus filter: a share revoked while the row had local edits must still go,
+        // the server rejects those edits anyway.
+        const localSharedBoards = (await db.kanbanBoards.where('ownership').equals('shared').toArray())
+          .filter(b => b.viewerId === currentUserId);
+        const sharedToDeleteIds = localSharedBoards
+          .filter(b => !serverIds.has(b.id))
+          .map(b => b.id);
+
+        const toDeleteIds = [...ownedToDeleteIds, ...sharedToDeleteIds];
 
         if (toDeleteIds.length > 0) {
           await db.kanbanBoards.bulkDelete(toDeleteIds);
@@ -479,125 +500,6 @@ export const syncPull = async () => {
       }
     } catch (e) {
       console.error('syncPull kanban boards failed', e);
-    }
-
-    // --- Shared Kanban Boards Pull ---
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sharedKanbanRes = await api.get<any[]>('/share/kanbans/accepted');
-      const sharedBoards = sharedKanbanRes.data;
-
-      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
-        // Zombie prevention (mirrors the main "Kanban Boards Pull" block above): a
-        // locally-dirty row survives an overwrite, and a pending DELETE blocks
-        // resurrection. Without this, these three bulkPuts below applied no dirty
-        // filter and no pending-delete filter at all, running AFTER the main
-        // block's guarded pass over overlapping rows and silently clobbering it.
-        const dirtyBoards = await db.kanbanBoards.where('syncStatus').notEqual('synced').toArray();
-        const dirtyBoardIds = new Set(dirtyBoards.map(b => b.id));
-        const pendingBoardDeletes = await db.syncQueue
-          .where('entity').equals('KANBAN_BOARD')
-          .and(item => item.type === 'DELETE')
-          .toArray();
-        const pendingBoardDeleteIds = new Set(pendingBoardDeletes.map(i => i.entityId));
-
-        const dirtyColumns = await db.kanbanColumns.where('syncStatus').notEqual('synced').toArray();
-        const dirtyColumnIds = new Set(dirtyColumns.map(c => c.id));
-        const pendingColDeletes = await db.syncQueue
-          .where('entity').equals('KANBAN_COLUMN')
-          .and(item => item.type === 'DELETE')
-          .toArray();
-        const pendingColDeleteIds = new Set(pendingColDeletes.map(i => i.entityId));
-
-        const dirtyCards = await db.kanbanCards.where('syncStatus').notEqual('synced').toArray();
-        const dirtyCardIds = new Set(dirtyCards.map(c => c.id));
-        const pendingCardDeletes = await db.syncQueue
-          .where('entity').equals('KANBAN_CARD')
-          .and(item => item.type === 'DELETE')
-          .toArray();
-        const pendingCardDeleteIds = new Set(pendingCardDeletes.map(i => i.entityId));
-
-        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .filter((b: any) => !dirtyBoardIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((b: any) => ({
-            ...b,
-            ownership: 'shared' as const,
-            viewerId: currentUserId,
-            permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
-            syncStatus: 'synced' as const,
-            columnCount: b._count?.columns ?? b.columns?.length ?? 0,
-            cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
-          }));
-
-        // Remove stale shared boards no longer in server response. Scoped to rows
-        // stamped for THIS viewer — a pre-upgrade row with no viewerId can't be told
-        // apart from another account's leftover share, so it is deliberately left
-        // out of deletion candidacy rather than guessed at: it stays inert (already
-        // hidden by useKanbanBoards) until something else claims it, same as any
-        // other pre-upgrade orphan. Guessing it belongs to "probably me" would
-        // reopen the exact cross-account bulkDelete this scoping exists to close.
-        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared')
-          .filter(b => b.viewerId === currentUserId).toArray();
-        // Fix round 2: derive from the RAW server response, not sharedBoardsMapped
-        // (which the dirty-row guard above already filtered) -- mirrors the main
-        // block's serverIds, which also comes from the raw serverBoards. Using the
-        // filtered array here excluded a dirty shared board from this set too, so
-        // this staleness check saw it as "gone from the server" and pruned it.
-        const sharedServerIds = new Set(sharedBoards.map(b => b.id));
-        const staleIds = localSharedBoards.filter(b => !sharedServerIds.has(b.id)).map(b => b.id);
-        if (staleIds.length > 0) {
-          await db.kanbanBoards.bulkDelete(staleIds);
-          for (const boardId of staleIds) {
-            await db.kanbanColumns.where('boardId').equals(boardId).delete();
-            await db.kanbanCards.where('boardId').equals(boardId).delete();
-          }
-          prunedBoardIds.push(...staleIds);
-        }
-
-        if (sharedBoardsMapped.length > 0) await db.kanbanBoards.bulkPut(sharedBoardsMapped);
-
-        // Sync columns and cards for each shared board
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const board of sharedBoards as any[]) {
-          if (board.columns) {
-            const columns: LocalKanbanColumn[] = board.columns
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .filter((col: any) => !dirtyColumnIds.has(col.id) && !pendingColDeleteIds.has(col.id))
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .map((col: any) => ({
-                id: col.id,
-                title: col.title,
-                position: col.position,
-                boardId: board.id,
-                isCompleted: col.isCompleted ?? false,
-                syncStatus: 'synced' as const,
-              }));
-            if (columns.length > 0) await db.kanbanColumns.bulkPut(columns);
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            for (const col of board.columns as any[]) {
-              if (col.cards && col.cards.length > 0) {
-                const cards: LocalKanbanCard[] = col.cards
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  .filter((card: any) => !dirtyCardIds.has(card.id) && !pendingCardDeleteIds.has(card.id))
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  .map((card: any) => ({
-                    ...card,
-                    columnId: col.id,
-                    boardId: board.id,
-                    commentCount: card._count?.comments ?? 0,
-                    syncStatus: 'synced' as const,
-                  }));
-                if (cards.length > 0) await db.kanbanCards.bulkPut(cards);
-              }
-            }
-          }
-        }
-      });
-    } catch (e) {
-      console.error('syncPull shared kanban boards failed', e);
     }
 
   } catch (error) {

@@ -638,19 +638,10 @@ describe('syncPull', () => {
         },
       ];
 
-      // A separate board reachable only via the 'accepted share' pull (the
-      // other of the two write sites this task stamps), so this test can't pass
-      // by exercising just one of them.
-      const acceptedShareBoard = {
-        id: 'kb-shared-accept', title: 'AcceptedShare', ownerId: 'user-3',
-        columns: [], _sharedPermission: 'READ' as const,
-      };
-
       mockApi.get.mockImplementation((url: string) => {
         if (url === '/kanban/boards') return Promise.resolve({ data: boardsList });
         if (url === '/kanban/boards/kb-owned') return Promise.resolve({ data: { id: 'kb-owned', columns: [] } });
         if (url === '/kanban/boards/kb-shared') return Promise.resolve({ data: { id: 'kb-shared', columns: [] } });
-        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [acceptedShareBoard] });
         return Promise.resolve({ data: [] });
       });
 
@@ -663,17 +654,12 @@ describe('syncPull', () => {
 
       await syncPull();
 
-      // Owned pull site
+      // Kanban 3.6: /kanban/boards is the only write site for owned AND shared rows.
+      expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledTimes(1);
       expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ id: 'kb-owned', viewerId: 'user-1' }),
-          expect.objectContaining({ id: 'kb-shared', viewerId: 'user-1' }),
-        ]),
-      );
-      // Accepted-share pull site — a separate bulkPut call, so a separate assertion
-      expect(mockDb.kanbanBoards.bulkPut).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ id: 'kb-shared-accept', viewerId: 'user-1' }),
+          expect.objectContaining({ id: 'kb-shared', viewerId: 'user-1', ownership: 'shared', permission: 'WRITE' }),
         ]),
       );
     });
@@ -684,8 +670,8 @@ describe('syncPull', () => {
     // ids syncPull deletes, not just the bulkDelete calls.
     it('returns the ids of boards it prunes (owned and shared) for cache invalidation', async () => {
       mockApi.get.mockImplementation((url: string) => {
-        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned on the server anymore
-        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [] }); // nothing shared accepted anymore
+        // Nothing owned and nothing shared-ACCEPTED on the server anymore.
+        if (url === '/kanban/boards') return Promise.resolve({ data: [] });
         return Promise.resolve({ data: [] });
       });
 
@@ -695,127 +681,149 @@ describe('syncPull', () => {
       mockDb.notes.toArray.mockResolvedValue([]);
       mockDb.notes.bulkGet.mockResolvedValue([]);
 
-      // Four sequential db.kanbanBoards.toArray() calls inside syncPull's kanban
-      // section, in this order: dirtyBoards (owned block), allLocalSyncedBoards
-      // (owned block — this is where the owned prune candidate must show up),
-      // dirtyBoards (shared block's own zombie-prevention guard — task 2 of the
-      // offline-first hardening pass), localSharedBoards (shared block — the
-      // shared prune candidate).
+      // Three sequential db.kanbanBoards.toArray() calls in the kanban block, in
+      // this order: dirtyBoards, allLocalSyncedBoards (owned prune candidates),
+      // localSharedBoards (shared prune candidates).
       mockDb.kanbanBoards.toArray
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
           { id: 'kb-gone-owned', ownership: 'owned', ownerId: 'user-1', syncStatus: 'synced' },
         ])
-        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
           { id: 'kb-gone-shared', ownership: 'shared', viewerId: 'user-1', syncStatus: 'synced' },
         ]);
 
       const prunedIds = await syncPull();
 
-      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-owned']);
-      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-shared']);
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-gone-owned', 'kb-gone-shared']);
       expect(prunedIds).toEqual(['kb-gone-owned', 'kb-gone-shared']);
     });
   });
 
   // -----------------------------------------------------------------
-  // Shared kanban boards pull — same zombie-prevention guard as the main
-  // "kanban boards" block above, applied to the '/share/kanbans/accepted'
-  // pull. A prior commit on this branch claimed all seven kanban entities
-  // already had this guard; that audit covered the main block and missed
-  // this one.
+  // Shared kanban boards — kanban 3.6. They come from /kanban/boards
+  // (ownership: 'shared') like the owned ones; the separate
+  // '/share/kanbans/accepted' pull is gone and its prune lives in the
+  // main block, scoped to rows stamped for this viewer.
   // -----------------------------------------------------------------
   describe('shared kanban boards', () => {
-    it('prevents zombie resurrection for a locally-deleted shared board with a pending DELETE', async () => {
-      const pendingDelete = {
-        id: 906, type: 'DELETE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared-z1',
-        userId: 'user-1', data: {}, createdAt: Date.now(),
-      };
-      // Blanket value: every db.syncQueue.toArray() call in this run sees it (same
-      // approach the 'shared notes' zombie test above uses) — harmless for the
-      // other entity types' pending-delete checks since no id collides.
-      mockDb.syncQueue.toArray.mockResolvedValue([pendingDelete]);
+    const sharedRow = (id: string, extra: Record<string, unknown> = {}) => ({
+      id, ownership: 'shared' as const, ownerId: 'user-2', viewerId: 'user-1',
+      syncStatus: 'synced' as const, title: id, ...extra,
+    });
+    const sharedListItem = (id: string) => ({
+      id, title: id, description: null, coverImage: null, avatarUrl: null, ownerId: 'user-2',
+      columnCount: 0, cardCount: 0, ownership: 'shared' as const, permission: 'READ' as const,
+      createdAt: '2026-01-01', updatedAt: '2026-01-01',
+    });
 
-      mockApi.get.mockImplementation((url: string) => {
-        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned
-        if (url === '/share/kanbans/accepted') {
-          return Promise.resolve({
-            data: [
-              { id: 'kb-shared-z1', title: 'Zombie', columns: [], _sharedPermission: 'READ' },
-              { id: 'kb-shared-ok', title: 'Fine', columns: [], _sharedPermission: 'READ' },
-            ],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      });
-
+    beforeEach(() => {
       mockDb.kanbanColumns.toArray.mockResolvedValue([]);
       mockDb.kanbanCards.toArray.mockResolvedValue([]);
       mockDb.notes.toArray.mockResolvedValue([]);
       mockDb.notes.bulkGet.mockResolvedValue([]);
+    });
+
+    it('no longer calls /share/kanbans/accepted', async () => {
+      mockApi.get.mockResolvedValue({ data: [] });
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
 
       await syncPull();
 
-      const allBulkPuts = mockDb.kanbanBoards.bulkPut.mock.calls.flatMap(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vitest mock call inspection
-        (c: unknown[]) => c[0] as any[],
-      );
-      const putIds = allBulkPuts.map((b: { id: string }) => b.id);
-      expect(putIds).not.toContain('kb-shared-z1');
-      expect(putIds).toContain('kb-shared-ok');
+      expect(mockApi.get).toHaveBeenCalledWith('/kanban/boards');
+      expect(mockApi.get).not.toHaveBeenCalledWith('/share/kanbans/accepted');
     });
 
-    // Fix round 2: the staleness check above derived sharedServerIds from
-    // sharedBoardsMapped (the array already filtered by the dirty guard just
-    // added), not from the raw server response the main "Kanban Boards Pull"
-    // block above uses. A dirty shared board is excluded from
-    // sharedBoardsMapped by design (so bulkPut doesn't clobber it) -- but that
-    // also made it vanish from sharedServerIds, so this local-only staleness
-    // check saw a board the server still lists as "not in sharedServerIds" and
-    // pruned it: bulkDelete, cascaded columns/cards, and prunedBoardIds. The
-    // bulkPut skip a few lines below is correct and untouched -- the bug is
-    // entirely in what feeds the stale-id computation.
-    it('does not prune a locally-dirty shared board that the server still returns', async () => {
-      const dirtyBoard = {
-        id: 'kb-shared-dirty', ownership: 'shared' as const, ownerId: 'user-2', viewerId: 'user-1',
-        syncStatus: 'updated' as const, title: 'Local Edit',
-      };
-
-      mockApi.get.mockImplementation((url: string) => {
-        if (url === '/kanban/boards') return Promise.resolve({ data: [] }); // nothing owned
-        if (url === '/share/kanbans/accepted') {
-          return Promise.resolve({
-            data: [
-              { id: 'kb-shared-dirty', title: 'Server Copy', columns: [], _sharedPermission: 'WRITE' },
-            ],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      });
-
-      // Four sequential db.kanbanBoards.toArray() calls (see the "returns the
-      // ids of boards it prunes" test's comment above for the full order):
-      // main-dirtyBoards, main-allLocalSyncedBoards, shared-dirtyBoards (the
-      // dirty row must show up here so it's excluded from sharedBoardsMapped),
-      // shared-localSharedBoards (the SAME row shows up again here as the
-      // local staleness check's candidate).
+    it('prunes a shared board whose share was revoked, cascading to columns and cards', async () => {
+      mockApi.get.mockResolvedValue({ data: [] }); // the share is gone from /kanban/boards
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      // dirtyBoards, owned candidates, shared candidates
       mockDb.kanbanBoards.toArray
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([dirtyBoard])
-        .mockResolvedValueOnce([dirtyBoard]);
-
-      mockDb.kanbanColumns.toArray.mockResolvedValue([]);
-      mockDb.kanbanCards.toArray.mockResolvedValue([]);
-      mockDb.syncQueue.toArray.mockResolvedValue([]);
-      mockDb.notes.toArray.mockResolvedValue([]);
-      mockDb.notes.bulkGet.mockResolvedValue([]);
+        .mockResolvedValueOnce([sharedRow('kb-revoked')]);
 
       const prunedIds = await syncPull();
 
-      expect(mockDb.kanbanBoards.bulkDelete).not.toHaveBeenCalledWith(['kb-shared-dirty']);
-      expect(prunedIds).not.toContain('kb-shared-dirty');
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-revoked']);
+      expect(mockDb.kanbanCards.where).toHaveBeenCalledWith('boardId');
+      expect(mockDb.kanbanCards.equals).toHaveBeenCalledWith('kb-revoked');
+      expect(prunedIds).toEqual(['kb-revoked']);
+    });
+
+    it('prunes a revoked shared board even when it has local edits', async () => {
+      const dirty = sharedRow('kb-revoked-dirty', { syncStatus: 'updated' });
+      mockApi.get.mockResolvedValue({ data: [] });
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([dirty])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([dirty]);
+
+      const prunedIds = await syncPull();
+
+      expect(prunedIds).toEqual(['kb-revoked-dirty']);
+    });
+
+    it('does not prune a locally-dirty shared board that the server still returns', async () => {
+      const dirty = sharedRow('kb-shared-dirty', { syncStatus: 'updated', title: 'Local Edit' });
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [sharedListItem('kb-shared-dirty')] });
+        if (url === '/kanban/boards/kb-shared-dirty') return Promise.resolve({ data: { id: 'kb-shared-dirty', columns: [] } });
+        return Promise.resolve({ data: [] });
+      });
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([dirty])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([dirty]);
+
+      const prunedIds = await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkDelete).not.toHaveBeenCalled();
+      expect(prunedIds).toEqual([]);
+      // ...and the local edit is not overwritten by the server copy.
+      expect(mockDb.kanbanBoards.bulkPut).not.toHaveBeenCalled();
+    });
+
+    it("never prunes another account's shared rows (or unstamped pre-upgrade rows)", async () => {
+      mockApi.get.mockResolvedValue({ data: [] });
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.kanbanBoards.toArray
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          sharedRow('kb-other-account', { viewerId: 'user-9' }),
+          sharedRow('kb-pre-upgrade', { viewerId: undefined }),
+          sharedRow('kb-mine'),
+        ]);
+
+      const prunedIds = await syncPull();
+
+      expect(mockDb.kanbanBoards.bulkDelete).toHaveBeenCalledWith(['kb-mine']);
+      expect(prunedIds).toEqual(['kb-mine']);
+    });
+
+    it('prevents zombie resurrection for a shared board with a pending DELETE', async () => {
+      mockDb.syncQueue.toArray.mockResolvedValue([{
+        id: 906, type: 'DELETE' as const, entity: 'KANBAN_BOARD' as const, entityId: 'kb-shared-z1',
+        userId: 'user-1', data: {}, createdAt: Date.now(),
+      }]);
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') {
+          return Promise.resolve({ data: [sharedListItem('kb-shared-z1'), sharedListItem('kb-shared-ok')] });
+        }
+        if (url.startsWith('/kanban/boards/')) return Promise.resolve({ data: { id: url.split('/').pop(), columns: [] } });
+        return Promise.resolve({ data: [] });
+      });
+
+      await syncPull();
+
+      const putIds = mockDb.kanbanBoards.bulkPut.mock.calls.flatMap(
+        (c: unknown[]) => (c[0] as { id: string }[]).map(b => b.id),
+      );
+      expect(putIds).not.toContain('kb-shared-z1');
+      expect(putIds).toContain('kb-shared-ok');
     });
   });
 
