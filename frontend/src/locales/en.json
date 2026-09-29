@@ -1152,7 +1152,8 @@
     "failedToast": "Some changes could not be synced. Use Retry in the sync bar.",
     "pendingToast": "Changes are taking longer than usual to sync",
     "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection",
-    "sharedSaveForbidden": "You no longer have access to this note — your latest changes were not saved"
+    "sharedSaveForbidden": "You no longer have access to this note — your latest changes were not saved",
+    "noteMoveReverted": "The note was not moved: the notebook no longer exists. It is back in its previous notebook."
   },
   "collaboration": {
     "you": "You",
