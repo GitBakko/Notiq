@@ -209,25 +209,36 @@ export const updateNote = async (userId: string, id: string, data: {
     if (!nb) throw new NotFoundError('errors.notebooks.notFound');
   }
 
-  // P4: every attached tag must be the caller's own, as addTagToNote already requires.
-  if (tags !== undefined && tags.length > 0) {
+  // P4: only the caller's own tags are ever attached, as addTagToNote already requires.
+  // [BACKUP] 2026-09-29 — a foreign or missing id used to throw
+  // NotFoundError('errors.tags.noteOrTagNotFound') for the whole list. The sync push
+  // then dropped the queued update, losing the tag just added along with a tag deleted
+  // on another device. Dropping the unowned ids keeps P4 closed (no foreign row is
+  // ever written) without failing the rest.
+  let tagIds: string[] | undefined;
+  if (tags !== undefined) {
     const ids = [...new Set(tags.map((t) => t.tag.id))];
-    const owned = await prisma.tag.findMany({
-      where: { id: { in: ids }, userId },
-      select: { id: true },
-    });
-    if (owned.length !== ids.length) throw new NotFoundError('errors.tags.noteOrTagNotFound');
+    if (ids.length > 0) {
+      const owned = await prisma.tag.findMany({
+        where: { id: { in: ids }, userId },
+        select: { id: true },
+      });
+      const ownedIds = new Set(owned.map((t) => t.id));
+      tagIds = ids.filter((tagId) => ownedIds.has(tagId));
+    } else {
+      tagIds = [];
+    }
   }
 
   return prisma.$transaction(async (tx) => {
-    if (tags !== undefined) {
+    if (tagIds !== undefined) {
       // Replace tags FOR THIS USER ONLY (not other users' tag associations)
       await tx.tagsOnNotes.deleteMany({ where: { noteId: id, userId } });
-      if (tags.length > 0) {
+      if (tagIds.length > 0) {
         await tx.tagsOnNotes.createMany({
-          data: tags.map(t => ({
+          data: tagIds.map(tagId => ({
             noteId: id,
-            tagId: t.tag.id,
+            tagId,
             userId,
           }))
         });

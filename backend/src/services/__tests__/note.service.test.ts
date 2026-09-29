@@ -476,26 +476,39 @@ describe('updateNote', () => {
       expect(prismaMock.note.update).not.toHaveBeenCalled();
     });
 
-    it('rejects a tag the user does not own, before any write', async () => {
+    it('never writes a tag the user does not own, and keeps the owned ones', async () => {
       prismaMock.note.findFirst.mockResolvedValue(existingNote);
       prismaMock.tag.findMany.mockResolvedValue([{ id: 'tag-mine' }]);
+      prismaMock.note.update.mockResolvedValue(existingNote);
 
-      // Without the check getNote would hand the attacker the victim's whole Tag row.
-      const call = updateNote('user-1', 'n1', {
+      // P4: without the check getNote would hand the attacker the victim's whole Tag row.
+      // A foreign (or since-deleted) id is dropped rather than failing the whole update:
+      // rejecting the list made an offline sync push lose the tag just added along with it.
+      await updateNote('user-1', 'n1', {
         tags: [{ tag: { id: 'tag-mine' } }, { tag: { id: 'tag-victim' } }],
       });
-      await expect(call).rejects.toBeInstanceOf(NotFoundError);
-      await expect(call).rejects.toThrow('errors.tags.noteOrTagNotFound');
+
       expect(prismaMock.tag.findMany).toHaveBeenCalledWith({
         where: { id: { in: ['tag-mine', 'tag-victim'] }, userId: 'user-1' },
         select: { id: true },
       });
-      expect(prismaMock.$transaction).not.toHaveBeenCalled();
-      expect(prismaMock.tagsOnNotes.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1', userId: 'user-1' } });
+      expect(prismaMock.tagsOnNotes.createMany).toHaveBeenCalledWith({
+        data: [{ noteId: 'n1', tagId: 'tag-mine', userId: 'user-1' }],
+      });
+    });
+
+    it('clears the tags when none of them is owned, writing no foreign row', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.tag.findMany.mockResolvedValue([]);
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { tags: [{ tag: { id: 'tag-victim' } }] });
+
       expect(prismaMock.tagsOnNotes.createMany).not.toHaveBeenCalled();
     });
 
-    it('accepts duplicate ids of an owned tag', async () => {
+    it('writes duplicate ids of an owned tag once', async () => {
       prismaMock.note.findFirst.mockResolvedValue(existingNote);
       prismaMock.tag.findMany.mockResolvedValue([{ id: 'tag-mine' }]);
       prismaMock.note.update.mockResolvedValue(existingNote);
@@ -503,6 +516,9 @@ describe('updateNote', () => {
       await expect(updateNote('user-1', 'n1', {
         tags: [{ tag: { id: 'tag-mine' } }, { tag: { id: 'tag-mine' } }],
       })).resolves.toEqual(existingNote);
+      expect(prismaMock.tagsOnNotes.createMany).toHaveBeenCalledWith({
+        data: [{ noteId: 'n1', tagId: 'tag-mine', userId: 'user-1' }],
+      });
     });
 
     it('updates when notebook and tags are the user\'s own', async () => {
