@@ -1259,7 +1259,9 @@
       "commentsAll": "Tutti i commenti",
       "commentsHas": "Con commenti",
       "commentsNone": "Senza commenti",
-      "clearAll": "Pulisci"
+      "clearAll": "Pulisci",
+      "readOnlyTitle": "Bacheca in sola lettura mentre i filtri sono attivi",
+      "readOnlyBody": "I filtri nascondono alcune card, quindi trascinamento e modifica sono disattivati per non spostare una card che non vedi. Rimuovi i filtri per tornare a modificare."
     },
     "export": {
       "ganttCsv": "Esporta XLSX",
