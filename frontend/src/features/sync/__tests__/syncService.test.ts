@@ -82,6 +82,9 @@ const { mockDb, mockApi, mockAuthStore } = vi.hoisted(() => {
 vi.mock('../../../lib/db', () => ({ db: mockDb }));
 vi.mock('../../../lib/api', () => ({ default: mockApi }));
 vi.mock('../../../store/authStore', () => ({ useAuthStore: mockAuthStore }));
+const { mockToast } = vi.hoisted(() => ({ mockToast: { error: vi.fn() } }));
+vi.mock('react-hot-toast', () => ({ default: mockToast }));
+vi.mock('i18next', () => ({ default: { t: (k: string) => k } }));
 
 // ---------------------------------------------------------------------------
 // Import the module under test (AFTER mocks are registered)
@@ -1006,6 +1009,126 @@ describe('syncPush', () => {
       // Task 5: dropping a shared item is NOT a server change — must not
       // trigger useSync's kanban invalidation.
       expect(result).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // NOTE updates that reference a notebook or tags (follow-up of P3/P4)
+  // -----------------------------------------------------------------
+  // updateNote now 404s on a notebook the user does not own (P3). Two ways a
+  // legitimate offline edit could reach that 404 and be silently dropped with
+  // the local note left pointing at the wrong notebook:
+  //  - the notebook/tag it references was created offline and its CREATE is
+  //    still queued (backoff or failed) → the update must wait for it;
+  //  - the notebook was deleted on another device → the update is dropped, and
+  //    the local note must be put back where the server has it.
+  describe('note references', () => {
+    const noteMove = (id: number, notebookId: string) => ({
+      id, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+      userId: 'user-1', data: { notebookId }, createdAt: 2000,
+    });
+
+    /** Makes syncQueue.filter(fn).count() evaluate fn over `items`, like Dexie would. */
+    const queueHolds = (items: unknown[]) => {
+      mockDb.syncQueue.count.mockImplementation(async () =>
+        items.filter((i) => mockDb.syncQueue._filterFn(i)).length);
+    };
+
+    it('defers a note move while the target notebook CREATE is still queued', async () => {
+      const nbCreate = {
+        id: 1, type: 'CREATE' as const, entity: 'NOTEBOOK' as const, entityId: 'nb-new',
+        userId: 'user-1', data: { id: 'nb-new', name: 'New' }, createdAt: 1000, status: 'failed' as const,
+      };
+      const move = noteMove(2, 'nb-new');
+      mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, move]);
+      queueHolds([nbCreate, move]);
+
+      await syncPush();
+
+      expect(mockApi.put).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(2);
+      expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(2, expect.anything());
+    });
+
+    it('defers a tag update while one of its tag CREATEs is still queued', async () => {
+      const tagCreate = {
+        id: 1, type: 'CREATE' as const, entity: 'TAG' as const, entityId: 'tag-new',
+        userId: 'user-1', data: { id: 'tag-new', name: 'new' }, createdAt: 1000, status: 'failed' as const,
+      };
+      const tagUpdate = {
+        id: 2, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1', userId: 'user-1',
+        data: { tags: [{ tag: { id: 'tag-old', name: 'old' } }, { tag: { id: 'tag-new', name: 'new' } }] },
+        createdAt: 2000,
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([tagCreate, tagUpdate]);
+      queueHolds([tagCreate, tagUpdate]);
+
+      await syncPush();
+
+      expect(mockApi.put).not.toHaveBeenCalled();
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(2);
+    });
+
+    it('pushes the note move once nothing it references is queued', async () => {
+      const move = noteMove(2, 'nb-existing');
+      mockDb.syncQueue.toArray.mockResolvedValue([move]);
+      queueHolds([]);
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledWith('/notes/note-1', { notebookId: 'nb-existing' });
+      expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(2);
+    });
+
+    it('puts the local note back in the server notebook when the move is rejected', async () => {
+      const move = noteMove(2, 'nb-deleted');
+      mockDb.syncQueue.toArray.mockResolvedValue([move]);
+      queueHolds([]);
+      mockApi.put.mockRejectedValue({ response: { status: 404, data: { message: 'errors.notebooks.notFound' } } });
+      mockApi.get.mockResolvedValue({ data: { id: 'note-1', notebookId: 'nb-server' } });
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', notebookId: 'nb-deleted', updatedAt: new Date(1500).toISOString() });
+
+      await syncPush();
+
+      expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(2);
+      expect(mockApi.get).toHaveBeenCalledWith('/notes/note-1');
+      expect(mockDb.notes.update).toHaveBeenCalledWith('note-1', { notebookId: 'nb-server', syncStatus: 'synced' });
+      expect(mockToast.error).toHaveBeenCalledWith('sync.noteMoveReverted');
+    });
+
+    it('restores only the notebook, keeping the note dirty, when other edits are still queued', async () => {
+      const move = noteMove(2, 'nb-deleted');
+      const titleEdit = {
+        id: 3, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { title: 'Still mine' }, createdAt: 3000,
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([move, titleEdit]);
+      queueHolds([titleEdit]);
+      mockApi.put.mockImplementation(async (_url: string, data: Record<string, unknown>) => {
+        if ('notebookId' in data) throw { response: { status: 404, data: { message: 'errors.notebooks.notFound' } } };
+        return { data: {} };
+      });
+      mockApi.get.mockResolvedValue({ data: { id: 'note-1', notebookId: 'nb-server' } });
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', notebookId: 'nb-deleted', updatedAt: new Date(3000).toISOString() });
+
+      await syncPush();
+
+      expect(mockDb.notes.update).toHaveBeenCalledWith('note-1', { notebookId: 'nb-server' });
+      expect(mockDb.notes.update).not.toHaveBeenCalledWith('note-1', expect.objectContaining({ notebookId: 'nb-server', syncStatus: 'synced' }));
+    });
+
+    it('does not reconcile when the 404 is for the note itself', async () => {
+      const move = noteMove(2, 'nb-1');
+      mockDb.syncQueue.toArray.mockResolvedValue([move]);
+      queueHolds([]);
+      mockApi.put.mockRejectedValue({ response: { status: 404, data: { message: 'errors.notes.notFound' } } });
+
+      await syncPush();
+
+      expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(2);
+      expect(mockApi.get).not.toHaveBeenCalled();
+      expect(mockToast.error).not.toHaveBeenCalled();
     });
   });
 

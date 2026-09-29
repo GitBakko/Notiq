@@ -6,6 +6,7 @@ import { Users, ArrowLeft } from 'lucide-react';
 import Modal from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { getFriends, createGroupConversation, type ChatUser } from '../chatService';
+import { queryKeys } from '../../../lib/queryKeys';
 
 interface GroupChatModalProps {
   isOpen: boolean;
@@ -46,10 +47,10 @@ export default function GroupChatModal({ isOpen, onClose, onCreated }: GroupChat
   }, [isOpen]);
 
   const { data: friends = [] } = useQuery({
-    queryKey: ['chat', 'friends'],
+    queryKey: queryKeys.friends.list,
     queryFn: getFriends,
     enabled: isOpen && step === 2,
-    refetchInterval: 30000, // stessa chiave e stesso motivo di FriendRequestModal
+    refetchInterval: 30000, // stessa chiave e stesso motivo di FriendRequestModal e SharedWithMePage
   });
 
   const toggleUser = (id: string) => {

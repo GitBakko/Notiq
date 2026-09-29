@@ -5,6 +5,9 @@ vi.mock('../services/notification.service', () => ({
   createNotification: vi.fn().mockResolvedValue({ id: 'notif-1' }),
 }));
 
+// addTaskItem imports kanbanSSE dynamically to broadcast 'card:created'.
+vi.mock('../services/kanbanSSE', () => ({ broadcast: vi.fn() }));
+
 import prisma from '../plugins/prisma';
 import { cardWithAssigneeSelect } from '../services/kanban/helpers';
 import {
@@ -20,6 +23,8 @@ import {
   reorderTaskItems,
 } from '../services/tasklist.service';
 import { NotFoundError } from '../utils/errors';
+import { broadcast } from '../services/kanbanSSE';
+import logger from '../utils/logger';
 
 // The setup.ts mock doesn't include taskList, taskItem, sharedTaskList.
 // Augment the existing mock object with the missing models.
@@ -199,6 +204,8 @@ describe('tasklist.service — addTaskItem', () => {
     prismaMock.taskList.findUnique.mockResolvedValueOnce({
       kanbanBoard: { id: 'board-1', columns: [{ id: 'col-1' }] },
     });
+    // assertBoardAccess: the actor owns the board (P2)
+    prismaMock.kanbanBoard.findUnique.mockResolvedValueOnce({ ownerId: 'user-1' });
     // setup.ts's kanbanCard mock has no aggregate; this branch needs one.
     if (!prismaMock.kanbanCard.aggregate) prismaMock.kanbanCard.aggregate = vi.fn();
     prismaMock.kanbanCard.aggregate.mockResolvedValueOnce({ _max: { position: null } });
@@ -212,6 +219,80 @@ describe('tasklist.service — addTaskItem', () => {
     const select = prismaMock.kanbanCard.create.mock.calls[0][0].select;
     expect(select).toBe(cardWithAssigneeSelect);
     expect(select).not.toHaveProperty('note');
+  });
+
+  describe('linked board authorization (P2)', () => {
+    // Everything up to the auto-add lookup: the actor owns list tl-1, linked to board-1.
+    function arrangeLinkedList() {
+      prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'user-1' });
+      prismaMock.taskItem.aggregate.mockResolvedValueOnce({ _max: { position: 0 } });
+      prismaMock.taskItem.create.mockResolvedValueOnce({ id: 'item-1', text: 'x', position: 1, taskListId: 'tl-1' });
+      prismaMock.taskList.findUnique.mockResolvedValueOnce({
+        id: 'tl-1', userId: 'user-1',
+        user: { id: 'user-1', name: 'User', email: 'u@t.com' }, sharedWith: [],
+      });
+      prismaMock.taskList.findUnique.mockResolvedValueOnce({
+        kanbanBoard: { id: 'board-1', columns: [{ id: 'col-1' }] },
+      });
+      if (!prismaMock.kanbanCard.aggregate) prismaMock.kanbanCard.aggregate = vi.fn();
+      prismaMock.kanbanCard.aggregate.mockResolvedValue({ _max: { position: null } });
+      prismaMock.kanbanCard.create.mockResolvedValue({
+        id: 'card-1', title: 'x', noteId: null, _count: { comments: 0 },
+      });
+    }
+
+    it('creates the item but no card when the actor has no share on the linked board', async () => {
+      arrangeLinkedList();
+      prismaMock.kanbanBoard.findUnique.mockResolvedValueOnce({ ownerId: 'someone-else' });
+      prismaMock.sharedKanbanBoard.findUnique.mockResolvedValueOnce(null);
+
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+      const error = vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
+
+      // Owning the list is not owning the board: without the check the actor writes a
+      // card onto a board they cannot even read, and it is broadcast to its members.
+      const result = await addTaskItem('user-1', 'tl-1', { text: 'x' });
+
+      // A denial is an expected skip (warn), not the "auto-add failed" error path.
+      expect(warn).toHaveBeenCalledWith(
+        { userId: 'user-1', taskListId: 'tl-1', boardId: 'board-1' },
+        'addTaskItem: actor cannot write linked board, skipping card auto-add',
+      );
+      expect(error).not.toHaveBeenCalled();
+      warn.mockRestore();
+      error.mockRestore();
+
+      expect(result).toEqual({ id: 'item-1', text: 'x', position: 1, taskListId: 'tl-1' });
+      expect(prismaMock.sharedKanbanBoard.findUnique).toHaveBeenCalledWith({
+        where: { boardId_userId: { boardId: 'board-1', userId: 'user-1' } },
+        select: { permission: true, status: true },
+      });
+      expect(prismaMock.kanbanCard.create).not.toHaveBeenCalled();
+      expect(broadcast).not.toHaveBeenCalled();
+    });
+
+    it('creates no card when the actor only has READ on the linked board', async () => {
+      arrangeLinkedList();
+      prismaMock.kanbanBoard.findUnique.mockResolvedValueOnce({ ownerId: 'someone-else' });
+      prismaMock.sharedKanbanBoard.findUnique.mockResolvedValueOnce({ permission: 'READ', status: 'ACCEPTED' });
+
+      const result = await addTaskItem('user-1', 'tl-1', { text: 'x' });
+
+      expect(result.id).toBe('item-1');
+      expect(prismaMock.kanbanCard.create).not.toHaveBeenCalled();
+      expect(broadcast).not.toHaveBeenCalled();
+    });
+
+    it('creates and broadcasts the card when the actor has an accepted WRITE share on the board', async () => {
+      arrangeLinkedList();
+      prismaMock.kanbanBoard.findUnique.mockResolvedValueOnce({ ownerId: 'someone-else' });
+      prismaMock.sharedKanbanBoard.findUnique.mockResolvedValueOnce({ permission: 'WRITE', status: 'ACCEPTED' });
+
+      await addTaskItem('user-1', 'tl-1', { text: 'x' });
+
+      expect(prismaMock.kanbanCard.create).toHaveBeenCalledTimes(1);
+      expect(broadcast).toHaveBeenCalledWith('board-1', expect.objectContaining({ type: 'card:created' }));
+    });
   });
 });
 

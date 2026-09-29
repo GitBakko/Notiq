@@ -158,15 +158,15 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **tutti e quattro corretti** — A3 e la metà WebSocket di A2 in `6481576`, A1 A4 e la metà SSE di A2 in `d640f20` |
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | **tutti e quattro corretti** `164baf6`, insieme a N4 |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
-| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`, C2 `0eae602` (variante B); **C5 aperto** |
+| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`, C5 `81822be`, C2 `0eae602` (variante B); **tutti chiusi** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | **corretto** `c77ed19` |
 | **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**, **N5 corretto** `8da3123` |
-| **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | P1 **corretto** `671fa94`; P2, P3, P4 aperti |
+| **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | P1 **corretto** `671fa94`, P2 **corretto** `3287011`, P3 P4 **corretti** `084c811`; **tutti chiusi** |
 | **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | **chiuso: comportamento voluto** (decisione 2026-09-29) |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Ventisei corretti, quattro aperti** (C5, P2, P3, P4); G1 chiuso come comportamento voluto. Il conteggio e' cresciuto
+**Trenta corretti, nessuno aperto**; G1 chiuso come comportamento voluto. Il conteggio e' cresciuto
 chiudendo N5: tracciarlo ha trovato quattro scritture della stessa famiglia, e **P1 e' piu'
 raggiungibile di N5 stesso**.
 
@@ -632,7 +632,7 @@ Sei mutazioni deliberate, tutte uccise dal test giusto: tolto `status === 'ACCEP
 board, deny che lancia invece di saltare. L'unico test che esisteva sul sync **passava col bug
 dentro**: non mockava nessuna autorizzazione. Ora sono nove.
 
-### P1-P4 — trovati tracciando N5 (P1 corretto, P2-P4 aperti)
+### P1-P4 — trovati tracciando N5, tutti corretti
 
 Chiudere N5 ha smentito la frase con cui era stato archiviato — *"l'unica del suo genere trovata
 finora"*. Cercando i fratelli della stessa forma (autorizza la risorsa A, poi scrive la risorsa B)
@@ -641,9 +641,9 @@ ne sono usciti quattro. Ognuno verificato aprendo il file; la raggiungibilità d
 | # | Cosa | File | Stato |
 |---|---|---|---|
 | **P1** | `reorderTaskItems` fa `taskItem.update({ where: { id: item.id } })` **senza scope su `taskListId`**, mentre i suoi due fratelli nello stesso file ce l'hanno (`updateTaskItem:361`, `deleteTaskItem:403`). Chi ha una share **READ-only** riceve legittimamente gli id degli item — `getTaskList` seleziona solo `status`, non `permission` — e li passa alla reorder della **propria** lista: `assertWriteAccess` passa sulla sua, le scritture atterrano sulla vittima. **Scalata READ→WRITE** | `tasklist.service.ts:414-431` | **CORRETTO** `671fa94` |
-| **P2** | `addTaskItem` è lo specchio esatto di N5: autorizza la lista (`assertWriteAccess`), poi `kanbanCard.create` **più un frame SSE `card:created`** su una board mai autorizzata. Raggiungibile dalla proprietaria della lista, che passa sempre il gate | `tasklist.service.ts:250-343` | **aperto** |
-| **P3** | `updateNote` scrive `notebookId` senza mai verificarlo, mentre `createNote:39-41` lo verifica. Gli id dei notebook sono noti a chiunque abbia mai **ricevuto** un'offerta di share, anche dopo averla rifiutata (`sharing.service.ts:416-441`). Conseguenze: il conteggio note della vittima si gonfia (`notebook.service.ts:28-36` conta senza scope sul proprietario) e `Note.notebook` è `onDelete: Cascade`, quindi la nota estranea viene cancellata a cascata | `note.service.ts:184-227` | **aperto** |
-| **P4** | `updateNote` crea `TagsOnNotes` con un `tagId` mai verificato, mentre `addTagToNote` (`tag.service.ts:59-60`) lo verifica. È anche una **lettura**: la riga di associazione porta lo `userId` dell'attaccante, quindi passa il filtro di `getNote`, e `include: { tag: true }` restituisce la Tag intera della vittima. **Raggiungibilità NON confermata**: non è stato trovato nessun percorso che divulghi l'id di un tag altrui, quindi oggi serve indovinare un UUID | `note.service.ts:200-214` | **aperto** |
+| **P2** | `addTaskItem` è lo specchio esatto di N5: autorizza la lista (`assertWriteAccess`), poi `kanbanCard.create` **più un frame SSE `card:created`** su una board mai autorizzata. Raggiungibile dalla proprietaria della lista, che passa sempre il gate | `tasklist.service.ts:250-343` | **CORRETTO** `3287011` |
+| **P3** | `updateNote` scrive `notebookId` senza mai verificarlo, mentre `createNote:39-41` lo verifica. Gli id dei notebook sono noti a chiunque abbia mai **ricevuto** un'offerta di share, anche dopo averla rifiutata (`sharing.service.ts:416-441`). Conseguenze: il conteggio note della vittima si gonfia (`notebook.service.ts:28-36` conta senza scope sul proprietario) e `Note.notebook` è `onDelete: Cascade`, quindi la nota estranea viene cancellata a cascata | `note.service.ts:184-227` | **CORRETTO** `084c811` |
+| **P4** | `updateNote` crea `TagsOnNotes` con un `tagId` mai verificato, mentre `addTagToNote` (`tag.service.ts:59-60`) lo verifica. È anche una **lettura**: la riga di associazione porta lo `userId` dell'attaccante, quindi passa il filtro di `getNote`, e `include: { tag: true }` restituisce la Tag intera della vittima. **Raggiungibilità NON confermata**: non è stato trovato nessun percorso che divulghi l'id di un tag altrui, quindi oggi serve indovinare un UUID | `note.service.ts:200-214` | **CORRETTO** `084c811` |
 
 **P1 andrebbe prima di N5 per priorità**, se si potesse tornare indietro: stesso costo di correzione
 (una riga di scope, la forma è già nei due fratelli) e raggiungibilità più alta, perché non richiede
@@ -702,7 +702,7 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
   `20260228130000` ha aggiunto il campo con `DEFAULT false` **senza backfill**. Su quelle board
   l'auto-archiviazione è inerte per sempre, e con lei il tick del task item collegato, la chiusura
   dei reminder e il bulk-archive. Serve una migration one-shot più la guardia in `deleteColumn`.
-- **C5** — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
+- **C5** (CORRETTO `81822be`) — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
   `['kanban-card-activities', cardId]`, mai `['kanban-comments', cardId]`. Con `staleTime` a 5 minuti
   e nessun polling, chi guarda una card non vede mai arrivare i commenti altrui — ma il badge del
   conteggio si aggiorna, perché viaggia sulla board query. Pre-esistente. Una riga.

@@ -81,7 +81,12 @@ export const unblockFriend = (id: string) => api.post(`/friends/${id}/unblock`);
 export const getConversations = () => api.get<ConversationSummary[]>('/chat-direct/conversations').then(r => r.data);
 export const getOrCreateDirectConversation = (userId: string) => api.post<ConversationSummary>('/chat-direct/conversations/direct', { userId }).then(r => r.data);
 export const createGroupConversation = (title: string, participantIds: string[]) => api.post<ConversationSummary>('/chat-direct/conversations/group', { title, participantIds }).then(r => r.data);
-export const getMessages = (conversationId: string, page: number = 1, limit: number = 50) => api.get<DirectMessageDTO[]>(`/chat-direct/conversations/${conversationId}/messages`, { params: { page, limit } }).then(r => r.data);
+// `before` (id of the oldest loaded message) switches the backend to its createdAt
+// cursor: stable scrollback even when new messages arrive between two loads.
+export const getMessages = (conversationId: string, page: number = 1, limit: number = 50, before?: string) =>
+  api.get<DirectMessageDTO[]>(`/chat-direct/conversations/${conversationId}/messages`, {
+    params: { page, limit, ...(before ? { before } : {}) },
+  }).then(r => r.data);
 export const searchMessages = (conversationId: string, query: string) => api.get<DirectMessageDTO[]>(`/chat-direct/conversations/${conversationId}/search`, { params: { q: query } }).then(r => r.data);
 export const getUnreadCount = () => api.get<{ count: number }>('/chat-direct/unread').then(r => r.data.count);
 
