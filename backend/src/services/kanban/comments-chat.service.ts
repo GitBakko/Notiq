@@ -1,6 +1,6 @@
 import prisma from '../../plugins/prisma';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
-import { broadcast, getPresenceUsers } from '../kanbanSSE';
+import { broadcast } from '../kanbanSSE';
 import { notifyBoardUsersTiered, boardChatEmailDebounce, BOARD_CHAT_EMAIL_DEBOUNCE_MS } from './notifications';
 import { assertBoardAccess } from '../kanbanPermissions';
 
@@ -70,7 +70,8 @@ export async function createComment(
   // Notify ALL board participants (tiered: SSE → in-app → email)
   const commenterName = comment.author.name || comment.author.email;
 
-  await notifyBoardUsersTiered(
+  // Not awaited (5.5): notifications and emails must not hold the request.
+  void notifyBoardUsersTiered(
     authorId,
     boardId,
     'KANBAN_COMMENT_ADDED',
@@ -146,7 +147,8 @@ export async function deleteComment(commentId: string, userId: string) {
   // Notify all board participants (tiered)
   const deleterName = comment.author.name || comment.author.email;
 
-  await notifyBoardUsersTiered(
+  // Not awaited (5.5): notifications and emails must not hold the request.
+  void notifyBoardUsersTiered(
     userId,
     boardId,
     'KANBAN_COMMENT_DELETED',
@@ -218,83 +220,38 @@ export async function createBoardChatMessage(
     message,
   });
 
-  // Tiered notifications (same pattern as note chat):
-  // 1. User on board (SSE) → skip (frontend handles sound/badge)
-  // 2. User online in app → DB notification only
-  // 3. User offline → DB notification + email (with debounce)
+  // Tiered notifications (same pattern as note chat), via the shared helper (5.5): one
+  // recipient query, emails not awaited, and the call itself not awaited either.
+  // [BACKUP] 2026-09-29 — this was a private copy of the notifyBoardUsersTiered loop with a
+  // findUnique per recipient and an awaited sendNotificationEmail per offline recipient.
   const board = await prisma.kanbanBoard.findUnique({
     where: { id: boardId },
-    select: {
-      title: true,
-      ownerId: true,
-      shares: { where: { status: 'ACCEPTED' }, select: { userId: true } },
-    },
+    select: { title: true },
   });
   if (!board) return message;
 
-  const recipientIds = new Set<string>();
-  recipientIds.add(board.ownerId);
-  for (const s of board.shares) recipientIds.add(s.userId);
-  recipientIds.delete(authorId);
-
-  // Users currently connected to this board via SSE — frontend handles their notifications
-  const activeOnBoard = new Set(getPresenceUsers(boardId).map((u) => u.id));
-
   const authorName = message.author.name || message.author.email;
-
-  for (const uid of recipientIds) {
-    // Tier 1 & 2: User is on the board page → skip backend notification
-    if (activeOnBoard.has(uid)) continue;
-
-    try {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const recipient = await prisma.user.findUnique({
-        where: { id: uid },
-        select: { lastActiveAt: true, email: true, locale: true, emailNotificationsEnabled: true },
-      });
-      if (!recipient) continue;
-
-      const isOnlineInApp = recipient.lastActiveAt && recipient.lastActiveAt > fiveMinutesAgo;
-
-      // Always create DB notification (Tier 2 & 3)
-      const { createNotification } = await import('../notification.service');
-      await createNotification(
-        uid,
-        'KANBAN_COMMENT_ADDED',
-        'Board Chat',
-        `${authorName}: ${content.substring(0, 100)}`,
-        {
-          boardId,
-          boardTitle: board.title,
-          authorName,
-          localizationKey: 'notifications.kanbanBoardChat',
-          // notifications.kanbanBoardChat interpolates {{senderName}}, not {{authorName}}.
-          localizationArgs: { senderName: authorName, boardTitle: board.title },
-        }
-      );
-
-      // Tier 3: Offline → also send email (debounced, respecting email preferences)
-      if (!isOnlineInApp && recipient.emailNotificationsEnabled) {
-        const debounceKey = `kanban:${uid}:${boardId}`;
-        const lastSent = boardChatEmailDebounce.get(debounceKey) || 0;
-        if (Date.now() - lastSent >= BOARD_CHAT_EMAIL_DEBOUNCE_MS) {
-          try {
-            const emailService = await import('../email.service');
-            await emailService.sendNotificationEmail(
-              recipient.email,
-              'CHAT_MESSAGE',
-              { noteId: boardId, noteTitle: board.title, senderName: authorName, messageContent: content, locale: recipient.locale }
-            );
-            boardChatEmailDebounce.set(debounceKey, Date.now());
-          } catch {
-            // Email send failure is non-critical
-          }
-        }
-      }
-    } catch {
-      // Silently continue
-    }
-  }
+  void notifyBoardUsersTiered(
+    authorId,
+    boardId,
+    'KANBAN_COMMENT_ADDED',
+    'Board Chat',
+    `${authorName}: ${content.substring(0, 100)}`,
+    {
+      boardId,
+      boardTitle: board.title,
+      authorName,
+      localizationKey: 'notifications.kanbanBoardChat',
+      // notifications.kanbanBoardChat interpolates {{senderName}}, not {{authorName}}.
+      localizationArgs: { senderName: authorName, boardTitle: board.title },
+    },
+    {
+      type: 'CHAT_MESSAGE',
+      data: (_email, locale) => ({ noteId: boardId, noteTitle: board.title, senderName: authorName, messageContent: content, locale }),
+    },
+    BOARD_CHAT_EMAIL_DEBOUNCE_MS,
+    { map: boardChatEmailDebounce, key: (uid) => `kanban:${uid}:${boardId}` },
+  );
 
   return message;
 }

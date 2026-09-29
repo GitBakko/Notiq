@@ -493,7 +493,8 @@ export async function moveCard(
       });
       const actorName = actor?.name || actor?.email || 'Someone';
 
-      await notifyBoardUsersTiered(
+      // Not awaited (5.5): notifications and emails must not hold the request.
+      void notifyBoardUsersTiered(
         actorId,
         boardId,
         'KANBAN_CARD_MOVED',
@@ -885,7 +886,8 @@ export async function bulkMoveNotify(
 
   const totalCount = moves.length;
 
-  await notifyBoardUsersTiered(
+  // Not awaited (5.5): notifications and emails must not hold the request.
+  void notifyBoardUsersTiered(
     actorId,
     boardId,
     'KANBAN_CARD_MOVED',
