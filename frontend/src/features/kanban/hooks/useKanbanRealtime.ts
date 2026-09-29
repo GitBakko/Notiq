@@ -76,6 +76,13 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
         if ('cardId' in event && event.cardId) {
           queryClient.invalidateQueries({ queryKey: queryKeys.kanban.cardActivities(event.cardId) });
         }
+
+        // Comments live under their own key: without this the open card never shows
+        // other users' comments until staleTime expires. Only on comment events, so a
+        // card:moved does not refetch every open card's comments.
+        if (event.type === 'comment:added' || event.type === 'comment:deleted') {
+          queryClient.invalidateQueries({ queryKey: queryKeys.kanban.comments(event.cardId) });
+        }
       }
     },
     [boardId, queryClient],
