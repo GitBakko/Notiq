@@ -61,6 +61,45 @@ describe('useKanbanRealtime harness', () => {
   });
 });
 
+describe('useKanbanRealtime comment invalidation (C5)', () => {
+  it.each(['comment:added', 'comment:deleted'] as const)(
+    'invalidates the comments query of the card on %s',
+    async (type) => {
+      const payload = type === 'comment:added'
+        ? { type, boardId: 'board-c5', cardId: 'c1', comment: { id: 'cm-1' }, actorId: 'user-2' }
+        : { type, boardId: 'board-c5', cardId: 'c1', commentId: 'cm-1', actorId: 'user-2' };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: sseStream([payload]) }));
+
+      const { unmount } = renderHook(() => useKanbanRealtime('board-c5'));
+
+      // Without this the open card keeps showing its stale comments for the 5-minute
+      // staleTime, while the count badge (which rides on the board) already moved.
+      await waitFor(() => {
+        expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-comments', 'c1'] });
+      });
+
+      unmount();
+    },
+  );
+
+  it('does NOT invalidate the comments query on card:moved', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:moved', boardId: 'board-c5', cardId: 'c1', toColumnId: 'col-2', position: 0, actorId: 'user-2' }]),
+    }));
+
+    const { unmount } = renderHook(() => useKanbanRealtime('board-c5'));
+
+    // Wait for the event to be fully handled before asserting the negative.
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-card-activities', 'c1'] });
+    });
+    expect(mockQueryClient.invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['kanban-comments', 'c1'] });
+
+    unmount();
+  });
+});
+
 describe('useKanbanRealtime reconnect', () => {
   it('schedules a reconnect when the SSE response is not ok', async () => {
     vi.useFakeTimers();
