@@ -2,11 +2,55 @@ import prisma from '../../plugins/prisma';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { cardWithNoteSelect, transformCard, accessibleNoteIds } from './helpers';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import logger from '../../utils/logger';
 import { resolveUploadPath } from '../../utils/uploadPaths';
 import { broadcast, disconnectBoard } from '../kanbanSSE';
 
 // ─── Board CRUD ─────────────────────────────────────────────
+
+/**
+ * Kanban 5.2: what listBoards reads of each column, enough to fingerprint the board's
+ * content without loading its cards.
+ */
+const contentVersionColumnSelect = {
+  id: true,
+  title: true,
+  position: true,
+  isCompleted: true,
+  _count: { select: { cards: true } },
+  cards: { select: { updatedAt: true }, orderBy: { updatedAt: 'desc' as const }, take: 1 },
+};
+
+type ContentVersionColumn = {
+  id: string;
+  title: string;
+  position: number;
+  isCompleted: boolean;
+  _count: { cards: number };
+  cards: { updatedAt: Date }[];
+};
+
+/**
+ * Kanban 5.2: fingerprint of what GET /kanban/boards/:id would return for columns and
+ * cards, so the sync can skip that request while it is unchanged.
+ * - Columns go in by value: KanbanColumn has no updatedAt.
+ * - Cards go in by count (a delete lowers it) and newest updatedAt (@updatedAt moves on
+ *   create, edit, move and archive).
+ * Not covered, because they don't touch the card row: comment counts and the linked
+ * note's title. The sync bounds that staleness with a periodic full refresh.
+ */
+export function boardContentVersion(columns: ContentVersionColumn[]): string {
+  const cols = [...columns]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((c) => `${c.id}:${c.position}:${c.isCompleted ? 1 : 0}:${c.title}`);
+  const cardCount = columns.reduce((sum, c) => sum + c._count.cards, 0);
+  const newestCard = columns.reduce(
+    (max, c) => Math.max(max, c.cards[0] ? new Date(c.cards[0].updatedAt).getTime() : 0),
+    0,
+  );
+  return createHash('sha1').update(JSON.stringify([cols, cardCount, newestCard])).digest('hex').slice(0, 16);
+}
 
 export async function listBoards(userId: string) {
   const [owned, shared] = await Promise.all([
@@ -23,9 +67,7 @@ export async function listBoards(userId: string) {
         createdAt: true,
         updatedAt: true,
         _count: { select: { columns: true, shares: { where: { status: 'ACCEPTED' } } } },
-        columns: {
-          select: { _count: { select: { cards: true } } },
-        },
+        columns: { select: contentVersionColumnSelect },
         shares: {
           where: { status: 'ACCEPTED' },
           select: {
@@ -54,9 +96,7 @@ export async function listBoards(userId: string) {
             updatedAt: true,
             owner: { select: { id: true, name: true, email: true } },
             _count: { select: { columns: true, shares: { where: { status: 'ACCEPTED' } } } },
-            columns: {
-              select: { _count: { select: { cards: true } } },
-            },
+            columns: { select: contentVersionColumnSelect },
             shares: {
               where: { status: 'ACCEPTED' },
               select: {
@@ -85,6 +125,7 @@ export async function listBoards(userId: string) {
     cardCount: b.columns.reduce((sum, col) => sum + col._count.cards, 0),
     shareCount: b._count.shares,
     shares: b.shares.map((s) => ({ userId: s.userId, permission: s.permission, user: s.user })),
+    contentVersion: boardContentVersion(b.columns),
     ownership: 'owned' as const,
   }));
 
@@ -103,6 +144,7 @@ export async function listBoards(userId: string) {
     cardCount: s.board.columns.reduce((sum, col) => sum + col._count.cards, 0),
     shareCount: s.board._count.shares,
     shares: s.board.shares.map((sh) => ({ userId: sh.userId, permission: sh.permission, user: sh.user })),
+    contentVersion: boardContentVersion(s.board.columns),
     ownership: 'shared' as const,
     permission: s.permission,
   }));
