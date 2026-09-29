@@ -20,15 +20,19 @@ export async function getComments(
   page: number,
   limit: number
 ) {
-  return prisma.kanbanComment.findMany({
+  // [BACKUP] 2026-09-29 — 5.4: orderBy createdAt 'asc' made page 1 the OLDEST comments:
+  // past the limit (50 by default) the newest never appeared. Fetch newest-first and hand
+  // them back oldest-first, as the UI renders them (same as chat.service getMessages).
+  const rows = await prisma.kanbanComment.findMany({
     where: { cardId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     skip: (page - 1) * limit,
     take: limit,
     include: {
       author: { select: { id: true, name: true, email: true, color: true, avatarUrl: true } },
     },
   });
+  return rows.reverse();
 }
 
 export async function createComment(
@@ -181,15 +185,19 @@ export async function getBoardChat(
   page: number,
   limit: number
 ) {
-  return prisma.kanbanBoardChat.findMany({
+  // [BACKUP] 2026-09-29 — 5.4: orderBy createdAt 'asc' made page 1 the OLDEST messages:
+  // past the limit (50 by default) the newest never appeared. Fetch newest-first and hand
+  // them back oldest-first, as the UI renders them (same as chat.service getMessages).
+  const rows = await prisma.kanbanBoardChat.findMany({
     where: { boardId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     skip: (page - 1) * limit,
     take: limit,
     include: {
       author: { select: chatAuthorSelect },
     },
   });
+  return rows.reverse();
 }
 
 export async function createBoardChatMessage(

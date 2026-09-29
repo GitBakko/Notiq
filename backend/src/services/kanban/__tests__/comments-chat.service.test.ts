@@ -117,14 +117,16 @@ describe('comments-chat.service', () => {
       const c2 = makeKanbanComment({ cardId: card.id, authorId: user.id });
       const results = [commentWithAuthor(c1, user), commentWithAuthor(c2, user)];
 
-      mockedPrisma.kanbanComment.findMany.mockResolvedValue(results);
+      // 5.4: page 1 must be the NEWEST comments. The DB is asked newest-first (desc);
+      // the service hands them back oldest-first, as the UI renders them.
+      mockedPrisma.kanbanComment.findMany.mockResolvedValue([...results].reverse());
 
       const out = await getComments(card.id, 1, 10);
 
       expect(out).toEqual(results);
       expect(mockedPrisma.kanbanComment.findMany).toHaveBeenCalledWith({
         where: { cardId: card.id },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 10,
         include: {
@@ -449,14 +451,15 @@ describe('comments-chat.service', () => {
       const msg2 = makeKanbanBoardChat({ boardId, authorId: user.id });
       const results = [chatWithAuthor(msg1, user), chatWithAuthor(msg2, user)];
 
-      mockedPrisma.kanbanBoardChat.findMany.mockResolvedValue(results);
+      // 5.4: same as comments — newest page from the DB, oldest-first to the UI.
+      mockedPrisma.kanbanBoardChat.findMany.mockResolvedValue([...results].reverse());
 
       const out = await getBoardChat(boardId, 1, 10);
 
       expect(out).toEqual(results);
       expect(mockedPrisma.kanbanBoardChat.findMany).toHaveBeenCalledWith({
         where: { boardId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 10,
         include: {
