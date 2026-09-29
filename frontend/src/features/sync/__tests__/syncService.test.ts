@@ -910,7 +910,6 @@ describe('syncPull', () => {
         if (url === '/tasklists') return Promise.resolve({ data: [] });
         if (url === '/share/tasklists/accepted') return Promise.resolve({ data: [] });
         if (url === '/kanban/boards') return Promise.resolve({ data: [] });
-        if (url === '/share/kanbans/accepted') return Promise.resolve({ data: [] });
         return Promise.resolve({ data: [] });
       });
 
