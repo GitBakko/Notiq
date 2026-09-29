@@ -17,7 +17,9 @@ import {
   addTaskItem,
   updateTaskItem,
   deleteTaskItem,
+  reorderTaskItems,
 } from '../services/tasklist.service';
+import { NotFoundError } from '../utils/errors';
 
 // The setup.ts mock doesn't include taskList, taskItem, sharedTaskList.
 // Augment the existing mock object with the missing models.
@@ -296,6 +298,57 @@ describe('tasklist.service — deleteTaskItem', () => {
     });
 
     await expect(deleteTaskItem('user-1', 'tl-1', 'item-1')).rejects.toThrow('errors.tasks.itemNotFound');
+  });
+});
+
+// P1 — reorder must only touch items of the authorised list. Without the scope,
+// a READ sharee who knows item ids (from GET /tasklists/:id) could reorder them
+// through a list they own: READ→WRITE escalation.
+describe('tasklist.service — reorderTaskItems', () => {
+  it('should reject item ids that do not belong to the task list, writing nothing', async () => {
+    prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'user-1' });
+    prismaMock.taskItem.findMany.mockResolvedValueOnce([{ id: 'item-1' }]);
+
+    const call = reorderTaskItems('user-1', 'tl-1', [
+      { id: 'item-1', position: 0 },
+      { id: 'item-ALTRUI', position: 1 },
+    ]);
+
+    await expect(call).rejects.toThrow('errors.tasks.itemNotFound');
+    await expect(call).rejects.toBeInstanceOf(NotFoundError);
+    expect(prismaMock.taskItem.update).not.toHaveBeenCalled();
+  });
+
+  it('should reorder items of the task list, scoping every write to it', async () => {
+    prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'user-1' });
+    prismaMock.taskItem.findMany.mockResolvedValueOnce([{ id: 'item-1' }, { id: 'item-2' }]);
+    prismaMock.taskItem.update.mockResolvedValue({});
+
+    const result = await reorderTaskItems('user-1', 'tl-1', [
+      { id: 'item-1', position: 0 },
+      { id: 'item-2', position: 1 },
+    ]);
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.taskItem.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['item-1', 'item-2'] }, taskListId: 'tl-1' },
+      select: { id: true },
+    });
+    expect(prismaMock.taskItem.update).toHaveBeenCalledTimes(2);
+    for (const [args] of prismaMock.taskItem.update.mock.calls) {
+      expect(args.where).toMatchObject({ taskListId: 'tl-1' });
+    }
+  });
+
+  it('should accept duplicate ids in the body', async () => {
+    prismaMock.taskList.findUnique.mockResolvedValueOnce({ id: 'tl-1', userId: 'user-1' });
+    prismaMock.taskItem.findMany.mockResolvedValueOnce([{ id: 'item-1' }]);
+    prismaMock.taskItem.update.mockResolvedValue({});
+
+    await expect(reorderTaskItems('user-1', 'tl-1', [
+      { id: 'item-1', position: 0 },
+      { id: 'item-1', position: 1 },
+    ])).resolves.toEqual({ success: true });
   });
 });
 
