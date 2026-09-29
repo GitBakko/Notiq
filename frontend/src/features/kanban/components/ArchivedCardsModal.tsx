@@ -1,8 +1,9 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../../lib/queryKeys';
 import { format } from 'date-fns';
 import { it as itLocale, enUS } from 'date-fns/locale';
-import { Archive, RotateCcw } from 'lucide-react';
+import { Archive, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Modal from '../../../components/ui/Modal';
 import * as kanbanService from '../kanbanService';
@@ -19,15 +20,35 @@ export default function ArchivedCardsModal({ isOpen, onClose, boardId, onUnarchi
   const queryClient = useQueryClient();
   const dateLocale = i18n.language?.startsWith('it') ? itLocale : enUS;
 
-  const { data: archivedCards, isLoading } = useQuery({
-    queryKey: queryKeys.kanban.archivedCards(boardId),
-    queryFn: () => kanbanService.getArchivedCards(boardId),
+  // Kanban 6.4: the archive is paged server-side (50 per page).
+  const [page, setPage] = useState(1);
+  // Back to page 1 on every (re)open. The modal stays mounted, so this is the
+  // "adjust state while rendering" pattern rather than an effect.
+  const openedFor = isOpen ? boardId : null;
+  const [lastOpenedFor, setLastOpenedFor] = useState<string | null>(null);
+  if (openedFor !== lastOpenedFor) {
+    setLastOpenedFor(openedFor);
+    if (openedFor) setPage(1);
+  }
+
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.kanban.archivedCards(boardId, page),
+    queryFn: () => kanbanService.getArchivedCards(boardId, page),
     enabled: isOpen,
+    placeholderData: keepPreviousData,
   });
+  const archivedCards = data?.cards;
+  const total = data?.total ?? 0;
+  const limit = data?.limit ?? 50;
+  const lastPage = Math.max(1, Math.ceil(total / limit));
+  const from = total === 0 ? 0 : (page - 1) * limit + 1;
+  const to = Math.min(page * limit, total);
 
   async function handleUnarchive(cardId: string): Promise<void> {
     await kanbanService.unarchiveCard(cardId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.archivedCards(boardId) });
+    // Restoring the only card of a later page would leave an empty page behind.
+    if (archivedCards?.length === 1 && page > 1) setPage(page - 1);
+    queryClient.invalidateQueries({ queryKey: queryKeys.kanban.archivedCardsAll(boardId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boards });
     onUnarchive();
@@ -80,6 +101,31 @@ export default function ArchivedCardsModal({ isOpen, onClose, boardId, onUnarchi
           </div>
         )}
       </div>
+      {lastPage > 1 && (
+        <div className="flex items-center justify-between gap-2 pt-3 mt-2 border-t border-neutral-200/60 dark:border-neutral-700/40">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            aria-label={t('common.previous')}
+            className="p-1.5 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:focus-visible:ring-emerald-400 transition-colors"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {t('kanban.archive.pageOf', { from, to, total })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+            disabled={page >= lastPage}
+            aria-label={t('common.next')}
+            className="p-1.5 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:focus-visible:ring-emerald-400 transition-colors"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
     </Modal>
   );
 }

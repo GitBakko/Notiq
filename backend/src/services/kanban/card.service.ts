@@ -746,25 +746,37 @@ export async function archiveCompletedCards(boardId?: string): Promise<number> {
 }
 
 /**
- * Get archived cards for a board.
+ * Get archived cards for a board, one page at a time.
+ * [BACKUP] 2026-09-29 — kanban 6.4: was `getArchivedCards(boardId)` with no skip/take,
+ * the only unbounded kanban list: a board with years of archived cards returned the
+ * whole archive at once. It also sent `column: { id, title }` while ArchivedCardsModal
+ * reads `columnTitle`, so every card showed an empty line; the title is flattened now.
  */
-export async function getArchivedCards(boardId: string) {
-  const cards = await prisma.kanbanCard.findMany({
-    where: {
-      column: { boardId },
-      archivedAt: { not: null },
-    },
-    orderBy: { archivedAt: 'desc' },
-    select: {
-      ...cardWithAssigneeSelect,
-      column: { select: { id: true, title: true } },
-    },
-  });
+export async function getArchivedCards(boardId: string, page: number, limit: number) {
+  const where = { column: { boardId }, archivedAt: { not: null } };
+  const [cards, total] = await Promise.all([
+    prisma.kanbanCard.findMany({
+      where,
+      orderBy: { archivedAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        ...cardWithAssigneeSelect,
+        column: { select: { id: true, title: true } },
+      },
+    }),
+    prisma.kanbanCard.count({ where }),
+  ]);
 
-  return cards.map((card) => {
-    const { _count, ...rest } = card;
-    return { ...rest, commentCount: _count.comments };
-  });
+  return {
+    cards: cards.map((card) => {
+      const { _count, column, ...rest } = card;
+      return { ...rest, columnTitle: column.title, commentCount: _count.comments };
+    }),
+    total,
+    page,
+    limit,
+  };
 }
 
 /**

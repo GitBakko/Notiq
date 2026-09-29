@@ -155,6 +155,14 @@ export interface ArchivedCard {
   archivedAt: string;
 }
 
+/** One page of GET /kanban/boards/:id/archived (kanban 6.4). */
+export interface ArchivedCardsPage {
+  cards: ArchivedCard[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface TaskListSearchResult {
   id: string;
   title: string;

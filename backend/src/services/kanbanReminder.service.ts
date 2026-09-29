@@ -146,7 +146,11 @@ export async function getUserKanbanReminders(userId: string) {
         },
       },
     },
-    orderBy: { dueDate: 'asc' },
+    // Kanban 6.4: capped. Not-done first, so the cap never drops a reminder still to
+    // do in favour of an old checked one. Done rows must stay (RemindersPage lists
+    // them to un-check), so no isDone filter; the page re-sorts by date itself.
+    orderBy: [{ isDone: 'asc' }, { dueDate: 'asc' }],
+    take: 500,
   });
 }
 

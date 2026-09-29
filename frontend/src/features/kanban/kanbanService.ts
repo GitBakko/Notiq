@@ -15,7 +15,7 @@ import type {
   NoteSharingCheck,
   NoteSearchResult,
   SharedKanbanBoard,
-  ArchivedCard,
+  ArchivedCardsPage,
   TaskListSearchResult,
 } from './types';
 
@@ -716,8 +716,8 @@ export async function deleteAvatar(boardId: string): Promise<void> {
 
 // ── Archived Cards (server-only) ────────────────────────────────────────
 
-export async function getArchivedCards(boardId: string): Promise<ArchivedCard[]> {
-  const res = await api.get<ArchivedCard[]>(`/kanban/boards/${boardId}/archived`);
+export async function getArchivedCards(boardId: string, page = 1): Promise<ArchivedCardsPage> {
+  const res = await api.get<ArchivedCardsPage>(`/kanban/boards/${boardId}/archived`, { params: { page } });
   return res.data;
 }
 

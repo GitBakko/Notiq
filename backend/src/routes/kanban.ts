@@ -565,7 +565,8 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
   fastify.get('/boards/:id/archived', async (request) => {
     const { id } = request.params as { id: string };
     await assertBoardAccess(id, request.user.id, 'READ');
-    return await kanbanService.getArchivedCards(id);
+    const { page, limit } = paginationSchema.parse(request.query);
+    return await kanbanService.getArchivedCards(id, page, limit);
   });
 
   fastify.post('/cards/:id/unarchive', async (request) => {
