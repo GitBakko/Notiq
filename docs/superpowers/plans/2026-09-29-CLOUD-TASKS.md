@@ -117,6 +117,14 @@ SSE), task 3.4/3.6/3.7 del piano kanban (**TIER 1**, citano codice che non esist
 stabilizzazione degli e2e flaky (serve girarli in locale). Se l'utente te li chiede, parti dalla
 sezione corrispondente dell'Appendice di `2026-08-31-kanban-hardening.md` e proponi prima di fare.
 
+> **Aggiornamento 2026-09-29, decisioni dell'utente:**
+> - **G1:** chiuso come comportamento voluto.
+> - **4.2 + C2:** risolti con la variante B (l'eco del proprio utente salta solo il pulse di highlight).
+> - **3.4/3.6/3.7:** rivalutati. I tre difetti esistono ancora, ma il testo del piano è superato: le
+>   rivalutazioni con il task riscritto sono in testa a ciascun task in `2026-08-31-kanban-hardening.md`.
+>   Restano TIER 1, da fare in locale.
+> - **E2E instabili:** li gestisce l'utente in locale.
+
 ---
 
 ## T1 — P1: `reorderTaskItems` scrive item di altre liste
