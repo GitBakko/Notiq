@@ -332,6 +332,19 @@ describe('useKanbanRealtime reconnect catch-up (4.5)', () => {
       expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-1'] });
     });
   });
+
+  it('also refetches the board chat, which no longer polls (5.3)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'connected' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board-chat', 'board-1'] });
+    });
+  });
 });
 
 // 4.6 — the backend strips `note` from every card event (stripNote, B3), but the frontend

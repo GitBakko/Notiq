@@ -9,7 +9,9 @@ export function useKanbanChat(boardId: string | undefined) {
     queryKey: queryKeys.kanban.boardChat(boardId!),
     queryFn: () => getBoardChat(boardId!),
     enabled: !!boardId,
-    refetchInterval: 3000,
+    // No polling (5.3): useKanbanRealtime invalidates this query on every SSE
+    // chat:message and on every (re)connection, which covers messages sent while the
+    // stream was down. It used to refetch every 3 s on top of that.
   });
 
   const sendMessage = useMutation({

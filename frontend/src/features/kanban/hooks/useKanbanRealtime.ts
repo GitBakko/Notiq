@@ -48,6 +48,8 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
         // never arrives as an event, so refetch the board to catch up (4.5). On the first
         // connection this is one extra GET, accepted.
         queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId!) });
+        // Same for the board chat, which no longer polls (5.3).
+        queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boardChat(boardId!) });
       } else {
         // Highlight moved cards with a 2s pulse — only other people's moves.
         // 4.2 + C2: actorId identifies a user, not a tab or device, so the echo of one's
