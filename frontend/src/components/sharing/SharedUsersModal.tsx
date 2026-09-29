@@ -7,7 +7,7 @@ export interface SharedUserInfo {
   email: string;
   avatarUrl?: string | null;
   permission?: string;
-  status?: 'ACCEPTED' | 'PENDING';
+  status?: 'ACCEPTED' | 'PENDING' | 'DECLINED';
 }
 
 export interface SharedOwnerInfo {
@@ -101,7 +101,9 @@ export default function SharedUsersModal({ isOpen, onClose, users, title, curren
         )}
 
         {(() => {
-          const acceptedUsers = users.filter(u => u.status !== 'PENDING');
+          // [BACKUP] 2026-09-29 — `u.status !== 'PENDING'` counted a DECLINED share as
+          // someone with access (with a permission badge, like any collaborator).
+          const acceptedUsers = users.filter(u => u.status === 'ACCEPTED');
           const pendingUsers = users.filter(u => u.status === 'PENDING');
           const hasNoUsers = acceptedUsers.length === 0 && pendingUsers.length === 0;
 

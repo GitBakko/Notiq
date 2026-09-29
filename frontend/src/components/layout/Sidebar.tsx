@@ -252,14 +252,17 @@ export default function Sidebar() {
         onClose={() => setViewSharesNotebookId(null)}
         users={
           viewSharesNotebookId && notebookShareCounts?.[viewSharesNotebookId]
-            ? notebookShareCounts[viewSharesNotebookId].users.map((s): SharedUserInfo => ({
-                id: s.user.id,
-                name: s.user.name,
-                email: s.user.email,
-                avatarUrl: s.user.avatarUrl,
-                permission: s.permission,
-                status: s.status as 'ACCEPTED' | 'PENDING' | undefined,
-              }))
+            ? notebookShareCounts[viewSharesNotebookId].users
+                // Same filter as the note/task list call sites: a declined share is not access.
+                .filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
+                .map((s): SharedUserInfo => ({
+                  id: s.user.id,
+                  name: s.user.name,
+                  email: s.user.email,
+                  avatarUrl: s.user.avatarUrl,
+                  permission: s.permission,
+                  status: s.status,
+                }))
             : []
         }
         currentUserId={user?.id}
