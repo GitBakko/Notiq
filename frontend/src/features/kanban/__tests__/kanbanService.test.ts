@@ -48,7 +48,8 @@ vi.mock('../../../lib/api', () => ({
 }));
 vi.mock('../../../store/authStore', () => ({ useAuthStore: mockAuthStore }));
 
-import { deleteCard, deleteColumn, createCard, moveCard, splitTextForCard, CARD_TITLE_MAX, CARD_DESCRIPTION_MAX } from '../kanbanService';
+import { deleteCard, deleteColumn, createCard, moveCard, getArchivedCards, splitTextForCard, CARD_TITLE_MAX, CARD_DESCRIPTION_MAX } from '../kanbanService';
+import api from '../../../lib/api';
 
 describe('splitTextForCard', () => {
   it('keeps a short single-line text as the title, with no description', () => {
@@ -278,5 +279,32 @@ describe('kanbanService.moveCard', () => {
         data: { columnId: 'col-9', position: 7 },
       }),
     );
+  });
+
+  // Kanban 5.6: a bulk move queues its moves silent (one grouped notification
+  // instead of one per card); a normal move stays notifying.
+  it('queues the silent flag only for a silent move', async () => {
+    cardsByColumn['col-dst'] = [];
+    mockDb.kanbanCards.get.mockResolvedValue({ id: 'M', columnId: 'col-src', position: 0, createdAt: iso(1) });
+
+    await moveCard('M', 'col-dst', 0, true);
+    await moveCard('M', 'col-dst', 0);
+
+    const [silentMove, normalMove] = mockDb.syncQueue.add.mock.calls.map((c: unknown[]) => (c[0] as { data: unknown }).data);
+    expect(silentMove).toEqual({ columnId: 'col-dst', position: 0, silent: true });
+    expect(normalMove).toEqual({ columnId: 'col-dst', position: 0 });
+  });
+});
+
+// Kanban 6.4: the archive is paged server-side.
+describe('kanbanService.getArchivedCards', () => {
+  it('asks for one page and returns the page envelope', async () => {
+    const pageData = { cards: [{ id: 'c1', title: 'Old', columnTitle: 'Done', archivedAt: '2026-01-01' }], total: 51, page: 2, limit: 50 };
+    vi.mocked(api.get).mockResolvedValue({ data: pageData });
+
+    const result = await getArchivedCards('board-1', 2);
+
+    expect(api.get).toHaveBeenCalledWith('/kanban/boards/board-1/archived', { params: { page: 2 } });
+    expect(result).toEqual(pageData);
   });
 });

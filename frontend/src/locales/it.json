@@ -1303,7 +1303,8 @@
       "title": "Card archiviate",
       "empty": "Nessuna card archiviata",
       "unarchive": "Ripristina",
-      "archivedOn": "Archiviata il {{date}}"
+      "archivedOn": "Archiviata il {{date}}",
+      "pageOf": "{{from}}–{{to}} di {{total}}"
     },
     "bulkArchive": {
       "title": "Archiviazione massiva",

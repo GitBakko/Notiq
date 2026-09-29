@@ -110,4 +110,20 @@ describe('useBoardDnD.handleMoveCardToColumn', () => {
       position: 2,
     });
   });
+
+  // Kanban 5.6: the bulk move passes `silent` so its queued moves don't each notify.
+  it('threads the silent flag through to the mutation', () => {
+    const { result, moveCardMutate } = setup();
+
+    act(() => {
+      result.current.handleMoveCardToColumn('c1', 'col-b', 1, true);
+    });
+
+    expect(moveCardMutate.mock.calls[0][0]).toEqual({
+      cardId: 'c1',
+      toColumnId: 'col-b',
+      position: 1,
+      silent: true,
+    });
+  });
 });

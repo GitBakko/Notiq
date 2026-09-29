@@ -246,7 +246,11 @@ describe('getUserKanbanReminders', () => {
           },
         },
       },
-      orderBy: { dueDate: 'asc' },
+      // Kanban 6.4: capped. Not-done first, so the cap never drops a reminder
+      // still to do in favour of an old checked one (the page re-sorts by date
+      // and splits done/not-done itself; done rows must stay, so no isDone filter).
+      orderBy: [{ isDone: 'asc' }, { dueDate: 'asc' }],
+      take: 500,
     });
     expect(result).toEqual(expected);
   });

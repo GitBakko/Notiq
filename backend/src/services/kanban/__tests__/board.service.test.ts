@@ -33,6 +33,7 @@ vi.mock('../helpers', async (importOriginal) => {
 // Import service functions AFTER mocks are declared
 import {
   listBoards,
+  boardContentVersion,
   createBoard,
   getBoard,
   updateBoard,
@@ -67,6 +68,11 @@ describe('board.service', () => {
   // ─── listBoards ────────────────────────────────────────────
 
   describe('listBoards', () => {
+    const col = (id: string, cards: number, newest = '2026-01-01T00:00:00Z') => ({
+      id, title: id, position: 0, isCompleted: false,
+      _count: { cards },
+      cards: cards > 0 ? [{ updatedAt: new Date(newest) }] : [],
+    });
     it('returns owned and shared boards merged', async () => {
       const user = makeUser();
 
@@ -78,9 +84,9 @@ describe('board.service', () => {
           ...ownedBoard,
           _count: { columns: 3, shares: 1 },
           columns: [
-            { _count: { cards: 2 } },
-            { _count: { cards: 3 } },
-            { _count: { cards: 0 } },
+            col('c1', 2),
+            col('c2', 3),
+            col('c3', 0),
           ],
           shares: [
             {
@@ -99,7 +105,7 @@ describe('board.service', () => {
             ...sharedBoard,
             owner: { id: sharedBoard.ownerId, name: 'Alice', email: 'alice@test.com' },
             _count: { columns: 2, shares: 0 },
-            columns: [{ _count: { cards: 1 } }],
+            columns: [col('c4', 1)],
             shares: [],
           },
         } as any,
@@ -114,6 +120,9 @@ describe('board.service', () => {
       expect(result[0].shareCount).toBe(1);
       expect(result[1].ownership).toBe('shared');
       expect(result[1].cardCount).toBe(1);
+      // Kanban 5.2: both kinds carry the fingerprint the sync gates its detail fetch on.
+      expect(result[0].contentVersion).toMatch(/^[0-9a-f]{16}$/);
+      expect(result[1].contentVersion).toMatch(/^[0-9a-f]{16}$/);
     });
 
     it('returns empty array when user has no boards', async () => {
@@ -123,6 +132,37 @@ describe('board.service', () => {
       const result = await listBoards('no-boards-user');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  // ─── boardContentVersion (kanban 5.2) ──────────────────────
+
+  describe('boardContentVersion', () => {
+    const base = () => [
+      { id: 'c1', title: 'Todo', position: 0, isCompleted: false, _count: { cards: 2 }, cards: [{ updatedAt: new Date('2026-01-02T00:00:00Z') }] },
+      { id: 'c2', title: 'Done', position: 1, isCompleted: true, _count: { cards: 1 }, cards: [{ updatedAt: new Date('2026-01-01T00:00:00Z') }] },
+    ];
+
+    it('is stable for the same content, whatever the column order', () => {
+      expect(boardContentVersion(base())).toBe(boardContentVersion(base()));
+      expect(boardContentVersion(base().reverse())).toBe(boardContentVersion(base()));
+    });
+
+    it.each([
+      ['a column is renamed', (c: ReturnType<typeof base>) => { c[0].title = 'Backlog'; }],
+      ['a column is moved', (c: ReturnType<typeof base>) => { c[0].position = 2; }],
+      ['a column is marked completed', (c: ReturnType<typeof base>) => { c[0].isCompleted = true; }],
+      ['a column is deleted', (c: ReturnType<typeof base>) => { c.pop(); }],
+      ['a card is deleted', (c: ReturnType<typeof base>) => { c[0]._count.cards = 1; }],
+      ['a card is edited, moved or archived', (c: ReturnType<typeof base>) => { c[1].cards[0].updatedAt = new Date('2026-01-03T00:00:00Z'); }],
+    ])('changes when %s', (_label, mutate) => {
+      const changed = base();
+      mutate(changed);
+      expect(boardContentVersion(changed)).not.toBe(boardContentVersion(base()));
+    });
+
+    it('handles a board without columns or cards', () => {
+      expect(boardContentVersion([])).toMatch(/^[0-9a-f]{16}$/);
     });
   });
 

@@ -15,7 +15,7 @@ import type {
   NoteSharingCheck,
   NoteSearchResult,
   SharedKanbanBoard,
-  ArchivedCard,
+  ArchivedCardsPage,
   TaskListSearchResult,
 } from './types';
 
@@ -401,7 +401,8 @@ export function byPosition(a: LocalKanbanCard, b: LocalKanbanCard): number {
   return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
 }
 
-export async function moveCard(cardId: string, toColumnId: string, position: number): Promise<void> {
+/** `silent`: no per-card "moved" notification — a bulk move sends one grouped notification instead. */
+export async function moveCard(cardId: string, toColumnId: string, position: number, silent = false): Promise<void> {
   const userId = getUserId();
   const now = new Date().toISOString();
 
@@ -457,7 +458,7 @@ export async function moveCard(cardId: string, toColumnId: string, position: num
       entity: 'KANBAN_CARD',
       entityId: cardId,
       userId,
-      data: { columnId: toColumnId, position },
+      data: { columnId: toColumnId, position, ...(silent ? { silent: true } : {}) },
       createdAt: Date.now(),
     });
   });
@@ -715,8 +716,8 @@ export async function deleteAvatar(boardId: string): Promise<void> {
 
 // ── Archived Cards (server-only) ────────────────────────────────────────
 
-export async function getArchivedCards(boardId: string): Promise<ArchivedCard[]> {
-  const res = await api.get<ArchivedCard[]>(`/kanban/boards/${boardId}/archived`);
+export async function getArchivedCards(boardId: string, page = 1): Promise<ArchivedCardsPage> {
+  const res = await api.get<ArchivedCardsPage>(`/kanban/boards/${boardId}/archived`, { params: { page } });
   return res.data;
 }
 

@@ -40,6 +40,8 @@ export interface KanbanBoardListItem {
   shares?: KanbanBoardShareUser[];
   ownership: 'owned' | 'shared';
   permission?: 'READ' | 'WRITE';
+  /** Fingerprint of the board's columns and cards (kanban 5.2): unchanged → the sync skips GET /kanban/boards/:id. */
+  contentVersion?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -151,6 +153,14 @@ export interface ArchivedCard {
   title: string;
   columnTitle: string;
   archivedAt: string;
+}
+
+/** One page of GET /kanban/boards/:id/archived (kanban 6.4). */
+export interface ArchivedCardsPage {
+  cards: ArchivedCard[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export interface TaskListSearchResult {

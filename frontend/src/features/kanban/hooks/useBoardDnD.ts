@@ -285,7 +285,8 @@ export function useBoardDnD({ board, boardId, mutations }: UseBoardDnDParams) {
     // reversing the intended order. The old `999` sentinel accidentally
     // dodged this because the server clamped it against the live length at
     // processing time; a precomputed real index does not get that for free.
-    (cardId: string, targetColumnId: string, explicitPosition?: number) => {
+    // `silent` (bulk move): see kanbanService.moveCard.
+    (cardId: string, targetColumnId: string, explicitPosition?: number, silent?: boolean) => {
       const targetColumn = localColumns.find((c) => c.id === targetColumnId);
       const appendIndex = explicitPosition ?? (targetColumn
         ? targetColumn.cards.filter((c) => c.id !== cardId).length
@@ -315,7 +316,7 @@ export function useBoardDnD({ board, boardId, mutations }: UseBoardDnDParams) {
       // Persist to backend
       setIsMoveInFlight(true);
       mutations.moveCard.mutate(
-        { cardId, toColumnId: targetColumnId, position: appendIndex },
+        { cardId, toColumnId: targetColumnId, position: appendIndex, ...(silent ? { silent: true } : {}) },
         { onSettled: () => setIsMoveInFlight(false) },
       );
     },

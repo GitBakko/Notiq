@@ -534,6 +534,9 @@ model KanbanComment {
   createdAt DateTime   @default(now())
 
   @@index([cardId])
+  // Kanban 6.4: comments are read per card ordered by createdAt (newest page first,
+  // 5.4); without this Postgres sorts them in memory on every card open.
+  @@index([cardId, createdAt])
 }
 
 model SharedKanbanBoard {

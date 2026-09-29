@@ -1035,7 +1035,8 @@
       "title": "Archived Cards",
       "empty": "No archived cards",
       "unarchive": "Unarchive",
-      "archivedOn": "Archived on {{date}}"
+      "archivedOn": "Archived on {{date}}",
+      "pageOf": "{{from}}–{{to}} of {{total}}"
     },
     "bulkArchive": {
       "title": "Bulk Archive",

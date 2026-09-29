@@ -746,36 +746,20 @@ describe('GET /api/sharing/kanbans', () => {
   });
 });
 
-// ── Get Accepted Shared Kanban Boards ───────────────────────────────
+// ── Get Accepted Shared Kanban Boards (removed) ─────────────────────
 
+// Kanban 3.6: its only caller was the frontend sync, which now takes shared
+// boards from GET /api/kanban/boards like the owned ones.
 describe('GET /api/sharing/kanbans/accepted', () => {
-  it('returns accepted kanban boards with _sharedPermission', async () => {
-    const mockShares = [
-      {
-        permission: 'WRITE',
-        board: {
-          id: 'board-1',
-          title: 'Board',
-          owner: { id: 'user-2', name: 'Other', email: 'other@test.com', avatarUrl: null },
-          columns: [],
-          _count: { columns: 0 },
-        },
-      },
-    ];
-    mockPrisma.sharedKanbanBoard.findMany.mockResolvedValue(mockShares);
-
+  it('no longer exists', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/sharing/kanbans/accepted',
       headers: { authorization: `Bearer ${authToken}` },
     });
 
-    expect(res.statusCode).toBe(200);
-    const payload = JSON.parse(res.payload);
-    expect(payload).toHaveLength(1);
-    expect(payload[0]._sharedPermission).toBe('WRITE');
-    expect(payload[0].id).toBe('board-1');
-    expect(payload[0].title).toBe('Board');
+    expect(res.statusCode).toBe(404);
+    expect(mockPrisma.sharedKanbanBoard.findMany).not.toHaveBeenCalled();
   });
 });
 

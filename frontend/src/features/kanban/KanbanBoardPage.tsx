@@ -366,7 +366,8 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
       return;
     }
 
-    // Optimistic UI + silent REST calls (bypass sync queue notifications).
+    // Optimistic UI + silent queued moves: one grouped notification below instead
+    // of one per card.
     // [BACKUP] 2026-08-31 — previously sent the literal sentinel `999` for
     // every card in the loop, so the server piled them all onto the same
     // out-of-range position. `moves` only holds cards from OTHER columns (filtered above),
@@ -382,14 +383,12 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
     const targetColumn = board.columns.find(c => c.id === targetColumnId);
     const appendBase = targetColumn ? targetColumn.cards.length : 0;
 
+    // [BACKUP] 2026-09-29 — kanban 5.6: each card also went out a second time as a raw
+    // `api.put(/kanban/cards/:id/move?silent=true)` next to its queued (non-silent)
+    // move: 2N PUTs and N single notifications on top of the grouped one. The queued
+    // move now carries the silent flag itself.
     moves.forEach((move, i) => {
-      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId, appendBase + i);
-    });
-    moves.forEach((move, i) => {
-      api.put(`/kanban/cards/${move.cardId}/move?silent=true`, {
-        toColumnId: move.toColumnId,
-        position: appendBase + i,
-      }).catch(() => {});
+      dnd.handleMoveCardToColumn(move.cardId, move.toColumnId, appendBase + i, true);
     });
 
     // Grouped notification

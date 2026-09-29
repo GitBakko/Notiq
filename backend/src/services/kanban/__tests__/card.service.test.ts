@@ -1625,8 +1625,9 @@ describe('getArchivedCards', () => {
   // the PATCH. ArchivedCardsModal never reads card.note, so nothing is lost.
   it('does not select the linked note', async () => {
     prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+    prismaMock.kanbanCard.count.mockResolvedValue(0);
 
-    await getArchivedCards('board-1');
+    await getArchivedCards('board-1', 1, 50);
 
     const select = prismaMock.kanbanCard.findMany.mock.calls[0][0].select;
     expect(select).not.toHaveProperty('note');
@@ -1646,11 +1647,47 @@ describe('getArchivedCards', () => {
         _count: { comments: 3 },
       },
     ]);
+    prismaMock.kanbanCard.count.mockResolvedValue(1);
 
-    const result = await getArchivedCards('board-1');
+    const result = await getArchivedCards('board-1', 1, 50);
 
-    expect(result[0]).toHaveProperty('commentCount', 3);
-    expect(result[0]).not.toHaveProperty('_count');
+    expect(result.cards[0]).toHaveProperty('commentCount', 3);
+    expect(result.cards[0]).not.toHaveProperty('_count');
+  });
+
+  // Kanban 6.4: the only kanban list endpoint that returned everything at once.
+  it('pages the query with skip/take and returns the total count', async () => {
+    prismaMock.kanbanCard.findMany.mockResolvedValue([]);
+    prismaMock.kanbanCard.count.mockResolvedValue(57);
+
+    const result = await getArchivedCards('board-1', 3, 20);
+
+    expect(prismaMock.kanbanCard.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { column: { boardId: 'board-1' }, archivedAt: { not: null } },
+        orderBy: { archivedAt: 'desc' },
+        skip: 40,
+        take: 20,
+      }),
+    );
+    expect(prismaMock.kanbanCard.count).toHaveBeenCalledWith({
+      where: { column: { boardId: 'board-1' }, archivedAt: { not: null } },
+    });
+    expect(result).toEqual({ cards: [], total: 57, page: 3, limit: 20 });
+  });
+
+  // Kanban 6.4: ArchivedCardsModal renders card.columnTitle, but the service sent
+  // `column: { id, title }` — an empty line under every archived card.
+  it('flattens the column title into columnTitle', async () => {
+    prismaMock.kanbanCard.findMany.mockResolvedValue([
+      { id: 'card-1', title: 'Archived', column: { id: 'col-1', title: 'Done' }, _count: { comments: 0 } },
+    ]);
+    prismaMock.kanbanCard.count.mockResolvedValue(1);
+
+    const result = await getArchivedCards('board-1', 1, 50);
+
+    expect(result.cards[0]).toHaveProperty('columnTitle', 'Done');
+    expect(result.cards[0]).not.toHaveProperty('column');
   });
 });
 

@@ -20,7 +20,9 @@ export const queryKeys = {
     boardChat: (boardId: string) => ['kanban-board-chat', boardId] as const,
     comments: (cardId: string) => ['kanban-comments', cardId] as const,
     cardActivities: (cardId: string) => ['kanban-card-activities', cardId] as const,
-    archivedCards: (boardId: string) => ['kanban-archived-cards', boardId] as const,
+    // Kanban 6.4: the archive is paged; archivedCardsAll is the prefix that invalidates every page.
+    archivedCardsAll: (boardId: string) => ['kanban-archived-cards', boardId] as const,
+    archivedCards: (boardId: string, page: number) => ['kanban-archived-cards', boardId, page] as const,
     noteSearch: (query: string) => ['kanban-note-search', query] as const,
     taskListSearch: (query: string) => ['kanban-tasklist-search', query] as const,
     linkedBoards: (noteId: string) => ['kanban-linked-boards', noteId] as const,

@@ -103,10 +103,10 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [x] | **3.1** | Scope `useKanbanBoards` all'utente corrente e stampa `viewerId` in pull | `57f8152..d296ee8` |
 | [x] | **3.2** | Risolvere il `columnId` della card CREATE da Dexie invece che dal payload in coda | `121d665..93253d2` |
 | [x] | **3.3** | Non scartare più in silenzio una CREATE che va in 404 | `cf163f4` |
-| [ ] | **3.4** | Far restituire a `syncPush` la promise in volo e incatenare il refresh della board — **testo superato, vedi la rivalutazione 2026-09-29 nel task** | `` |
+| [x] | **3.4** | Far restituire a `syncPush` la promise in volo e incatenare il refresh della board (riscritto: `Promise<boolean>`, run condivisa) | `bc21f75` |
 | [x] | **3.5** | Rimuovere il guard "non pushare mai le board condivise" | `c63b8d5` |
-| [ ] | **3.6** | Eliminare il pull duplicato delle board condivise e allargare il prune (stesso commit) — **testo superato, vedi la rivalutazione 2026-09-29 nel task** | `` |
-| [ ] | **3.7** | Isolare notebooks, tags e notes in `syncPull` con try/catch propri — **testo superato, vedi la rivalutazione 2026-09-29 nel task** | `` |
+| [x] | **3.6** | Eliminare il pull duplicato delle board condivise e allargare il prune (stesso commit); rimossa anche la rotta `/share/kanbans/accepted` | `97bdc4d`, `eb050d5` |
+| [x] | **3.7** | Isolare notebooks, tags e notes in `syncPull` con try/catch propri (i blocchi esistenti, invariati) | `60c42af` |
 
 ### Stage 4 — Chokepoint SSE
 
@@ -124,11 +124,11 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
 | [x] | **5.1** | Togliere le scritture da `getBoard` | `a67f35e` |
-| [ ] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve (`contentVersion` dalla lista) | `3239586`, `4415aae` |
 | [x] | **5.3** | Rimuovere il poll a 3 secondi dalla chat di board | `d6acf0d` |
 | [x] | **5.4** | Paginare chat e commenti dal più recente | `a74a9d6` |
 | [x] | **5.5** | Batchare la lookup dei destinatari e togliere l'SMTP dal request path | `2224f6d` |
-| [ ] | **5.6** | Eliminare il doppio invio di ogni card in `handleBulkMove` — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **5.6** | Eliminare il doppio invio di ogni card in `handleBulkMove` | `c5fd121`, `9ec2514` |
 
 ### Stage 6 — Rinviabile
 
@@ -137,7 +137,7 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [x] | **6.1** | Sweep di accessibilità sul kanban (label, tastiera, hover-trap) | `9fa794e` |
 | [x] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri | `b0548d6` |
 | [x] | **6.3** | Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board | `9bfcc5f` |
-| [ ] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder | `fc612b6`, `dd8aedc` |
 | [x] | **6.5** | Collegare la suite Playwright alla CI | `42d2b3d..9f4c2f3` (step 1-10, job bloccante, 43/43 verdi) |
 
 **Totale: 44 task.**

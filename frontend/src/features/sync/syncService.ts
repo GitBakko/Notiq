@@ -8,6 +8,16 @@ import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 import toast from 'react-hot-toast';
 import i18n from 'i18next';
 
+// Kanban 5.2: the list's contentVersion of each board as of its last successful detail
+// pull, keyed by user and board. syncPull runs every 30 s and used to GET every board's
+// details every time; now it skips a board whose version has not moved. In memory on
+// purpose: a reload starts from a full pull, and nothing persisted can go stale.
+const boardDetailsPulled = new Map<string, { version: string; at: number }>();
+// contentVersion doesn't see comment counts or a linked note's title, and a local edit
+// the server rejected can leave a row wrong while the version stays put. A periodic
+// full refresh bounds how long any of that can last.
+const BOARD_DETAILS_MAX_AGE_MS = 10 * 60 * 1000;
+
 export const syncPull = async () => {
   // Task 6 fix round 1: board ids this pull actually deletes from Dexie (owned,
   // no longer on server; or shared, no longer accepted) — a board someone had
@@ -26,146 +36,161 @@ export const syncPull = async () => {
     const currentUserId = useAuthStore.getState().user?.id;
     if (!currentUserId) return prunedBoardIds; // Cannot sync if not logged in
 
-    // Pull Notebooks
-    const notebooksRes = await api.get<Notebook[]>('/notebooks');
-    await db.transaction('rw', db.notebooks, db.syncQueue, async () => {
-      const dirtyNotebooks = await db.notebooks.where('syncStatus').notEqual('synced').toArray();
-      const dirtyIds = new Set(dirtyNotebooks.map(n => n.id));
+    try {
+      // Pull Notebooks
+      const notebooksRes = await api.get<Notebook[]>('/notebooks');
+      await db.transaction('rw', db.notebooks, db.syncQueue, async () => {
+        const dirtyNotebooks = await db.notebooks.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyNotebooks.map(n => n.id));
 
-      const serverNotebooks = notebooksRes.data.map(n => ({
-        ...n,
-        syncStatus: 'synced' as const
-      }));
+        const serverNotebooks = notebooksRes.data.map(n => ({
+          ...n,
+          syncStatus: 'synced' as const
+        }));
 
-      // Zombie prevention (mirrors the notes pull): a locally-deleted notebook with
-      // a pending DELETE in the queue must not be resurrected by the server response.
-      const pendingDeletes = await db.syncQueue
-        .where('entity').equals('NOTEBOOK')
-        .and(item => item.type === 'DELETE')
-        .toArray();
-      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+        // Zombie prevention (mirrors the notes pull): a locally-deleted notebook with
+        // a pending DELETE in the queue must not be resurrected by the server response.
+        const pendingDeletes = await db.syncQueue
+          .where('entity').equals('NOTEBOOK')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
 
-      const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id) && !pendingDeleteIds.has(n.id));
+        const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id) && !pendingDeleteIds.has(n.id));
 
-      const allLocalSyncedNotebooks = await db.notebooks.where('syncStatus').equals('synced').toArray();
-      const serverIds = new Set(serverNotebooks.map(n => n.id));
-      const toDeleteIds = allLocalSyncedNotebooks
-        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
-        .map(n => n.id);
+        const allLocalSyncedNotebooks = await db.notebooks.where('syncStatus').equals('synced').toArray();
+        const serverIds = new Set(serverNotebooks.map(n => n.id));
+        const toDeleteIds = allLocalSyncedNotebooks
+          .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+          .map(n => n.id);
 
-      await db.notebooks.bulkDelete(toDeleteIds);
-      await db.notebooks.bulkPut(notebooksToPut);
-    });
+        await db.notebooks.bulkDelete(toDeleteIds);
+        await db.notebooks.bulkPut(notebooksToPut);
+      });
+    } catch (e) {
+      // Each of the first three sections gets its own try, like the ones below:
+      // a failing endpoint must not skip the rest of the pull — in particular the
+      // kanban prune that removes deleted and revoked boards.
+      console.error('Sync Pull Notebooks Failed:', e);
+    }
 
-    // Pull Tags
-    const tagsRes = await api.get<Tag[]>('/tags');
-    await db.transaction('rw', db.tags, db.syncQueue, async () => {
-      const dirtyTags = await db.tags.where('syncStatus').notEqual('synced').toArray();
-      const dirtyIds = new Set(dirtyTags.map(t => t.id));
+    try {
+      // Pull Tags
+      const tagsRes = await api.get<Tag[]>('/tags');
+      await db.transaction('rw', db.tags, db.syncQueue, async () => {
+        const dirtyTags = await db.tags.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyTags.map(t => t.id));
 
-      const serverTags = tagsRes.data.map(t => ({
-        ...t,
-        // userId should come from server. If not, use 'current-user' as fallback?
-        // Actually, backend returns userId.
-        syncStatus: 'synced' as const
-      }));
+        const serverTags = tagsRes.data.map(t => ({
+          ...t,
+          // userId should come from server. If not, use 'current-user' as fallback?
+          // Actually, backend returns userId.
+          syncStatus: 'synced' as const
+        }));
 
-      // Zombie prevention (mirrors the notes pull): a locally-deleted tag with a
-      // pending DELETE in the queue must not be resurrected by the server response.
-      const pendingDeletes = await db.syncQueue
-        .where('entity').equals('TAG')
-        .and(item => item.type === 'DELETE')
-        .toArray();
-      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+        // Zombie prevention (mirrors the notes pull): a locally-deleted tag with a
+        // pending DELETE in the queue must not be resurrected by the server response.
+        const pendingDeletes = await db.syncQueue
+          .where('entity').equals('TAG')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
 
-      const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id) && !pendingDeleteIds.has(t.id));
+        const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id) && !pendingDeleteIds.has(t.id));
 
-      const allLocalSyncedTags = await db.tags.where('syncStatus').equals('synced').toArray();
-      const serverIds = new Set(serverTags.map(t => t.id));
-      const toDeleteIds = allLocalSyncedTags
-        .filter(t => !serverIds.has(t.id) && !pendingDeleteIds.has(t.id))
-        .map(t => t.id);
+        const allLocalSyncedTags = await db.tags.where('syncStatus').equals('synced').toArray();
+        const serverIds = new Set(serverTags.map(t => t.id));
+        const toDeleteIds = allLocalSyncedTags
+          .filter(t => !serverIds.has(t.id) && !pendingDeleteIds.has(t.id))
+          .map(t => t.id);
 
-      await db.tags.bulkDelete(toDeleteIds);
-      await db.tags.bulkPut(tagsToPut);
-    });
+        await db.tags.bulkDelete(toDeleteIds);
+        await db.tags.bulkPut(tagsToPut);
+      });
+    } catch (e) {
+      console.error('Sync Pull Tags Failed:', e);
+    }
 
-    // Pull Notes
-    const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
-    await db.transaction('rw', db.notes, db.syncQueue, async () => {
-      // We need to be careful not to overwrite dirty notes
-      // For MVP, let's just overwrite everything that is 'synced'
-      // But wait, if we clear, we lose dirty notes.
-      // Better: Get all dirty notes IDs.
-      const dirtyNotes = await db.notes.where('syncStatus').notEqual('synced').toArray();
-      const dirtyIds = new Set(dirtyNotes.map(n => n.id));
+    try {
+      // Pull Notes
+      const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
+      await db.transaction('rw', db.notes, db.syncQueue, async () => {
+        // We need to be careful not to overwrite dirty notes
+        // For MVP, let's just overwrite everything that is 'synced'
+        // But wait, if we clear, we lose dirty notes.
+        // Better: Get all dirty notes IDs.
+        const dirtyNotes = await db.notes.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyNotes.map(n => n.id));
 
-      const serverNotes = notesRes.data.map(n => ({
-        ...n,
-        tags: n.tags || [], // Ensure array
-        attachments: n.attachments || [], // Ensure array
-        ownership: 'owned' as const,
-        sharedPermission: null,
-        sharedByUser: null,
-        syncStatus: 'synced' as const
-      }));
+        const serverNotes = notesRes.data.map(n => ({
+          ...n,
+          tags: n.tags || [], // Ensure array
+          attachments: n.attachments || [], // Ensure array
+          ownership: 'owned' as const,
+          sharedPermission: null,
+          sharedByUser: null,
+          syncStatus: 'synced' as const
+        }));
 
-      // Filter out server notes that conflict with local dirty notes (local wins temporarily until push)
-      const notesToPut = serverNotes.filter(n => !dirtyIds.has(n.id));
+        // Filter out server notes that conflict with local dirty notes (local wins temporarily until push)
+        const notesToPut = serverNotes.filter(n => !dirtyIds.has(n.id));
 
-      // CRITICAL FIX: ZOMBIE RESURRECTION
-      // We must check if any of these "server notes" are actually queued for DELETION locally.
-      // If a note is in serverNotes but we have a pending DELETE in syncQueue, we MUST NOT re-insert it.
-      // The `dirtyIds` check handles UPDATEs (where syncStatus='updated'), but hard deletes use DELETE queue type
-      // and checking db.notes might fail if it was already deleted.
+        // CRITICAL FIX: ZOMBIE RESURRECTION
+        // We must check if any of these "server notes" are actually queued for DELETION locally.
+        // If a note is in serverNotes but we have a pending DELETE in syncQueue, we MUST NOT re-insert it.
+        // The `dirtyIds` check handles UPDATEs (where syncStatus='updated'), but hard deletes use DELETE queue type
+        // and checking db.notes might fail if it was already deleted.
 
-      const pendingDeletes = await db.syncQueue
-        .where('entity').equals('NOTE')
-        .and(item => item.type === 'DELETE')
-        .toArray();
+        const pendingDeletes = await db.syncQueue
+          .where('entity').equals('NOTE')
+          .and(item => item.type === 'DELETE')
+          .toArray();
 
-      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+        const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
 
-      const filteredNotesToPut = notesToPut.filter(n => !pendingDeleteIds.has(n.id));
+        const filteredNotesToPut = notesToPut.filter(n => !pendingDeleteIds.has(n.id));
 
-      // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
-      // Exclude shared notes — they are managed by the shared notes pull block below.
-      const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced')
-        .filter(n => n.ownership !== 'shared').toArray();
-      // Self-Healing Strategy:
-      // If we have local notes that are 'synced' but missing from the server, 
-      // instead of deleting them locally, we should assume the server lost them and re-push.
-      // This protects against accidental server wipes and "disappearing notes".
+        // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
+        // Exclude shared notes — they are managed by the shared notes pull block below.
+        const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced')
+          .filter(n => n.ownership !== 'shared').toArray();
+        // Self-Healing Strategy:
+        // If we have local notes that are 'synced' but missing from the server, 
+        // instead of deleting them locally, we should assume the server lost them and re-push.
+        // This protects against accidental server wipes and "disappearing notes".
 
-      const serverIds = new Set(serverNotes.map(n => n.id));
-      // Notes missing from server are considered deleted — remove from local DB
-      const toDeleteIds = allLocalSyncedNotes
-        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
-        .map(n => n.id);
+        const serverIds = new Set(serverNotes.map(n => n.id));
+        // Notes missing from server are considered deleted — remove from local DB
+        const toDeleteIds = allLocalSyncedNotes
+          .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+          .map(n => n.id);
 
-      if (toDeleteIds.length > 0) {
-        await db.notes.bulkDelete(toDeleteIds);
-      }
-
-      // Preserve local 'content' field: GET /notes doesn't return it to keep responses lightweight.
-      // Without this, bulkPut would wipe content (critical for encrypted vault/credential notes).
-      const existingNoteIds = filteredNotesToPut.map(n => n.id);
-      const existingNotes = await db.notes.bulkGet(existingNoteIds);
-      const localContentMap = new Map<string, string>();
-      for (const existing of existingNotes) {
-        if (existing?.content) {
-          localContentMap.set(existing.id, existing.content);
+        if (toDeleteIds.length > 0) {
+          await db.notes.bulkDelete(toDeleteIds);
         }
-      }
 
-      const notesWithPreservedContent = filteredNotesToPut.map(n => ({
-        ...n,
-        content: n.content ?? localContentMap.get(n.id) ?? '',
-      }));
+        // Preserve local 'content' field: GET /notes doesn't return it to keep responses lightweight.
+        // Without this, bulkPut would wipe content (critical for encrypted vault/credential notes).
+        const existingNoteIds = filteredNotesToPut.map(n => n.id);
+        const existingNotes = await db.notes.bulkGet(existingNoteIds);
+        const localContentMap = new Map<string, string>();
+        for (const existing of existingNotes) {
+          if (existing?.content) {
+            localContentMap.set(existing.id, existing.content);
+          }
+        }
 
-      // Update local DB with server notes (wins over synced)
-      await db.notes.bulkPut(notesWithPreservedContent);
-    });
+        const notesWithPreservedContent = filteredNotesToPut.map(n => ({
+          ...n,
+          content: n.content ?? localContentMap.get(n.id) ?? '',
+        }));
+
+        // Update local DB with server notes (wins over synced)
+        await db.notes.bulkPut(notesWithPreservedContent);
+      });
+    } catch (e) {
+      console.error('Sync Pull Notes Failed:', e);
+    }
 
     // Pull Shared Notes (ACCEPTED only)
     try {
@@ -356,17 +381,38 @@ export const syncPull = async () => {
             syncStatus: 'synced' as const,
           }));
 
-        // Remove boards no longer on server (owned only — shared handled below).
-        // Scoped to the current user's own rows: an unscoped scan here would treat
-        // another account's still-valid synced board as "not on my server list"
+        // [BACKUP] 2026-09-29 — 3.6: this prune used to skip shared rows ("shared handled
+        // below"). A second block then re-pulled /share/kanbans/accepted only to prune them
+        // and to rewrite rows this block had already written, worse: without shares/shareCount
+        // and with the archived cards back in Dexie. /kanban/boards already lists the ACCEPTED
+        // shared boards and the detail loop below pulls their columns and cards, so that block
+        // is gone (see git history) and its prune lives here, with the same scope.
+        // Derived from the RAW server response, not boardsToPut: a dirty row the server still
+        // lists must not be taken for a deleted one.
+        const serverIds = new Set(serverBoards.map(b => b.id));
+
+        // Owned rows. Scoped to the current user's own rows: an unscoped scan here would
+        // treat another account's still-valid synced board as "not on my server list"
         // and bulkDelete it (cascading to its columns/cards) the moment this user
         // pulls, race or not.
         const allLocalSyncedBoards = await db.kanbanBoards.where('syncStatus').equals('synced')
           .filter(b => b.ownership !== 'shared' && b.ownerId === currentUserId).toArray();
-        const serverIds = new Set(serverBoards.map(b => b.id));
-        const toDeleteIds = allLocalSyncedBoards
+        const ownedToDeleteIds = allLocalSyncedBoards
           .filter(b => !serverIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
           .map(b => b.id);
+
+        // Shared rows. Scoped to rows stamped for THIS viewer — a pre-upgrade row with no
+        // viewerId can't be told apart from another account's leftover share, so it is
+        // deliberately left out rather than guessed at (it stays hidden by useKanbanBoards).
+        // No syncStatus filter: a share revoked while the row had local edits must still go,
+        // the server rejects those edits anyway.
+        const localSharedBoards = (await db.kanbanBoards.where('ownership').equals('shared').toArray())
+          .filter(b => b.viewerId === currentUserId);
+        const sharedToDeleteIds = localSharedBoards
+          .filter(b => !serverIds.has(b.id))
+          .map(b => b.id);
+
+        const toDeleteIds = [...ownedToDeleteIds, ...sharedToDeleteIds];
 
         if (toDeleteIds.length > 0) {
           await db.kanbanBoards.bulkDelete(toDeleteIds);
@@ -384,8 +430,19 @@ export const syncPull = async () => {
         if (boardsToPut.length > 0) await db.kanbanBoards.bulkPut(boardsToPut);
       });
 
-      // Pull full board details (columns + cards) for each board
+      // Pull full board details (columns + cards) for each board whose content changed
       for (const board of serverBoards) {
+        const pulledKey = `${currentUserId}:${board.id}`;
+        const pulled = boardDetailsPulled.get(pulledKey);
+        if (
+          board.contentVersion &&
+          pulled?.version === board.contentVersion &&
+          Date.now() - pulled.at < BOARD_DETAILS_MAX_AGE_MS &&
+          // Dexie cleared or partially written since (e.g. logout): pull again.
+          (await db.kanbanColumns.where('boardId').equals(board.id).count()) === board.columnCount
+        ) {
+          continue;
+        }
         try {
           const boardRes = await api.get<KanbanBoard>(`/kanban/boards/${board.id}`);
           const fullBoard = boardRes.data;
@@ -458,131 +515,16 @@ export const syncPull = async () => {
 
             if (allServerCards.length > 0) await db.kanbanCards.bulkPut(allServerCards);
           });
+          // Only after the write landed: a failed pull must be retried next time.
+          if (board.contentVersion) {
+            boardDetailsPulled.set(pulledKey, { version: board.contentVersion, at: Date.now() });
+          }
         } catch (e) {
           console.error(`syncPull kanban board ${board.id} details failed`, e);
         }
       }
     } catch (e) {
       console.error('syncPull kanban boards failed', e);
-    }
-
-    // --- Shared Kanban Boards Pull ---
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sharedKanbanRes = await api.get<any[]>('/share/kanbans/accepted');
-      const sharedBoards = sharedKanbanRes.data;
-
-      await db.transaction('rw', db.kanbanBoards, db.kanbanColumns, db.kanbanCards, db.syncQueue, async () => {
-        // Zombie prevention (mirrors the main "Kanban Boards Pull" block above): a
-        // locally-dirty row survives an overwrite, and a pending DELETE blocks
-        // resurrection. Without this, these three bulkPuts below applied no dirty
-        // filter and no pending-delete filter at all, running AFTER the main
-        // block's guarded pass over overlapping rows and silently clobbering it.
-        const dirtyBoards = await db.kanbanBoards.where('syncStatus').notEqual('synced').toArray();
-        const dirtyBoardIds = new Set(dirtyBoards.map(b => b.id));
-        const pendingBoardDeletes = await db.syncQueue
-          .where('entity').equals('KANBAN_BOARD')
-          .and(item => item.type === 'DELETE')
-          .toArray();
-        const pendingBoardDeleteIds = new Set(pendingBoardDeletes.map(i => i.entityId));
-
-        const dirtyColumns = await db.kanbanColumns.where('syncStatus').notEqual('synced').toArray();
-        const dirtyColumnIds = new Set(dirtyColumns.map(c => c.id));
-        const pendingColDeletes = await db.syncQueue
-          .where('entity').equals('KANBAN_COLUMN')
-          .and(item => item.type === 'DELETE')
-          .toArray();
-        const pendingColDeleteIds = new Set(pendingColDeletes.map(i => i.entityId));
-
-        const dirtyCards = await db.kanbanCards.where('syncStatus').notEqual('synced').toArray();
-        const dirtyCardIds = new Set(dirtyCards.map(c => c.id));
-        const pendingCardDeletes = await db.syncQueue
-          .where('entity').equals('KANBAN_CARD')
-          .and(item => item.type === 'DELETE')
-          .toArray();
-        const pendingCardDeleteIds = new Set(pendingCardDeletes.map(i => i.entityId));
-
-        const sharedBoardsMapped: LocalKanbanBoard[] = sharedBoards
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .filter((b: any) => !dirtyBoardIds.has(b.id) && !pendingBoardDeleteIds.has(b.id))
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((b: any) => ({
-            ...b,
-            ownership: 'shared' as const,
-            viewerId: currentUserId,
-            permission: b._sharedPermission as 'READ' | 'WRITE' | undefined,
-            syncStatus: 'synced' as const,
-            columnCount: b._count?.columns ?? b.columns?.length ?? 0,
-            cardCount: b.columns?.reduce((acc: number, col: { cards?: unknown[] }) => acc + (col.cards?.length ?? 0), 0) ?? 0,
-          }));
-
-        // Remove stale shared boards no longer in server response. Scoped to rows
-        // stamped for THIS viewer — a pre-upgrade row with no viewerId can't be told
-        // apart from another account's leftover share, so it is deliberately left
-        // out of deletion candidacy rather than guessed at: it stays inert (already
-        // hidden by useKanbanBoards) until something else claims it, same as any
-        // other pre-upgrade orphan. Guessing it belongs to "probably me" would
-        // reopen the exact cross-account bulkDelete this scoping exists to close.
-        const localSharedBoards = await db.kanbanBoards.where('ownership').equals('shared')
-          .filter(b => b.viewerId === currentUserId).toArray();
-        // Fix round 2: derive from the RAW server response, not sharedBoardsMapped
-        // (which the dirty-row guard above already filtered) -- mirrors the main
-        // block's serverIds, which also comes from the raw serverBoards. Using the
-        // filtered array here excluded a dirty shared board from this set too, so
-        // this staleness check saw it as "gone from the server" and pruned it.
-        const sharedServerIds = new Set(sharedBoards.map(b => b.id));
-        const staleIds = localSharedBoards.filter(b => !sharedServerIds.has(b.id)).map(b => b.id);
-        if (staleIds.length > 0) {
-          await db.kanbanBoards.bulkDelete(staleIds);
-          for (const boardId of staleIds) {
-            await db.kanbanColumns.where('boardId').equals(boardId).delete();
-            await db.kanbanCards.where('boardId').equals(boardId).delete();
-          }
-          prunedBoardIds.push(...staleIds);
-        }
-
-        if (sharedBoardsMapped.length > 0) await db.kanbanBoards.bulkPut(sharedBoardsMapped);
-
-        // Sync columns and cards for each shared board
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const board of sharedBoards as any[]) {
-          if (board.columns) {
-            const columns: LocalKanbanColumn[] = board.columns
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .filter((col: any) => !dirtyColumnIds.has(col.id) && !pendingColDeleteIds.has(col.id))
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .map((col: any) => ({
-                id: col.id,
-                title: col.title,
-                position: col.position,
-                boardId: board.id,
-                isCompleted: col.isCompleted ?? false,
-                syncStatus: 'synced' as const,
-              }));
-            if (columns.length > 0) await db.kanbanColumns.bulkPut(columns);
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            for (const col of board.columns as any[]) {
-              if (col.cards && col.cards.length > 0) {
-                const cards: LocalKanbanCard[] = col.cards
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  .filter((card: any) => !dirtyCardIds.has(card.id) && !pendingCardDeleteIds.has(card.id))
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  .map((card: any) => ({
-                    ...card,
-                    columnId: col.id,
-                    boardId: board.id,
-                    commentCount: card._count?.comments ?? 0,
-                    syncStatus: 'synced' as const,
-                  }));
-                if (cards.length > 0) await db.kanbanCards.bulkPut(cards);
-              }
-            }
-          }
-        }
-      });
-    } catch (e) {
-      console.error('syncPull shared kanban boards failed', e);
     }
 
   } catch (error) {
@@ -594,7 +536,11 @@ export const syncPull = async () => {
 
 import { useAuthStore } from '../../store/authStore';
 
-let isSyncing = false;
+// [BACKUP] 2026-09-29 — kanban 3.4: was `let isSyncing = false;`. A call made while a
+// push was running returned false at once and a follow-up ran 1 s later via
+// setTimeout, so `await syncPush()` did not wait for anything: the kanban board
+// refetched before a second quick move reached the server and the card jumped back.
+let inFlight: Promise<boolean> | null = null;
 let syncPushScheduled = false;
 
 /**
@@ -746,358 +692,370 @@ async function resolveCardColumnId(cardId: string, queuedColumnId: string | unde
 }
 
 /**
- * Returns whether this call actually pushed at least one item to the server —
- * NOT just whether it ran without throwing. Callers (useSync) use this to
- * decide whether to invalidate the kanban react-query cache: invalidating
- * after a run that pushed nothing (empty queue, offline, already-syncing,
- * logged out) would be pointless at best and a refetch storm at worst, since
- * syncPush also runs on every 30s tick whether or not there's anything to do.
+ * Returns whether the run pushed at least one item to the server — NOT just
+ * whether it ran without throwing. Callers (useSync, useKanbanMutations) use
+ * this to decide whether to invalidate the kanban react-query cache:
+ * invalidating after a run that pushed nothing (empty queue, offline, logged
+ * out) would be pointless at best and a refetch storm at worst, since syncPush
+ * also runs on every 30s tick whether or not there's anything to do.
+ * A call made while a run is in progress shares that run (and its result),
+ * which then makes one more pass for what was queued meanwhile.
  * A transport-failure `break` partway through still returns true if earlier
  * items in the same run succeeded — those did change server state.
  */
-export const syncPush = async (): Promise<boolean> => {
+export const syncPush = (): Promise<boolean> => {
   // ponytail: cheap bail-out before touching Dexie or the queue at all. Does
   // NOT cover a captive portal / connected-but-dead network — navigator.onLine
   // stays true there — the response-less-error `break` below is what catches
   // that case, by stopping the run after the first request that never gets a
   // reply instead of relying on this flag to have caught it up front.
-  if (!navigator.onLine) return false;
-  if (isSyncing) {
-    // Instead of silently dropping, schedule a follow-up push
+  if (!navigator.onLine) return Promise.resolve(false);
+  if (inFlight) {
+    // Never two runs at once. The caller gets the run in progress, which makes
+    // one more pass for whatever this caller just queued: its await resolves
+    // only once that is on the server (or the run gave up).
     syncPushScheduled = true;
-    return false;
+    return inFlight;
   }
-  isSyncing = true;
-  syncPushScheduled = false;
+  inFlight = (async () => {
+    let pushedAny = false;
+    try {
+      do {
+        syncPushScheduled = false;
+        if (await pushQueueOnce()) pushedAny = true;
+      } while (syncPushScheduled && navigator.onLine);
+      return pushedAny;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
+};
+
+/** One pass over the current user's queue. Only syncPush calls it, never two at once. */
+const pushQueueOnce = async (): Promise<boolean> => {
   let pushedAny = false;
-  try {
-    const currentUserId = useAuthStore.getState().user?.id;
-    if (!currentUserId) return false; // Cannot sync if not logged in
+  const currentUserId = useAuthStore.getState().user?.id;
+  if (!currentUserId) return false; // Cannot sync if not logged in
 
-    // Filter queue by userId.
-    // We only process items that belong to the current user.
-    // Legacy items without userId will be ignored (and potentially cleaned up later or stuck, which prevents leakage).
-    const allQueue = await db.syncQueue.orderBy('createdAt').toArray();
-    const queue = allQueue.filter(item => item.userId === currentUserId);
+  // Filter queue by userId.
+  // We only process items that belong to the current user.
+  // Legacy items without userId will be ignored (and potentially cleaned up later or stuck, which prevents leakage).
+  const allQueue = await db.syncQueue.orderBy('createdAt').toArray();
+  const queue = allQueue.filter(item => item.userId === currentUserId);
 
-    for (const item of queue) {
-      // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
-      if (item.status === 'failed') continue;
-      // Skip items in backoff period
-      if (!shouldRetry(item.id)) continue;
+  for (const item of queue) {
+    // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
+    if (item.status === 'failed') continue;
+    // Skip items in backoff period
+    if (!shouldRetry(item.id)) continue;
 
-      // Wait for the notebook/tags this note update references to reach the server
-      // first. Not a failure: no backoff, the item simply stays queued for the next run.
-      if (item.entity === 'NOTE' && item.type === 'UPDATE' && await hasQueuedReferenceCreate(item)) continue;
+    // Wait for the notebook/tags this note update references to reach the server
+    // first. Not a failure: no backoff, the item simply stays queued for the next run.
+    if (item.entity === 'NOTE' && item.type === 'UPDATE' && await hasQueuedReferenceCreate(item)) continue;
 
-      try {
-        if (item.entity === 'NOTE') {
-          // Safety: never push shared notes to REST API
-          const localNote = await db.notes.get(item.entityId);
-          if (localNote?.ownership === 'shared') {
-            if (item.id) await db.syncQueue.delete(item.id);
-            clearFailure(item.id);
-            continue;
-          }
-          if (item.type === 'CREATE') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { id, ...data } = item.data as any;
-            await api.post('/notes', { ...data, id });
-          } else if (item.type === 'UPDATE') {
-            await api.put(`/notes/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/notes/${item.entityId}`);
-          }
-        } else if (item.entity === 'NOTEBOOK') {
-          if (item.type === 'CREATE') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { id, ...data } = item.data as any;
-            await api.post('/notebooks', { ...data, id });
-          } else if (item.type === 'UPDATE') {
-            await api.put(`/notebooks/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/notebooks/${item.entityId}`);
-          }
-        } else if (item.entity === 'TAG') {
-          if (item.type === 'CREATE') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { id, ...data } = item.data as any;
-            await api.post('/tags', { ...data, id });
-          } else if (item.type === 'UPDATE') {
-            await api.put(`/tags/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/tags/${item.entityId}`);
-          }
-        } else if (item.entity === 'TASK_LIST') {
-          if (item.type === 'CREATE') {
-            await api.post('/tasklists', { ...item.data, id: item.entityId });
-          } else if (item.type === 'UPDATE') {
-            await api.put(`/tasklists/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/tasklists/${item.entityId}`);
-          }
-        } else if (item.entity === 'TASK_ITEM') {
-          if (item.type === 'CREATE') {
-            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
-            await api.post(`/tasklists/${taskListId}/items`, { ...item.data, id: item.entityId });
-          } else if (item.type === 'UPDATE') {
-            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
-            await api.put(`/tasklists/${taskListId}/items/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
-            await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
-          }
-        } else if (item.entity === 'KANBAN_BOARD') {
-          // [BACKUP] 2026-09-01 — used to skip ANY queued item for a shared board
-          // and delete it without calling the API at all ("never push shared
-          // boards to REST API"). The backend explicitly authorizes a WRITE
-          // collaborator's board update (assertBoardAccess(id, userId, 'WRITE')
-          // in board.service.ts) and the UI offers a rename to one — dropping the
-          // queue item made the edit look like it saved, then the next pull
-          // silently reverted it, with no error surfaced (the item was deleted,
-          // not failed). An unauthorized case still fails loudly: a 403 is
-          // already handled as terminal below.
-          //   const localBoard = await db.kanbanBoards.get(item.entityId);
-          //   if (localBoard?.ownership === 'shared') {
-          //     if (item.id) await db.syncQueue.delete(item.id);
-          //     clearFailure(item.id);
-          //     continue;
-          //   }
-          if (item.type === 'CREATE') {
-            const boardData = item.data as Record<string, unknown>;
-            const localColumnIds = (boardData._localColumnIds as string[] | undefined) || [];
-            // Don't send internal metadata to the API
-            const { _localColumnIds, ...apiData } = boardData;
-            void _localColumnIds; // suppress unused lint
-            const res = await api.post('/kanban/boards', { ...apiData, id: item.entityId });
-            // Reconcile local column IDs with server-generated column IDs (by position)
-            if (localColumnIds.length > 0 && res.data?.columns) {
-              const serverColumns = (res.data.columns as { id: string; position: number }[])
-                .sort((a, b) => a.position - b.position);
-              const sortedLocalIds = [...localColumnIds]; // already in position order (0, 1, 2)
-              await db.transaction('rw', db.kanbanColumns, db.kanbanCards, async () => {
-                for (let i = 0; i < Math.min(sortedLocalIds.length, serverColumns.length); i++) {
-                  const localId = sortedLocalIds[i];
-                  const serverId = serverColumns[i].id;
-                  if (localId === serverId) continue;
-                  // Update any cards referencing the local column ID
-                  const cardsInCol = await db.kanbanCards.where('columnId').equals(localId).toArray();
-                  for (const card of cardsInCol) {
-                    await db.kanbanCards.update(card.id, { columnId: serverId });
-                  }
-                  // Replace local column with server column
-                  const localCol = await db.kanbanColumns.get(localId);
-                  if (localCol) {
-                    await db.kanbanColumns.delete(localId);
-                    await db.kanbanColumns.put({ ...localCol, id: serverId, syncStatus: 'synced' });
-                  }
-                }
-              });
-            }
-          } else if (item.type === 'UPDATE') {
-            await api.put(`/kanban/boards/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/kanban/boards/${item.entityId}`);
-          }
-        } else if (item.entity === 'KANBAN_COLUMN') {
-          if (item.type === 'CREATE') {
-            const boardId = (item.data as Record<string, unknown> | undefined)?.boardId as string | undefined;
-            await api.post(`/kanban/boards/${boardId}/columns`, { ...item.data, id: item.entityId });
-          } else if (item.type === 'UPDATE') {
-            await api.put(`/kanban/columns/${item.entityId}`, item.data);
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/kanban/columns/${item.entityId}`);
-          }
-        } else if (item.entity === 'KANBAN_CARD') {
-          if (item.type === 'CREATE') {
-            // See resolveCardColumnId() above for why this reads Dexie instead
-            // of trusting the queued payload outright.
-            // The stale columnId left in the body is harmless: createCardSchema
-            // (backend/src/routes/kanban.ts:41-45) strips unknown keys and the
-            // column comes from the URL.
-            const queuedColumnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
-            const columnId = await resolveCardColumnId(item.entityId, queuedColumnId);
-            await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
-          } else if (item.type === 'UPDATE') {
-            const cardData = item.data as Record<string, unknown> | undefined;
-            if (cardData?.columnId) {
-              // Move operation — route to dedicated move endpoint. Same dead/not-yet-
-              // created column id hazard as the CREATE branch — see resolveCardColumnId().
-              const toColumnId = await resolveCardColumnId(item.entityId, cardData.columnId as string);
-              await api.put(`/kanban/cards/${item.entityId}/move`, {
-                toColumnId,
-                position: cardData.position ?? 0,
-              });
-            } else {
-              await api.put(`/kanban/cards/${item.entityId}`, item.data);
-            }
-          } else if (item.type === 'DELETE') {
-            await api.delete(`/kanban/cards/${item.entityId}`);
-          }
-        }
-
-        // If successful, remove from queue and clear backoff
-        if (item.id) await db.syncQueue.delete(item.id);
-        clearFailure(item.id);
-        pushedAny = true;
-
-        // Update syncStatus of the entity ONLY if there are no more pending items for this entity
-        if (item.type !== 'DELETE') {
-          // Check if there are any other pending items for this entity
-          // We don't have a compound index, so we filter manualy or use simple index if available.
-          // Since syncQueue is typically small, toArray().filter() is acceptable, 
-          // or we can query by 'entity' if indexed and filter by ID.
-          const pendingItemsCount = await db.syncQueue
-            .filter(i => i.entity === item.entity && i.entityId === item.entityId)
-            .count();
-
-          if (pendingItemsCount === 0) {
-            if (item.entity === 'NOTE') {
-              const currentNote = await db.notes.get(item.entityId);
-              // Race Condition Protection:
-              // Only mark as 'synced' if the local note hasn't been modified since this sync item was created.
-              // If currentNote.updatedAt > item.createdAt, the user has typed more, so we keep 'updated' status.
-              const updatedAtMs = currentNote ? new Date(currentNote.updatedAt).getTime() : 0;
-
-              if (currentNote && updatedAtMs <= item.createdAt) {
-                await db.notes.update(item.entityId, { syncStatus: 'synced' });
-              }
-            } else if (item.entity === 'NOTEBOOK') {
-              const currentNotebook = await db.notebooks.get(item.entityId);
-              if (currentNotebook && new Date(currentNotebook.updatedAt).getTime() <= item.createdAt) {
-                await db.notebooks.update(item.entityId, { syncStatus: 'synced' });
-              }
-            } else if (item.entity === 'TAG') {
-              // Tags might not have updatedAt? Interface says LocalTag has synced/created/updated.
-              // Let's check db.ts interface.
-              // LocalTag: id, name, userId, syncStatus. No updatedAt?
-              // Looking at db.ts step 270: LocalTag interface...
-              // syncStatus, _count. No updatedAt!
-              // So for tags, we might have to assume safe or check syncStatus != 'updated'?
-              // If tag is 'updated', leave it.
-              // But createTag sets 'created'.
-              // If we blindly set 'synced', we might overwrite 'updated'.
-              // Better: check if syncStatus is NOT 'updated' or 'created' (wait, if we are processing, it WAS created/updated).
-              // Actually, if we just check if there are pending items, that usually covers it.
-              // Typically tags are simple updates.
-              // For safety on tags, let's stick to the pending count check for now, unless we verify Tag has updatedAt.
-              // Checking Step 270: LocalTag indeed NO updatedAt.
-              // So we just update Tag.
-              await db.tags.update(item.entityId, { syncStatus: 'synced' });
-            } else if (item.entity === 'TASK_LIST') {
-              const currentTaskList = await db.taskLists.get(item.entityId);
-              if (currentTaskList && new Date(currentTaskList.updatedAt).getTime() <= item.createdAt) {
-                await db.taskLists.update(item.entityId, { syncStatus: 'synced' });
-              }
-            } else if (item.entity === 'TASK_ITEM') {
-              const currentTaskItem = await db.taskItems.get(item.entityId);
-              if (currentTaskItem && new Date(currentTaskItem.updatedAt).getTime() <= item.createdAt) {
-                await db.taskItems.update(item.entityId, { syncStatus: 'synced' });
-              }
-            } else if (item.entity === 'KANBAN_BOARD') {
-              const currentBoard = await db.kanbanBoards.get(item.entityId);
-              if (currentBoard && new Date(currentBoard.updatedAt).getTime() <= item.createdAt) {
-                await db.kanbanBoards.update(item.entityId, { syncStatus: 'synced' });
-              }
-            } else if (item.entity === 'KANBAN_COLUMN') {
-              // Columns don't have updatedAt, just mark as synced
-              await db.kanbanColumns.update(item.entityId, { syncStatus: 'synced' });
-            } else if (item.entity === 'KANBAN_CARD') {
-              const currentCard = await db.kanbanCards.get(item.entityId);
-              if (currentCard && new Date(currentCard.updatedAt).getTime() <= item.createdAt) {
-                await db.kanbanCards.update(item.entityId, { syncStatus: 'synced' });
-              }
-            }
-          }
-        }
-
-      } catch (error: unknown) {
-        const status = (error as { response?: { status?: number } })?.response?.status;
-        if ((status === 404 || status === 410) && item.type !== 'CREATE') {
-          // Resource no longer exists on server — remove from queue to stop infinite retries.
-          // NOT for a CREATE: a 404/410 there means the thing the user made never reached
-          // the server, so silently dropping it would make it vanish with no trace. (A
-          // column reconciled to 'synced' and then locally re-edited to 'updated' makes
-          // resolveCardColumnId distrust it and fall back to a dead queued column id,
-          // which is exactly how a card CREATE reaches a 404 here.)
-          console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
+    try {
+      if (item.entity === 'NOTE') {
+        // Safety: never push shared notes to REST API
+        const localNote = await db.notes.get(item.entityId);
+        if (localNote?.ownership === 'shared') {
           if (item.id) await db.syncQueue.delete(item.id);
           clearFailure(item.id);
-          const errorKey = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-          if (item.entity === 'NOTE' && item.type === 'UPDATE' && errorKey === 'errors.notebooks.notFound') {
-            await revertRejectedNoteMove(item);
+          continue;
+        }
+        if (item.type === 'CREATE') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { id, ...data } = item.data as any;
+          await api.post('/notes', { ...data, id });
+        } else if (item.type === 'UPDATE') {
+          await api.put(`/notes/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/notes/${item.entityId}`);
+        }
+      } else if (item.entity === 'NOTEBOOK') {
+        if (item.type === 'CREATE') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { id, ...data } = item.data as any;
+          await api.post('/notebooks', { ...data, id });
+        } else if (item.type === 'UPDATE') {
+          await api.put(`/notebooks/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/notebooks/${item.entityId}`);
+        }
+      } else if (item.entity === 'TAG') {
+        if (item.type === 'CREATE') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { id, ...data } = item.data as any;
+          await api.post('/tags', { ...data, id });
+        } else if (item.type === 'UPDATE') {
+          await api.put(`/tags/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/tags/${item.entityId}`);
+        }
+      } else if (item.entity === 'TASK_LIST') {
+        if (item.type === 'CREATE') {
+          await api.post('/tasklists', { ...item.data, id: item.entityId });
+        } else if (item.type === 'UPDATE') {
+          await api.put(`/tasklists/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/tasklists/${item.entityId}`);
+        }
+      } else if (item.entity === 'TASK_ITEM') {
+        if (item.type === 'CREATE') {
+          const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
+          await api.post(`/tasklists/${taskListId}/items`, { ...item.data, id: item.entityId });
+        } else if (item.type === 'UPDATE') {
+          const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
+          await api.put(`/tasklists/${taskListId}/items/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          const taskListId = (item.data as Record<string, unknown> | undefined)?.taskListId as string | undefined;
+          await api.delete(`/tasklists/${taskListId}/items/${item.entityId}`);
+        }
+      } else if (item.entity === 'KANBAN_BOARD') {
+        // [BACKUP] 2026-09-01 — used to skip ANY queued item for a shared board
+        // and delete it without calling the API at all ("never push shared
+        // boards to REST API"). The backend explicitly authorizes a WRITE
+        // collaborator's board update (assertBoardAccess(id, userId, 'WRITE')
+        // in board.service.ts) and the UI offers a rename to one — dropping the
+        // queue item made the edit look like it saved, then the next pull
+        // silently reverted it, with no error surfaced (the item was deleted,
+        // not failed). An unauthorized case still fails loudly: a 403 is
+        // already handled as terminal below.
+        //   const localBoard = await db.kanbanBoards.get(item.entityId);
+        //   if (localBoard?.ownership === 'shared') {
+        //     if (item.id) await db.syncQueue.delete(item.id);
+        //     clearFailure(item.id);
+        //     continue;
+        //   }
+        if (item.type === 'CREATE') {
+          const boardData = item.data as Record<string, unknown>;
+          const localColumnIds = (boardData._localColumnIds as string[] | undefined) || [];
+          // Don't send internal metadata to the API
+          const { _localColumnIds, ...apiData } = boardData;
+          void _localColumnIds; // suppress unused lint
+          const res = await api.post('/kanban/boards', { ...apiData, id: item.entityId });
+          // Reconcile local column IDs with server-generated column IDs (by position)
+          if (localColumnIds.length > 0 && res.data?.columns) {
+            const serverColumns = (res.data.columns as { id: string; position: number }[])
+              .sort((a, b) => a.position - b.position);
+            const sortedLocalIds = [...localColumnIds]; // already in position order (0, 1, 2)
+            await db.transaction('rw', db.kanbanColumns, db.kanbanCards, async () => {
+              for (let i = 0; i < Math.min(sortedLocalIds.length, serverColumns.length); i++) {
+                const localId = sortedLocalIds[i];
+                const serverId = serverColumns[i].id;
+                if (localId === serverId) continue;
+                // Update any cards referencing the local column ID
+                const cardsInCol = await db.kanbanCards.where('columnId').equals(localId).toArray();
+                for (const card of cardsInCol) {
+                  await db.kanbanCards.update(card.id, { columnId: serverId });
+                }
+                // Replace local column with server column
+                const localCol = await db.kanbanColumns.get(localId);
+                if (localCol) {
+                  await db.kanbanColumns.delete(localId);
+                  await db.kanbanColumns.put({ ...localCol, id: serverId, syncStatus: 'synced' });
+                }
+              }
+            });
           }
-        } else if (status === 404 || status === 410) {
-          // Same status, but a CREATE — surface it instead (status: 'failed' lights up
-          // SyncStatusIndicator's red banner + retry button), same treatment as 400/422.
-          console.error(`Sync Push: CREATE returned ${status}, marking failed instead of dropping:`, item.entity, item.entityId);
-          if (item.id) {
-            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'not_found' });
+        } else if (item.type === 'UPDATE') {
+          await api.put(`/kanban/boards/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/kanban/boards/${item.entityId}`);
+        }
+      } else if (item.entity === 'KANBAN_COLUMN') {
+        if (item.type === 'CREATE') {
+          const boardId = (item.data as Record<string, unknown> | undefined)?.boardId as string | undefined;
+          await api.post(`/kanban/boards/${boardId}/columns`, { ...item.data, id: item.entityId });
+        } else if (item.type === 'UPDATE') {
+          await api.put(`/kanban/columns/${item.entityId}`, item.data);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/kanban/columns/${item.entityId}`);
+        }
+      } else if (item.entity === 'KANBAN_CARD') {
+        if (item.type === 'CREATE') {
+          // See resolveCardColumnId() above for why this reads Dexie instead
+          // of trusting the queued payload outright.
+          // The stale columnId left in the body is harmless: createCardSchema
+          // (backend/src/routes/kanban.ts:41-45) strips unknown keys and the
+          // column comes from the URL.
+          const queuedColumnId = (item.data as Record<string, unknown> | undefined)?.columnId as string | undefined;
+          const columnId = await resolveCardColumnId(item.entityId, queuedColumnId);
+          await api.post(`/kanban/columns/${columnId}/cards`, { ...item.data, id: item.entityId });
+        } else if (item.type === 'UPDATE') {
+          const cardData = item.data as Record<string, unknown> | undefined;
+          if (cardData?.columnId) {
+            // Move operation — route to dedicated move endpoint. Same dead/not-yet-
+            // created column id hazard as the CREATE branch — see resolveCardColumnId().
+            const toColumnId = await resolveCardColumnId(item.entityId, cardData.columnId as string);
+            // Kanban 5.6: a bulk move is announced by one grouped notification
+            // (POST bulk-move-notify), so each of its moves goes out silent.
+            await api.put(`/kanban/cards/${item.entityId}/move${cardData.silent ? '?silent=true' : ''}`, {
+              toColumnId,
+              position: cardData.position ?? 0,
+            });
+          } else {
+            await api.put(`/kanban/cards/${item.entityId}`, item.data);
           }
-          clearFailure(item.id);
-        } else if (status === 400 || status === 422) {
-          // [BACKUP] 2026-08-23 — 400/422 previously fell through to recordFailure()
-          // (backoff retry). A validation error is permanent: the queued payload is
-          // byte-identical on every attempt, so the item stayed poisoned in the queue
-          // and retried forever (observed in prod: a kanban card whose title exceeded
-          // the backend's 500-char cap). Mark it 'failed' immediately so
-          // SyncStatusIndicator surfaces it instead of looping silently.
-          console.error('Sync Push: validation rejected by server, marking failed:', item.entity, item.entityId, error);
-          if (item.id) {
-            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'validation' });
-          }
-          clearFailure(item.id);
-        } else if (status === 403) {
-          // Forbidden is permanent (insufficient permission) — retrying will never
-          // succeed. Mark the item 'failed' IMMEDIATELY (instead of ~5 backoff
-          // retries over ~10 min) so SyncStatusIndicator surfaces it to the user
-          // right away (error toast + retry banner) rather than failing silently.
-          console.error('Sync Push: forbidden (permission denied), marking failed:', item.entity, item.entityId);
-          if (item.id) {
-            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'forbidden' });
-          }
-          clearFailure(item.id);
-        } else if (!(error as { response?: unknown })?.response) {
-          // Transport failure: the request never got a reply at all (network
-          // drop, DNS failure, timeout) — not the server rejecting this
-          // item's payload. Don't burn a retry attempt on it (recordFailure
-          // is for the server saying no, not for the network being gone),
-          // and stop the whole run instead of walking the rest of the queue:
-          // every item after this one would fail the exact same way for a
-          // reason that belongs to none of them. The next syncPush call
-          // (periodic retry, or the next local write) starts over from here.
-          if (item.id) {
-            const since = transportFailureSince.get(item.id) ?? Date.now();
-            transportFailureSince.set(item.id, since);
-            if (Date.now() - since >= TRANSPORT_FAILURE_CEILING_MS) {
-              // Stuck for ~10 real minutes, not just N attempts — surface it
-              // the same way a genuine server rejection does (status:
-              // 'failed' lights up SyncStatusIndicator's red banner + retry
-              // button; retryFailedSyncItems re-enables it), without ever
-              // touching `attempts`, which stays reserved for real rejections.
-              console.error('Sync Push: transport failure persisted past the 10min ceiling, marking failed:', item.entity, item.entityId);
-              await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'network' });
-              transportFailureSince.delete(item.id);
-            }
-          }
-          console.error('Sync Push: transport failure, stopping run:', item.entity, item.entityId, error);
-          break;
-        } else {
-          await recordFailure(item, error);
-          console.error('Sync Push Failed for item:', item, error);
+        } else if (item.type === 'DELETE') {
+          await api.delete(`/kanban/cards/${item.entityId}`);
         }
       }
-    }
 
-    return pushedAny;
-  } finally {
-    isSyncing = false;
-    // If a push was requested while we were busy, run it now
-    if (syncPushScheduled) {
-      syncPushScheduled = false;
-      setTimeout(() => syncPush(), 1000);
+      // If successful, remove from queue and clear backoff
+      if (item.id) await db.syncQueue.delete(item.id);
+      clearFailure(item.id);
+      pushedAny = true;
+
+      // Update syncStatus of the entity ONLY if there are no more pending items for this entity
+      if (item.type !== 'DELETE') {
+        // Check if there are any other pending items for this entity
+        // We don't have a compound index, so we filter manualy or use simple index if available.
+        // Since syncQueue is typically small, toArray().filter() is acceptable, 
+        // or we can query by 'entity' if indexed and filter by ID.
+        const pendingItemsCount = await db.syncQueue
+          .filter(i => i.entity === item.entity && i.entityId === item.entityId)
+          .count();
+
+        if (pendingItemsCount === 0) {
+          if (item.entity === 'NOTE') {
+            const currentNote = await db.notes.get(item.entityId);
+            // Race Condition Protection:
+            // Only mark as 'synced' if the local note hasn't been modified since this sync item was created.
+            // If currentNote.updatedAt > item.createdAt, the user has typed more, so we keep 'updated' status.
+            const updatedAtMs = currentNote ? new Date(currentNote.updatedAt).getTime() : 0;
+
+            if (currentNote && updatedAtMs <= item.createdAt) {
+              await db.notes.update(item.entityId, { syncStatus: 'synced' });
+            }
+          } else if (item.entity === 'NOTEBOOK') {
+            const currentNotebook = await db.notebooks.get(item.entityId);
+            if (currentNotebook && new Date(currentNotebook.updatedAt).getTime() <= item.createdAt) {
+              await db.notebooks.update(item.entityId, { syncStatus: 'synced' });
+            }
+          } else if (item.entity === 'TAG') {
+            // Tags might not have updatedAt? Interface says LocalTag has synced/created/updated.
+            // Let's check db.ts interface.
+            // LocalTag: id, name, userId, syncStatus. No updatedAt?
+            // Looking at db.ts step 270: LocalTag interface...
+            // syncStatus, _count. No updatedAt!
+            // So for tags, we might have to assume safe or check syncStatus != 'updated'?
+            // If tag is 'updated', leave it.
+            // But createTag sets 'created'.
+            // If we blindly set 'synced', we might overwrite 'updated'.
+            // Better: check if syncStatus is NOT 'updated' or 'created' (wait, if we are processing, it WAS created/updated).
+            // Actually, if we just check if there are pending items, that usually covers it.
+            // Typically tags are simple updates.
+            // For safety on tags, let's stick to the pending count check for now, unless we verify Tag has updatedAt.
+            // Checking Step 270: LocalTag indeed NO updatedAt.
+            // So we just update Tag.
+            await db.tags.update(item.entityId, { syncStatus: 'synced' });
+          } else if (item.entity === 'TASK_LIST') {
+            const currentTaskList = await db.taskLists.get(item.entityId);
+            if (currentTaskList && new Date(currentTaskList.updatedAt).getTime() <= item.createdAt) {
+              await db.taskLists.update(item.entityId, { syncStatus: 'synced' });
+            }
+          } else if (item.entity === 'TASK_ITEM') {
+            const currentTaskItem = await db.taskItems.get(item.entityId);
+            if (currentTaskItem && new Date(currentTaskItem.updatedAt).getTime() <= item.createdAt) {
+              await db.taskItems.update(item.entityId, { syncStatus: 'synced' });
+            }
+          } else if (item.entity === 'KANBAN_BOARD') {
+            const currentBoard = await db.kanbanBoards.get(item.entityId);
+            if (currentBoard && new Date(currentBoard.updatedAt).getTime() <= item.createdAt) {
+              await db.kanbanBoards.update(item.entityId, { syncStatus: 'synced' });
+            }
+          } else if (item.entity === 'KANBAN_COLUMN') {
+            // Columns don't have updatedAt, just mark as synced
+            await db.kanbanColumns.update(item.entityId, { syncStatus: 'synced' });
+          } else if (item.entity === 'KANBAN_CARD') {
+            const currentCard = await db.kanbanCards.get(item.entityId);
+            if (currentCard && new Date(currentCard.updatedAt).getTime() <= item.createdAt) {
+              await db.kanbanCards.update(item.entityId, { syncStatus: 'synced' });
+            }
+          }
+        }
+      }
+
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if ((status === 404 || status === 410) && item.type !== 'CREATE') {
+        // Resource no longer exists on server — remove from queue to stop infinite retries.
+        // NOT for a CREATE: a 404/410 there means the thing the user made never reached
+        // the server, so silently dropping it would make it vanish with no trace. (A
+        // column reconciled to 'synced' and then locally re-edited to 'updated' makes
+        // resolveCardColumnId distrust it and fall back to a dead queued column id,
+        // which is exactly how a card CREATE reaches a 404 here.)
+        console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
+        if (item.id) await db.syncQueue.delete(item.id);
+        clearFailure(item.id);
+        const errorKey = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        if (item.entity === 'NOTE' && item.type === 'UPDATE' && errorKey === 'errors.notebooks.notFound') {
+          await revertRejectedNoteMove(item);
+        }
+      } else if (status === 404 || status === 410) {
+        // Same status, but a CREATE — surface it instead (status: 'failed' lights up
+        // SyncStatusIndicator's red banner + retry button), same treatment as 400/422.
+        console.error(`Sync Push: CREATE returned ${status}, marking failed instead of dropping:`, item.entity, item.entityId);
+        if (item.id) {
+          await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'not_found' });
+        }
+        clearFailure(item.id);
+      } else if (status === 400 || status === 422) {
+        // [BACKUP] 2026-08-23 — 400/422 previously fell through to recordFailure()
+        // (backoff retry). A validation error is permanent: the queued payload is
+        // byte-identical on every attempt, so the item stayed poisoned in the queue
+        // and retried forever (observed in prod: a kanban card whose title exceeded
+        // the backend's 500-char cap). Mark it 'failed' immediately so
+        // SyncStatusIndicator surfaces it instead of looping silently.
+        console.error('Sync Push: validation rejected by server, marking failed:', item.entity, item.entityId, error);
+        if (item.id) {
+          await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'validation' });
+        }
+        clearFailure(item.id);
+      } else if (status === 403) {
+        // Forbidden is permanent (insufficient permission) — retrying will never
+        // succeed. Mark the item 'failed' IMMEDIATELY (instead of ~5 backoff
+        // retries over ~10 min) so SyncStatusIndicator surfaces it to the user
+        // right away (error toast + retry banner) rather than failing silently.
+        console.error('Sync Push: forbidden (permission denied), marking failed:', item.entity, item.entityId);
+        if (item.id) {
+          await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'forbidden' });
+        }
+        clearFailure(item.id);
+      } else if (!(error as { response?: unknown })?.response) {
+        // Transport failure: the request never got a reply at all (network
+        // drop, DNS failure, timeout) — not the server rejecting this
+        // item's payload. Don't burn a retry attempt on it (recordFailure
+        // is for the server saying no, not for the network being gone),
+        // and stop the whole run instead of walking the rest of the queue:
+        // every item after this one would fail the exact same way for a
+        // reason that belongs to none of them. The next syncPush call
+        // (periodic retry, or the next local write) starts over from here.
+        if (item.id) {
+          const since = transportFailureSince.get(item.id) ?? Date.now();
+          transportFailureSince.set(item.id, since);
+          if (Date.now() - since >= TRANSPORT_FAILURE_CEILING_MS) {
+            // Stuck for ~10 real minutes, not just N attempts — surface it
+            // the same way a genuine server rejection does (status:
+            // 'failed' lights up SyncStatusIndicator's red banner + retry
+            // button; retryFailedSyncItems re-enables it), without ever
+            // touching `attempts`, which stays reserved for real rejections.
+            console.error('Sync Push: transport failure persisted past the 10min ceiling, marking failed:', item.entity, item.entityId);
+            await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'network' });
+            transportFailureSince.delete(item.id);
+          }
+        }
+        console.error('Sync Push: transport failure, stopping run:', item.entity, item.entityId, error);
+        break;
+      } else {
+        await recordFailure(item, error);
+        console.error('Sync Push Failed for item:', item, error);
+      }
     }
   }
+
+  return pushedAny;
 };
 
 /**

@@ -325,36 +325,9 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
     return { shared: results.length, errors };
   });
 
-  // Get Accepted Shared Kanban Boards (for sync)
-  fastify.get('/kanbans/accepted', async (request) => {
-    const shares = await prisma.sharedKanbanBoard.findMany({
-      where: { userId: request.user.id, status: 'ACCEPTED' },
-      include: {
-        board: {
-          include: {
-            owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
-            columns: {
-              orderBy: [{ position: 'asc' }, { id: 'asc' }],
-              include: {
-                cards: {
-                  orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-                  include: {
-                    assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
-                    _count: { select: { comments: true } },
-                  },
-                },
-              },
-            },
-            _count: { select: { columns: true } },
-          },
-        },
-      },
-    });
-    return shares.map(s => ({
-      ...s.board,
-      _sharedPermission: s.permission,
-    }));
-  });
+  // [BACKUP] 2026-09-29 — kanban 3.6: removed GET /kanbans/accepted (accepted shares with
+  // the full columns → cards tree, archived cards included). Its only caller was the
+  // frontend sync, which now takes shared boards from GET /kanban/boards (listBoards).
 
   // Get Shared Kanban Boards — the invitation inbox, so PENDING belongs here.
   // [BACKUP] 2026-09-02 — the comment said "(all statuses)" and the query meant it.
