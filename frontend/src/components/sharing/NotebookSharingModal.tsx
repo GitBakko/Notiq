@@ -14,7 +14,7 @@ interface SharedUser {
   email: string;
   avatarUrl?: string | null;
   permission: 'READ' | 'WRITE';
-  status?: 'ACCEPTED' | 'PENDING';
+  status?: 'ACCEPTED' | 'PENDING' | 'DECLINED';
 }
 
 interface NotebookSharingModalProps {

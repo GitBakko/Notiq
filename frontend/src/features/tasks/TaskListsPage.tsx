@@ -34,7 +34,7 @@ export default function TaskListsPage() {
     : null;
   const viewSharesUsers: SharedUserInfo[] = viewSharesTaskList?.sharedWith
     ?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING')
-    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status as 'ACCEPTED' | 'PENDING' })) || [];
+    .map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status })) || [];
   const viewSharesOwner: SharedOwnerInfo | null = viewSharesTaskList
     ? (viewSharesTaskList.sharedByUser
         ? { id: viewSharesTaskList.sharedByUser.id, name: viewSharesTaskList.sharedByUser.name, email: viewSharesTaskList.sharedByUser.email, avatarUrl: viewSharesTaskList.sharedByUser.avatarUrl }
@@ -126,7 +126,7 @@ export default function TaskListsPage() {
                 email: s.user.email,
                 avatarUrl: s.user.avatarUrl,
                 permission: s.permission,
-                status: s.status as 'ACCEPTED' | 'PENDING',
+                status: s.status,
               })) || []
           }
         />
