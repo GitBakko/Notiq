@@ -4,6 +4,7 @@ import {
   addConnection,
   broadcast,
   disconnectUser,
+  disconnectBoard,
   disconnectUserFromAllBoards,
   getPresenceUsers,
 } from '../kanbanSSE';
@@ -528,6 +529,32 @@ describe('disconnectUser', () => {
 
   it('does nothing for a board with no connections', () => {
     expect(() => disconnectUser('board-none', 'user-x')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// disconnectBoard (4.4)
+// ---------------------------------------------------------------------------
+describe('disconnectBoard', () => {
+  it('ends every connection on the board and leaves other boards alone', () => {
+    const a = createMockResponse();
+    const b = createMockResponse();
+    const elsewhere = createMockResponse();
+
+    addConnection('board-gone', a as any, createUser('user-a'));
+    addConnection('board-gone', b as any, createUser('user-b'));
+    addConnection('board-alive', elsewhere as any, createUser('user-a'));
+
+    disconnectBoard('board-gone');
+
+    expect(a.end).toHaveBeenCalled();
+    expect(b.end).toHaveBeenCalled();
+    expect(elsewhere.end).not.toHaveBeenCalled();
+    expect(getPresenceUsers('board-gone')).toHaveLength(0);
+  });
+
+  it('does nothing for a board with no connections', () => {
+    expect(() => disconnectBoard('board-none')).not.toThrow();
   });
 });
 

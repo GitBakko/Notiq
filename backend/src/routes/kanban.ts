@@ -5,7 +5,7 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 import * as kanbanService from '../services/kanban/index';
 import { assertBoardAccess, getColumnWithAccess, getCardWithAccess } from '../services/kanbanPermissions';
-import { addConnection } from '../services/kanbanSSE';
+import { addConnection, broadcast } from '../services/kanbanSSE';
 import { ForbiddenError } from '../utils/errors';
 import prisma from '../plugins/prisma';
 import { UPLOADS_DIR, extensionForImageMime, resolveUploadPath } from '../utils/uploadPaths';
@@ -148,7 +148,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     await assertBoardAccess(id, request.user.id, 'WRITE');
     const data = updateBoardSchema.parse(request.body);
-    return await kanbanService.updateBoard(id, data);
+    return await kanbanService.updateBoard(id, data, request.user.id);
   });
 
   fastify.delete('/boards/:id', async (request, reply) => {
@@ -214,6 +214,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       data: { coverImage: coverUrl },
     });
+    broadcast(id, { type: 'board:updated', boardId: id, actorId: request.user.id }); // 4.4
 
     return { coverImage: coverUrl };
   });
@@ -235,6 +236,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       data: { coverImage: null },
     });
+    broadcast(id, { type: 'board:updated', boardId: id, actorId: request.user.id }); // 4.4
 
     return { success: true };
   });
@@ -292,6 +294,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       data: { avatarUrl },
     });
+    broadcast(id, { type: 'board:updated', boardId: id, actorId: request.user.id }); // 4.4
 
     return { avatarUrl };
   });
@@ -313,6 +316,7 @@ export default async function kanbanRoutes(fastify: FastifyInstance) {
       where: { id },
       data: { avatarUrl: null },
     });
+    broadcast(id, { type: 'board:updated', boardId: id, actorId: request.user.id }); // 4.4
 
     return { success: true };
   });

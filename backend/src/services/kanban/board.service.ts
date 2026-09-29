@@ -4,6 +4,7 @@ import { cardWithNoteSelect, transformCard, accessibleNoteIds } from './helpers'
 import fs from 'fs';
 import logger from '../../utils/logger';
 import { resolveUploadPath } from '../../utils/uploadPaths';
+import { broadcast, disconnectBoard } from '../kanbanSSE';
 
 // ─── Board CRUD ─────────────────────────────────────────────
 
@@ -254,9 +255,10 @@ export async function getBoard(boardId: string, requestingUserId: string) {
 
 export async function updateBoard(
   boardId: string,
-  data: { title?: string; description?: string | null }
+  data: { title?: string; description?: string | null },
+  actorId?: string
 ) {
-  return prisma.kanbanBoard.update({
+  const updated = await prisma.kanbanBoard.update({
     where: { id: boardId },
     data,
     include: {
@@ -274,6 +276,9 @@ export async function updateBoard(
       // asking. The title still reaches everyone entitled to it through getBoard.
     },
   });
+  // 4.4: other viewers used to see a rename only on their next refetch.
+  broadcast(boardId, { type: 'board:updated', boardId, actorId });
+  return updated;
 }
 
 export async function deleteBoard(boardId: string) {
@@ -287,6 +292,8 @@ export async function deleteBoard(boardId: string) {
   });
 
   const deleted = await prisma.kanbanBoard.delete({ where: { id: boardId } });
+  // 4.4: close the board's open streams now rather than at the next heartbeat tick.
+  disconnectBoard(boardId);
 
   for (const url of [board?.coverImage, board?.avatarUrl]) {
     const filepath = resolveUploadPath(url);

@@ -47,6 +47,7 @@ vi.mock('../../services/kanbanPermissions', () => ({
 
 vi.mock('../../services/kanbanSSE', () => ({
   addConnection: vi.fn(),
+  broadcast: vi.fn(),
 }));
 
 vi.mock('../../plugins/prisma', () => ({
@@ -65,6 +66,8 @@ import * as kanbanService from '../../services/kanban/index';
 import * as kanbanPermissions from '../../services/kanbanPermissions';
 import { AppError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import kanbanRoutes from '../kanban';
+import * as kanbanSSE from '../../services/kanbanSSE';
+import prisma from '../../plugins/prisma';
 
 const mockKanbanService = kanbanService as any;
 const mockPermissions = kanbanPermissions as any;
@@ -238,6 +241,8 @@ describe('PUT /api/kanban/boards/:id', () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(updated);
     expect(mockPermissions.assertBoardAccess).toHaveBeenCalledWith('board-1', TEST_USER.id, 'WRITE');
+    // 4.4: the actor rides along so its own echo can be told apart.
+    expect(mockKanbanService.updateBoard).toHaveBeenCalledWith('board-1', { title: 'Updated' }, TEST_USER.id);
   });
 
   it('returns 400 with description exceeding 2000 characters', async () => {
@@ -277,6 +282,23 @@ describe('DELETE /api/kanban/boards/:id', () => {
 
     expect(res.statusCode).toBe(403);
     expect(JSON.parse(res.payload).message).toBe('errors.kanban.onlyOwnerCanDelete');
+  });
+});
+
+// 4.4 — cover and avatar writes changed the board for everyone but told no one.
+describe('DELETE /api/kanban/boards/:id/cover and /avatar', () => {
+  it.each(['cover', 'avatar'])('broadcasts board:updated after removing the %s', async (what) => {
+    (prisma as any).kanbanBoard.findUnique.mockResolvedValue({ coverImage: null, avatarUrl: null });
+    (prisma as any).kanbanBoard.update.mockResolvedValue({});
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/kanban/boards/board-1/${what}`,
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(kanbanSSE.broadcast).toHaveBeenCalledWith('board-1', { type: 'board:updated', boardId: 'board-1', actorId: TEST_USER.id });
   });
 });
 
