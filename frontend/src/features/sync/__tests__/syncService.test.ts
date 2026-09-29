@@ -918,6 +918,34 @@ describe('syncPull', () => {
       expect(mockApi.get).toHaveBeenCalledWith('/tags');
       expect(mockApi.get).toHaveBeenCalledWith('/notes?includeTrashed=true');
     });
+
+    // Kanban 3.7: notebooks, tags and notes used to share the outer try, so one
+    // failing endpoint skipped the rest of the pull — kanban prune included.
+    it.each(['/notebooks', '/tags', '/notes?includeTrashed=true'])(
+      'still reaches every other section and the kanban prune when %s throws',
+      async (failing) => {
+        mockApi.get.mockImplementation((url: string) =>
+          url === failing ? Promise.reject(new Error('boom')) : Promise.resolve({ data: [] }),
+        );
+
+        mockDb.notes.toArray.mockResolvedValue([]);
+        mockDb.syncQueue.toArray.mockResolvedValue([]);
+        mockDb.notes.bulkGet.mockResolvedValue([]);
+
+        await expect(syncPull()).resolves.toEqual([]);
+
+        for (const url of [
+          '/notebooks',
+          '/tags',
+          '/notes?includeTrashed=true',
+          '/share/notes/accepted',
+          '/tasklists',
+          '/kanban/boards',
+        ]) {
+          expect(mockApi.get).toHaveBeenCalledWith(url);
+        }
+      },
+    );
   });
 });
 

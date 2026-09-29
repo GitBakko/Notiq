@@ -26,146 +26,161 @@ export const syncPull = async () => {
     const currentUserId = useAuthStore.getState().user?.id;
     if (!currentUserId) return prunedBoardIds; // Cannot sync if not logged in
 
-    // Pull Notebooks
-    const notebooksRes = await api.get<Notebook[]>('/notebooks');
-    await db.transaction('rw', db.notebooks, db.syncQueue, async () => {
-      const dirtyNotebooks = await db.notebooks.where('syncStatus').notEqual('synced').toArray();
-      const dirtyIds = new Set(dirtyNotebooks.map(n => n.id));
+    try {
+      // Pull Notebooks
+      const notebooksRes = await api.get<Notebook[]>('/notebooks');
+      await db.transaction('rw', db.notebooks, db.syncQueue, async () => {
+        const dirtyNotebooks = await db.notebooks.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyNotebooks.map(n => n.id));
 
-      const serverNotebooks = notebooksRes.data.map(n => ({
-        ...n,
-        syncStatus: 'synced' as const
-      }));
+        const serverNotebooks = notebooksRes.data.map(n => ({
+          ...n,
+          syncStatus: 'synced' as const
+        }));
 
-      // Zombie prevention (mirrors the notes pull): a locally-deleted notebook with
-      // a pending DELETE in the queue must not be resurrected by the server response.
-      const pendingDeletes = await db.syncQueue
-        .where('entity').equals('NOTEBOOK')
-        .and(item => item.type === 'DELETE')
-        .toArray();
-      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+        // Zombie prevention (mirrors the notes pull): a locally-deleted notebook with
+        // a pending DELETE in the queue must not be resurrected by the server response.
+        const pendingDeletes = await db.syncQueue
+          .where('entity').equals('NOTEBOOK')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
 
-      const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id) && !pendingDeleteIds.has(n.id));
+        const notebooksToPut = serverNotebooks.filter(n => !dirtyIds.has(n.id) && !pendingDeleteIds.has(n.id));
 
-      const allLocalSyncedNotebooks = await db.notebooks.where('syncStatus').equals('synced').toArray();
-      const serverIds = new Set(serverNotebooks.map(n => n.id));
-      const toDeleteIds = allLocalSyncedNotebooks
-        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
-        .map(n => n.id);
+        const allLocalSyncedNotebooks = await db.notebooks.where('syncStatus').equals('synced').toArray();
+        const serverIds = new Set(serverNotebooks.map(n => n.id));
+        const toDeleteIds = allLocalSyncedNotebooks
+          .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+          .map(n => n.id);
 
-      await db.notebooks.bulkDelete(toDeleteIds);
-      await db.notebooks.bulkPut(notebooksToPut);
-    });
+        await db.notebooks.bulkDelete(toDeleteIds);
+        await db.notebooks.bulkPut(notebooksToPut);
+      });
+    } catch (e) {
+      // Each of the first three sections gets its own try, like the ones below:
+      // a failing endpoint must not skip the rest of the pull — in particular the
+      // kanban prune that removes deleted and revoked boards.
+      console.error('Sync Pull Notebooks Failed:', e);
+    }
 
-    // Pull Tags
-    const tagsRes = await api.get<Tag[]>('/tags');
-    await db.transaction('rw', db.tags, db.syncQueue, async () => {
-      const dirtyTags = await db.tags.where('syncStatus').notEqual('synced').toArray();
-      const dirtyIds = new Set(dirtyTags.map(t => t.id));
+    try {
+      // Pull Tags
+      const tagsRes = await api.get<Tag[]>('/tags');
+      await db.transaction('rw', db.tags, db.syncQueue, async () => {
+        const dirtyTags = await db.tags.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyTags.map(t => t.id));
 
-      const serverTags = tagsRes.data.map(t => ({
-        ...t,
-        // userId should come from server. If not, use 'current-user' as fallback?
-        // Actually, backend returns userId.
-        syncStatus: 'synced' as const
-      }));
+        const serverTags = tagsRes.data.map(t => ({
+          ...t,
+          // userId should come from server. If not, use 'current-user' as fallback?
+          // Actually, backend returns userId.
+          syncStatus: 'synced' as const
+        }));
 
-      // Zombie prevention (mirrors the notes pull): a locally-deleted tag with a
-      // pending DELETE in the queue must not be resurrected by the server response.
-      const pendingDeletes = await db.syncQueue
-        .where('entity').equals('TAG')
-        .and(item => item.type === 'DELETE')
-        .toArray();
-      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+        // Zombie prevention (mirrors the notes pull): a locally-deleted tag with a
+        // pending DELETE in the queue must not be resurrected by the server response.
+        const pendingDeletes = await db.syncQueue
+          .where('entity').equals('TAG')
+          .and(item => item.type === 'DELETE')
+          .toArray();
+        const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
 
-      const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id) && !pendingDeleteIds.has(t.id));
+        const tagsToPut = serverTags.filter(t => !dirtyIds.has(t.id) && !pendingDeleteIds.has(t.id));
 
-      const allLocalSyncedTags = await db.tags.where('syncStatus').equals('synced').toArray();
-      const serverIds = new Set(serverTags.map(t => t.id));
-      const toDeleteIds = allLocalSyncedTags
-        .filter(t => !serverIds.has(t.id) && !pendingDeleteIds.has(t.id))
-        .map(t => t.id);
+        const allLocalSyncedTags = await db.tags.where('syncStatus').equals('synced').toArray();
+        const serverIds = new Set(serverTags.map(t => t.id));
+        const toDeleteIds = allLocalSyncedTags
+          .filter(t => !serverIds.has(t.id) && !pendingDeleteIds.has(t.id))
+          .map(t => t.id);
 
-      await db.tags.bulkDelete(toDeleteIds);
-      await db.tags.bulkPut(tagsToPut);
-    });
+        await db.tags.bulkDelete(toDeleteIds);
+        await db.tags.bulkPut(tagsToPut);
+      });
+    } catch (e) {
+      console.error('Sync Pull Tags Failed:', e);
+    }
 
-    // Pull Notes
-    const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
-    await db.transaction('rw', db.notes, db.syncQueue, async () => {
-      // We need to be careful not to overwrite dirty notes
-      // For MVP, let's just overwrite everything that is 'synced'
-      // But wait, if we clear, we lose dirty notes.
-      // Better: Get all dirty notes IDs.
-      const dirtyNotes = await db.notes.where('syncStatus').notEqual('synced').toArray();
-      const dirtyIds = new Set(dirtyNotes.map(n => n.id));
+    try {
+      // Pull Notes
+      const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
+      await db.transaction('rw', db.notes, db.syncQueue, async () => {
+        // We need to be careful not to overwrite dirty notes
+        // For MVP, let's just overwrite everything that is 'synced'
+        // But wait, if we clear, we lose dirty notes.
+        // Better: Get all dirty notes IDs.
+        const dirtyNotes = await db.notes.where('syncStatus').notEqual('synced').toArray();
+        const dirtyIds = new Set(dirtyNotes.map(n => n.id));
 
-      const serverNotes = notesRes.data.map(n => ({
-        ...n,
-        tags: n.tags || [], // Ensure array
-        attachments: n.attachments || [], // Ensure array
-        ownership: 'owned' as const,
-        sharedPermission: null,
-        sharedByUser: null,
-        syncStatus: 'synced' as const
-      }));
+        const serverNotes = notesRes.data.map(n => ({
+          ...n,
+          tags: n.tags || [], // Ensure array
+          attachments: n.attachments || [], // Ensure array
+          ownership: 'owned' as const,
+          sharedPermission: null,
+          sharedByUser: null,
+          syncStatus: 'synced' as const
+        }));
 
-      // Filter out server notes that conflict with local dirty notes (local wins temporarily until push)
-      const notesToPut = serverNotes.filter(n => !dirtyIds.has(n.id));
+        // Filter out server notes that conflict with local dirty notes (local wins temporarily until push)
+        const notesToPut = serverNotes.filter(n => !dirtyIds.has(n.id));
 
-      // CRITICAL FIX: ZOMBIE RESURRECTION
-      // We must check if any of these "server notes" are actually queued for DELETION locally.
-      // If a note is in serverNotes but we have a pending DELETE in syncQueue, we MUST NOT re-insert it.
-      // The `dirtyIds` check handles UPDATEs (where syncStatus='updated'), but hard deletes use DELETE queue type
-      // and checking db.notes might fail if it was already deleted.
+        // CRITICAL FIX: ZOMBIE RESURRECTION
+        // We must check if any of these "server notes" are actually queued for DELETION locally.
+        // If a note is in serverNotes but we have a pending DELETE in syncQueue, we MUST NOT re-insert it.
+        // The `dirtyIds` check handles UPDATEs (where syncStatus='updated'), but hard deletes use DELETE queue type
+        // and checking db.notes might fail if it was already deleted.
 
-      const pendingDeletes = await db.syncQueue
-        .where('entity').equals('NOTE')
-        .and(item => item.type === 'DELETE')
-        .toArray();
+        const pendingDeletes = await db.syncQueue
+          .where('entity').equals('NOTE')
+          .and(item => item.type === 'DELETE')
+          .toArray();
 
-      const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
+        const pendingDeleteIds = new Set(pendingDeletes.map(i => i.entityId));
 
-      const filteredNotesToPut = notesToPut.filter(n => !pendingDeleteIds.has(n.id));
+        const filteredNotesToPut = notesToPut.filter(n => !pendingDeleteIds.has(n.id));
 
-      // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
-      // Exclude shared notes — they are managed by the shared notes pull block below.
-      const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced')
-        .filter(n => n.ownership !== 'shared').toArray();
-      // Self-Healing Strategy:
-      // If we have local notes that are 'synced' but missing from the server, 
-      // instead of deleting them locally, we should assume the server lost them and re-push.
-      // This protects against accidental server wipes and "disappearing notes".
+        // We also need to handle deletions. If a note is in DB but not in serverNotes, and it's synced, delete it.
+        // Exclude shared notes — they are managed by the shared notes pull block below.
+        const allLocalSyncedNotes = await db.notes.where('syncStatus').equals('synced')
+          .filter(n => n.ownership !== 'shared').toArray();
+        // Self-Healing Strategy:
+        // If we have local notes that are 'synced' but missing from the server, 
+        // instead of deleting them locally, we should assume the server lost them and re-push.
+        // This protects against accidental server wipes and "disappearing notes".
 
-      const serverIds = new Set(serverNotes.map(n => n.id));
-      // Notes missing from server are considered deleted — remove from local DB
-      const toDeleteIds = allLocalSyncedNotes
-        .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
-        .map(n => n.id);
+        const serverIds = new Set(serverNotes.map(n => n.id));
+        // Notes missing from server are considered deleted — remove from local DB
+        const toDeleteIds = allLocalSyncedNotes
+          .filter(n => !serverIds.has(n.id) && !pendingDeleteIds.has(n.id))
+          .map(n => n.id);
 
-      if (toDeleteIds.length > 0) {
-        await db.notes.bulkDelete(toDeleteIds);
-      }
-
-      // Preserve local 'content' field: GET /notes doesn't return it to keep responses lightweight.
-      // Without this, bulkPut would wipe content (critical for encrypted vault/credential notes).
-      const existingNoteIds = filteredNotesToPut.map(n => n.id);
-      const existingNotes = await db.notes.bulkGet(existingNoteIds);
-      const localContentMap = new Map<string, string>();
-      for (const existing of existingNotes) {
-        if (existing?.content) {
-          localContentMap.set(existing.id, existing.content);
+        if (toDeleteIds.length > 0) {
+          await db.notes.bulkDelete(toDeleteIds);
         }
-      }
 
-      const notesWithPreservedContent = filteredNotesToPut.map(n => ({
-        ...n,
-        content: n.content ?? localContentMap.get(n.id) ?? '',
-      }));
+        // Preserve local 'content' field: GET /notes doesn't return it to keep responses lightweight.
+        // Without this, bulkPut would wipe content (critical for encrypted vault/credential notes).
+        const existingNoteIds = filteredNotesToPut.map(n => n.id);
+        const existingNotes = await db.notes.bulkGet(existingNoteIds);
+        const localContentMap = new Map<string, string>();
+        for (const existing of existingNotes) {
+          if (existing?.content) {
+            localContentMap.set(existing.id, existing.content);
+          }
+        }
 
-      // Update local DB with server notes (wins over synced)
-      await db.notes.bulkPut(notesWithPreservedContent);
-    });
+        const notesWithPreservedContent = filteredNotesToPut.map(n => ({
+          ...n,
+          content: n.content ?? localContentMap.get(n.id) ?? '',
+        }));
+
+        // Update local DB with server notes (wins over synced)
+        await db.notes.bulkPut(notesWithPreservedContent);
+      });
+    } catch (e) {
+      console.error('Sync Pull Notes Failed:', e);
+    }
 
     // Pull Shared Notes (ACCEPTED only)
     try {
