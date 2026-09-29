@@ -159,14 +159,14 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | **tutti e quattro corretti** `164baf6`, insieme a N4 |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
 | **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
-| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | aperto |
+| **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | **corretto** `c77ed19` |
 | **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**, **N5 corretto** `8da3123` |
 | **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | P1 **corretto** `671fa94`; P2, P3, P4 aperti |
 | **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | aperto |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Ventiquattro corretti, sette aperti** (C2, C5, D1, G1, P2, P3, P4). Il conteggio e' cresciuto
+**Venticinque corretti, sei aperti** (C2, C5, G1, P2, P3, P4). Il conteggio e' cresciuto
 chiudendo N5: tracciarlo ha trovato quattro scritture della stessa famiglia, e **P1 e' piu'
 raggiungibile di N5 stesso**.
 
@@ -746,6 +746,8 @@ manifestano solo se si costruisce davvero l'ambiente da zero.
   "utenti attivi" della dashboard admin conta in realtà gli utenti **registrati** negli ultimi 30
   giorni (`admin.service.ts:39-45`). Correzione: spostare il touch dentro il decorator `authenticate`
   subito dopo `jwtVerify()`.
+  **CORRETTO** `c77ed19`: il touch (estratto in `utils/lastActive.ts`) gira nel decorator
+  `authenticate` dopo il controllo `tokenVersion`, cosi' un token invalidato non conta come attivita'.
 
 ---
 
