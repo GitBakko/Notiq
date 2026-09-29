@@ -167,12 +167,18 @@ export const DEFAULT_COLUMN_KEYS: Record<string, string> = {
   DONE: 'kanban.column.done',
 };
 
+/** Cards travel over SSE without `note`: the backend's broadcast strips it (stripNote, B3). */
+export type KanbanSSECard = Omit<KanbanCard, 'note'>;
+
+// Mirrors backend/src/services/kanbanSSE.ts KanbanEventBody (4.6), plus the client-only
+// `connected` frame the events route writes on every (re)connection.
 export type KanbanSSEEventBody =
   | { type: 'connected' }
   | { type: 'card:moved'; boardId: string; cardId: string; toColumnId: string; position: number }
-  | { type: 'card:created'; boardId: string; card: KanbanCard }
-  | { type: 'card:updated'; boardId: string; card: KanbanCard }
+  | { type: 'card:created'; boardId: string; card: KanbanSSECard }
+  | { type: 'card:updated'; boardId: string; card: KanbanSSECard }
   | { type: 'card:deleted'; boardId: string; cardId: string }
+  | { type: 'card:unarchived'; boardId: string; cardId: string }
   | { type: 'column:created'; boardId: string; column: KanbanColumn }
   | { type: 'column:updated'; boardId: string; column: KanbanColumn }
   | { type: 'column:deleted'; boardId: string; columnId: string }
@@ -180,6 +186,7 @@ export type KanbanSSEEventBody =
   | { type: 'comment:added'; boardId: string; cardId: string; comment: KanbanComment }
   | { type: 'comment:deleted'; boardId: string; cardId: string; commentId: string }
   | { type: 'chat:message'; boardId: string; message: KanbanBoardChatMessage }
+  | { type: 'board:updated'; boardId: string }
   | { type: 'presence:update'; boardId: string; users: BoardPresenceUser[] };
 
 /** `actorId` = the user who caused the event (set by the backend's `broadcast`, 4.1). */

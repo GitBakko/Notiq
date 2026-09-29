@@ -44,7 +44,12 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
       } else if (event.type === 'chat:message') {
         queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boardChat(boardId!) });
       } else if (event.type === 'connected') {
-        // No action needed
+        // Every (re)connection starts here. Whatever changed while the stream was down
+        // never arrives as an event, so refetch the board to catch up (4.5). On the first
+        // connection this is one extra GET, accepted.
+        queryClient.invalidateQueries({ queryKey: queryKeys.kanban.board(boardId!) });
+        // Same for the board chat, which no longer polls (5.3).
+        queryClient.invalidateQueries({ queryKey: queryKeys.kanban.boardChat(boardId!) });
       } else {
         // Highlight moved cards with a 2s pulse — only other people's moves.
         // 4.2 + C2: actorId identifies a user, not a tab or device, so the echo of one's
@@ -226,7 +231,8 @@ async function updateDexieFromSSE(event: KanbanSSEEvent, boardId: string): Promi
         priority: card.priority,
         noteId: card.noteId,
         noteLinkedById: card.noteLinkedById,
-        note: card.note,
+        // SSE cards carry no `note` (stripNote): a new card has none linked yet.
+        note: null,
         commentCount: card.commentCount,
         createdAt: card.createdAt,
         updatedAt: card.updatedAt,
@@ -252,7 +258,9 @@ async function updateDexieFromSSE(event: KanbanSSEEvent, boardId: string): Promi
         priority: card.priority,
         noteId: card.noteId,
         noteLinkedById: card.noteLinkedById,
-        note: card.note,
+        // SSE cards carry no `note` (stripNote): keep the one already in Dexie while the
+        // card still points at the same note; a relink is resolved by the board refetch.
+        note: local && local.noteId === card.noteId ? local.note : null,
         commentCount: card.commentCount,
         createdAt: card.createdAt,
         updatedAt: card.updatedAt,

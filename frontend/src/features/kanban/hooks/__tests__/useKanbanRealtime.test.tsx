@@ -316,3 +316,92 @@ describe('useKanbanRealtime own echo', () => {
     });
   });
 });
+
+// 4.5 — every (re)connection starts with `connected`. Anything moved, created or deleted
+// while the stream was down never arrives as an event: refetch the board to catch up.
+describe('useKanbanRealtime reconnect catch-up (4.5)', () => {
+  it('invalidates the board query when the stream (re)connects', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'connected' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-1'] });
+    });
+  });
+
+  it('also refetches the board chat, which no longer polls (5.3)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'connected' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board-chat', 'board-1'] });
+    });
+  });
+});
+
+// 4.6 — the backend strips `note` from every card event (stripNote, B3), but the frontend
+// typed card:created/updated as a full KanbanCard and wrote `note: card.note` — i.e.
+// undefined — into Dexie, wiping the linked note of an already-synced card until the
+// next board refetch.
+describe('useKanbanRealtime card events without note (4.6)', () => {
+  const sseCard = {
+    id: 'card-1', title: 'T', description: null, position: 0, columnId: 'col-1',
+    assigneeId: null, assignee: null, dueDate: null, priority: null,
+    noteId: 'note-1', noteLinkedById: 'u-1', commentCount: 0,
+    createdAt: '2026-09-29T10:00:00.000Z', updatedAt: '2026-09-29T10:00:00.000Z',
+  };
+
+  it('keeps the linked note already in Dexie on card:updated', async () => {
+    mockDb.kanbanCards.get.mockResolvedValueOnce({
+      ...sseCard, boardId: 'board-1', syncStatus: 'synced',
+      note: { id: 'note-1', title: 'Linked note', userId: 'u-1' },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:updated', boardId: 'board-1', card: sseCard, actorId: 'user-2' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => expect(mockDb.kanbanCards.put).toHaveBeenCalled());
+    expect(mockDb.kanbanCards.put).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'card-1', note: { id: 'note-1', title: 'Linked note', userId: 'u-1' },
+    }));
+  });
+
+  it('does not keep a stale note when the card was linked to a different note', async () => {
+    mockDb.kanbanCards.get.mockResolvedValueOnce({
+      ...sseCard, noteId: 'note-OLD', boardId: 'board-1', syncStatus: 'synced',
+      note: { id: 'note-OLD', title: 'Old note', userId: 'u-1' },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:updated', boardId: 'board-1', card: sseCard, actorId: 'user-2' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => expect(mockDb.kanbanCards.put).toHaveBeenCalled());
+    expect(mockDb.kanbanCards.put).toHaveBeenCalledWith(expect.objectContaining({ id: 'card-1', note: null }));
+  });
+
+  it('writes note: null, not undefined, on card:created', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:created', boardId: 'board-1', card: sseCard, actorId: 'user-2' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => expect(mockDb.kanbanCards.put).toHaveBeenCalled());
+    expect(mockDb.kanbanCards.put).toHaveBeenCalledWith(expect.objectContaining({ id: 'card-1', note: null }));
+  });
+});

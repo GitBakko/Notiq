@@ -1,5 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import prisma from '../../../plugins/prisma'; // Auto-mocked by setup.ts
+import fs from 'fs';
+import path from 'path';
+import { UPLOADS_DIR } from '../../../utils/uploadPaths';
+
+// Mock only the two fs calls deleteBoard makes; everything else stays real.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    default: { ...actual, existsSync: vi.fn(), unlinkSync: vi.fn() },
+    existsSync: vi.fn(),
+    unlinkSync: vi.fn(),
+  };
+});
 
 // Mock sibling services used by board.service.ts
 vi.mock('../helpers', async (importOriginal) => {
@@ -513,6 +527,49 @@ describe('board.service', () => {
       await expect(deleteBoard('nonexistent')).rejects.toThrow(
         'Record to delete does not exist.'
       );
+    });
+
+    // 6.3 — the cover/avatar files outlived their board forever: they sit under
+    // uploads/kanban/, are served without authentication, and pruneAttachments only
+    // knows the Attachment table.
+    it('unlinks the cover and avatar files from disk after deleting the row', async () => {
+      const board = makeKanbanBoard({
+        coverImage: '/uploads/kanban/cover-1.png',
+        avatarUrl: '/uploads/kanban/avatars/avatar-1.webp',
+      });
+      m(fs.existsSync).mockReturnValue(true);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue({
+        coverImage: board.coverImage,
+        avatarUrl: board.avatarUrl,
+      } as never);
+      m(prisma.kanbanBoard.delete).mockResolvedValue(board);
+
+      await deleteBoard(board.id);
+
+      expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(UPLOADS_DIR, 'kanban', 'cover-1.png'));
+      expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(UPLOADS_DIR, 'kanban', 'avatars', 'avatar-1.webp'));
+      expect(fs.unlinkSync).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not touch the disk when the board has no cover and no avatar', async () => {
+      const board = makeKanbanBoard();
+      m(fs.existsSync).mockReturnValue(true);
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue({ coverImage: null, avatarUrl: null } as never);
+      m(prisma.kanbanBoard.delete).mockResolvedValue(board);
+
+      await deleteBoard(board.id);
+
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it('still succeeds when a file cannot be removed (the row is already gone)', async () => {
+      const board = makeKanbanBoard({ coverImage: '/uploads/kanban/cover-1.png' });
+      m(fs.existsSync).mockReturnValue(true);
+      m(fs.unlinkSync).mockImplementation(() => { throw new Error('EBUSY'); });
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue({ coverImage: board.coverImage, avatarUrl: null } as never);
+      m(prisma.kanbanBoard.delete).mockResolvedValue(board);
+
+      await expect(deleteBoard(board.id)).resolves.toMatchObject({ id: board.id });
     });
   });
 
