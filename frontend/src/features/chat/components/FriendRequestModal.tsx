@@ -94,7 +94,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
   });
 
   const { data: pendingRequests = [] } = useQuery({
-    queryKey: ['chat', 'pendingRequests'],
+    queryKey: queryKeys.friends.pendingRequests,
     queryFn: getPendingRequests,
     enabled: isOpen,
     refetchInterval: 30000, // una richiesta in arrivo e' azione altrui: vedi sopra
@@ -118,7 +118,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
     withLoading(userId, async () => {
       await sendFriendRequest(userId);
       toast.success(t('friends.requestSent'));
-      queryClient.invalidateQueries({ queryKey: ['chat', 'sentRequests'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.friends.sentRequests });
       queryClient.invalidateQueries({ queryKey: ['chat', 'friendSuggestions'] });
     });
 

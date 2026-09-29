@@ -64,8 +64,8 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
 
   // Helper to detect theme (simple version)
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  const [prevMessageCount, setPrevMessageCount] = useState(0);
-  const isInitializedRef = useRef(false);
+  // Newest message seen so far (createdAt, ISO). Undefined until the first load.
+  const lastSeenAtRef = useRef<string | null | undefined>(undefined);
 
   // Fetch messages
   const { data: messages = [], isLoading } = useQuery({
@@ -79,24 +79,26 @@ export default function ChatSidebar({ noteId, isOpen, onClose, currentUser, onNe
   });
 
   // Sound and Notification Logic
+  // [BACKUP] 2026-09-29 — compared messages.length with the previous length. The endpoint
+  // serves the latest 100 messages, so past 100 a new message pushes the oldest out and
+  // the length stays 100: no sound, no badge. Compare the newest createdAt instead (this
+  // also ignores deleting an older message, which shrank the list without anything new).
+  const latestAt = messages.length > 0 ? messages[messages.length - 1].createdAt : null;
   useEffect(() => {
     if (isLoading) return;
 
-    if (!isInitializedRef.current) {
-      setPrevMessageCount(messages.length);
-      isInitializedRef.current = true;
-      return;
-    }
+    const previous = lastSeenAtRef.current;
+    lastSeenAtRef.current = latestAt;
+    if (previous === undefined) return; // first load: nothing is "new"
 
-    if (messages.length > prevMessageCount) {
+    if (latestAt && (!previous || new Date(latestAt).getTime() > new Date(previous).getTime())) {
       playNotificationSound();
 
       if (!isOpen && onNewMessage) {
         onNewMessage();
       }
     }
-    setPrevMessageCount(messages.length);
-  }, [messages.length, isOpen, onNewMessage, prevMessageCount, isLoading]);
+  }, [latestAt, isOpen, onNewMessage, isLoading]);
 
   // Send message
   const sendMutation = useMutation({
