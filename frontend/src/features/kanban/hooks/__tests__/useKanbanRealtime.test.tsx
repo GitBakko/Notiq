@@ -316,3 +316,20 @@ describe('useKanbanRealtime own echo', () => {
     });
   });
 });
+
+// 4.5 — every (re)connection starts with `connected`. Anything moved, created or deleted
+// while the stream was down never arrives as an event: refetch the board to catch up.
+describe('useKanbanRealtime reconnect catch-up (4.5)', () => {
+  it('invalidates the board query when the stream (re)connects', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'connected' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-1'] });
+    });
+  });
+});
