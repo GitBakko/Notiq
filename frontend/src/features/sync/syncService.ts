@@ -888,7 +888,9 @@ const pushQueueOnce = async (): Promise<boolean> => {
             // Move operation — route to dedicated move endpoint. Same dead/not-yet-
             // created column id hazard as the CREATE branch — see resolveCardColumnId().
             const toColumnId = await resolveCardColumnId(item.entityId, cardData.columnId as string);
-            await api.put(`/kanban/cards/${item.entityId}/move`, {
+            // Kanban 5.6: a bulk move is announced by one grouped notification
+            // (POST bulk-move-notify), so each of its moves goes out silent.
+            await api.put(`/kanban/cards/${item.entityId}/move${cardData.silent ? '?silent=true' : ''}`, {
               toColumnId,
               position: cardData.position ?? 0,
             });

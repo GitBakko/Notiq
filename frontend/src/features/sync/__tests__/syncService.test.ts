@@ -1637,6 +1637,30 @@ describe('syncPush', () => {
         toColumnId: 'col-A', position: 0,
       });
     });
+
+    // Kanban 5.6: a bulk move's queued moves carry `silent` — they go out as
+    // ?silent=true (the grouped bulk-move-notify announces them), with the
+    // flag kept out of the body.
+    it('sends a silent card MOVE as ?silent=true, without silent in the body', async () => {
+      const queueItem = {
+        id: 68, type: 'UPDATE' as const, entity: 'KANBAN_CARD' as const, entityId: 'card-bulk',
+        userId: 'user-1', data: { columnId: 'col-A', position: 3, silent: true },
+        createdAt: Date.now(),
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
+      mockDb.syncQueue.count.mockResolvedValue(0);
+      mockDb.kanbanCards.get.mockResolvedValue({
+        id: 'card-bulk', columnId: 'col-A', updatedAt: new Date(queueItem.createdAt - 1000).toISOString(),
+      });
+      mockDb.kanbanColumns.get.mockResolvedValue({ id: 'col-A', syncStatus: 'synced' });
+      mockApi.put.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledWith('/kanban/cards/card-bulk/move?silent=true', {
+        toColumnId: 'col-A', position: 3,
+      });
+    });
   });
 
   // -----------------------------------------------------------------
