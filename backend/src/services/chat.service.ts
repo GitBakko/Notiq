@@ -182,10 +182,15 @@ export const createMessage = async (userId: string, noteId: string, content: str
   return message;
 };
 
+// [BACKUP] 2026-09-29 — orderBy createdAt 'asc' made page 1 the 100 OLDEST messages:
+// past 100 the note chat froze on them and new messages never showed up.
+//   return prisma.chatMessage.findMany({ where: { noteId }, orderBy: { createdAt: 'asc' }, ... });
+// Fetch newest-first (like chat-direct.service getMessages) and reverse, so page 1
+// is the latest page and the response stays in chronological order.
 export const getMessages = async (noteId: string, page: number = 1, limit: number = 100) => {
-  return prisma.chatMessage.findMany({
+  const messages = await prisma.chatMessage.findMany({
     where: { noteId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     skip: (page - 1) * limit,
     take: limit,
     include: {
@@ -194,4 +199,5 @@ export const getMessages = async (noteId: string, page: number = 1, limit: numbe
       }
     }
   });
+  return messages.reverse();
 };
