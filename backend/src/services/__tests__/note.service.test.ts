@@ -12,6 +12,7 @@ import {
   getNoteSizeBreakdown,
 } from '../note.service';
 import { hocuspocus } from '../../hocuspocus';
+import { NotFoundError } from '../../utils/errors';
 
 // Additional mocks beyond setup.ts
 vi.mock('../../hocuspocus', () => ({
@@ -428,6 +429,7 @@ describe('updateNote', () => {
 
   it('replaces tags within the transaction', async () => {
     prismaMock.note.findFirst.mockResolvedValue(existingNote);
+    prismaMock.tag.findMany.mockResolvedValue([{ id: 'tag-a' }, { id: 'tag-b' }]);
     prismaMock.tagsOnNotes.deleteMany.mockResolvedValue({ count: 1 });
     prismaMock.tagsOnNotes.createMany.mockResolvedValue({ count: 2 });
     prismaMock.note.update.mockResolvedValue(existingNote);
@@ -454,6 +456,90 @@ describe('updateNote', () => {
 
     expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1', userId: 'user-1' } });
     expect(prismaMock.tagsOnNotes.createMany).not.toHaveBeenCalled();
+  });
+
+  describe('notebook and tag ownership (P3, P4)', () => {
+    it('rejects a notebookId the user does not own, before any write', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.notebook.findFirst.mockResolvedValue(null);
+
+      // Without the check the note lands in the victim's notebook (Cascade on delete)
+      // and inflates the victim's note count.
+      const call = updateNote('user-1', 'n1', { notebookId: 'victim-nb' });
+      await expect(call).rejects.toBeInstanceOf(NotFoundError);
+      await expect(call).rejects.toThrow('errors.notebooks.notFound');
+      expect(prismaMock.notebook.findFirst).toHaveBeenCalledWith({
+        where: { id: 'victim-nb', userId: 'user-1' },
+        select: { id: true },
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(prismaMock.note.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a tag the user does not own, before any write', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.tag.findMany.mockResolvedValue([{ id: 'tag-mine' }]);
+
+      // Without the check getNote would hand the attacker the victim's whole Tag row.
+      const call = updateNote('user-1', 'n1', {
+        tags: [{ tag: { id: 'tag-mine' } }, { tag: { id: 'tag-victim' } }],
+      });
+      await expect(call).rejects.toBeInstanceOf(NotFoundError);
+      await expect(call).rejects.toThrow('errors.tags.noteOrTagNotFound');
+      expect(prismaMock.tag.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['tag-mine', 'tag-victim'] }, userId: 'user-1' },
+        select: { id: true },
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(prismaMock.tagsOnNotes.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.tagsOnNotes.createMany).not.toHaveBeenCalled();
+    });
+
+    it('accepts duplicate ids of an owned tag', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.tag.findMany.mockResolvedValue([{ id: 'tag-mine' }]);
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await expect(updateNote('user-1', 'n1', {
+        tags: [{ tag: { id: 'tag-mine' } }, { tag: { id: 'tag-mine' } }],
+      })).resolves.toEqual(existingNote);
+    });
+
+    it('updates when notebook and tags are the user\'s own', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.notebook.findFirst.mockResolvedValue({ id: 'nb-mine' });
+      prismaMock.tag.findMany.mockResolvedValue([{ id: 'tag-mine' }]);
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { notebookId: 'nb-mine', tags: [{ tag: { id: 'tag-mine' } }] });
+
+      expect(prismaMock.tagsOnNotes.createMany).toHaveBeenCalledWith({
+        data: [{ noteId: 'n1', tagId: 'tag-mine', userId: 'user-1' }],
+      });
+      expect(prismaMock.note.update).toHaveBeenCalledWith({
+        where: { id: 'n1' },
+        data: expect.objectContaining({ notebookId: 'nb-mine' }),
+      });
+    });
+
+    it('adds no query when notebookId and tags are absent (autosave hot path)', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { title: 'Autosave' });
+
+      expect(prismaMock.notebook.findFirst).not.toHaveBeenCalled();
+      expect(prismaMock.tag.findMany).not.toHaveBeenCalled();
+    });
+
+    it('adds no tag query when tags is empty', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(existingNote);
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { tags: [] });
+
+      expect(prismaMock.tag.findMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('empty content overwrite guard', () => {

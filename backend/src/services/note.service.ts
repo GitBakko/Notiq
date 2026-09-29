@@ -200,6 +200,25 @@ export const updateNote = async (userId: string, id: string, data: {
 
   const { tags, ...rest } = data;
 
+  // P3: the target notebook must be the caller's own, as createNote already requires.
+  if (rest.notebookId !== undefined) {
+    const nb = await prisma.notebook.findFirst({
+      where: { id: rest.notebookId, userId },
+      select: { id: true },
+    });
+    if (!nb) throw new NotFoundError('errors.notebooks.notFound');
+  }
+
+  // P4: every attached tag must be the caller's own, as addTagToNote already requires.
+  if (tags !== undefined && tags.length > 0) {
+    const ids = [...new Set(tags.map((t) => t.tag.id))];
+    const owned = await prisma.tag.findMany({
+      where: { id: { in: ids }, userId },
+      select: { id: true },
+    });
+    if (owned.length !== ids.length) throw new NotFoundError('errors.tags.noteOrTagNotFound');
+  }
+
   return prisma.$transaction(async (tx) => {
     if (tags !== undefined) {
       // Replace tags FOR THIS USER ONLY (not other users' tag associations)
