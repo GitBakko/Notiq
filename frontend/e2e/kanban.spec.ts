@@ -144,7 +144,7 @@ test.describe('Kanban Boards', () => {
     await menuBtn.click({ force: true });
 
     // The dropdown menu appears — wait for "Delete" button to be visible (it's in a dropdown inside the board card)
-    const dropdownDeleteBtn = boardCard.getByRole('button', { name: 'Delete' });
+    const dropdownDeleteBtn = boardCard.getByRole('button', { name: 'Delete', exact: true });
     await expect(dropdownDeleteBtn).toBeVisible({ timeout: 3000 });
     await dropdownDeleteBtn.click();
 
