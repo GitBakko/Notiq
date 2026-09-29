@@ -701,6 +701,102 @@ describe('syncPull', () => {
   });
 
   // -----------------------------------------------------------------
+  // Kanban 5.2: the detail fetch per board is skipped while the list's
+  // contentVersion hasn't moved. The skip memory lives in the module for
+  // the whole file, so every test uses its own board id.
+  // -----------------------------------------------------------------
+  describe('kanban board details gate', () => {
+    const listItem = (id: string, contentVersion: string, columnCount = 1) => ({
+      id, title: id, description: null, coverImage: null, avatarUrl: null, ownerId: 'user-1',
+      columnCount, cardCount: 0, ownership: 'owned' as const, contentVersion,
+      createdAt: '2026-01-01', updatedAt: '2026-01-01',
+    });
+    const detail = (id: string) => ({
+      id, columns: [{ id: `${id}-col`, title: 'Todo', position: 0, isCompleted: false, cards: [] }],
+    });
+    const serve = (boards: ReturnType<typeof listItem>[], failDetail = false) => {
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: boards });
+        const id = url.startsWith('/kanban/boards/') ? url.split('/').pop()! : null;
+        if (id) return failDetail ? Promise.reject(new Error('boom')) : Promise.resolve({ data: detail(id) });
+        return Promise.resolve({ data: [] });
+      });
+    };
+    const detailCalls = (id: string) =>
+      mockApi.get.mock.calls.filter((c: unknown[]) => c[0] === `/kanban/boards/${id}`).length;
+
+    beforeEach(() => {
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+      // The board's columns are in Dexie, as many as the server lists.
+      mockDb.kanbanColumns.count.mockResolvedValue(1);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('skips GET /kanban/boards/:id when the contentVersion is unchanged', async () => {
+      serve([listItem('kb-g1', 'v1')]);
+      await syncPull();
+      await syncPull();
+
+      expect(detailCalls('kb-g1')).toBe(1);
+    });
+
+    it('fetches again when the contentVersion changes', async () => {
+      serve([listItem('kb-g2', 'v1')]);
+      await syncPull();
+      serve([listItem('kb-g2', 'v2')]);
+      await syncPull();
+
+      expect(detailCalls('kb-g2')).toBe(2);
+    });
+
+    it('fetches again when the local columns do not match (Dexie cleared)', async () => {
+      serve([listItem('kb-g3', 'v1')]);
+      await syncPull();
+      mockDb.kanbanColumns.count.mockResolvedValue(0);
+      await syncPull();
+
+      expect(detailCalls('kb-g3')).toBe(2);
+    });
+
+    it('retries a board whose previous detail pull failed', async () => {
+      serve([listItem('kb-g4', 'v1')], true);
+      await syncPull();
+      serve([listItem('kb-g4', 'v1')]);
+      await syncPull();
+
+      expect(detailCalls('kb-g4')).toBe(2);
+    });
+
+    it('refreshes anyway after 10 minutes', async () => {
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      serve([listItem('kb-g5', 'v1')]);
+      await syncPull();
+      now.mockReturnValue(1_000_000 + 10 * 60 * 1000);
+      await syncPull();
+
+      expect(detailCalls('kb-g5')).toBe(2);
+    });
+
+    it('always fetches boards without a contentVersion (older server)', async () => {
+      const { contentVersion: _omit, ...legacy } = listItem('kb-g6', 'v1');
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/kanban/boards') return Promise.resolve({ data: [legacy] });
+        if (url === '/kanban/boards/kb-g6') return Promise.resolve({ data: detail('kb-g6') });
+        return Promise.resolve({ data: [] });
+      });
+      await syncPull();
+      await syncPull();
+
+      expect(detailCalls('kb-g6')).toBe(2);
+    });
+  });
+
+  // -----------------------------------------------------------------
   // Shared kanban boards — kanban 3.6. They come from /kanban/boards
   // (ownership: 'shared') like the owned ones; the separate
   // '/share/kanbans/accepted' pull is gone and its prune lives in the

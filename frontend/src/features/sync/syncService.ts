@@ -8,6 +8,16 @@ import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 import toast from 'react-hot-toast';
 import i18n from 'i18next';
 
+// Kanban 5.2: the list's contentVersion of each board as of its last successful detail
+// pull, keyed by user and board. syncPull runs every 30 s and used to GET every board's
+// details every time; now it skips a board whose version has not moved. In memory on
+// purpose: a reload starts from a full pull, and nothing persisted can go stale.
+const boardDetailsPulled = new Map<string, { version: string; at: number }>();
+// contentVersion doesn't see comment counts or a linked note's title, and a local edit
+// the server rejected can leave a row wrong while the version stays put. A periodic
+// full refresh bounds how long any of that can last.
+const BOARD_DETAILS_MAX_AGE_MS = 10 * 60 * 1000;
+
 export const syncPull = async () => {
   // Task 6 fix round 1: board ids this pull actually deletes from Dexie (owned,
   // no longer on server; or shared, no longer accepted) — a board someone had
@@ -420,8 +430,19 @@ export const syncPull = async () => {
         if (boardsToPut.length > 0) await db.kanbanBoards.bulkPut(boardsToPut);
       });
 
-      // Pull full board details (columns + cards) for each board
+      // Pull full board details (columns + cards) for each board whose content changed
       for (const board of serverBoards) {
+        const pulledKey = `${currentUserId}:${board.id}`;
+        const pulled = boardDetailsPulled.get(pulledKey);
+        if (
+          board.contentVersion &&
+          pulled?.version === board.contentVersion &&
+          Date.now() - pulled.at < BOARD_DETAILS_MAX_AGE_MS &&
+          // Dexie cleared or partially written since (e.g. logout): pull again.
+          (await db.kanbanColumns.where('boardId').equals(board.id).count()) === board.columnCount
+        ) {
+          continue;
+        }
         try {
           const boardRes = await api.get<KanbanBoard>(`/kanban/boards/${board.id}`);
           const fullBoard = boardRes.data;
@@ -494,6 +515,10 @@ export const syncPull = async () => {
 
             if (allServerCards.length > 0) await db.kanbanCards.bulkPut(allServerCards);
           });
+          // Only after the write landed: a failed pull must be retried next time.
+          if (board.contentVersion) {
+            boardDetailsPulled.set(pulledKey, { version: board.contentVersion, at: Date.now() });
+          }
         } catch (e) {
           console.error(`syncPull kanban board ${board.id} details failed`, e);
         }

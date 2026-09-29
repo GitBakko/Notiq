@@ -40,6 +40,8 @@ export interface KanbanBoardListItem {
   shares?: KanbanBoardShareUser[];
   ownership: 'owned' | 'shared';
   permission?: 'READ' | 'WRITE';
+  /** Fingerprint of the board's columns and cards (kanban 5.2): unchanged → the sync skips GET /kanban/boards/:id. */
+  contentVersion?: string;
   createdAt: string;
   updatedAt: string;
 }
