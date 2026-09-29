@@ -418,10 +418,23 @@ export const reorderTaskItems = async (
 ) => {
   await assertWriteAccess(userId, taskListId);
 
+  // P1: assertWriteAccess authorises taskListId only — every item must belong to it,
+  // otherwise ids leaked through a READ share could be reordered from another list.
+  const ids = [...new Set(items.map((i) => i.id))];
+  const owned = await prisma.taskItem.findMany({
+    where: { id: { in: ids }, taskListId },
+    select: { id: true },
+  });
+  if (owned.length !== ids.length) {
+    throw new NotFoundError('errors.tasks.itemNotFound');
+  }
+
   await prisma.$transaction(
     items.map((item) =>
       prisma.taskItem.update({
-        where: { id: item.id },
+        // [BACKUP] 2026-09-29 — P1: la where non era scopata sulla lista autorizzata
+        // where: { id: item.id },
+        where: { id: item.id, taskListId },
         data: { position: item.position },
       })
     )
