@@ -46,8 +46,12 @@ export function useKanbanRealtime(boardId: string | undefined): UseKanbanRealtim
       } else if (event.type === 'connected') {
         // No action needed
       } else {
-        // Highlight moved cards with a 2s pulse
-        if (event.type === 'card:moved') {
+        // Highlight moved cards with a 2s pulse — only other people's moves.
+        // 4.2 + C2: actorId identifies a user, not a tab or device, so the echo of one's
+        // own move is NOT dropped: a second tab of the same user still needs the Dexie
+        // write and the board refetch below. Only the pulse is skipped.
+        const isOwnEcho = !!event.actorId && event.actorId === useAuthStore.getState().user?.id;
+        if (event.type === 'card:moved' && !isOwnEcho) {
           const cardId = event.cardId;
           setHighlightedCardIds((prev) => new Set(prev).add(cardId));
 

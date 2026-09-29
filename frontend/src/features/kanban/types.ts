@@ -167,7 +167,7 @@ export const DEFAULT_COLUMN_KEYS: Record<string, string> = {
   DONE: 'kanban.column.done',
 };
 
-export type KanbanSSEEvent =
+export type KanbanSSEEventBody =
   | { type: 'connected' }
   | { type: 'card:moved'; boardId: string; cardId: string; toColumnId: string; position: number }
   | { type: 'card:created'; boardId: string; card: KanbanCard }
@@ -181,3 +181,6 @@ export type KanbanSSEEvent =
   | { type: 'comment:deleted'; boardId: string; cardId: string; commentId: string }
   | { type: 'chat:message'; boardId: string; message: KanbanBoardChatMessage }
   | { type: 'presence:update'; boardId: string; users: BoardPresenceUser[] };
+
+/** `actorId` = the user who caused the event (set by the backend's `broadcast`, 4.1). */
+export type KanbanSSEEvent = KanbanSSEEventBody & { actorId?: string };

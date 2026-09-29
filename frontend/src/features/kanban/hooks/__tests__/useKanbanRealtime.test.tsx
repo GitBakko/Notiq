@@ -270,3 +270,49 @@ describe('useKanbanRealtime terminal denials (C3)', () => {
     unmount();
   });
 });
+
+// 4.2 + C2 — actorId identifies a user, not a tab or device. The echo of one's own
+// move must not pulse (the pulse flags other people's changes), but it must still
+// reach Dexie and the board query: a second tab of the same user relies on it.
+describe('useKanbanRealtime own echo', () => {
+  it('does not highlight a card the current user moved', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:moved', boardId: 'board-1', cardId: 'card-1', toColumnId: 'col-2', position: 0, actorId: 'user-1' }]),
+    }));
+
+    const { result } = renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-1'] });
+    });
+    expect(result.current.highlightedCardIds.has('card-1')).toBe(false);
+  });
+
+  it('still writes the own echo to Dexie and refetches the board', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:moved', boardId: 'board-1', cardId: 'card-1', toColumnId: 'col-2', position: 0, actorId: 'user-1' }]),
+    }));
+
+    renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['kanban-board', 'board-1'] });
+    });
+    expect(mockDb.kanbanCards.get).toHaveBeenCalledWith('card-1');
+  });
+
+  it('highlights a card another user moved', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: 'card:moved', boardId: 'board-1', cardId: 'card-1', toColumnId: 'col-2', position: 0, actorId: 'user-2' }]),
+    }));
+
+    const { result } = renderHook(() => useKanbanRealtime('board-1'));
+
+    await waitFor(() => {
+      expect(result.current.highlightedCardIds.has('card-1')).toBe(true);
+    });
+  });
+});
