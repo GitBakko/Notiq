@@ -16,6 +16,12 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 // Mock sibling services used by board.service.ts
+const { mockBroadcast, mockDisconnectBoard } = vi.hoisted(() => ({
+  mockBroadcast: vi.fn(),
+  mockDisconnectBoard: vi.fn(),
+}));
+vi.mock('../../kanbanSSE', () => ({ broadcast: mockBroadcast, disconnectBoard: mockDisconnectBoard }));
+
 vi.mock('../helpers', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../helpers')>();
   return {
@@ -446,6 +452,17 @@ describe('board.service', () => {
   // ─── updateBoard ───────────────────────────────────────────
 
   describe('updateBoard', () => {
+    // 4.4 — a rename/description change reached other viewers only on their next
+    // refetch: updateBoard emitted nothing.
+    it('broadcasts board:updated with the actor after updating', async () => {
+      const board = makeKanbanBoard();
+      m(prisma.kanbanBoard.update).mockResolvedValue({ ...board, shares: [], owner: null } as any);
+
+      await updateBoard(board.id, { title: 'Renamed' }, 'user-7');
+
+      expect(mockBroadcast).toHaveBeenCalledWith(board.id, { type: 'board:updated', boardId: board.id, actorId: 'user-7' });
+    });
+
     it('updates board title and description', async () => {
       const board = makeKanbanBoard({ title: 'Old Title' });
 
@@ -549,6 +566,18 @@ describe('board.service', () => {
       expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(UPLOADS_DIR, 'kanban', 'cover-1.png'));
       expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(UPLOADS_DIR, 'kanban', 'avatars', 'avatar-1.webp'));
       expect(fs.unlinkSync).toHaveBeenCalledTimes(2);
+    });
+
+    it('closes every open stream of the deleted board (4.4)', async () => {
+      const board = makeKanbanBoard();
+      m(prisma.kanbanBoard.findUnique).mockResolvedValue({ coverImage: null, avatarUrl: null } as never);
+      m(prisma.kanbanBoard.delete).mockResolvedValue(board);
+
+      await deleteBoard(board.id);
+
+      // The reconnect then gets a 404 and the client shows "board deleted" at once,
+      // instead of waiting up to one heartbeat tick (~30 s).
+      expect(mockDisconnectBoard).toHaveBeenCalledWith(board.id);
     });
 
     it('does not touch the disk when the board has no cover and no avatar', async () => {

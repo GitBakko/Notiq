@@ -124,6 +124,13 @@ export default function CardContextMenu({
     }, 150);
   }, []);
 
+  const handleSubmenuKeyDown = useCallback((key: string) => (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      handleSubmenuEnter(key);
+    }
+  }, [handleSubmenuEnter]);
+
   // Board members: owner + accepted shared users
   const boardMembers: BoardMember[] = (() => {
     const members: BoardMember[] = [];
@@ -234,43 +241,58 @@ export default function CardContextMenu({
         style={{ left: menuPos.x, top: menuPos.y, width: MENU_WIDTH }}
       >
         {/* Move to */}
-        <div
+        <button
+          type="button"
           className={`${itemClass} justify-between`}
+          aria-haspopup="menu"
+          aria-expanded={activeSubmenu === 'move'}
           onMouseEnter={() => handleSubmenuEnter('move')}
           onMouseLeave={handleSubmenuLeave}
+          onFocus={() => handleSubmenuEnter('move')}
+          onKeyDown={handleSubmenuKeyDown('move')}
         >
           <span className="flex items-center gap-2">
             <ArrowRight className="h-4 w-4" />
             {t('kanban.card.contextMenu.moveTo')}
           </span>
           <ChevronRight className="h-4 w-4 text-neutral-400" />
-        </div>
+        </button>
 
         {/* Assign to */}
-        <div
+        <button
+          type="button"
           className={`${itemClass} justify-between`}
+          aria-haspopup="menu"
+          aria-expanded={activeSubmenu === 'assign'}
           onMouseEnter={() => handleSubmenuEnter('assign')}
           onMouseLeave={handleSubmenuLeave}
+          onFocus={() => handleSubmenuEnter('assign')}
+          onKeyDown={handleSubmenuKeyDown('assign')}
         >
           <span className="flex items-center gap-2">
             <UserPlus className="h-4 w-4" />
             {t('kanban.card.contextMenu.assignTo')}
           </span>
           <ChevronRight className="h-4 w-4 text-neutral-400" />
-        </div>
+        </button>
 
         {/* Priority */}
-        <div
+        <button
+          type="button"
           className={`${itemClass} justify-between`}
+          aria-haspopup="menu"
+          aria-expanded={activeSubmenu === 'priority'}
           onMouseEnter={() => handleSubmenuEnter('priority')}
           onMouseLeave={handleSubmenuLeave}
+          onFocus={() => handleSubmenuEnter('priority')}
+          onKeyDown={handleSubmenuKeyDown('priority')}
         >
           <span className="flex items-center gap-2">
             <Flag className="h-4 w-4" />
             {t('kanban.card.contextMenu.priority')}
           </span>
           <ChevronRight className="h-4 w-4 text-neutral-400" />
-        </div>
+        </button>
 
         {/* Due date */}
         <button className={itemClass} onClick={handleDueDateClick}>

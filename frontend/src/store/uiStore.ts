@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { KanbanFilters } from '../features/kanban/components/KanbanFilterBar';
 
 export type SortField = 'updatedAt' | 'createdAt' | 'title';
 export type SortOrder = 'asc' | 'desc';
@@ -28,6 +29,9 @@ interface UIState {
   isNotificationPanelOpen: boolean;
   toggleNotificationPanel: () => void;
   closeNotificationPanel: () => void;
+  /** Kanban filters per board id (6.2): they survive leaving the board and reloads. */
+  kanbanFilters: Record<string, KanbanFilters>;
+  setKanbanFilters: (boardId: string, filters: KanbanFilters) => void;
 }
 
 const applyThemeClass = (theme: 'light' | 'dark' | 'system') => {
@@ -73,6 +77,14 @@ export const useUIStore = create<UIState>()(
       isSidebarCollapsed: false,
       toggleSidebarCollapsed: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
       collapseAll: () => set({ isSidebarCollapsed: true, isListCollapsed: true }),
+      kanbanFilters: {},
+      setKanbanFilters: (boardId, filters) =>
+        set((state) => {
+          // Bounded without LRU bookkeeping: adding a 21st board starts the map over.
+          const isNew = !(boardId in state.kanbanFilters);
+          const kept = isNew && Object.keys(state.kanbanFilters).length >= 20 ? {} : state.kanbanFilters;
+          return { kanbanFilters: { ...kept, [boardId]: filters } };
+        }),
     }),
     {
       name: 'ui-storage',
@@ -83,6 +95,7 @@ export const useUIStore = create<UIState>()(
         notificationSoundEnabled: state.notificationSoundEnabled,
         isListCollapsed: state.isListCollapsed,
         isSidebarCollapsed: state.isSidebarCollapsed,
+        kanbanFilters: state.kanbanFilters,
       }),
     }
   )

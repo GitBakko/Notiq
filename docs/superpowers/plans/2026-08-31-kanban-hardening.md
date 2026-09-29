@@ -115,7 +115,7 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [x] | **4.1** | Aggiungere `actorId` a `KanbanEvent` e togliere la nota collegata dentro `broadcast()` | `9edc138` |
 | [x] | **4.2** | Filtrare lato client l'eco dei propri eventi — **variante B** (solo il pulse, vedi C2) | `0eae602` |
 | [x] | **4.3** | `disconnectUser()` e chiusura degli stream sul revoke della board | `c238398` |
-| [ ] | **4.4** | Emettere `board:updated` da update, delete e dalle quattro route cover/avatar — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **4.4** | Emettere `board:updated` da update, delete e dalle quattro route cover/avatar | `5b4912e` |
 | [x] | **4.5** | Fare invalidare la board query all'evento `connected` | `cc40772` |
 | [x] | **4.6** | Allineare la union di eventi frontend a quella backend | `8a278f4` |
 
@@ -126,7 +126,7 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [x] | **5.1** | Togliere le scritture da `getBoard` | `a67f35e` |
 | [ ] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve — **rivalutato 2026-09-29, vedi il task** | `` |
 | [x] | **5.3** | Rimuovere il poll a 3 secondi dalla chat di board | `d6acf0d` |
-| [ ] | **5.4** | Paginare chat e commenti dal più recente — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **5.4** | Paginare chat e commenti dal più recente | `a74a9d6` |
 | [ ] | **5.5** | Batchare la lookup dei destinatari e togliere l'SMTP dal request path — **rivalutato 2026-09-29, vedi il task** | `` |
 | [ ] | **5.6** | Eliminare il doppio invio di ogni card in `handleBulkMove` — **rivalutato 2026-09-29, vedi il task** | `` |
 
@@ -134,8 +134,8 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **6.1** | Sweep di accessibilità sul kanban (label, tastiera, hover-trap) — **rivalutato 2026-09-29, vedi il task** | `` |
-| [ ] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **6.1** | Sweep di accessibilità sul kanban (label, tastiera, hover-trap) | `9fa794e` |
+| [x] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri | `b0548d6` |
 | [x] | **6.3** | Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board | `9bfcc5f` |
 | [ ] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder — **rivalutato 2026-09-29, vedi il task** | `` |
 | [x] | **6.5** | Collegare la suite Playwright alla CI | `42d2b3d..9f4c2f3` (step 1-10, job bloccante, 43/43 verdi) |

@@ -35,35 +35,35 @@ export default function BoardChatSidebar({
   const { messages, isLoading, sendMessage } = useKanbanChat(boardId);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevMessageCountRef = useRef(0);
-  const isInitializedRef = useRef(false);
+  // Newest message seen so far (createdAt, ISO). Undefined until the first load.
+  const lastSeenAtRef = useRef<string | null | undefined>(undefined);
+  // [BACKUP] 2026-09-29 — 5.4: scroll and notification keyed on messages.length. The
+  // chat now serves the newest 50 messages, so past 50 a new message pushes the oldest
+  // out and the length stays 50: no scroll, no sound, no badge. Key on the newest one.
+  const latestMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+  const latestAt = latestMessage?.createdAt ?? null;
 
   // Auto-scroll on new messages (only when open)
   useEffect(() => {
     if (isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length, isOpen]);
+  }, [latestAt, isOpen]);
 
   // Sound + badge notification on new messages
   useEffect(() => {
     if (isLoading) return;
-    if (!isInitializedRef.current) {
-      prevMessageCountRef.current = messages.length;
-      isInitializedRef.current = true;
-      return;
+    const previous = lastSeenAtRef.current;
+    lastSeenAtRef.current = latestAt;
+    if (previous === undefined) return; // first load: nothing is "new"
+    const isNewer = latestAt && (!previous || new Date(latestAt).getTime() > new Date(previous).getTime());
+    if (isNewer && latestMessage && latestMessage.authorId !== currentUser.id) {
+      // Always play sound (chat open or closed)
+      playNotificationSound();
+      // Badge only when chat is closed
+      if (!isOpen && onNewMessage) onNewMessage();
     }
-    if (messages.length > prevMessageCountRef.current) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg && lastMsg.authorId !== currentUser.id) {
-        // Always play sound (chat open or closed)
-        playNotificationSound();
-        // Badge only when chat is closed
-        if (!isOpen && onNewMessage) onNewMessage();
-      }
-    }
-    prevMessageCountRef.current = messages.length;
-  }, [messages.length, isOpen, onNewMessage, currentUser.id, isLoading, messages]);
+  }, [latestAt, latestMessage, isOpen, onNewMessage, currentUser.id, isLoading]);
 
   // Chat title based on participants
   const chatTitle = useMemo(() => {
@@ -173,6 +173,7 @@ export default function BoardChatSidebar({
           <button
             onClick={handleSend}
             disabled={!newMessage.trim() || sendMessage.isPending}
+            aria-label={t('common.send')}
             className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send size={16} />
@@ -213,6 +214,7 @@ export default function BoardChatSidebar({
         </h3>
         <button
           onClick={onClose}
+          aria-label={t('kanban.a11y.closeChat')}
           className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 rounded"
         >
           <X size={16} />

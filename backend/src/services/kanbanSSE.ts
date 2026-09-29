@@ -197,6 +197,18 @@ export function disconnectUser(boardId: string, userId: string): void {
 }
 
 /**
+ * Close every open stream of a board that no longer exists (4.4). The client's
+ * reconnect then gets a 404 and shows "board deleted" at once, instead of sitting on a
+ * ghost board until the next heartbeat tick notices.
+ */
+export function disconnectBoard(boardId: string): void {
+  const connections = boardConnections.get(boardId);
+  if (!connections) return;
+  // Copy: each res.end() fires a 'close' handler that deletes from this map.
+  for (const conn of [...connections.values()]) conn.res.end();
+}
+
+/**
  * Kick every board stream a user holds.
  *
  * For the sites where the CREDENTIALS stop being valid rather than one share — a password

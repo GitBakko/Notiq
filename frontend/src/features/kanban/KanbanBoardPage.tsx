@@ -7,7 +7,7 @@ import {
   DragOverlay,
 } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink } from 'lucide-react';
+import { Archive, ArrowLeft, ListChecks, Plus, Share2, Trash2, MoreVertical, Menu, MessageSquare, ImagePlus, X, FileText, Link2, Unlink, Filter } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { useKanbanBoard } from './hooks/useKanbanBoard';
@@ -54,7 +54,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { toggleSidebar } = useUIStore();
+  const { toggleSidebar, kanbanFilters, setKanbanFilters } = useUIStore();
   const user = useAuthStore((s) => s.user);
 
   const queryClient = useQueryClient();
@@ -125,7 +125,12 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [boardContainerEl, setBoardContainerEl] = useState<HTMLDivElement | null>(null);
 
-  const [filters, setFilters] = useState<KanbanFilters>(defaultKanbanFilters);
+  // 6.2: filters persist per board in the ui store (they used to be lost on leaving the board).
+  const filters = kanbanFilters[boardId] ?? defaultKanbanFilters;
+  const setFilters = useCallback(
+    (next: KanbanFilters) => setKanbanFilters(boardId, next),
+    [boardId, setKanbanFilters],
+  );
   const [boardSharingCheck, setBoardSharingCheck] = useState<NoteSharingCheck | null>(null);
   const [pendingBoardNote, setPendingBoardNote] = useState<NoteSearchResult | null>(null);
   const filtersActive = isFiltersActive(filters);
@@ -432,7 +437,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               className="w-full h-full object-cover"
             />
             {!readOnly && (
-              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/cover:opacity-100 transition-opacity">
+              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/cover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                 <button
                   onClick={() => coverInputRef.current?.click()}
                   className="p-1.5 rounded-md bg-black/40 hover:bg-black/60 text-white text-xs transition-colors"
@@ -459,6 +464,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {isMobile && (
                 <button
                   onClick={toggleSidebar}
+                  aria-label={t('common.menu')}
                   className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
                 >
                   <Menu size={20} />
@@ -466,6 +472,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               )}
               <button
                 onClick={() => navigate('/kanban')}
+                aria-label={t('kanban.a11y.backToBoards')}
                 className="flex-shrink-0 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
               >
                 <ArrowLeft size={20} />
@@ -492,7 +499,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 {!readOnly && board.avatarUrl && (
                   <button
                     onClick={() => mutations.deleteAvatar.mutate(boardId)}
-                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] opacity-0 group-hover/avatar:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                     title={t('kanban.avatar.remove')}
                   >
                     <X size={8} />
@@ -635,6 +642,9 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               <div className="relative">
                 <button
                   onClick={() => modals.setShowBoardMenu(!modals.showBoardMenu)}
+                  aria-label={t('kanban.a11y.boardMenu')}
+                  aria-haspopup="menu"
+                  aria-expanded={modals.showBoardMenu}
                   className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
                 >
                   <MoreVertical size={18} />
@@ -842,6 +852,28 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
           assignees={allAssignees}
           onExport={handleExportGantt}
         />
+
+        {/* 6.2: filters make the whole board read-only (readOnly || filtersActive on the
+            columns below) — say so instead of silently removing every write affordance. */}
+        {filtersActive && !readOnly && (
+          <div className="flex-shrink-0 flex items-start gap-2 px-4 py-2 border-b border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20">
+            <Filter size={14} className="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                {t('kanban.filters.readOnlyTitle')}
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400/80">
+                {t('kanban.filters.readOnlyBody')}
+              </p>
+            </div>
+            <button
+              onClick={() => setFilters(defaultKanbanFilters)}
+              className="flex-shrink-0 px-2 py-1 min-h-[32px] rounded-md text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
+            >
+              {t('kanban.filters.clearAll')}
+            </button>
+          </div>
+        )}
 
         {/* Mobile column tabs */}
         {isMobile && displayColumns.length > 0 && (

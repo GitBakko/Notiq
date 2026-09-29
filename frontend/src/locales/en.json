@@ -973,6 +973,17 @@
       "usersWithoutAccess": "Will be given access",
       "confirmLink": "Link & Share"
     },
+    "a11y": {
+      "backToBoards": "Back to boards",
+      "boardMenu": "Board menu",
+      "boardCardMenu": "Menu for board {{title}}",
+      "columnMenu": "Menu for column {{title}}",
+      "dragColumn": "Drag column {{title}}",
+      "dragCard": "Drag card {{title}}",
+      "deleteComment": "Delete comment",
+      "clearSearch": "Clear search",
+      "closeChat": "Close chat"
+    },
     "filters": {
       "title": "Filters",
       "searchPlaceholder": "Search cards...",
@@ -991,7 +1002,9 @@
       "commentsAll": "All comments",
       "commentsHas": "With comments",
       "commentsNone": "No comments",
-      "clearAll": "Clear"
+      "clearAll": "Clear",
+      "readOnlyTitle": "Board is read-only while filters are on",
+      "readOnlyBody": "Some cards are hidden by the filters, so dragging and editing are off to avoid moving a card you can't see. Clear the filters to edit again."
     },
     "export": {
       "ganttCsv": "Export XLSX",
