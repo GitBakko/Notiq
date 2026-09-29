@@ -115,29 +115,29 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [x] | **4.1** | Aggiungere `actorId` a `KanbanEvent` e togliere la nota collegata dentro `broadcast()` | `9edc138` |
 | [x] | **4.2** | Filtrare lato client l'eco dei propri eventi — **variante B** (solo il pulse, vedi C2) | `0eae602` |
 | [x] | **4.3** | `disconnectUser()` e chiusura degli stream sul revoke della board | `c238398` |
-| [ ] | **4.4** | Emettere `board:updated` da update, delete e dalle quattro route cover/avatar | `` |
-| [ ] | **4.5** | Fare invalidare la board query all'evento `connected` | `` |
-| [ ] | **4.6** | Allineare la union di eventi frontend a quella backend | `` |
+| [ ] | **4.4** | Emettere `board:updated` da update, delete e dalle quattro route cover/avatar — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **4.5** | Fare invalidare la board query all'evento `connected` — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **4.6** | Allineare la union di eventi frontend a quella backend — **rivalutato 2026-09-29, vedi il task** | `` |
 
 ### Stage 5 — Carico
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
 | [x] | **5.1** | Togliere le scritture da `getBoard` | `a67f35e` |
-| [ ] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve | `` |
-| [ ] | **5.3** | Rimuovere il poll a 3 secondi dalla chat di board | `` |
-| [ ] | **5.4** | Paginare chat e commenti dal più recente | `` |
-| [ ] | **5.5** | Batchare la lookup dei destinatari e togliere l'SMTP dal request path | `` |
-| [ ] | **5.6** | Eliminare il doppio invio di ogni card in `handleBulkMove` | `` |
+| [ ] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **5.3** | Rimuovere il poll a 3 secondi dalla chat di board — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **5.4** | Paginare chat e commenti dal più recente — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **5.5** | Batchare la lookup dei destinatari e togliere l'SMTP dal request path — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **5.6** | Eliminare il doppio invio di ogni card in `handleBulkMove` — **rivalutato 2026-09-29, vedi il task** | `` |
 
 ### Stage 6 — Rinviabile
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
-| [ ] | **6.1** | Sweep di accessibilità sul kanban (label, tastiera, hover-trap) | `` |
-| [ ] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri | `` |
-| [ ] | **6.3** | Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board | `` |
-| [ ] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder | `` |
+| [ ] | **6.1** | Sweep di accessibilità sul kanban (label, tastiera, hover-trap) — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **6.2** | Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **6.3** | Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board — **rivalutato 2026-09-29, vedi il task** | `` |
+| [ ] | **6.4** | Query limitate — paginazione archivio, indice sui commenti, cap sui reminder — **rivalutato 2026-09-29, vedi il task** | `` |
 | [x] | **6.5** | Collegare la suite Playwright alla CI | `42d2b3d..9f4c2f3` (step 1-10, job bloccante, 43/43 verdi) |
 
 **Totale: 44 task.**
@@ -7557,6 +7557,21 @@ git commit -m "fix(kanban): close SSE streams of a user whose board share is rev
 
 ### Task 4.4: Emettere `board:updated` da update, delete e dalle quattro route cover/avatar
 
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): il difetto esiste ancora, il testo NON va applicato alla lettera.**
+> - **Oggi:** `board.service.ts` non importa `broadcast`. `updateBoard` (`:252-274`) e `deleteBoard` (`:276-278`)
+>   non emettono nulla, e le 4 route cover/avatar (`routes/kanban.ts:215`, `:238`, `:296`, `:319`) scrivono senza broadcast.
+> - **Superato:** il corpo di `updateBoard` incollato qui sotto contiene ancora `note: {...}`, tolto in `164baf6` (B3).
+>   Copiarlo riaprirebbe la fuga del titolo della nota. La motivazione sul **delete** non vale più: sul 404
+>   `useKanbanBoard` ricostruisce la board da Dexie. Il delete è già coperto da `d640f20`: il tick di
+>   reauthorize chiude lo stream, la riconnessione prende 404 e scatta `accessDenied='deleted'` (latenza ≤ ~32 s).
+> - **Task riscritto:** aggiungere a `updateBoard(boardId, data, actorId?)` solo il `broadcast` di
+>   `board:updated` con `actorId`, senza toccare il resto del corpo. Il PUT passa `request.user.id`. Broadcast dopo i 4 update
+>   cover/avatar. Delete, opzionale: non `board:updated`, ma un `disconnectBoard(boardId)` in `kanbanSSE.ts` che chiude
+>   gli stream, così riusa il percorso 404 → `'deleted'` già testato.
+> - **Test rosso:** in `board.service.test.ts` (`describe('updateBoard')`) mock di `../../kanbanSSE` e verifica
+>   `broadcast({ type: 'board:updated', boardId, actorId })`.
+> - **Rischio:** basso, nessun file TIER.
+
 **Perché:** cambiare titolo, descrizione, cover o avatar di una board condivisa — o cancellarla — non produce nessun evento SSE. Gli altri collaboratori vedono il vecchio titolo e la vecchia copertina finché non ricaricano, e su una board cancellata restano su una pagina fantasma con card che non esistono più.
 
 **Severità:** medium · **Effort:** M · **Rischio:** none
@@ -7805,6 +7820,14 @@ git commit -m "feat(kanban): broadcast board:updated on board edit, delete, cove
 
 ### Task 4.5: Fare invalidare la board query all'evento `connected`
 
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido come scritto, da aggiornare solo i riferimenti.**
+> - **Oggi:** il no-op c'è ancora (`useKanbanRealtime.ts:45-47`) e il backend manda `connected` a ogni connessione.
+> - **Da aggiornare:** il retry non è più "5 s nel catch" ma un backoff da 2 a 30 s. Il file di test esiste già con circa 15 test: il
+>   conteggio atteso qui sotto è sbagliato, va aggiunto solo un `describe` in coda.
+> - **Nota:** `connected` arriva anche alla prima connessione, quindi al mount si ha un refetch in più (accettabile). Si può
+>   evitare con un ref "prima connessione", ma è facoltativo.
+> - **Rischio:** basso.
+
 **Perché:** `useKanbanRealtime.ts:35-37` gestisce `connected` con un commento `// No action needed`. Ogni riconnessione (rete che cade, laptop che si sveglia, deploy del backend) riparte quindi con lo stato che aveva prima della caduta: tutte le card mosse, create o cancellate nel frattempo restano invisibili finché l'utente non ricarica la pagina o non arriva un altro evento. È il pezzo che rende utile il reconnect dello Stage 0.4: senza questo, riconnettersi bene serve a poco perché si riprende comunque da uno stato vecchio. Funziona anche da solo con il retry a 5 secondi già presente a `useKanbanRealtime.ts:116-119` (`reconnectTimeout = setTimeout(connect, 5000)` nel `catch`).
 
 **Severità:** high · **Effort:** S · **Rischio:** none
@@ -7883,6 +7906,18 @@ git commit -m "fix(kanban): refetch the board on SSE reconnect to recover missed
 ---
 
 ### Task 4.6: Allineare la union di eventi frontend a quella backend
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): il difetto esiste ancora, il testo è superato.**
+> - **Oggi:** `KanbanSSEEventBody` (`frontend/src/features/kanban/types.ts:170-186`) non ha `card:unarchived` né
+>   `board:updated`. `card:created` e `card:updated` sono tipati `KanbanCard`, che dichiara `note`, ma `stripNote`
+>   la toglie prima del broadcast. Così `useKanbanRealtime.ts:229` e `:255` (`note: card.note`) scrivono `undefined` in Dexie e
+>   cancellano il collegamento alla nota fino al refetch.
+> - **Task riscritto:** `type SSECard = Omit<KanbanCard, 'note'>` per created/updated. Aggiungere `card:unarchived
+>   {boardId, cardId}` e `board:updated {boardId}`, lasciando invariato `KanbanSSEEvent = Body & { actorId? }` (4.2 variante B).
+>   A `:229` `note: null`; a `:255` `note: local?.note ?? null` (`local` è già letto poco sopra).
+> - **Rosso:** `npx tsc -p tsconfig.app.json --noEmit` deve dare 2 errori TS2339 su quelle righe.
+> - **Ordine:** i tre task 4.x sono ormai indipendenti. Il vincolo "4.6 dopo 4.5" serviva solo ai numeri di riga.
+> - **Rischio:** basso.
 
 **Perché:** le due union sono state scritte a mano e sono divergute. Un evento che il backend manda ma il frontend non dichiara arriva comunque a runtime (è `JSON.parse` più un cast a `useKanbanRealtime.ts:137`), quindi il bug non si vede: si vede solo quando qualcuno legge il tipo, si fida, e scrive codice sbagliato. Peggio, dopo la 4.1 il tipo frontend *mente*: dichiara `card.note` presente su un payload da cui `broadcast()` lo ha appena tolto.
 
@@ -8457,6 +8492,19 @@ git commit -m "fix(kanban): make getBoard a pure read, move card archiving to an
 
 ### Task 5.2: Saltare il fetch di dettaglio per board in `syncPull` quando non serve
 
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido, testo superato. TIER 1 (`syncService.ts`).**
+> - **Oggi:** il loop di dettaglio (`syncService.ts:387-464`) fa ancora un `GET /kanban/boards/:id` per ogni board ogni 30 s.
+>   `KanbanBoard.updatedAt` non cambia con le operazioni sulle card, quindi il gate proposto qui sotto si riduce a
+>   "solo le board senza colonne in cache".
+> - **Dipende da 3.6**, che tocca lo stesso blocco: prima 3.6, poi 5.2, in commit separati. Finché esiste il blocco
+>   `/share/kanbans/accepted` il gate non fa risparmiare nulla sulle board condivise. Dopo 3.6, con il gate, una board condivisa mai
+>   aperta non riceve aggiornamenti fino all'apertura.
+> - **Alternativa più corretta:** `listBoards` espone un `contentUpdatedAt` (il max tra board, colonne e card; è backend, non TIER) e
+>   il gate diventa esatto.
+> - **Test rosso:** in `describe('kanban boards')`, con stesso `updatedAt`/`contentUpdatedAt` e colonne in cache non deve partire
+>   la chiamata `GET /kanban/boards/kb-1`.
+> - **Rischio:** alto (dati offline non aggiornati sulle board non aperte). Diff da proporre prima.
+
 **Perché:** `syncPull` gira ogni 30 secondi (`frontend/src/hooks/useSync.ts:55`) e, dopo la lista board, fa un `GET /kanban/boards/:id` **per ogni board restituito da `/kanban/boards`** — che sono i board posseduti **più** quelli condivisi accettati, perché `listBoards` concatena `ownedBoards` e `sharedBoards` (`board.service.ts:108`). Con 20 board sono 21 richieste ogni 30 secondi, cioè circa 2500 richieste all'ora per utente attivo, ciascuna con una `findUnique` a 7 include più il count degli archiviati. E finché la 5.1 non è mergiata, ognuna di quelle 20 richieste di dettaglio è anche una **scrittura**.
 **Severità:** critical · **Effort:** M · **Rischio:** TIER 1 — `frontend/src/features/sync/syncService.ts` è il motore di sync offline: commit isolato, nessun'altra modifica insieme a questa.
 
@@ -8707,6 +8755,14 @@ git commit -m "perf(kanban): gate syncPull per-board detail fetch on updatedAt +
 
 ### Task 5.3: Rimuovere il poll a 3 secondi dalla chat di board
 
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido. Il blocco sulla 0.4 non c'è più.**
+> - **Oggi:** `useKanbanChat.ts:12` ha ancora `refetchInterval: 3000`. La riconnessione SSE con backoff esiste
+>   (`useKanbanRealtime.ts`), il backend emette `chat:message` e l'hook invalida `boardChat`. La sidebar è montata solo
+>   con l'SSE attivo.
+> - **Task:** togliere la riga, poi `tsc` e lint, poi verifica manuale con due browser e riavvio del backend. Un test unitario onesto
+>   non è possibile. I comandi grep dello Step 1 qui sotto vanno aggiornati.
+> - **Rischio:** basso.
+
 **Perché:** `useKanbanChat` rifà `GET /api/kanban/boards/:id/chat` ogni 3 secondi finché la sidebar chat è montata — 1200 richieste all'ora per utente con un board aperto, per un canale che ha già il push via SSE (`useKanbanRealtime.ts:33-34` invalida `queryKeys.kanban.boardChat` sull'evento `chat:message`).
 **Severità:** high · **Effort:** S · **Rischio:** none sul codice; il rischio è tutto nella dipendenza dichiarata sotto.
 
@@ -8800,6 +8856,17 @@ git commit -m "perf(kanban): drop 3s board-chat poll, rely on SSE invalidation"
 ---
 
 ### Task 5.4: Paginare chat e commenti dal più recente
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido, testo incompleto.**
+> - **Oggi:** `getComments` e `getBoardChat` (`comments-chat.service.ts:18-32`, `:179-193`) usano ancora `asc` con limite
+>   50, quindi la prima pagina contiene i 50 messaggi più **vecchi**. La correzione del 2026-09-29 (PR #7) riguarda solo la chat di nota.
+> - **Manca nel testo:** con desc + `reverse()`, oltre i 50 messaggi `messages.length` resta 50, e
+>   `BoardChatSidebar.tsx:41-65` perde suono e badge. È lo stesso bug corretto nella chat di nota (`426f279`): confrontare
+>   `createdAt` o l'id dell'ultimo messaggio.
+> - **Test rossi:** `comments-chat.service.test.ts:127` e `:459` passano da `'asc'` a `'desc'` con la risposta rovesciata, più un
+>   test del componente (50 messaggi prima e 50 dopo, con l'ultimo diverso: deve suonare). `CardDetailModal` mostra `comments.length`:
+>   oltre 50 commenti il conteggio sarà limitato a 50, va detto nella PR.
+> - **Rischio:** basso. Coordinarsi con 6.4 (indice `[cardId, createdAt]`).
 
 **Perché:** `getComments` e `getBoardChat` fanno `orderBy: { createdAt: 'asc' }` con `take: 50` (default di `paginationSchema`, `backend/src/routes/kanban.ts:69-72`, `limit: z.coerce.number().int().positive().max(100).optional().default(50)`): la prima pagina sono i **50 messaggi più vecchi**. Oltre i 50 messaggi la chat di board è congelata sulla preistoria, e un messaggio appena inviato **sparisce** appena la mutation invalida la query, perché non rientra nella finestra restituita. Stesso difetto sui commenti di card oltre i 50.
 **Severità:** critical · **Effort:** S · **Rischio:** none — nessuna modifica di schema, nessun contratto di API rotto (vedi Step 1).
@@ -9077,6 +9144,16 @@ git commit -m "fix(kanban): paginate board chat and card comments newest-first"
 ---
 
 ### Task 5.5: Batchare la lookup dei destinatari e togliere l'SMTP dal request path
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido, con un perimetro più ampio del testo.**
+> - **Oggi:** `notifications.ts:99-134` fa una `findUnique` per ogni destinatario e attende `sendNotificationEmail`, quindi
+>   l'SMTP resta nel percorso della richiesta.
+> - **Call site con `await`:** `card.service.ts:496` (moveCard), `:888` (bulkMoveNotify), `comments-chat.service.ts:69` e `:145`.
+> - **Non citato nel testo:** `createBoardChatMessage` (`comments-chat.service.ts:212-290`) ha una sua copia del loop.
+> - **Task:** una sola `user.findMany({ where: { id: { in } } })`, email in fire-and-forget con `.catch(log)`, chiamanti
+>   senza `await` (`.catch(logger.error)`). Il loop della board chat va sullo stesso helper. `email.service.ts` (TIER 2) non va toccato.
+> - **Test rosso:** con 3 destinatari, `user.findMany` chiamata una volta e `findUnique` mai.
+> - **Rischio:** medio (vanno aggiornati i test che si aspettano l'`await`).
 
 **Perché:** `notifyBoardUsersTiered` fa un `prisma.user.findUnique` **per ogni destinatario** dentro il loop (`notifications.ts:104-107`) e, per i destinatari offline, **attende** l'invio SMTP (`:121-126`) — il tutto mentre la richiesta HTTP dell'utente che ha mosso la card è ancora aperta, perché il chiamante in `card.service.ts:280` fa `await`. Su un board con 8 partecipanti offline, spostare una card blocca l'utente per la durata di 8 invii SMTP in sequenza. Sintomo utente: la card "si incolla" per secondi dopo il drop.
 **Severità:** high · **Effort:** M · **Rischio:** none — nessun contratto cambia; l'unica differenza semantica è che l'esito delle notifiche non fa più parte della risposta HTTP.
@@ -9500,6 +9577,16 @@ git commit -m "perf(kanban): batch tiered-notification recipient lookup, unblock
 ---
 
 ### Task 5.6: Eliminare il doppio invio di ogni card in `handleBulkMove`
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido, testo superato. TIER 1 (`syncService.ts`), più di 3 file.**
+> - **Oggi:** `KanbanBoardPage.tsx:348-394`. Ogni card passa dalla coda (`PUT /move` senza `silent`) e poi viene rimandata con
+>   `api.put(...?silent=true)` (`:382-388`): il risultato sono 2N PUT e N notifiche singole, oltre a quella raggruppata. Il `position: 999`
+>   citato qui sotto non esiste più (ora la posizione è `appendBase + i`).
+> - **Task:** in `syncService.ts:921-930`, se `cardData.silent` è vero si accoda `?silent=true` (commit TIER 1 isolato). `silent`
+>   va propagato da `useBoardDnD` alla mutation, a `kanbanService.moveCard` e alla coda; poi si cancellano `:382-388`.
+> - **Test rosso:** in `describe('kanban push')`, un item con `data.silent = true` → PUT a `/move?silent=true` senza
+>   `silent` nel body.
+> - **Rischio:** alto. Un item già in coda da una build precedente viene notificato: accettabile.
 
 **Perché:** selezionando 20 card con la marquee e spostandole, il frontend manda **40** richieste di move: 20 dalla coda di sync (via `dnd.handleMoveCardToColumn` → `mutations.moveCard` → `kanbanService.moveCard` → `syncQueue`) e 20 come `api.put(...?silent=true)` grezze con `.catch(() => {})`. Le seconde sono silenziose, le prime no — quindi arrivano anche 20 notifiche individuali "X ha spostato la card Y", che è esattamente ciò che l'endpoint di notifica raggruppata `POST /kanban/boards/:boardId/bulk-move-notify` (`backend/src/routes/kanban.ts:476`) esisteva per evitare. Inoltre ogni card viene mossa due volte lato server con `position: 999`, riordinando la colonna di destinazione due volte.
 **Severità:** high · **Effort:** M · **Rischio:** TIER 1 — una delle cinque modifiche è in `frontend/src/features/sync/syncService.ts`, che va in un commit separato (Step 5) prima del resto.
@@ -9975,6 +10062,13 @@ Questo stage è rinviabile perché **nulla qui sblocca o nasconde un altro difet
 ---
 
 ### Task 6.1: Sweep di accessibilità sul kanban (label, tastiera, hover-trap)
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido come scritto, cambiano solo i numeri di riga.**
+> - Tutti i blocchi citati esistono ancora. `KanbanBoardPage.tsx` è slittato di circa +26 righe. `"filters"` è a `en.json:976` e
+>   `it.json:1244`.
+> - **Nota nuova:** quando il corpo della card diventa `role="button"`, contiene il pulsante "sposta" (controlli interattivi
+>   annidati). Va gestito, per esempio con `aria-describedby` o spostando il pulsante fuori dal corpo.
+> - **Rischio:** basso. Servono 9 chiavi i18n (en + it) e le varianti `dark:` sui focus ring.
 
 **Perché:** Oggi su tutta la superficie kanban 15 pulsanti icona vengono annunciati da uno screen reader come "button" senza altro; le card (sia le card del board sia le board nella lista) si aprono solo col mouse; i tre sottomenu del context menu si aprono solo con `onMouseEnter` e sono quindi irraggiungibili da tastiera; e tre controlli (menu della BoardCard, controlli cover, rimozione avatar) sono `opacity-0` fino all'hover, quindi su touch semplicemente non esistono. `frontend/CLAUDE.md` ("Accessibilità mobile") prescrive già `aria-label` obbligatorio su tutti i bottoni icon-only e un equivalente touch per ogni interazione hover-only: questo task porta il kanban in regola.
 **Severità:** medium · **Effort:** M · **Rischio:** none — nessun file TIER 1/TIER 2 coinvolto.
@@ -10578,6 +10672,12 @@ git commit -m "fix(kanban): label icon-only buttons, make cards and submenus key
 
 ### Task 6.2: Spiegare perché il board diventa read-only con i filtri attivi, e persistere i filtri
 
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido come scritto, cambiano solo i numeri di riga.**
+> - **Oggi:** `readOnly || filtersActive` a `KanbanBoardPage.tsx:914` e `:956`, filtri in `useState` a `:128`, nessun banner.
+>   `uiStore.ts` è identico a quello descritto qui sotto.
+> - **Da aggiornare:** `src/store/__tests__/` esiste già. `clearAll` è a `en.json:994` e `it.json:1262`.
+> - **Rischio:** basso. Servono 2 chiavi i18n e le varianti `dark:` (già previste).
+
 **Perché:** Basta digitare **un carattere** nella ricerca perché `readOnly={readOnly || filtersActive}` (`KanbanBoardPage.tsx:878` e `:920`) renda tutta la board di sola lettura: spariscono drag handle, menu colonna, pulsante "Add card". Nessun messaggio spiega il perché, e chi non ha capito il nesso pensa di aver perso i permessi. In più i filtri vivono in un `useState` locale, quindi si azzerano a ogni rimontaggio del componente (cambio pagina e ritorno) e vanno riapplicati ogni volta.
 **Severità:** medium · **Effort:** M · **Rischio:** none — `uiStore.ts` non è TIER 1/2. È persistito su `localStorage` con chiave `ui-storage`: si **aggiunge** una chiave a `partialize`, non si modificano quelle esistenti, e lo store non definisce nessuna `version`/`migrate`, quindi lo stato persistito esistente fa merge senza migrazione (le installazioni vecchie partono con `kanbanFilters` dal default `{}`).
 
@@ -10863,6 +10963,15 @@ git commit -m "feat(kanban): explain filter-induced read-only mode and persist f
 ---
 
 ### Task 6.3: Hardening cover/avatar — estensione dal mimetype validato e cleanup su delete board
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): valido come scritto, severità da rivedere.**
+> - **Oggi:** `path.extname(data.filename)` è a `routes/kanban.ts:209` e `:290`, le 4 cancellazioni inline a `:202`, `:232`, `:283`
+>   e `:313`. `deleteBoard` non pulisce i file. `describe('deleteBoard')` è ora a `board.service.test.ts:494`.
+> - **Severità: medium, non high.** `app.ts` serve `.svg` come `image/svg+xml` (`IMAGE_MIME_MAP`), ma la CSP globale
+>   (`script-src 'self'`, senza `unsafe-inline`) blocca gli script inline. È una difesa in profondità.
+> - **Stesso pattern fuori scope:** `user.service.ts:61` e `group.service.ts:114`. Togliere `svg` da `IMAGE_MIME_MAP` è
+>   la chiusura più ampia, ma `app.ts` è TIER 2: va proposto prima.
+> - **Rischio:** basso.
 
 **Perché:** Due problemi sullo stesso codice. (1) Il nome del file salvato prende l'estensione dal **filename del client** (`path.extname(data.filename || '.jpg')`, `routes/kanban.ts:210` e `:291`), non dal mimetype validato: un upload con `Content-Type: image/png` (che passa l'allowlist) e nome `x.svg` finisce salvato come `.svg` e servito da `/uploads/kanban/<uuid>.svg` — URL same-origin, senza autenticazione — come documento attivo. (2) Cancellando una board, `deleteBoard` (`services/kanban/board.service.ts:271-273`) fa solo il `delete` della riga: cover e avatar restano su disco, pubblicamente leggibili per sempre, e il job di pulizia esistente (`backend/src/scripts/pruneAttachments.ts`) conosce solo `prisma.attachment` — quei file non li tocca nessuno.
 **Severità:** high · **Effort:** M · **Rischio:** none — nessun file TIER 1/2. `board.service.ts` e `routes/kanban.ts` sono coperti da test esistenti che restano verdi.
@@ -11254,6 +11363,17 @@ git commit -m "fix(kanban): derive upload extension from validated mimetype and 
 ---
 
 ### Task 6.4: Query limitate — paginazione archivio, indice sui commenti, cap sui reminder
+
+> **Rivalutazione 2026-09-29 (su `main` `f606301`): il difetto esiste ancora, i passi di test sono superati. TIER 1 (`schema.prisma` + migration).**
+> - **Oggi:** `getArchivedCards` (`card.service.ts:750-767`) non ha skip/take. `ArchivedCardsModal.tsx:55` mostra
+>   `card.columnTitle`, ma il backend manda `column: { id, title }`, quindi sotto ogni card compare un campo vuoto (bug visibile).
+>   `KanbanComment` ha solo `@@index([cardId])`. `getUserKanbanReminders` non ha `take`.
+> - **Superato:** B2 (`164baf6`) ha già un `describe('getArchivedCards')` a `card.service.test.ts:1622`. Va **esteso**, adattando
+>   i due test B2 alla nuova firma `(id, page, limit)` e al ritorno `{ cards, total, page, limit }` e **conservando** la verifica che
+>   `note` non venga selezionata. Non va aggiunto un describe nuovo in fondo.
+> - **Ordine:** l'indice `@@index([cardId, createdAt])` va in un commit separato, con la migration generata e verificata (trappola 2
+>   dell'HANDOFF: DB usa-e-getta, `migrate diff` vuoto). Serve anche a 5.4 (Postgres lo legge all'indietro).
+> - **Rischio:** medio. Servono i18n (`archive.pageOf`, en + it) e le varianti `dark:`. Dopo, rieseguire l'e2e sul kanban.
 
 **Perché:** Tre query kanban crescono senza limite. `/kanban/boards/:id/archived` è l'unica rotta di lista kanban senza paginazione: su una board con anni di card archiviate la risposta è tutto l'archivio in un colpo. `KanbanComment` ha solo `@@index([cardId])` mentre la query ordina per `createdAt`, quindi Postgres ordina in memoria a ogni apertura di card. E `getUserKanbanReminders` non ha `take`: restituisce ogni reminder dell'utente su ogni board.
 
