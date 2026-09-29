@@ -290,7 +290,7 @@ export default function NotesPage() {
       email: s.user.email,
       avatarUrl: s.user.avatarUrl,
       permission: s.permission,
-      status: s.status as 'ACCEPTED' | 'PENDING',
+      status: s.status,
     })) || [];
   const sharingNoteOwner: SharedOwnerInfo | null = sharingNoteData
     ? (sharingNoteData.ownership === 'shared' && sharingNoteData.sharedByUser

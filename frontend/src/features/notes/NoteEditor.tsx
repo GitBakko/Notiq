@@ -820,7 +820,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 detto di no. Il cast `as 'ACCEPTED' | 'PENDING'` e' cio' che impediva
                 a TypeScript di segnalarlo, ed e' il motivo per cui il filtro mancava
                 qui e non altrove. */}
-            <SharingModal isOpen={isSharingModalOpen} onClose={() => setIsSharingModalOpen(false)} noteId={note.id} sharedWith={note.sharedWith?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING').map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status as 'ACCEPTED' | 'PENDING' }))} />
+            <SharingModal isOpen={isSharingModalOpen} onClose={() => setIsSharingModalOpen(false)} noteId={note.id} sharedWith={note.sharedWith?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING').map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status }))} />
 
             <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
 

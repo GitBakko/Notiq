@@ -10,6 +10,7 @@ import { getPendingRequests, getSentRequests, acceptFriendRequest, declineFriend
 import clsx from 'clsx';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import api from '../../lib/api';
+import { queryKeys } from '../../lib/queryKeys';
 import { useUIStore } from '../../store/uiStore';
 
 interface SharedNote {
@@ -145,10 +146,10 @@ export default function SharedWithMePage() {
   });
 
   const { data: friends = [] } = useQuery({
-    // NOTA: la stessa lista amici vive qui sotto ['friends', ...] e nella chat sotto
-    // ['chat', ...]. Due cache della stessa risorsa che possono discordare —
-    // invalidarne una non tocca l'altra. Vale la pena unificarle, ma non in questo fix.
-    queryKey: ['friends', 'list'],
+    // Stessa chiave dei modali della chat (FriendRequestModal, GroupChatModal): una
+    // sola cache per la lista amici, cosi' l'invalidazione di ['friends'] qui sotto
+    // aggiorna anche la chat.
+    queryKey: queryKeys.friends.list,
     queryFn: getFriends,
     refetchInterval: 30000,
   });

@@ -15,6 +15,7 @@ import {
   getOrCreateDirectConversation,
   type ChatUser,
 } from '../chatService';
+import { queryKeys } from '../../../lib/queryKeys';
 
 interface FriendRequestModalProps {
   isOpen: boolean;
@@ -69,7 +70,7 @@ export default function FriendRequestModal({ isOpen, onClose, onStartChat }: Fri
   }, [isOpen]);
 
   const { data: friends = [] } = useQuery({
-    queryKey: ['chat', 'friends'],
+    queryKey: queryKeys.friends.list,
     queryFn: getFriends,
     enabled: isOpen,
     // Il backend non emette nessun segnale quando un'amicizia nasce: broadcastToUser

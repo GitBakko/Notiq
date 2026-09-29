@@ -790,7 +790,8 @@
     "failedToast": "Alcune modifiche non sono state sincronizzate. Usa Riprova nella barra di sincronizzazione.",
     "pendingToast": "La sincronizzazione sta richiedendo più tempo del solito",
     "sharedSaveFailed": "Le modifiche a questa nota condivisa non sono state salvate sul server — verifica la connessione",
-    "sharedSaveForbidden": "Non hai più accesso a questa nota — le ultime modifiche non sono state salvate"
+    "sharedSaveForbidden": "Non hai più accesso a questa nota — le ultime modifiche non sono state salvate",
+    "noteMoveReverted": "La nota non è stata spostata: il taccuino non esiste più. È tornata nel taccuino precedente."
   },
   "collaboration": {
     "you": "Tu",

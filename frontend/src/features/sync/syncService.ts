@@ -5,6 +5,8 @@ import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
 import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard, SyncQueueItem } from '../../lib/db';
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
+import toast from 'react-hot-toast';
+import i18n from 'i18next';
 
 export const syncPull = async () => {
   // Task 6 fix round 1: board ids this pull actually deletes from Dexie (owned,
@@ -595,6 +597,56 @@ import { useAuthStore } from '../../store/authStore';
 let isSyncing = false;
 let syncPushScheduled = false;
 
+/**
+ * A NOTE UPDATE that moves the note or sets its tags references a notebook/tags
+ * that may have been created offline too. If their CREATE is still queued (in
+ * backoff, or failed awaiting a retry) the server does not know them yet: pushing
+ * now 404s (updateNote verifies the notebook, P3) and the update would be dropped.
+ * Reads the live queue, so a CREATE pushed earlier in this same run no longer counts.
+ */
+async function hasQueuedReferenceCreate(item: SyncQueueItem): Promise<boolean> {
+  const data = item.data as { notebookId?: string; tags?: { tag: { id: string } }[] } | undefined;
+  const notebookId = data?.notebookId;
+  const tagIds = new Set((data?.tags ?? []).map(t => t.tag.id));
+  if (!notebookId && tagIds.size === 0) return false;
+  const pending = await db.syncQueue
+    .filter(i => i.userId === item.userId && i.type === 'CREATE' && (
+      (i.entity === 'NOTEBOOK' && i.entityId === notebookId) ||
+      (i.entity === 'TAG' && tagIds.has(i.entityId))
+    ))
+    .count();
+  return pending > 0;
+}
+
+/**
+ * The server rejected a note move because the target notebook is gone (deleted on
+ * another device). The queue item is dropped, but the local note still points at
+ * the dead notebook and, being dirty, syncPull would never correct it. Put it back
+ * where the server has it — and mark it synced only when nothing else is queued for
+ * it and it was not edited after the move, the same rule as a successful push.
+ */
+async function revertRejectedNoteMove(item: SyncQueueItem): Promise<void> {
+  try {
+    const { data: serverNote } = await api.get<{ notebookId: string }>(`/notes/${item.entityId}`);
+    const local = await db.notes.get(item.entityId);
+    if (!local || !serverNote?.notebookId) return;
+    const stillQueued = await db.syncQueue
+      .filter(i => i.entity === 'NOTE' && i.entityId === item.entityId)
+      .count();
+    const editedSince = new Date(local.updatedAt).getTime() > item.createdAt;
+    await db.notes.update(
+      item.entityId,
+      stillQueued === 0 && !editedSince
+        ? { notebookId: serverNote.notebookId, syncStatus: 'synced' as const }
+        : { notebookId: serverNote.notebookId },
+    );
+    toast.error(i18n.t('sync.noteMoveReverted'));
+  } catch (err) {
+    // Offline again or the note is gone too: the next successful pull/push settles it.
+    console.warn('Sync Push: could not restore the rejected note move:', item.entityId, err);
+  }
+}
+
 // Retry backoff: track failures per queue item to avoid tight retry loops
 const failureCounts = new Map<number, { count: number; nextRetryAt: number }>();
 const MAX_RETRIES = 5;
@@ -733,6 +785,10 @@ export const syncPush = async (): Promise<boolean> => {
       if (item.status === 'failed') continue;
       // Skip items in backoff period
       if (!shouldRetry(item.id)) continue;
+
+      // Wait for the notebook/tags this note update references to reach the server
+      // first. Not a failure: no backoff, the item simply stays queued for the next run.
+      if (item.entity === 'NOTE' && item.type === 'UPDATE' && await hasQueuedReferenceCreate(item)) continue;
 
       try {
         if (item.entity === 'NOTE') {
@@ -967,6 +1023,10 @@ export const syncPush = async (): Promise<boolean> => {
           console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
           if (item.id) await db.syncQueue.delete(item.id);
           clearFailure(item.id);
+          const errorKey = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+          if (item.entity === 'NOTE' && item.type === 'UPDATE' && errorKey === 'errors.notebooks.notFound') {
+            await revertRejectedNoteMove(item);
+          }
         } else if (status === 404 || status === 410) {
           // Same status, but a CREATE — surface it instead (status: 'failed' lights up
           // SyncStatusIndicator's red banner + retry button), same treatment as 400/422.

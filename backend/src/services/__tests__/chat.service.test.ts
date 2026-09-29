@@ -220,18 +220,21 @@ describe('createMessage', () => {
 });
 
 describe('getMessages', () => {
-  it('should return messages for a note with default pagination', async () => {
-    const messages = [
-      { id: 'msg-1', content: 'Hello', user: { id: 'u1', name: 'A' } },
+  it('fetches the newest page and returns it in chronological order', async () => {
+    // Prisma returns newest-first for orderBy desc.
+    const newestFirst = [
       { id: 'msg-2', content: 'World', user: { id: 'u2', name: 'B' } },
+      { id: 'msg-1', content: 'Hello', user: { id: 'u1', name: 'A' } },
     ];
-    prismaMock.chatMessage.findMany.mockResolvedValue(messages);
+    prismaMock.chatMessage.findMany.mockResolvedValue(newestFirst);
 
     const result = await getMessages(NOTE_ID);
 
+    // With 'asc', page 1 was the 100 OLDEST messages: past 100 the chat froze on
+    // them and new messages never appeared.
     expect(prismaMock.chatMessage.findMany).toHaveBeenCalledWith({
       where: { noteId: NOTE_ID },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       skip: 0,
       take: 100,
       include: {
@@ -240,7 +243,8 @@ describe('getMessages', () => {
         },
       },
     });
-    expect(result).toEqual(messages);
+    // The contract towards ChatSidebar stays ascending (oldest at the top).
+    expect(result.map((m: { id: string }) => m.id)).toEqual(['msg-1', 'msg-2']);
   });
 
   it('should apply custom pagination parameters', async () => {
