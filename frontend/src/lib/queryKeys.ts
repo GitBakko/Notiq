@@ -29,6 +29,12 @@ export const queryKeys = {
   notifications: {
     all: ['notifications'] as const,
   },
+  friends: {
+    // One cache for the friends list: the chat modals used to keep their own copy under
+    // a 'chat'-prefixed key, so invalidating one cache left the other stale. Kept under
+    // the 'friends' prefix so SharedWithMePage's invalidation of ['friends'] reaches it.
+    list: ['friends', 'list'] as const,
+  },
   groups: {
     all: ['groups'] as const,
     forSharing: ['groups-for-sharing'] as const,
