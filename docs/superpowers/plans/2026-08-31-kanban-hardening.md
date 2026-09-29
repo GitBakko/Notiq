@@ -127,7 +127,7 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [ ] | **5.2** | Saltare il fetch di dettaglio per board in `syncPull` quando non serve — **rivalutato 2026-09-29, vedi il task** | `` |
 | [x] | **5.3** | Rimuovere il poll a 3 secondi dalla chat di board | `d6acf0d` |
 | [x] | **5.4** | Paginare chat e commenti dal più recente | `a74a9d6` |
-| [ ] | **5.5** | Batchare la lookup dei destinatari e togliere l'SMTP dal request path — **rivalutato 2026-09-29, vedi il task** | `` |
+| [x] | **5.5** | Batchare la lookup dei destinatari e togliere l'SMTP dal request path | `2224f6d` |
 | [ ] | **5.6** | Eliminare il doppio invio di ogni card in `handleBulkMove` — **rivalutato 2026-09-29, vedi il task** | `` |
 
 ### Stage 6 — Rinviabile

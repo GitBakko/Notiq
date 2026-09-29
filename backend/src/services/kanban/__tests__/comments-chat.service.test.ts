@@ -530,75 +530,62 @@ describe('comments-chat.service', () => {
       });
     });
 
-    it('sends notifications to board participants who are offline', async () => {
-      const { createNotification } = await import('../../notification.service');
+    // 5.5 — board chat notifications go through the shared notifyBoardUsersTiered (one
+    // recipient query, emails not awaited); its tiering, email and debounce behavior is
+    // tested in notifications.test.ts. Here: that the chat hands it the right payload.
+    it('delegates to notifyBoardUsersTiered without awaiting it, with the chat payload', async () => {
       const author = makeUser({ name: 'Sender' });
-      const recipient = makeUser();
       const boardId = 'board-notify';
-
       const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id, content: 'Msg content' });
-      const withAuthor = chatWithAuthor(chatMsg, author);
-
-      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(withAuthor);
-
-      // Board with owner + no shares — owner is the recipient
-      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({
-        title: 'Test Board',
-        ownerId: recipient.id,
-        shares: [],
-      });
-
-      // getPresenceUsers returns empty (no one active on board SSE)
-      (getPresenceUsers as any).mockReturnValue([]);
-
-      // Recipient is offline (lastActiveAt > 5 min ago)
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      mockedPrisma.user.findUnique.mockResolvedValue({
-        lastActiveAt: tenMinutesAgo,
-        email: recipient.email,
-        locale: 'en',
-        emailNotificationsEnabled: true,
-      });
+      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(chatWithAuthor(chatMsg, author));
+      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({ title: 'Test Board' });
+      (notifyBoardUsersTiered as any).mockReturnValue(new Promise(() => {})); // never settles
 
       await createBoardChatMessage(boardId, author.id, 'Msg content');
 
-      expect(createNotification).toHaveBeenCalledWith(
-        recipient.id,
+      expect(notifyBoardUsersTiered).toHaveBeenCalledWith(
+        author.id,
+        boardId,
         'KANBAN_COMMENT_ADDED',
         'Board Chat',
         expect.stringContaining('Sender'),
-        expect.objectContaining({
-          boardId,
-          boardTitle: 'Test Board',
-          authorName: 'Sender',
-          localizationKey: 'notifications.kanbanBoardChat',
-        }),
+        expect.objectContaining({ boardId, boardTitle: 'Test Board', authorName: 'Sender', localizationKey: 'notifications.kanbanBoardChat' }),
+        expect.objectContaining({ type: 'CHAT_MESSAGE' }),
+        30 * 60 * 1000,
+        expect.objectContaining({ map: expect.any(Map) }),
       );
     });
 
-    it('skips notification for users who are active on board SSE', async () => {
-      const { createNotification } = await import('../../notification.service');
-      const author = makeUser();
-      const owner = makeUser();
-      const boardId = 'board-sse-skip';
+    it('builds the CHAT_MESSAGE email and the per-user/board debounce key', async () => {
+      const author = makeUser({ name: 'EmailAuthor' });
+      const boardId = 'board-email';
+      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id, content: 'Email me' });
+      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(chatWithAuthor(chatMsg, author));
+      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({ title: 'Email Board' });
 
-      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id });
-      const withAuthor = chatWithAuthor(chatMsg, author);
+      await createBoardChatMessage(boardId, author.id, 'Email me');
 
-      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(withAuthor);
-      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({
-        title: 'Board',
-        ownerId: owner.id,
-        shares: [],
+      const call = (notifyBoardUsersTiered as any).mock.calls[0];
+      expect(call[6].data('r@example.com', 'en')).toEqual({
+        noteId: boardId, noteTitle: 'Email Board', senderName: 'EmailAuthor', messageContent: 'Email me', locale: 'en',
       });
+      expect(call[8].key('u-9')).toBe(`kanban:u-9:${boardId}`);
+    });
 
-      // Owner is present on board SSE
-      (getPresenceUsers as any).mockReturnValue([{ id: owner.id }]);
+    it('passes localizationArgs whose keys match the kanbanBoardChat template', async () => {
+      const author = makeUser({ name: 'Sender' });
+      const boardId = 'board-chat-args';
+      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id, content: 'Hi' });
+      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(chatWithAuthor(chatMsg, author));
+      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({ title: 'My Board' });
 
-      await createBoardChatMessage(boardId, author.id, 'Test');
+      await createBoardChatMessage(boardId, author.id, 'Hi');
 
-      // Should NOT have called createNotification for the owner (they're on the board)
-      expect(createNotification).not.toHaveBeenCalled();
+      const data = (notifyBoardUsersTiered as any).mock.calls[0][5];
+      expect(data.localizationArgs).toEqual({ senderName: 'Sender', boardTitle: 'My Board' });
+      const body = resolveNotification(data.localizationKey, data.localizationArgs, 'en', 'FallbackTitle', 'FallbackBody').body;
+      expect(body).toBe('Sender sent a message in board "My Board"');
+      expect(body).not.toContain('{{');
     });
 
     it('returns message even if board is not found (early return)', async () => {
@@ -616,118 +603,5 @@ describe('comments-chat.service', () => {
       expect(result).toEqual(withAuthor);
     });
 
-    it('sends email for offline users with email notifications enabled', async () => {
-      const emailService = await import('../../email.service');
-      const author = makeUser({ name: 'EmailAuthor' });
-      const recipient = makeUser({ emailNotificationsEnabled: true });
-      const boardId = 'board-email';
-
-      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id, content: 'Email me' });
-      const withAuthor = chatWithAuthor(chatMsg, author);
-
-      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(withAuthor);
-      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({
-        title: 'Email Board',
-        ownerId: recipient.id,
-        shares: [],
-      });
-
-      (getPresenceUsers as any).mockReturnValue([]);
-
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      mockedPrisma.user.findUnique.mockResolvedValue({
-        lastActiveAt: tenMinutesAgo,
-        email: recipient.email,
-        locale: 'en',
-        emailNotificationsEnabled: true,
-      });
-
-      await createBoardChatMessage(boardId, author.id, 'Email me');
-
-      expect(emailService.sendNotificationEmail).toHaveBeenCalledWith(
-        recipient.email,
-        'CHAT_MESSAGE',
-        expect.objectContaining({
-          noteId: boardId,
-          noteTitle: 'Email Board',
-          senderName: 'EmailAuthor',
-          messageContent: 'Email me',
-          locale: 'en',
-        }),
-      );
-    });
-
-    it('does NOT send email when user has emailNotificationsEnabled=false', async () => {
-      const emailService = await import('../../email.service');
-      const author = makeUser({ name: 'NoEmail' });
-      const recipient = makeUser();
-      const boardId = 'board-no-email';
-
-      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id });
-      const withAuthor = chatWithAuthor(chatMsg, author);
-
-      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(withAuthor);
-      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({
-        title: 'Board',
-        ownerId: recipient.id,
-        shares: [],
-      });
-
-      (getPresenceUsers as any).mockReturnValue([]);
-
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      mockedPrisma.user.findUnique.mockResolvedValue({
-        lastActiveAt: tenMinutesAgo,
-        email: recipient.email,
-        locale: 'en',
-        emailNotificationsEnabled: false,
-      });
-
-      await createBoardChatMessage(boardId, author.id, 'Test');
-
-      expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
-    });
-
-    it('passes localizationArgs whose keys match the kanbanBoardChat template', async () => {
-      const { createNotification } = await import('../../notification.service');
-      const author = makeUser({ name: 'Sender' });
-      const recipient = makeUser();
-      const boardId = 'board-chat-args';
-
-      const chatMsg = makeKanbanBoardChat({ boardId, authorId: author.id, content: 'Hi' });
-      mockedPrisma.kanbanBoardChat.create.mockResolvedValue(chatWithAuthor(chatMsg, author));
-      mockedPrisma.kanbanBoard.findUnique.mockResolvedValue({
-        title: 'My Board',
-        ownerId: recipient.id,
-        shares: [],
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (getPresenceUsers as any).mockReturnValue([]);
-      mockedPrisma.user.findUnique.mockResolvedValue({
-        lastActiveAt: new Date(Date.now() - 10 * 60 * 1000),
-        email: recipient.email,
-        locale: 'en',
-        emailNotificationsEnabled: false,
-      });
-
-      await createBoardChatMessage(boardId, author.id, 'Hi');
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = (createNotification as any).mock.calls[0][4];
-      expect(data.localizationArgs).toEqual({
-        senderName: 'Sender',
-        boardTitle: 'My Board',
-      });
-
-      const body = resolveNotification(
-        data.localizationKey,
-        data.localizationArgs,
-        'en',
-        'FallbackTitle',
-        'FallbackBody',
-      ).body;
-      expect(body).toBe('Sender sent a message in board "My Board"');
-      expect(body).not.toContain('{{');
-    });
   });
 });
