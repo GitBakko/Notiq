@@ -437,7 +437,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               className="w-full h-full object-cover"
             />
             {!readOnly && (
-              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/cover:opacity-100 transition-opacity">
+              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/cover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                 <button
                   onClick={() => coverInputRef.current?.click()}
                   className="p-1.5 rounded-md bg-black/40 hover:bg-black/60 text-white text-xs transition-colors"
@@ -464,6 +464,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               {isMobile && (
                 <button
                   onClick={toggleSidebar}
+                  aria-label={t('common.menu')}
                   className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
                 >
                   <Menu size={20} />
@@ -471,6 +472,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               )}
               <button
                 onClick={() => navigate('/kanban')}
+                aria-label={t('kanban.a11y.backToBoards')}
                 className="flex-shrink-0 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
               >
                 <ArrowLeft size={20} />
@@ -497,7 +499,7 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
                 {!readOnly && board.avatarUrl && (
                   <button
                     onClick={() => mutations.deleteAvatar.mutate(boardId)}
-                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] opacity-0 group-hover/avatar:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                     title={t('kanban.avatar.remove')}
                   >
                     <X size={8} />
@@ -640,6 +642,9 @@ export default function KanbanBoardPage({ boardId }: KanbanBoardPageProps) {
               <div className="relative">
                 <button
                   onClick={() => modals.setShowBoardMenu(!modals.showBoardMenu)}
+                  aria-label={t('kanban.a11y.boardMenu')}
+                  aria-haspopup="menu"
+                  aria-expanded={modals.showBoardMenu}
                   className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors relative"
                 >
                   <MoreVertical size={18} />

@@ -555,6 +555,7 @@ export default function CardDetailModal({
                       {currentUser?.id === comment.author.id && (
                         <button
                           onClick={() => removeComment.mutate(comment.id)}
+                          aria-label={t('kanban.a11y.deleteComment')}
                           className="ml-auto text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
                         >
                           <Trash2 size={13} />

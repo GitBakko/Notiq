@@ -136,6 +136,7 @@ export default function KanbanColumn({
             className="flex-shrink-0 cursor-grab active:cursor-grabbing text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 transition-colors touch-none"
             {...attributes}
             {...listeners}
+            aria-label={t('kanban.a11y.dragColumn', { title: displayTitle })}
           >
             <GripVertical size={16} />
           </button>
@@ -183,6 +184,9 @@ export default function KanbanColumn({
           <div className="relative flex-shrink-0">
             <button
               onClick={() => setShowMenu(!showMenu)}
+              aria-label={t('kanban.a11y.columnMenu', { title: displayTitle })}
+              aria-haspopup="menu"
+              aria-expanded={showMenu}
               className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-0.5 rounded transition-colors"
             >
               <MoreVertical size={16} />

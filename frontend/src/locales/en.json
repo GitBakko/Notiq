@@ -973,6 +973,17 @@
       "usersWithoutAccess": "Will be given access",
       "confirmLink": "Link & Share"
     },
+    "a11y": {
+      "backToBoards": "Back to boards",
+      "boardMenu": "Board menu",
+      "boardCardMenu": "Menu for board {{title}}",
+      "columnMenu": "Menu for column {{title}}",
+      "dragColumn": "Drag column {{title}}",
+      "dragCard": "Drag card {{title}}",
+      "deleteComment": "Delete comment",
+      "clearSearch": "Clear search",
+      "closeChat": "Close chat"
+    },
     "filters": {
       "title": "Filters",
       "searchPlaceholder": "Search cards...",

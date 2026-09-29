@@ -55,10 +55,21 @@ export default memo(function BoardCard({ board, onSelect, onShare, onDelete, onV
     setShowDeleteConfirm(true);
   }
 
+  function handleCardKeyDown(e: React.KeyboardEvent): void {
+    // Inner buttons (menu, shares) bubble their own Enter/Space — ignore those
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    onSelect(board.id);
+  }
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(board.id)}
-      className="rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 hover:shadow-md transition-shadow cursor-pointer relative group hover-lift"
+      onKeyDown={handleCardKeyDown}
+      className="rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 hover:shadow-md transition-shadow cursor-pointer relative group hover-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:focus-visible:ring-emerald-400"
     >
       {/* Cover Image */}
       {board.coverImage && (
@@ -77,8 +88,11 @@ export default memo(function BoardCard({ board, onSelect, onShare, onDelete, onV
           <div ref={menuRef} className="absolute top-3 right-3 z-10">
             <button
               onClick={handleMenuToggle}
+              aria-label={t('kanban.a11y.boardCardMenu', { title: board.title })}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               className={clsx(
-                'p-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity',
+                'p-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity',
                 board.coverImage
                   ? 'text-white hover:text-white bg-black/30 hover:bg-black/50'
                   : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300',

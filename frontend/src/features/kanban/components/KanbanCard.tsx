@@ -124,6 +124,14 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
     onSelect(card.id);
   }, [card.id, onSelect]);
 
+  const handleCardKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Only the body itself — never a key event bubbling from a descendant
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    handleCardClick();
+  }, [handleCardClick]);
+
   return (
     <>
       <div
@@ -153,6 +161,7 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
               data-dnd-handle
               {...attributes}
               {...listeners}
+              aria-label={t('kanban.a11y.dragCard', { title: card.title || t('kanban.card.untitled') })}
               className="flex-shrink-0 self-stretch w-1 rounded-full bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-400 dark:hover:bg-neutral-500 active:bg-neutral-500 dark:active:bg-neutral-400 cursor-grab active:cursor-grabbing touch-none transition-colors"
             />
           )}
@@ -172,48 +181,20 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
 
           {/* Card body */}
           <div
-            className="flex-1 min-w-0"
+            className="flex-1 min-w-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:focus-visible:ring-emerald-400"
+            role="button"
+            tabIndex={0}
             onClick={handleCardClick}
+            onKeyDown={handleCardKeyDown}
             onTouchStart={handleCardTouchStart}
             onTouchEnd={handleCardTouchEnd}
             onTouchMove={handleCardTouchMove}
           >
-            {/* Title row with three-dot menu */}
+            {/* Title row */}
             <div className="flex items-start gap-1">
               <p className="text-sm font-medium text-neutral-900 dark:text-white line-clamp-2 flex-1 min-w-0">
                 {card.title || t('kanban.card.untitled')}
               </p>
-
-              {/* Three-dot menu — Move to column */}
-              {canMove && (
-                <div className="flex-shrink-0">
-                  <button
-                    ref={menuBtnRef}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (showMoveMenu) {
-                        setShowMoveMenu(false);
-                        setMenuPos(null);
-                      } else {
-                        openMoveMenu(e.currentTarget);
-                      }
-                    }}
-                    onTouchEnd={(e) => {
-                      // Prevent the card's touch handlers from interfering
-                      e.stopPropagation();
-                      clearLongPress();
-                    }}
-                    className={clsx(
-                      'p-0.5 rounded text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors',
-                      isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                    )}
-                    aria-label={t('kanban.card.moveToColumn')}
-                  >
-                    <MoreVertical size={14} />
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Metadata row — only rendered when there's data to show */}
@@ -278,6 +259,38 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
               </div>
             )}
           </div>
+
+          {/* Three-dot menu — Move to column. Kept OUTSIDE the focusable card body:
+              no nested interactive controls, and its label stays out of the body's accessible name. */}
+          {canMove && (
+            <div className="flex-shrink-0 self-start">
+              <button
+                ref={menuBtnRef}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (showMoveMenu) {
+                    setShowMoveMenu(false);
+                    setMenuPos(null);
+                  } else {
+                    openMoveMenu(e.currentTarget);
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  // Prevent the card's touch handlers from interfering
+                  e.stopPropagation();
+                  clearLongPress();
+                }}
+                className={clsx(
+                  'p-0.5 rounded text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors',
+                  isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                )}
+                aria-label={t('kanban.card.moveToColumn')}
+              >
+                <MoreVertical size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -60,6 +60,7 @@ export default function TaskListLinkPicker({ isOpen, onClose, onSelect }: TaskLi
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
+              aria-label={t('kanban.a11y.clearSearch')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
             >
               <X size={14} />

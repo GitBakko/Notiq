@@ -75,6 +75,7 @@ export default function KanbanPage() {
             {isMobile && (
               <button
                 onClick={toggleSidebar}
+                aria-label={t('common.menu')}
                 className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
               >
                 <Menu size={24} />

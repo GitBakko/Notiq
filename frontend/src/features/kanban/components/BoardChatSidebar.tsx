@@ -173,6 +173,7 @@ export default function BoardChatSidebar({
           <button
             onClick={handleSend}
             disabled={!newMessage.trim() || sendMessage.isPending}
+            aria-label={t('common.send')}
             className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send size={16} />
@@ -213,6 +214,7 @@ export default function BoardChatSidebar({
         </h3>
         <button
           onClick={onClose}
+          aria-label={t('kanban.a11y.closeChat')}
           className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 rounded"
         >
           <X size={16} />

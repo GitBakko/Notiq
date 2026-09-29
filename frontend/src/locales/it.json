@@ -1241,6 +1241,17 @@
       "usersWithoutAccess": "Riceveranno accesso",
       "confirmLink": "Collega e Condividi"
     },
+    "a11y": {
+      "backToBoards": "Torna alle bacheche",
+      "boardMenu": "Menu bacheca",
+      "boardCardMenu": "Menu della bacheca {{title}}",
+      "columnMenu": "Menu della colonna {{title}}",
+      "dragColumn": "Trascina la colonna {{title}}",
+      "dragCard": "Trascina la card {{title}}",
+      "deleteComment": "Elimina commento",
+      "clearSearch": "Cancella ricerca",
+      "closeChat": "Chiudi chat"
+    },
     "filters": {
       "title": "Filtri",
       "searchPlaceholder": "Cerca card...",
