@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import * as notificationService from './notification.service';
 import { NotFoundError, ForbiddenError } from '../utils/errors';
 import { cardWithAssigneeSelect } from './kanban/helpers';
+import { assertBoardAccess } from './kanbanPermissions';
 
 /** Reusable include for task items with checkedByUser */
 const ITEMS_INCLUDE = {
@@ -296,6 +297,22 @@ export const addTaskItem = async (
     if (taskList?.kanbanBoard && taskList.kanbanBoard.columns.length > 0) {
       const targetColumnId = taskList.kanbanBoard.columns[0].id;
       const boardId = taskList.kanbanBoard.id;
+
+      // P2: write access to the list says nothing about the linked board. Skip the
+      // auto-add (not throw) when the actor cannot write the board: the task item is
+      // an action they are fully entitled to — the mirror of the N5 gate in moveCard.
+      try {
+        await assertBoardAccess(boardId, userId, 'WRITE');
+      } catch (accessErr) {
+        if (accessErr instanceof ForbiddenError || accessErr instanceof NotFoundError) {
+          logger.warn(
+            { userId, taskListId, boardId },
+            'addTaskItem: actor cannot write linked board, skipping card auto-add'
+          );
+          return item;
+        }
+        throw accessErr;
+      }
 
       // Map TaskPriority → KanbanCardPriority
       const priority = (data.priority || 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH';
