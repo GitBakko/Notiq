@@ -158,7 +158,7 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **tutti e quattro corretti** — A3 e la metà WebSocket di A2 in `6481576`, A1 A4 e la metà SSE di A2 in `d640f20` |
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | **tutti e quattro corretti** `164baf6`, insieme a N4 |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
-| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
+| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`, C5 `81822be`; **C2 aperto** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | **corretto** `c77ed19` |
 | **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**, **N5 corretto** `8da3123` |
 | **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | P1 **corretto** `671fa94`; P2, P3, P4 aperti |
@@ -166,7 +166,7 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Venticinque corretti, sei aperti** (C2, C5, G1, P2, P3, P4). Il conteggio e' cresciuto
+**Ventisei corretti, cinque aperti** (C2, G1, P2, P3, P4). Il conteggio e' cresciuto
 chiudendo N5: tracciarlo ha trovato quattro scritture della stessa famiglia, e **P1 e' piu'
 raggiungibile di N5 stesso**.
 
@@ -693,7 +693,7 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
   `20260228130000` ha aggiunto il campo con `DEFAULT false` **senza backfill**. Su quelle board
   l'auto-archiviazione è inerte per sempre, e con lei il tick del task item collegato, la chiusura
   dei reminder e il bulk-archive. Serve una migration one-shot più la guardia in `deleteColumn`.
-- **C5** — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
+- **C5** (CORRETTO `81822be`) — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
   `['kanban-card-activities', cardId]`, mai `['kanban-comments', cardId]`. Con `staleTime` a 5 minuti
   e nessun polling, chi guarda una card non vede mai arrivare i commenti altrui — ma il badge del
   conteggio si aggiorna, perché viaggia sulla board query. Pre-esistente. Una riga.
