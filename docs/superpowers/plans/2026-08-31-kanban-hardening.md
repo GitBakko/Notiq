@@ -103,17 +103,17 @@ Spuntare la riga **dopo** che il task è stato eseguito **e** committato, incoll
 | [x] | **3.1** | Scope `useKanbanBoards` all'utente corrente e stampa `viewerId` in pull | `57f8152..d296ee8` |
 | [x] | **3.2** | Risolvere il `columnId` della card CREATE da Dexie invece che dal payload in coda | `121d665..93253d2` |
 | [x] | **3.3** | Non scartare più in silenzio una CREATE che va in 404 | `cf163f4` |
-| [ ] | **3.4** | Far restituire a `syncPush` la promise in volo e incatenare il refresh della board | `` |
+| [ ] | **3.4** | Far restituire a `syncPush` la promise in volo e incatenare il refresh della board — **testo superato, vedi la rivalutazione 2026-09-29 nel task** | `` |
 | [x] | **3.5** | Rimuovere il guard "non pushare mai le board condivise" | `c63b8d5` |
-| [ ] | **3.6** | Eliminare il pull duplicato delle board condivise e allargare il prune (stesso commit) | `` |
-| [ ] | **3.7** | Isolare notebooks, tags e notes in `syncPull` con try/catch propri | `` |
+| [ ] | **3.6** | Eliminare il pull duplicato delle board condivise e allargare il prune (stesso commit) — **testo superato, vedi la rivalutazione 2026-09-29 nel task** | `` |
+| [ ] | **3.7** | Isolare notebooks, tags e notes in `syncPull` con try/catch propri — **testo superato, vedi la rivalutazione 2026-09-29 nel task** | `` |
 
 ### Stage 4 — Chokepoint SSE
 
 | ✓ | Task | Titolo | Commit |
 |---|------|--------|--------|
 | [x] | **4.1** | Aggiungere `actorId` a `KanbanEvent` e togliere la nota collegata dentro `broadcast()` | `9edc138` |
-| [ ] | **4.2** | Filtrare lato client l'eco dei propri eventi | `` |
+| [x] | **4.2** | Filtrare lato client l'eco dei propri eventi — **variante B** (solo il pulse, vedi C2) | `0eae602` |
 | [x] | **4.3** | `disconnectUser()` e chiusura degli stream sul revoke della board | `c238398` |
 | [ ] | **4.4** | Emettere `board:updated` da update, delete e dalle quattro route cover/avatar | `` |
 | [ ] | **4.5** | Fare invalidare la board query all'evento `connected` | `` |
@@ -158,15 +158,15 @@ completezza fatto lavorando sul gruppo B. Ognuno porta il codice citato e uno sc
 | **A** — l'autorizzazione è verificata al connect e mai più | A1 `deleteUser`, A2 reset password, **A3 `revokeNoteShare`**, A4 `deleteBoard` | **tutti e quattro corretti** — A3 e la metà WebSocket di A2 in `6481576`, A1 A4 e la metà SSE di A2 in `d640f20` |
 | **B** — il titolo della nota esce dalle strade che il 4.1 non tocca | B1 activity log, B2 `updateCard`/`getArchivedCards`, B3 `updateBoard`, B4 task list di board | **tutti e quattro corretti** `164baf6`, insieme a N4 |
 | — | `addConnection` su socket morti → notifiche spente per sempre | **corretto** `6bf866c` |
-| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`; **C2 C5 aperti** |
+| **C** — residui dei tre task chiusi | C1 `actorId` su delete, C2 actorId è per-utente non per-connessione, C3 reconnect loop su 403, C4 invariante colonna completed, C5 query commenti sbagliata | C1 `c8b795a`, C3 `d640f20`, C4 `1325d92`, C5 `81822be`, C2 `0eae602` (variante B); **tutti chiusi** |
 | **D** — fuori scope kanban | D1 `lastActiveAt` non può mai scattare | **corretto** `c77ed19` |
 | **N** — trovati sweepando per B (2026-09-02) | N1 `getNote`, N2 `getSharedNotes`, N3 `getSharedTaskLists`, N6 `getSharedKanbans`/`getSharedNotebooks`: **nessun filtro su `status`**. N4 il titolo di board che esce dal lato task list. N5 `moveCard` scrive sui TaskItem senza autorizzare la lista | **N4 corretto** `164baf6`, **N1 N2 N3 N6 corretti**, **N5 corretto** `8da3123` |
-| **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | P1 **corretto** `671fa94`, P3 P4 **corretti** `084c811`; P2 aperto |
-| **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | aperto |
+| **P** — trovati tracciando N5 (2026-09-02) | P1 `reorderTaskItems` scrive per id RAW senza scope sulla lista, P2 `addTaskItem` e' lo specchio esatto di N5, P3 `updateNote` accetta un `notebookId` mai verificato, P4 `updateNote` attacca un `tagId` mai verificato | P1 **corretto** `671fa94`, P2 **corretto** `3287011`, P3 P4 **corretti** `084c811`; **tutti chiusi** |
+| **G** — fuori scope permessi | G1 la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato | **chiuso: comportamento voluto** (decisione 2026-09-29) |
 | **E** — trovati dalla CI | E1 drift delle migration, E2 `import.spec.ts` via `docker cp` | **entrambi corretti** `0731e25`, `24dc798` |
 | **F** — trovati tracciando A3 | F1 `chat.service` legge un `documents` che non esiste, F2 `deleteNote` lascia sessioni vive, F3 i test di `onAuthenticate` non chiamavano `onAuthenticate` | **tutti e tre corretti** |
 
-**Ventisette corretti, quattro aperti** (C2, C5, G1, P2). Il conteggio e' cresciuto
+**Trenta corretti, nessuno aperto**; G1 chiuso come comportamento voluto. Il conteggio e' cresciuto
 chiudendo N5: tracciarlo ha trovato quattro scritture della stessa famiglia, e **P1 e' piu'
 raggiungibile di N5 stesso**.
 
@@ -384,6 +384,10 @@ dopo ~2 s, ma il riconnect fa già la domanda autorevole e riceve una risposta t
 sul filo, un nuovo membro di `KanbanEventBody` e nuova gestione client per due secondi.
 
 ### G1 — la rimozione da un gruppo non revoca gli share kanban che il gruppo aveva propagato
+
+> **Chiuso come comportamento voluto (decisione dell'utente, 2026-09-29).** Lo share propagato da un
+> gruppo diventa una condivisione individuale a tutti gli effetti: uscire dal gruppo non la revoca.
+> Per togliere l'accesso si revoca lo share della board. Non va corretto.
 
 Trovato tracciando la copertura del tick. Condividere una board con un gruppo **fa fan-out in righe
 `SharedKanbanBoard` individuali** (`routes/sharing.ts:305-326`); `group.service.ts:213 removeMember`
@@ -628,7 +632,7 @@ Sei mutazioni deliberate, tutte uccise dal test giusto: tolto `status === 'ACCEP
 board, deny che lancia invece di saltare. L'unico test che esisteva sul sync **passava col bug
 dentro**: non mockava nessuna autorizzazione. Ora sono nove.
 
-### P1-P4 — trovati tracciando N5 (P1 P3 P4 corretti, P2 aperto)
+### P1-P4 — trovati tracciando N5, tutti corretti
 
 Chiudere N5 ha smentito la frase con cui era stato archiviato — *"l'unica del suo genere trovata
 finora"*. Cercando i fratelli della stessa forma (autorizza la risorsa A, poi scrive la risorsa B)
@@ -637,7 +641,7 @@ ne sono usciti quattro. Ognuno verificato aprendo il file; la raggiungibilità d
 | # | Cosa | File | Stato |
 |---|---|---|---|
 | **P1** | `reorderTaskItems` fa `taskItem.update({ where: { id: item.id } })` **senza scope su `taskListId`**, mentre i suoi due fratelli nello stesso file ce l'hanno (`updateTaskItem:361`, `deleteTaskItem:403`). Chi ha una share **READ-only** riceve legittimamente gli id degli item — `getTaskList` seleziona solo `status`, non `permission` — e li passa alla reorder della **propria** lista: `assertWriteAccess` passa sulla sua, le scritture atterrano sulla vittima. **Scalata READ→WRITE** | `tasklist.service.ts:414-431` | **CORRETTO** `671fa94` |
-| **P2** | `addTaskItem` è lo specchio esatto di N5: autorizza la lista (`assertWriteAccess`), poi `kanbanCard.create` **più un frame SSE `card:created`** su una board mai autorizzata. Raggiungibile dalla proprietaria della lista, che passa sempre il gate | `tasklist.service.ts:250-343` | **aperto** |
+| **P2** | `addTaskItem` è lo specchio esatto di N5: autorizza la lista (`assertWriteAccess`), poi `kanbanCard.create` **più un frame SSE `card:created`** su una board mai autorizzata. Raggiungibile dalla proprietaria della lista, che passa sempre il gate | `tasklist.service.ts:250-343` | **CORRETTO** `3287011` |
 | **P3** | `updateNote` scrive `notebookId` senza mai verificarlo, mentre `createNote:39-41` lo verifica. Gli id dei notebook sono noti a chiunque abbia mai **ricevuto** un'offerta di share, anche dopo averla rifiutata (`sharing.service.ts:416-441`). Conseguenze: il conteggio note della vittima si gonfia (`notebook.service.ts:28-36` conta senza scope sul proprietario) e `Note.notebook` è `onDelete: Cascade`, quindi la nota estranea viene cancellata a cascata | `note.service.ts:184-227` | **CORRETTO** `084c811` |
 | **P4** | `updateNote` crea `TagsOnNotes` con un `tagId` mai verificato, mentre `addTagToNote` (`tag.service.ts:59-60`) lo verifica. È anche una **lettura**: la riga di associazione porta lo `userId` dell'attaccante, quindi passa il filtro di `getNote`, e `include: { tag: true }` restituisce la Tag intera della vittima. **Raggiungibilità NON confermata**: non è stato trovato nessun percorso che divulghi l'id di un tag altrui, quindi oggi serve indovinare un UUID | `note.service.ts:200-214` | **CORRETTO** `084c811` |
 
@@ -685,6 +689,11 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
   resta indietro fino a 5 minuti (`staleTime`). **Da risolvere dentro il 4.2**, non dopo: o si conia
   un id per connessione da rimandare indietro sulle mutation, o si sopprime solo
   `invalidateQueries` e mai la scrittura Dexie.
+  **CORRETTO `0eae602` con una terza via, più stretta (variante B, scelta il 2026-09-29):** l'eco del
+  proprio utente salta **solo** il pulse di highlight di `card:moved`; scrittura Dexie e refetch della
+  board restano, quindi la seconda scheda o il secondo device non restano mai indietro. Resta la GET
+  doppia sulle proprie azioni, costo accettato. L'id per connessione (variante A: header per scheda
+  rimandato nell'evento) resta l'evoluzione possibile se il carico sulle board condivise diventasse un problema.
 - **C3** (CORRETTO `d640f20`) — Dopo il revoke il client andava in **reconnect loop su 403
   all'infinito** (backoff cap 30s) continuando a mostrare la board stale. Chiuso con il branch
   terminale sui 4xx (401 → logout, 403/404 → espulsione, retry su 5xx e 408/425/429). L'evento
@@ -693,7 +702,7 @@ Correzione: una riga in testa a `addConnection`, dove ogni chiamante passa già:
   `20260228130000` ha aggiunto il campo con `DEFAULT false` **senza backfill**. Su quelle board
   l'auto-archiviazione è inerte per sempre, e con lei il tick del task item collegato, la chiusura
   dei reminder e il bulk-archive. Serve una migration one-shot più la guardia in `deleteColumn`.
-- **C5** — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
+- **C5** (CORRETTO `81822be`) — Gli eventi SSE `comment:added` / `comment:deleted` invalidano `['kanban-board', id]` e
   `['kanban-card-activities', cardId]`, mai `['kanban-comments', cardId]`. Con `staleTime` a 5 minuti
   e nessun polling, chi guarda una card non vede mai arrivare i commenti altrui — ma il badge del
   conteggio si aggiorna, perché viaggia sulla board query. Pre-esistente. Una riga.
@@ -5824,6 +5833,26 @@ git commit -m "fix(sync): surface orphaned CREATE items instead of dropping them
 
 ### Task 3.4: Far restituire a `syncPush` la promise in volo e incatenare il refresh della board
 
+> **Rivalutazione 2026-09-29 (su `main` `69091f3`): il difetto esiste ancora, il testo qui sotto NON va
+> applicato alla lettera** (trappola 1).
+> - **Oggi:** `flushSync()` in `useKanbanMutations.ts:17-20` è fire-and-forget, e ogni `onSuccess` fa
+>   `flushSync(); invalidateBoard();`. Il guard `isSyncing` (`syncService.ts:713-717`) restituisce subito
+>   `false`, il follow-up è un `setTimeout(…, 1000)` (`:1033-1039`) di cui nessuno legge l'esito, e
+>   `useSync.pushAndInvalidate` (`hooks/useSync.ts:36-42`) rimedia solo se il suo push è quello che porta la mossa.
+> - **Perché il testo sotto è superato:** prescrive `Promise<void>`, ma oggi `syncPush` è
+>   `Promise<boolean>` ed è consumato da `useSync` e `main.tsx:24`. Il test
+>   `resolves false when a second concurrent call hits the already-syncing guard`
+>   (`syncService.test.ts:1585`) fissa proprio il comportamento da togliere. Le righe citate sono sbagliate.
+> - **Task riscritto:** tenere `Promise<boolean>`. `inFlight: Promise<boolean> | null`, con un ciclo
+>   `do { … } while (syncPushScheduled)` e `pushedAny` in OR tra le passate. Il chiamante concorrente
+>   riceve `inFlight`. Il controllo `navigator.onLine` resta prima. Togliere il `setTimeout`.
+>   `flushSync = () => void syncPush().catch(() => false).then(invalidateBoard)` e togliere gli
+>   `invalidateBoard()` sincroni nelle mutation Dexie.
+> - **Test da vedere rossi prima:** sostituire `:1585` (il secondo chiamante aspetta la run reale e riceve
+>   `true`) e il `describe('concurrency guard')` a `:1607` (mai due run concorrenti).
+> - **Rischio:** alto, TIER 1: passa di qui ogni scrittura offline. Dopo la modifica rieseguire
+>   `e2e/kanban.spec.ts` ed `e2e/dexie.spec.ts`. Da fare in locale, con proposta di diff prima.
+
 **Perché:** trascinando due card in rapida successione la seconda torna visivamente al punto di partenza per qualche secondo. `await syncPush()` non aspetta niente quando un push è già in corso, quindi la board viene rifetchata dal server prima che la mossa ci sia arrivata.
 **Severità:** high · **Effort:** M · **Rischio:** TIER 1 — riscrive il guard di concorrenza di `syncPush`, il punto in cui passa ogni scrittura offline dell'app.
 
@@ -6308,6 +6337,30 @@ git commit -m "fix(kanban): let shared board edits reach the server"
 
 ### Task 3.6: Eliminare il pull duplicato delle board condivise e allargare il prune (stesso commit)
 
+> **Rivalutazione 2026-09-29 (su `main` `69091f3`): il difetto esiste ancora, ed è più grave di come
+> è descritto qui sotto; il testo NON va applicato alla lettera.**
+> - **Oggi:** il blocco `/share/kanbans/accepted` è ancora in `syncService.ts:466-589`, benché `listBoards`
+>   restituisca già le board condivise ACCEPTED con `ownership: 'shared'`, `permission`, `shares` e
+>   `shareCount` (`backend/src/services/kanban/board.service.ts:88-106`) e il loop di dettaglio (`:384`) ne
+>   scarichi colonne e card. Il `bulkPut` del blocco duplicato sovrascrive la riga togliendo
+>   `shares`/`shareCount`. La rotta (`backend/src/routes/sharing.ts:329-356`) non filtra `archivedAt`, e il
+>   blocco gira dopo il loop di dettaglio: a ogni pull **rimette in Dexie le card archiviate** delle board
+>   condivise.
+> - **Trappola 2 vale ancora:** il prune delle board condivise sta solo in quel blocco (`:535-551`) ed è
+>   corretto (scope `viewerId === currentUserId`, id dalla risposta grezza del server, alimenta
+>   `prunedBoardIds`, pota anche una board condivisa "sporca" la cui condivisione è stata revocata). Il prune
+>   principale (`:363-364`) esclude le condivise.
+> - **Task riscritto:** un unico prune a `:363` che copra anche le condivise, con lo scope giusto per ciascun
+>   tipo: `ownerId === currentUserId` per le proprie, `viewerId === currentUserId` per le condivise. Per le
+>   condivise non va messo il filtro `syncStatus === 'synced'`. `prunedBoardIds` va mantenuto. Cancellare
+>   `:466-589` **nello stesso commit**.
+> - **Test da vedere rossi prima:** `/share/kanbans/accepted` non viene più chiamato; con `/kanban/boards` → `[]`,
+>   una board condivisa locale con `viewerId` dell'utente finisce in `prunedBoardIds`. I test a `:682`,
+>   `:727` e `:776` contano le chiamate a `toArray` e il blocco condiviso: vanno riscritti.
+> - **Rischio:** alto, TIER 1. Separare la cancellazione dal nuovo prune fa perdere le revoche; un prune
+>   senza scope cancella le board di un altro account sullo stesso browser. Serve la verifica manuale
+>   accetta/revoca.
+
 **Perché:** ogni ciclo di sync fa una chiamata in più (`/share/kanbans/accepted`) per riscrivere righe che il pull principale ha già scritto, e le riscrive **peggio**: quella rotta restituisce l'albero completo `columns → cards`, che finisce spalmato dentro la riga della board in IndexedDB, senza `shares` né `shareCount`.
 **Severità:** medium · **Effort:** M · **Rischio:** TIER 1 — cancella l'unico punto che oggi elimina da Dexie le board condivise revocate.
 
@@ -6531,6 +6584,23 @@ git commit -m "perf(kanban): drop the duplicate shared-board pull and prune shar
 ---
 
 ### Task 3.7: Isolare notebooks, tags e notes in `syncPull` con try/catch propri
+
+> **Rivalutazione 2026-09-29 (su `main` `69091f3`): il difetto esiste ancora, ma il codice sostitutivo qui
+> sotto è PERICOLOSO e non va copiato.**
+> - **Oggi:** notebooks (`syncService.ts:27-54`), tags (`:57-87`) e notes (`:90-167`) non hanno un `try`
+>   proprio: stanno nel `try` esterno (`:19`, catch a `:588`). Un 500 su `/notebooks` salta quindi shared notes,
+>   task list e kanban, compresi il prune e `prunedBoardIds`. Le sezioni successive invece hanno ciascuna il
+>   proprio `try`.
+> - **Perché il testo sotto è pericoloso:** il codice "dopo" apre le transazioni di notebooks e tags senza i
+>   controlli `pendingDeletes` NOTEBOOK/TAG che oggi ci sono (`:29`, `:39-44`, `:58`, `:70-75`). Applicato
+>   alla lettera, toglierebbe la protezione anti-zombie. Il test si aspetta `resolves.toBeUndefined()`, ma
+>   `syncPull` oggi restituisce `string[]`.
+> - **Task riscritto:** avvolgere **così come sono** i tre blocchi esistenti, ciascuno in un `try/catch`,
+>   senza ricopiarli. Verifica: `git diff -w` deve mostrare solo `try {`, `} catch` e il commento.
+> - **Test da vedere rosso prima** (nel `describe('error handling')` a `:884`): `/notebooks` rigetta, poi
+>   `/tags`, `/notes?includeTrashed=true` e `/kanban/boards` vengono chiamati comunque, e `syncPull()`
+>   risolve in un array.
+> - **Rischio:** medio: cambia solo la struttura, ma il file è TIER 1.
 
 **Perché:** se `/notebooks` risponde 500, l'utente non perde solo i taccuini: perde l'intero giro di sync. Tag, note, task list e kanban non vengono nemmeno chiesti, e soprattutto non gira il prune delle board — quindi board cancellate o revocate restano visibili finché la chiamata rotta non guarisce.
 **Severità:** medium · **Effort:** M · **Rischio:** TIER 1 — modifica strutturale (indentazione) sulla prima metà di `syncPull`; nessun cambio di logica dentro le transazioni.
@@ -7031,6 +7101,12 @@ git commit -m "fix(kanban): strip linked note from SSE payloads and tag card eve
 ---
 
 ### Task 4.2: Filtrare lato client l'eco dei propri eventi
+
+> **Eseguito in forma ridotta (`0eae602`, 2026-09-29).** Il filtro qui sotto (scartare ogni evento con
+> `actorId` uguale all'utente) **non** è stato applicato: per C2 lascerebbe indietro la seconda scheda
+> dello stesso utente. Si salta solo il pulse di `card:moved` sulla propria eco. Il tipo
+> `KanbanSSEEvent = KanbanSSEEventBody & { actorId?: string }` è stato introdotto come descritto, quindi
+> 4.5 e 4.6 lo trovano. I test sono in `useKanbanRealtime.test.tsx`, `describe('useKanbanRealtime own echo')`.
 
 **Perché:** oggi chi muove una card riceve indietro il proprio `card:moved`: il client fa un GET completo della board in più (quello della mutation `onSuccess` a `useKanbanMutations.ts:110-111` + quello dell'evento SSE) e si accende addosso il pulse di highlight di 2 secondi (`useKanbanRealtime.ts:39-56`) pensato per segnalare le modifiche *degli altri*. Su una board condivisa attiva significa il doppio delle richieste e un flash visivo su ogni propria azione.
 
