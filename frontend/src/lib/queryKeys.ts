@@ -34,6 +34,11 @@ export const queryKeys = {
     // a 'chat'-prefixed key, so invalidating one cache left the other stale. Kept under
     // the 'friends' prefix so SharedWithMePage's invalidation of ['friends'] reaches it.
     list: ['friends', 'list'] as const,
+    // Same story for friend requests: the chat modal read ['chat','pendingRequests'] and
+    // invalidated ['chat','sentRequests'] (a key no query used) while SharedWithMePage
+    // read these. Keep them under 'friends' for the same invalidation reason.
+    pendingRequests: ['friends', 'pendingRequests'] as const,
+    sentRequests: ['friends', 'sentRequests'] as const,
   },
   groups: {
     all: ['groups'] as const,

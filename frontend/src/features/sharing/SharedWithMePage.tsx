@@ -134,13 +134,13 @@ export default function SharedWithMePage() {
   const queryClient = useQueryClient();
 
   const { data: pendingFriendRequests = [] } = useQuery({
-    queryKey: ['friends', 'pendingRequests'],
+    queryKey: queryKeys.friends.pendingRequests,
     queryFn: getPendingRequests,
     refetchInterval: 30000,
   });
 
   const { data: sentFriendRequests = [] } = useQuery({
-    queryKey: ['friends', 'sentRequests'],
+    queryKey: queryKeys.friends.sentRequests,
     queryFn: getSentRequests,
     refetchInterval: 30000,
   });
