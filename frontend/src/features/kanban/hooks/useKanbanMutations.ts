@@ -97,8 +97,8 @@ export function useKanbanMutations(boardId?: string) {
   });
 
   const moveCard = useMutation({
-    mutationFn: ({ cardId, toColumnId, position }: { cardId: string; toColumnId: string; position: number }) =>
-      kanbanService.moveCard(cardId, toColumnId, position),
+    mutationFn: ({ cardId, toColumnId, position, silent }: { cardId: string; toColumnId: string; position: number; silent?: boolean }) =>
+      kanbanService.moveCard(cardId, toColumnId, position, silent),
     onSuccess: () => flushSync(),
     ...LOCAL_FIRST,
   });

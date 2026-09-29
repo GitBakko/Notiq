@@ -401,7 +401,8 @@ export function byPosition(a: LocalKanbanCard, b: LocalKanbanCard): number {
   return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
 }
 
-export async function moveCard(cardId: string, toColumnId: string, position: number): Promise<void> {
+/** `silent`: no per-card "moved" notification — a bulk move sends one grouped notification instead. */
+export async function moveCard(cardId: string, toColumnId: string, position: number, silent = false): Promise<void> {
   const userId = getUserId();
   const now = new Date().toISOString();
 
@@ -457,7 +458,7 @@ export async function moveCard(cardId: string, toColumnId: string, position: num
       entity: 'KANBAN_CARD',
       entityId: cardId,
       userId,
-      data: { columnId: toColumnId, position },
+      data: { columnId: toColumnId, position, ...(silent ? { silent: true } : {}) },
       createdAt: Date.now(),
     });
   });

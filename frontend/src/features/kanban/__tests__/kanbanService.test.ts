@@ -279,4 +279,18 @@ describe('kanbanService.moveCard', () => {
       }),
     );
   });
+
+  // Kanban 5.6: a bulk move queues its moves silent (one grouped notification
+  // instead of one per card); a normal move stays notifying.
+  it('queues the silent flag only for a silent move', async () => {
+    cardsByColumn['col-dst'] = [];
+    mockDb.kanbanCards.get.mockResolvedValue({ id: 'M', columnId: 'col-src', position: 0, createdAt: iso(1) });
+
+    await moveCard('M', 'col-dst', 0, true);
+    await moveCard('M', 'col-dst', 0);
+
+    const [silentMove, normalMove] = mockDb.syncQueue.add.mock.calls.map((c: unknown[]) => (c[0] as { data: unknown }).data);
+    expect(silentMove).toEqual({ columnId: 'col-dst', position: 0, silent: true });
+    expect(normalMove).toEqual({ columnId: 'col-dst', position: 0 });
+  });
 });
