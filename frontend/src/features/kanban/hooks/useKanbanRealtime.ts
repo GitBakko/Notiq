@@ -229,7 +229,8 @@ async function updateDexieFromSSE(event: KanbanSSEEvent, boardId: string): Promi
         priority: card.priority,
         noteId: card.noteId,
         noteLinkedById: card.noteLinkedById,
-        note: card.note,
+        // SSE cards carry no `note` (stripNote): a new card has none linked yet.
+        note: null,
         commentCount: card.commentCount,
         createdAt: card.createdAt,
         updatedAt: card.updatedAt,
@@ -255,7 +256,9 @@ async function updateDexieFromSSE(event: KanbanSSEEvent, boardId: string): Promi
         priority: card.priority,
         noteId: card.noteId,
         noteLinkedById: card.noteLinkedById,
-        note: card.note,
+        // SSE cards carry no `note` (stripNote): keep the one already in Dexie while the
+        // card still points at the same note; a relink is resolved by the board refetch.
+        note: local && local.noteId === card.noteId ? local.note : null,
         commentCount: card.commentCount,
         createdAt: card.createdAt,
         updatedAt: card.updatedAt,
