@@ -805,6 +805,10 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "chatFilesLive": "File e immagini nelle chat dirette arrivano subito all'altra persona, con notifica se è offline",
+      "chatRejectedFileNoMessage": "Un file rifiutato non lascia più un messaggio vuoto nella chat",
+      "chatSingleTick": "I messaggi inviati mostrano una spunta singola",
+      "kanbanDragAnywhere": "Le card kanban si trascinano con il mouse da qualunque punto, senza selezionare il testo",
       "kanbanFiltersPersisted": "I filtri della board vengono ricordati per ogni board, con un avviso quando i filtri la rendono di sola lettura",
       "kanbanAccessibility": "Board kanban più accessibili: etichette e navigazione da tastiera",
       "kanbanFasterSync": "Sincronizzazione più veloce: le board non modificate vengono saltate e gli spostamenti multipli inviati una sola volta",

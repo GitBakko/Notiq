@@ -1181,6 +1181,10 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "chatFilesLive": "Files and images in direct chats now reach the other person instantly, with a notification when offline",
+      "chatRejectedFileNoMessage": "A rejected file no longer leaves an empty message in the chat",
+      "chatSingleTick": "Sent messages show a single tick",
+      "kanbanDragAnywhere": "Kanban cards can be dragged from anywhere with the mouse, without selecting text",
       "kanbanFiltersPersisted": "Board filters are remembered per board, with a banner when filters make the board read-only",
       "kanbanAccessibility": "Kanban boards are more accessible: labels and keyboard navigation",
       "kanbanFasterSync": "Faster sync: unchanged boards are skipped and bulk moves are sent once",

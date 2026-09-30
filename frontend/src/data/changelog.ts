@@ -11,6 +11,16 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.12.1',
+    date: '2026-09-30',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.chatFilesLive' },
+      { type: 'fix', titleKey: 'whatsNew.entries.chatRejectedFileNoMessage' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.chatSingleTick' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanDragAnywhere' },
+    ],
+  },
+  {
     version: '1.12.0',
     date: '2026-09-30',
     entries: [
