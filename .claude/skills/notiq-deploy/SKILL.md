@@ -28,14 +28,14 @@ Legacy `pre-install.cmd` / `post-install.cmd` remain as manual fallback; the PS 
    .\deploy\Build-Package.ps1            # or -SkipBuild to repackage existing dist
    ```
    → produces `_deploy\notiq-v<ver>-full-<ts>.zip` + prints SHA256.
-3. **Copy** the zip to the server (e.g. `E:\www\Notiq\_incoming\`) and **extract** it.
+3. **Copy** the zip to the server (e.g. `E:\www\Notiq\_incoming\`) and **extract** it into a NEW dedicated subfolder (the zip has no top-level folder), e.g. `E:\www\Notiq\_incoming\notiq-vX.Y.Z-<ts>\` — never directly into `_incoming`.
 4. **Dry-run on server** (no destructive action — sanity check paths/DB parse):
    ```powershell
-   .\Deploy-Server.ps1 -PackageDir <extracted> -DryRun
+   cd <extracted>; .\Deploy-Server.ps1 -DryRun
    ```
 5. **Deploy for real:**
    ```powershell
-   .\Deploy-Server.ps1 -PackageDir <extracted>
+   cd <extracted>; .\Deploy-Server.ps1
    ```
 6. **Verify** (see checklist below).
 
@@ -45,10 +45,10 @@ Copy this into a todo list each deploy:
 - [ ] **Pre:** confirm release done — version bumped in `frontend/package.json`, `changelog.ts` entry added, i18n keys in en+it, committed & pushed.
 - [ ] **Pre:** run E2E for touched flows (`cd frontend && npx playwright test e2e/<spec>`).
 - [ ] **Pre:** run `.\deploy\Build-Package.ps1` locally; note the zip path + SHA256.
-- [ ] **Transfer:** copy the zip to the server; verify SHA256 matches; extract.
+- [ ] **Transfer:** copy the zip to the server; verify SHA256 matches; extract into a NEW subfolder (e.g. `_incoming\notiq-vX.Y.Z-<ts>\`), never flat into `_incoming`.
 - [ ] **Server prereqs (first deploy only):** `pg_dump` on PATH, `pm2` on PATH, `backend\.env` present & correct, Node ≥20.19.
-- [ ] **Dry-run:** `.\Deploy-Server.ps1 -PackageDir <extracted> -DryRun` — read output, confirm DB target + paths are right.
-- [ ] **Deploy:** `.\Deploy-Server.ps1 -PackageDir <extracted>`. Watch for pg_dump success and robocopy/migrate output.
+- [ ] **Dry-run:** `cd <extracted>; .\Deploy-Server.ps1 -DryRun` — read output, confirm DB target + paths are right.
+- [ ] **Deploy:** `cd <extracted>; .\Deploy-Server.ps1`. Watch for pg_dump success and robocopy/migrate output.
 - [ ] **Verify site:** open https://notiq.epartner.it — compare asset hashes vs local `frontend/dist/index.html`; `curl -sI https://notiq.epartner.it/sw.js` → `last-modified` fresh.
 - [ ] **Verify app:** login, create note (sync→DB), Vault (PIN), share + invite email (SMTP), Kanban board (offline + realtime), Chat.
 - [ ] **Verify backend:** `pm2 status notiq-backend` online; `pm2 logs notiq-backend --lines 50` clean.
@@ -58,6 +58,7 @@ Copy this into a todo list each deploy:
 A "skip existing" merge leaves OLD `index.html` + `sw.js` (fixed names, no content hash) → the site silently stays on the previous version while hashed assets look updated. `Deploy-Server.ps1` always uses `robocopy /MIR /XF web.config web.config.bak`. robocopy exit codes **1–7 = success** (PowerShell colors them red — the scripts already treat <8 as success).
 
 ## Gotchas
+- **Extract into a fresh subfolder and run the script from inside it** (`PackageDir` defaults to the script's own folder). Never extract flat into `_incoming` (the zip has no top-level folder; `Expand-Archive` never removes orphans, so old files accumulate and `/MIR` would deploy them) and never copy the script out of its package folder (a stale copy would deploy with the old script next release).
 - **pg_dump version**: must be ≥ the server Postgres major version, else the dump aborts. If it fails, install a matching/newer PostgreSQL client.
 - **DATABASE_URL parse**: `Deploy-Server.ps1` reads it from `backend\.env` and URL-decodes user/pass. If the password has exotic chars and parsing fails, the dry-run will surface it before any destructive step.
 - New `uploads/` subdir → needs an explicit static route in `backend/src/app.ts` (no wildcard serving).

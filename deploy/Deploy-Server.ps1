@@ -22,6 +22,7 @@
 
 .PARAMETER PackageDir
     Cartella del pacchetto estratto (contiene backend\ e frontend\).
+    Default: la cartella dello script stesso (il pacchetto estratto).
 
 .PARAMETER BackendRoot   Default E:\www\Notiq\backend
 .PARAMETER FrontendRoot  Default E:\www\Notiq\frontend  (RADICE del sito IIS)
@@ -31,13 +32,15 @@
 .PARAMETER DryRun        Stampa le azioni senza eseguire quelle distruttive.
 
 .EXAMPLE
-    .\Deploy-Server.ps1 -PackageDir C:\temp\notiq-v1.10.2-20260617_120000 -DryRun
+    cd <cartella-estratta>; .\Deploy-Server.ps1 -DryRun
+.EXAMPLE
+    cd <cartella-estratta>; .\Deploy-Server.ps1
 .EXAMPLE
     .\Deploy-Server.ps1 -PackageDir C:\temp\notiq-v1.10.2-20260617_120000
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$PackageDir,
+    [string]$PackageDir = $PSScriptRoot,
     [string]$BackendRoot  = 'E:\www\Notiq\backend',
     [string]$FrontendRoot = 'E:\www\Notiq\frontend',
     [string]$BackupRoot   = 'E:\www\Notiq',
@@ -85,9 +88,13 @@ Write-Host ""
 Write-Step 1 "Pre-flight..."
 $pkgBackendDist  = Join-Path $PackageDir 'backend\dist'
 $pkgFrontendDist = Join-Path $PackageDir 'frontend\dist'
+$pkgPrisma       = Join-Path $PackageDir 'backend\prisma'
+$pkgBackendJson  = Join-Path $PackageDir 'backend\package.json'
 $envFile         = Join-Path $BackendRoot '.env'
 if (-not (Test-Path $pkgBackendDist))  { throw "pacchetto invalido: manca $pkgBackendDist" }
 if (-not (Test-Path $pkgFrontendDist)) { throw "pacchetto invalido: manca $pkgFrontendDist" }
+if (-not (Test-Path $pkgPrisma))       { throw "pacchetto invalido: manca $pkgPrisma" }
+if (-not (Test-Path $pkgBackendJson))  { throw "pacchetto invalido: manca $pkgBackendJson" }
 if (-not (Test-Path $envFile))         { throw "manca $envFile sul server - crealo prima del deploy" }
 if (-not (Get-Command pm2 -ErrorAction SilentlyContinue))      { throw "pm2 non trovato sul PATH" }
 if (-not $SkipDbBackup -and -not (Get-Command pg_dump -ErrorAction SilentlyContinue)) {

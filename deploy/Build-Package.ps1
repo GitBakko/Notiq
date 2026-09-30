@@ -154,8 +154,10 @@ Write-Host ""
 Write-Host "========================================" -ForegroundColor Magenta
 Write-Host " Prossimi passi (manuali):" -ForegroundColor Magenta
 Write-Host "  1. Copia lo zip sul server (E:\www\Notiq\_incoming\)"
-Write-Host "  2. Estrai lo zip in una cartella temporanea"
-Write-Host "  3. Esegui: .\Deploy-Server.ps1 -PackageDir <cartella-estratta>"
-Write-Host "     (prima in -DryRun per verifica)"
+Write-Host "  2. Estrai lo zip in una NUOVA sottocartella dedicata (lo zip non ha cartella radice), es. E:\www\Notiq\_incoming\notiq-vX.Y.Z-<ts>\"
+Write-Host "     MAI direttamente in _incoming: un'estrazione piatta accumula file vecchi (Expand-Archive non rimuove gli orfani) e /MIR li deployerebbe."
+Write-Host "  3. Esegui: cd <cartella-estratta>; .\Deploy-Server.ps1"
+Write-Host "     (prima con -DryRun per verifica)"
+Write-Host "     NON copiare Deploy-Server.ps1 fuori dal pacchetto (una copia vecchia in _incoming verrebbe rilanciata al rilascio dopo)."
 Write-Host "========================================" -ForegroundColor Magenta
 Write-Host ""
