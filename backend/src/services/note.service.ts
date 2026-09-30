@@ -4,7 +4,7 @@ import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
 import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractText';
-import { NotFoundError, BadRequestError } from '../utils/errors';
+import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { logEvent } from './audit.service';
 import { snapshotPreviousVersion } from './noteVersion.service';
@@ -72,9 +72,13 @@ export const createNote = async (
     });
   } catch (error: unknown) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2002') {
-      // If ID conflict, try to find existing and return it (idempotency)
-      const existing = await prisma.note.findUnique({ where: { id } });
-      if (existing) return existing;
+      // Idempotency only for the caller's OWN note; a foreign id must not leak (IDOR, RT-9)
+      // Prisma drops undefined where-values: without id the lookup would match any note of the caller
+      if (id) {
+        const existing = await prisma.note.findFirst({ where: { id, userId } });
+        if (existing) return existing;
+      }
+      throw new ConflictError('errors.notes.idConflict');
     }
     throw error;
   }

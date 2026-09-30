@@ -12,7 +12,7 @@ import {
   getNoteSizeBreakdown,
 } from '../note.service';
 import { hocuspocus } from '../../hocuspocus';
-import { NotFoundError } from '../../utils/errors';
+import { NotFoundError, ConflictError } from '../../utils/errors';
 
 // Additional mocks beyond setup.ts
 vi.mock('../../hocuspocus', () => ({
@@ -200,10 +200,37 @@ describe('createNote', () => {
     const p2002Error = new Error('Unique constraint failed') as Error & { code: string };
     p2002Error.code = 'P2002';
     prismaMock.note.create.mockRejectedValue(p2002Error);
-    prismaMock.note.findUnique.mockResolvedValue(existing);
+    prismaMock.note.findFirst.mockResolvedValue(existing);
 
     const result = await createNote('user-1', 'Test', '{}', 'nb-1', false, false, 'dup-id');
     expect(result).toEqual(existing);
+    expect(prismaMock.note.findFirst).toHaveBeenCalledWith({ where: { id: 'dup-id', userId: 'user-1' } });
+  });
+
+  it('P2002 on an id owned by another user throws ConflictError and leaks nothing', async () => {
+    prismaMock.notebook.findFirst.mockResolvedValueOnce({ id: 'nb-1', userId: 'user-1' });
+    const p2002Error = new Error('Unique constraint failed') as Error & { code: string };
+    p2002Error.code = 'P2002';
+    prismaMock.note.create.mockRejectedValueOnce(p2002Error);
+    // the other user's note is not visible when filtering by userId
+    prismaMock.note.findFirst.mockResolvedValueOnce(null);
+
+    const err = await createNote('user-1', 'Test', '{}', 'nb-1', false, false, 'foreign-id').catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.message).toBe('errors.notes.idConflict');
+    // a findUnique-based lookup would leak the foreign note
+    expect(prismaMock.note.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('P2002 with no id throws ConflictError without any lookup (no fail-open)', async () => {
+    prismaMock.notebook.findFirst.mockResolvedValueOnce({ id: 'nb-1', userId: 'user-1' });
+    const p2002Error = new Error('Unique constraint failed') as Error & { code: string };
+    p2002Error.code = 'P2002';
+    prismaMock.note.create.mockRejectedValueOnce(p2002Error);
+    prismaMock.note.findFirst.mockClear();
+
+    await expect(createNote('user-1', 'Test', '{}', 'nb-1')).rejects.toBeInstanceOf(ConflictError);
+    expect(prismaMock.note.findFirst).not.toHaveBeenCalled();
   });
 
   it('rethrows non-P2002 errors', async () => {

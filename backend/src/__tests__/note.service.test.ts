@@ -122,10 +122,13 @@ describe('note.service — createNote', () => {
     const p2002Error = new Error('Unique constraint failed') as Error & { code: string };
     p2002Error.code = 'P2002';
     prismaMock.note.create.mockRejectedValueOnce(p2002Error);
-    prismaMock.note.findUnique.mockResolvedValueOnce(existingNote as any);
+    prismaMock.note.findFirst.mockResolvedValueOnce(existingNote as any);
 
     const result = await createNote('user-1', 'Test', '{}', 'nb-1', false, false, 'note-dup');
     expect(result).toEqual(existingNote);
+    expect(prismaMock.note.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'note-dup', userId: 'user-1' } }),
+    );
   });
 });
 

@@ -1562,6 +1562,7 @@
       "notFound": "Non trovato"
     },
     "notes": {
+      "idConflict": "Esiste già una nota con questo identificativo.",
       "notFound": "Nota non trovata",
       "notFoundOrDenied": "Nota non trovata o accesso negato",
       "notFoundOrNotPublic": "Nota non trovata o non pubblica",
