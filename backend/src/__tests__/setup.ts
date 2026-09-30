@@ -274,6 +274,26 @@ vi.mock('../plugins/prisma', () => {
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
+    vaultKeyring: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+      count: vi.fn(),
+    },
+    vaultRequest: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      deleteMany: vi.fn(),
+      count: vi.fn(),
+    },
     $transaction: vi.fn((fn: any) => {
       if (typeof fn === 'function') {
         return fn(mockPrisma);
@@ -302,3 +322,4 @@ vi.mock('../utils/logger', () => ({
 process.env.JWT_SECRET = 'test-jwt-secret-for-vitest';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 process.env.FRONTEND_URL = 'http://localhost:5173';
+process.env.VAULT_PEPPER_KEY = 'BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc';
