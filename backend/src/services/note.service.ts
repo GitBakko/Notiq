@@ -259,6 +259,7 @@ export const updateNote = async (userId: string, id: string, data: {
   // Vault P1 enforcement (only with a keyring). Metadata-only writes are never checked (RT-4).
   if (guard) {
     if (movingToVault) {
+      if (await prisma.attachment.count({ where: { noteId: id } }) > 0) throw new AppError(422, 'errors.vault.attachmentsBlocked');
       if (rest.content === undefined) throw new AppError(422, 'errors.vault.plaintextRejected');
       assertVaultContent(rest.content, guard, baseHash, note.content);
       rest.title = '';

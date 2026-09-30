@@ -260,9 +260,21 @@ describe('vault P1 enforcement (T10)', () => {
     noteMock.create.mockReset();
     noteMock.findUniqueOrThrow = vi.fn();
     prismaMock.notebook.findFirst.mockReset();
+    (prismaMock.attachment as any).count = vi.fn().mockResolvedValue(0);
   });
 
   describe('without keyring', () => {
+    it('moving a note with attachments into the vault still succeeds and attachment.count is not called', async () => {
+      keyring.mockResolvedValue(null);
+      (prismaMock.attachment as any).count.mockResolvedValue(2);
+      noteMock.findFirst.mockResolvedValue(plainNote('A'.repeat(300)));
+      noteMock.update.mockResolvedValue({ id: 'n1' });
+      prismaMock.sharedNote.deleteMany.mockResolvedValue({ count: 0 } as any);
+      await updateNote('u1', 'n1', { isVault: true });
+      expect(noteMock.update).toHaveBeenCalledTimes(1);
+      expect((prismaMock.attachment as any).count).not.toHaveBeenCalled();
+    });
+
     it('legacy vault note accepts plaintext via tx.note.update, even without pepper, and drops baseHash', async () => {
       const pepper = process.env.VAULT_PEPPER_KEY;
       delete process.env.VAULT_PEPPER_KEY;
@@ -408,6 +420,15 @@ describe('vault P1 enforcement (T10)', () => {
       expect(data.isEncrypted).toBe(true);
       expect(data.searchText).toBeNull();
       expect(prismaMock.sharedNote.deleteMany).toHaveBeenCalled();
+    });
+
+    it('entering the vault with attachments -> 422 attachmentsBlocked, no write', async () => {
+      const old = 'A'.repeat(300);
+      noteMock.findFirst.mockResolvedValue(plainNote(old));
+      (prismaMock.attachment as any).count.mockResolvedValue(2);
+      await fail(updateNote('u1', 'n1', { isVault: true, content: env(), baseHash: sha256hex(old) }), 'errors.vault.attachmentsBlocked');
+      expect(noteMock.updateMany).not.toHaveBeenCalled();
+      expect(noteMock.update).not.toHaveBeenCalled();
     });
 
     it('leaving the vault with an envelope -> plaintextRequired', async () => {

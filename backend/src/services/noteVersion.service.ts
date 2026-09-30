@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import { NotFoundError } from '../utils/errors';
 import logger from '../utils/logger';
+import { getVaultGuard, assertVaultContent } from './vault.service';
 
 // PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
 type Db = Prisma.TransactionClient;
@@ -92,6 +93,9 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
   const version = await prisma.noteVersion.findUnique({ where: { id: versionId } });
   if (!version || version.noteId !== noteId) throw new NotFoundError('errors.notes.versionNotFound');
 
+  const guard = note.isVault ? await getVaultGuard(userId) : null;
+  if (guard) assertVaultContent(version.content, guard);
+
   // Archive what we're about to overwrite so a restore is itself undoable.
   // Force-bypass the throttle: a restore is an explicit destructive action and MUST always
   // preserve the current content, even if a snapshot was taken seconds ago.
@@ -105,7 +109,7 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
   await prisma.note.update({
     where: { id: noteId },
     // Null ydocState so the next Hocuspocus fetch rebuilds the Yjs doc from restored content.
-    data: { content: version.content, title: version.title, searchText, ydocState: null, updatedAt: new Date() },
+    data: { content: version.content, title: guard ? '' : version.title, searchText, ydocState: null, updatedAt: new Date() },
   });
   return { ok: true };
 }

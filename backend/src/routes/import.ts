@@ -2,6 +2,8 @@
 import { FastifyInstance } from 'fastify';
 import * as importService from '../services/import.service';
 import * as onenoteImportService from '../services/onenote-import.service';
+import { getVaultGuard } from '../services/vault.service';
+import { AppError } from '../utils/errors';
 
 export default async function importRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -9,12 +11,13 @@ export default async function importRoutes(fastify: FastifyInstance) {
   fastify.post<{
     Querystring: { notebookId?: string; isVault?: string }
   }>('/evernote', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { notebookId, isVault } = request.query;
+    if (isVault === 'true' && await getVaultGuard(request.user.id)) throw new AppError(422, 'errors.vault.importBlocked');
+
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
-
-    const { notebookId, isVault } = request.query;
 
     try {
       const buffer = await data.toBuffer();
@@ -34,12 +37,13 @@ export default async function importRoutes(fastify: FastifyInstance) {
   fastify.post<{
     Querystring: { notebookId?: string; isVault?: string }
   }>('/onenote', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { notebookId, isVault } = request.query;
+    if (isVault === 'true' && await getVaultGuard(request.user.id)) throw new AppError(422, 'errors.vault.importBlocked');
+
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ message: 'errors.attachments.noFileUploaded' });
     }
-
-    const { notebookId, isVault } = request.query;
 
     try {
       const buffer = await data.toBuffer();

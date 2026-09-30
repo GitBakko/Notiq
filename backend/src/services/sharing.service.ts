@@ -875,7 +875,8 @@ export const updateSharedNoteContent = async (
   }
 
   if (Object.keys(updateData).length > 1) {
-    await prisma.note.update({ where: { id: noteId }, data: updateData });
+    const r = await prisma.note.updateMany({ where: { id: noteId, isVault: false }, data: updateData });
+    if (r.count === 0) throw new ForbiddenError('errors.sharing.forbidden');
   }
   return { ok: true };
 };

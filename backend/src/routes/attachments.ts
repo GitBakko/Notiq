@@ -6,6 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import prisma from '../plugins/prisma';
+import { getVaultGuard } from '../services/vault.service';
+import { AppError } from '../utils/errors';
 
 export async function attachmentRoutes(app: FastifyInstance) {
   // POST /api/attachments?noteId=... - Upload attachment
@@ -34,6 +36,11 @@ export async function attachmentRoutes(app: FastifyInstance) {
     const access = await checkNoteAccess(request.user.id, noteId);
     if (!access) return reply.code(403).send({ message: 'errors.common.forbidden' });
     if (access === 'READ') return reply.code(403).send({ message: 'errors.common.readOnlyAccess' });
+
+    if (access === 'OWNER') {
+      const vaultNote = await prisma.note.findFirst({ where: { id: noteId, userId: request.user.id, isVault: true }, select: { id: true } });
+      if (vaultNote && await getVaultGuard(request.user.id)) throw new AppError(422, 'errors.vault.attachmentsBlocked');
+    }
 
     const attachment = await saveAttachment(data, noteId);
     return attachment;

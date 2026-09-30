@@ -643,3 +643,15 @@ Deviazioni dal piano accettate dopo reviewer + red-team, e vincoli per i task su
 4. **Regole aggiunte dalla review:** uscita dal vault con keyring non READY → 422 `notReady`; su una nota che resta nel vault `isEncrypted:false` → 422 `plaintextRejected` (anche senza `content`); l'uscita forza `isEncrypted=false` e ricalcola `searchText` solo per le note `NOTE`.
 5. **Ordine di rilascio:** T11 (restore, `updateSharedNoteContent`) e T12 (import, allegati) devono essere in `main` prima che possa esistere un keyring READY. In P1 il lock (`VAULT_ROOT_KEYS` vuota) lo garantisce.
 6. **Deploy:** la migration `20261001000000_vault_e2ee` deve essere applicata prima dell'avvio del nuovo backend, altrimenti ogni PUT su una nota vault dà 500 (P2021 su `VaultKeyring`). `Deploy-Server.ps1` fa `migrate deploy` (passo 7) prima di `pm2 start`: ordine corretto.
+
+## Addendum dopo la review di T11 e T12 (2026-09-30)
+
+1. **Ingresso nel vault di una nota con allegati (aggiunto).** Con keyring, `PUT isVault:true` su una nota che ha righe `Attachment` → 422 `errors.vault.attachmentsBlocked`. Motivo: i file restano in chiaro in `uploads/` e il design esclude gli allegati dal vault. Si rifiuta invece di cancellare, così non si perde niente. Senza keyring il comportamento non cambia. **Per P2:** le note vault legacy che hanno già allegati (caricati prima del keyring) vanno gestite dalla migrazione client, per esempio saltandole e segnalandole; decisione da prendere nel piano P2.
+2. **Race note, non chiuse (stessa classe di addendum T10 #3):**
+   - restore di una versione mentre la stessa nota entra nel vault da un altro dispositivo: la `update` scrive plaintext, titolo e `searchText` sull'envelope;
+   - upload di un allegato da parte di un collaboratore WRITE mentre il proprietario sposta la nota nel vault;
+   - in `updateSharedNoteContent` lo snapshot del vecchio contenuto avviene prima dell'`updateMany` condizionato: se la nota entra nel vault in quella finestra, resta una versione in chiaro (di contenuto già in chiaro).
+   Chiuderle richiede `updateMany` condizionati su percorsi senza keyring, quindi di rompere l'invariante "byte-identico". Da rivalutare in P2.
+3. **Restore di un envelope su una nota già uscita dal vault:** scrive l'envelope come contenuto con titolo vuoto. Solo integrità/UX, nessun impatto sulla riservatezza. Da gestire lato client in P2 (il client non propone versioni envelope su note non vault).
+4. `updateSharedNoteContent` su una nota cancellata tra lettura e scrittura ora risponde 403 invece di 500 (P2025): innocuo.
+5. Nessun altro scrittore di `Note.content`/`title` aperto: verificato da reviewer e red-team (hocuspocus P0, import dietro `import.ts`, migrate, toggleShare, notebook delete, script di manutenzione).

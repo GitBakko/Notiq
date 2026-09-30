@@ -888,7 +888,7 @@ describe('updateSharedNoteContent', () => {
   beforeEach(() => {
     prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'ACCEPTED', permission: 'WRITE' });
     prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared' });
-    prismaMock.note.update.mockResolvedValue({});
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
     // Defaults for the noteVersion snapshot path (throttle check + prune)
     prismaMock.noteVersion.findFirst.mockResolvedValue(null);
     prismaMock.noteVersion.findMany.mockResolvedValue([]);
@@ -898,7 +898,7 @@ describe('updateSharedNoteContent', () => {
 
   it('DROPS an empty-over-substantial content write and does NOT null ydocState', async () => {
     await updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC });
-    expect(prismaMock.note.update).not.toHaveBeenCalled();
+    expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
     // No snapshot taken — content was dropped before reaching the accepted branch
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
   });
@@ -906,7 +906,8 @@ describe('updateSharedNoteContent', () => {
   it('writes substantial content and nulls ydocState so fetch falls back to content', async () => {
     const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
     await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
-    expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prismaMock.note.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'note-1', isVault: false },
       data: expect.objectContaining({ content: newGood, ydocState: null }),
     }));
   });
@@ -935,10 +936,11 @@ describe('updateSharedNoteContent', () => {
 
   it('updates title only and does NOT null ydocState when no content supplied', async () => {
     await updateSharedNoteContent('user-2', 'note-1', { title: 'Renamed' });
-    expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prismaMock.note.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'note-1', isVault: false },
       data: expect.objectContaining({ title: 'Renamed' }),
     }));
-    const callArg = prismaMock.note.update.mock.calls[0][0];
+    const callArg = prismaMock.note.updateMany.mock.calls[0][0];
     expect(callArg.data).not.toHaveProperty('ydocState');
     // Title-only update: no content accepted, so no snapshot
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
