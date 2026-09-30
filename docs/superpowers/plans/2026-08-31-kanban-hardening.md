@@ -186,19 +186,23 @@ codice aveva trovato in cinque sessioni.**
 | P5 | Il token della sessione Hocuspocus era catturato una volta sola al mount — gemello di C3 su un altro trasporto | **corretto** `97fa69d` |
 | P6 | La lista amici non si aggiornava per chi aveva **inviato** la richiesta: nessun segnale dal backend | **corretto** `9fb28e0` |
 
-E quattro **aperti**, tutti trovati per strada:
+E quattro trovati per strada, **tutti corretti il 2026-09-29** (schede cloud T6-T9 in
+`2026-09-29-CLOUD-TASKS.md`):
 
-- **Paginazione a offset nella chat diretta**: "carica altri" usa `skip=(page-1)*limit` su una tabella
-  che cresce in coda, quindi un messaggio in arrivo durante lo scrollback fa saltare o duplicare
-  righe. Il service ha gia' la paginazione a cursore (`before`) e il frontend non la passa mai.
-- **Il finding 5.4 vale anche per la chat di NOTA** (`chat.service.ts:185`, `asc` + `skip/take`,
-  default `limit: 100`): pagina 1 sono i 100 piu' vecchi. La chat **diretta** invece e' a posto
-  (`desc` + `.reverse()`), verificato eseguendo su conversazioni da 10 e da 60 messaggi.
-- **La lista amici vive sotto due chiavi di cache diverse** (`['chat','friends']` e
-  `['friends','list']`): invalidarne una non tocca l'altra.
-- **`DECLINED` non esiste nel modello frontend delle condivisioni**: quattro modali lo escludono dal
-  tipo e cinque call site fanno `as` per forzarcelo dentro. Restano non filtrati `Sidebar.tsx:261` e
-  `SharedUsersModal.tsx:104`, che con `!== 'PENDING'` mette i rifiutati **fra chi ha accesso**. Il più grave rimasto è il **cluster N1/N2/N3/N6**, che è peggio di tutta la B: perde il **corpo** della nota, non il titolo.
+- **Paginazione a offset nella chat diretta**: "carica altri" usava `skip=(page-1)*limit` su una tabella
+  che cresce in coda, quindi un messaggio in arrivo durante lo scrollback faceva saltare o duplicare
+  righe. Il service aveva gia' la paginazione a cursore (`before`) e il frontend non la passava mai.
+  **Corretto** `b49e986` (test `b576bab`).
+- **Il finding 5.4 valeva anche per la chat di NOTA** (`chat.service.ts:185`, `asc` + `skip/take`,
+  default `limit: 100`): pagina 1 erano i 100 piu' vecchi. La chat **diretta** era gia' a posto
+  (`desc` + `.reverse()`). **Corretto** `c003da8`, piu' `426f279` per le notifiche oltre i 100.
+- **La lista amici viveva sotto due chiavi di cache diverse** (`['chat','friends']` e
+  `['friends','list']`): invalidarne una non toccava l'altra. **Corretto** `4fae7b0`, e `8d39872` per
+  le richieste di amicizia.
+- **`DECLINED` non esisteva nel modello frontend delle condivisioni**: quattro modali lo escludevano dal
+  tipo e cinque call site facevano `as` per forzarcelo dentro; `Sidebar.tsx:261` e
+  `SharedUsersModal.tsx:104`, con `!== 'PENDING'`, mettevano i rifiutati **fra chi ha accesso**.
+  **Corretto** `1846efe`.
 
 ### Il tema: l'autorizzazione è verificata al connect e mai più
 
