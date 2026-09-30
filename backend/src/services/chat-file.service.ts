@@ -23,6 +23,16 @@ async function getMaxFileSize(): Promise<number> {
   }
 }
 
+// Extension + size checks; call before persisting anything tied to the upload
+export async function validateChatFile(filename: string, size: number): Promise<void> {
+  if (BLOCKED_EXTENSIONS.includes(path.extname(filename).toLowerCase())) {
+    throw new BadRequestError('errors.chat.blockedFileType');
+  }
+  if (size > (await getMaxFileSize())) {
+    throw new BadRequestError('errors.chat.fileTooLarge');
+  }
+}
+
 export async function uploadChatFile(
   messageId: string,
   fileBuffer: Buffer,
@@ -30,17 +40,7 @@ export async function uploadChatFile(
   mimeType: string,
 ): Promise<{ url: string; thumbnailUrl: string | null; filename: string; mimeType: string; size: number }> {
   const ext = path.extname(originalFilename).toLowerCase();
-
-  // Validate extension
-  if (BLOCKED_EXTENSIONS.includes(ext)) {
-    throw new BadRequestError('errors.chat.blockedFileType');
-  }
-
-  // Validate size
-  const maxSize = await getMaxFileSize();
-  if (fileBuffer.length > maxSize) {
-    throw new BadRequestError('errors.chat.fileTooLarge');
-  }
+  await validateChatFile(originalFilename, fileBuffer.length);
 
   // Save file
   const storageFilename = crypto.randomUUID() + ext;

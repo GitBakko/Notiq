@@ -8,9 +8,11 @@ import {
   searchMessages,
   getUnreadCount,
   sendMessage,
+  messageInclude,
 } from '../services/chat-direct.service';
-import { uploadChatFile } from '../services/chat-file.service';
+import { uploadChatFile, validateChatFile } from '../services/chat-file.service';
 import prisma from '../plugins/prisma';
+import { broadcastToConversation, notifyNewDirectMessage } from '../chatWebSocket';
 
 const idParamSchema = z.object({
   id: z.string().uuid(),
@@ -137,17 +139,21 @@ export default async function chatDirectRoutes(fastify: FastifyInstance) {
     const buffer = await data.toBuffer();
     const messageText = (data.fields as Record<string, { value?: string }>)?.message?.value || '';
 
+    // Validate before persisting the message (a rejected file must not leave an orphan message)
+    await validateChatFile(data.filename, buffer.length);
+
     // Create message first
     const message = await sendMessage(conversationId, userId, { content: messageText || data.filename });
 
     // Upload file linked to message
     const fileResult = await uploadChatFile(message.id, buffer, data.filename, data.mimetype);
 
-    // Return message with files included so sender sees the file
-    const fullMessage = {
+    // Re-read with real ChatFile rows, then deliver live to the other participants
+    // Fallback (re-read failed/empty) carries the real file data so the sender still sees the attachment
+    let fullMessage: object = {
       ...message,
       files: [{
-        id: '', // ChatFile id is inside chat-file.service, we return the relevant data
+        id: '',
         url: fileResult.url,
         thumbnailUrl: fileResult.thumbnailUrl,
         filename: fileResult.filename,
@@ -155,6 +161,22 @@ export default async function chatDirectRoutes(fastify: FastifyInstance) {
         size: fileResult.size,
       }],
     };
+    let found: Awaited<ReturnType<typeof prisma.directMessage.findUnique>> | null = null;
+    try {
+      found = await prisma.directMessage.findUnique({ where: { id: message.id }, include: messageInclude });
+      if (found) fullMessage = found;
+    } catch (err) {
+      request.log.error({ err }, 'chat file re-read failed');
+    }
+    if (found) {
+      try {
+        await broadcastToConversation(conversationId, { type: 'message:new', message: found }, userId);
+      } catch (err) {
+        request.log.error({ err }, 'chat file broadcast failed');
+      }
+      // notifyNewDirectMessage swallows and logs its own errors
+      await notifyNewDirectMessage(conversationId, userId, message, messageText || data.filename);
+    }
 
     return { message: fullMessage, file: fileResult };
   });

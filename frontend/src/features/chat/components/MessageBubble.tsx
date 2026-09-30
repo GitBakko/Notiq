@@ -6,7 +6,7 @@ import {
   Copy,
   Pencil,
   Trash2,
-  CheckCheck,
+  Check,
 } from 'lucide-react';
 import type { DirectMessageDTO } from '../chatService';
 import ChatFilePreview from './ChatFilePreview';
@@ -198,7 +198,7 @@ export default function MessageBubble({
             </span>
             {isOwn && (
               <span className="text-emerald-200/70 ml-0.5">
-                <CheckCheck size={14} />
+                <Check size={14} />
               </span>
             )}
           </div>

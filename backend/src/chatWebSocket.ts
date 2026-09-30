@@ -174,6 +174,46 @@ async function broadcastPresence(userId: string, isOnline: boolean) {
   }
 }
 
+// Tiered notifications for a new direct message (non-critical: failures are swallowed)
+export async function notifyNewDirectMessage(
+  conversationId: string,
+  senderId: string,
+  msg: { id: string; sender?: { name?: string | null; email?: string | null } | null },
+  content: string,
+) {
+  try {
+    const senderName = msg.sender?.name || msg.sender?.email || 'Someone';
+    const participants = await prisma.conversationParticipant.findMany({
+      where: { conversationId, userId: { not: senderId } },
+      select: { userId: true },
+    });
+    for (const p of participants) {
+      const activeConv = userActiveConversation.get(p.userId);
+      if (activeConv === conversationId) {
+        // Tier 1: User is viewing THIS conversation → no notification (they see it live)
+        continue;
+      }
+      if (isUserOnline(p.userId)) {
+        // Tier 2: User is online but in another chat/page → WS event handles sound+badge
+        // (the message:new broadcast already went out above — frontend handles the sound)
+        continue;
+      }
+      // Tier 3: User is offline → push notification with anti-spam debounce
+      const debounceKey = `${p.userId}:${senderId}`;
+      const lastSent = lastPushSent.get(debounceKey) || 0;
+      if (Date.now() - lastSent > PUSH_DEBOUNCE_MS) {
+        lastPushSent.set(debounceKey, Date.now());
+        createNotification(p.userId, 'CHAT_MESSAGE', senderName, content.slice(0, 100), {
+          conversationId, messageId: msg.id,
+          localizationKey: 'notifications.chatMessage', localizationArgs: { senderName },
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'notifyNewDirectMessage failed');
+  }
+}
+
 // ─── Message router ────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,35 +230,7 @@ async function handleMessage(ws: WsSocket, userId: string, data: any) {
         // Broadcast to others
         await broadcastToConversation(data.conversationId, { type: 'message:new', message: msg }, userId);
         // Tiered notifications for participants
-        try {
-          const senderName = msg.sender?.name || msg.sender?.email || 'Someone';
-          const participants = await prisma.conversationParticipant.findMany({
-            where: { conversationId: data.conversationId, userId: { not: userId } },
-            select: { userId: true },
-          });
-          for (const p of participants) {
-            const activeConv = userActiveConversation.get(p.userId);
-            if (activeConv === data.conversationId) {
-              // Tier 1: User is viewing THIS conversation → no notification (they see it live)
-              continue;
-            }
-            if (isUserOnline(p.userId)) {
-              // Tier 2: User is online but in another chat/page → WS event handles sound+badge
-              // (the message:new broadcast already went out above — frontend handles the sound)
-              continue;
-            }
-            // Tier 3: User is offline → push notification with anti-spam debounce
-            const debounceKey = `${p.userId}:${userId}`;
-            const lastSent = lastPushSent.get(debounceKey) || 0;
-            if (Date.now() - lastSent > PUSH_DEBOUNCE_MS) {
-              lastPushSent.set(debounceKey, Date.now());
-              createNotification(p.userId, 'CHAT_MESSAGE', senderName, (data.content as string).slice(0, 100), {
-                conversationId: data.conversationId, messageId: msg.id,
-                localizationKey: 'notifications.chatMessage', localizationArgs: { senderName },
-              }).catch(() => {});
-            }
-          }
-        } catch (_e) { /* non-critical */ }
+        await notifyNewDirectMessage(data.conversationId, userId, msg, data.content as string);
         break;
       }
       case 'message:edit': {

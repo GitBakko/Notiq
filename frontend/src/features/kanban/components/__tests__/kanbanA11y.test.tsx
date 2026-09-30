@@ -1,11 +1,26 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+const dragSpy = vi.hoisted(() => vi.fn());
+
+// Wrap the real useSortable: enabled cards get a spy as dnd listener (pointerdown)
+vi.mock('@dnd-kit/sortable', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/sortable')>();
+  return {
+    ...actual,
+    useSortable: (args: Parameters<typeof actual.useSortable>[0]) => {
+      const r = actual.useSortable(args);
+      return args.disabled ? r : { ...r, listeners: { onPointerDown: dragSpy } };
+    },
+  };
+});
+
 // i18n: return the key verbatim so we can query by accessible name
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
 }));
 
+import KanbanCard from '../KanbanCard';
 import KanbanColumn from '../KanbanColumn';
 import BoardCard from '../BoardCard';
 import type { KanbanColumn as KanbanColumnType, KanbanCard as KanbanCardType } from '../../types';
@@ -143,5 +158,56 @@ describe('kanban a11y — no nested interactive controls in the card body', () =
     // Enter on the move button must not open the card
     fireEvent.keyDown(moveBtn, { key: 'Enter' });
     expect(onCardSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('KanbanCard drag surface', () => {
+  it('root is select-none and grabbable; body click still opens the card', () => {
+    const onCardSelect = vi.fn();
+    const { container } = render(
+      <KanbanColumn
+        column={column}
+        boardId="b1"
+        onCardSelect={onCardSelect}
+        onRenameColumn={vi.fn()}
+        onDeleteColumn={vi.fn()}
+        onAddCard={vi.fn()}
+      />
+    );
+
+    const root = container.querySelector('[data-kanban-card="c1"]') as HTMLElement;
+    expect(root.className).toContain('select-none');
+    expect(root.className).toContain('cursor-grab');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Card One' }));
+    expect(onCardSelect).toHaveBeenCalledWith('c1');
+  });
+});
+
+describe('KanbanCard pointer arming', () => {
+  const renderCard = (readOnly = false) =>
+    render(<KanbanCard card={card} onSelect={vi.fn()} readOnly={readOnly} />);
+
+  it('mouse pointerdown on the body arms the drag', () => {
+    dragSpy.mockClear();
+    renderCard();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Card One' }), { pointerType: 'mouse' });
+    expect(dragSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('touch pointerdown on the body does not arm the drag', () => {
+    dragSpy.mockClear();
+    renderCard();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Card One' }), { pointerType: 'touch' });
+    expect(dragSpy).not.toHaveBeenCalled();
+  });
+
+  it('readOnly card is not grabbable and never arms', () => {
+    dragSpy.mockClear();
+    const { container } = renderCard(true);
+    const root = container.querySelector('[data-kanban-card="c1"]') as HTMLElement;
+    expect(root.className).not.toContain('cursor-grab');
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Card One' }), { pointerType: 'mouse' });
+    expect(dragSpy).not.toHaveBeenCalled();
   });
 });

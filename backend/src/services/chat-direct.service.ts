@@ -12,7 +12,7 @@ const userSelect = {
   color: true,
 } as const;
 
-const messageInclude = {
+export const messageInclude = {
   sender: { select: userSelect },
   replyTo: {
     include: {

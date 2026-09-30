@@ -138,6 +138,10 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
         ref={setNodeRef}
         style={style}
         data-kanban-card={card.id}
+        // Mouse only: touch keeps dragging via the touch-none handle so scroll/long-press still work
+        onPointerDown={readOnly ? undefined : (e: React.PointerEvent<HTMLDivElement>) => {
+          if (e.pointerType === 'mouse') (listeners?.onPointerDown as React.PointerEventHandler<HTMLDivElement> | undefined)?.(e);
+        }}
         onContextMenu={(e) => {
           if (onContextMenu) {
             e.preventDefault();
@@ -147,7 +151,8 @@ export default memo(function KanbanCard({ card, onSelect, readOnly, isHighlighte
         className={clsx(
           'group rounded-lg bg-white dark:bg-neutral-800 p-3 shadow-sm',
           'border border-neutral-200/60 dark:border-neutral-700/40',
-          'hover:shadow-md transition-all cursor-pointer hover-lift',
+          'hover:shadow-md transition-all hover-lift select-none [-webkit-touch-callout:none]',
+          readOnly ? 'cursor-pointer' : 'cursor-grab',
           isDragging && 'opacity-50 shadow-lg z-50',
           isHighlighted && 'ring-2 ring-emerald-400 dark:ring-emerald-500 animate-pulse shadow-md shadow-emerald-100 dark:shadow-emerald-900/30',
           isSelected && 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-[1.02]',
