@@ -272,3 +272,32 @@ describe('verifyVkProof', () => {
       verifyVkProof({ ...row, vkSigPub: new Uint8Array([1, 2, 3, 4]) }, method, path, payload, 4, sig),
     ));
 });
+
+describe('createKeyring: P1 lock', () => {
+  // P1 lock: rimuovere in P2 quando VAULT_ROOT_KEYS viene popolato
+  it('mappa root vuota -> 503, nessuna lettura, nessun bcrypt', async () => {
+    const bcrypt = (await import('bcrypt')).default;
+    const spy = vi.spyOn(bcrypt, 'compare');
+    vi.clearAllMocks();
+    const { createKeyring } = await import('../services/vault.service');
+    const b = Buffer.alloc(4);
+    await expect(
+      createKeyring('u1', {
+        expectedEpoch: 0, password: 'pw', kdf: 'argon2id', kdfParams: { m: 65536, t: 3, p: 1 },
+        pinSalt: b, wrappedVkPin: b, authKey: b, serverShare: b, vkSigPub: b, wrappedVkSigKey: b,
+        escrowBlob: b, sealedRootShare: b, rootKeyId: 'rk_x', userShareUnderVk: b,
+      }),
+    ).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.unavailable' });
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.vaultKeyring.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.vaultKeyring.create).not.toHaveBeenCalled();
+    expect(mockPrisma.vaultKeyring.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.note.count).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('VAULT_ROOT_KEYS is frozen', async () => {
+    const { VAULT_ROOT_KEYS } = await import('../utils/vaultRootKeys');
+    expect(Object.isFrozen(VAULT_ROOT_KEYS)).toBe(true);
+  });
+});

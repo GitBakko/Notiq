@@ -269,7 +269,7 @@ ALTER TABLE "VaultRequest" ADD CONSTRAINT "VaultRequest_userId_fkey" FOREIGN KEY
 **Keyring:**
 - `getKeyring(userId)`.
 - `createKeyring(userId, dto)`:
-  - `authVerifier = HMAC-SHA256(verifierKey, authKey)`;
+  - `authVerifier = HMAC-SHA256(verifierKey, utf8(userId) ‖ "|" ‖ authKey)`, calcolato **solo** con `authVerifierOf(userId, authKey)` (vedi addendum T6);
   - `serverShareEnc = iv12 ‖ AES-256-GCM(shareWrapKey, serverShare, AAD="notiq/vault/v3/servershare|"+userId+"|"+epoch) ‖ tag`, per un totale di 60 B;
   - `pepperKeyId`;
   - `migrationState = legacyCount>0 ? 'IN_PROGRESS' : 'NONE'`;
@@ -380,7 +380,7 @@ Si esegue **solo quando `content !== undefined`** (RT-4).
 ### 4.4 Sblocco e lockout (atomico, RT-3)
 
 1. Se `pepperStatus()` non è ok → 503. Se non c'è una riga o `status≠READY` → 409 `notReady`. Se `pepperKeyId` della riga è diverso dall'id corrente → 503 `errors.vault.pepperMismatch`, **non conteggiato**.
-2. `ok = timingSafeEqual(HMAC(verifierKey, authKey), row.authVerifier)`.
+2. `ok = timingSafeEqual(authVerifierOf(userId, authKey), row.authVerifier)`: HMAC legato allo userId (addendum T6).
 3. **Errore.** Un solo statement atomico, con il tempo in UTC: le colonne `TIMESTAMP(3)` di Prisma sono UTC, mentre `now()` dipende dal fuso della sessione.
    ```sql
    UPDATE "VaultKeyring"
@@ -607,3 +607,14 @@ Finding del red team sulla migration: nessuno richiede di modificarla. Vincoli p
 2. **Audit delle azioni di root sotto l'attore.** `AuditLog.userId` va in cascata con l'utente: se un SUPERADMIN cancella l'utente, le righe a suo nome spariscono. Le azioni amministrative (approve, reject, release) si registrano con `logEvent(adminId, 'vault.recovery.<azione>', { targetUserId, requestId })`, non sotto l'utente destinatario.
 3. **Deploy della migration (runbook §6).** Prima del deploy controllare che nessuna sessione tenga lock su `"User"` (`SELECT pid, state, query FROM pg_stat_activity WHERE datname = '<db>' AND state <> 'idle'`), perche' Prisma non imposta `lock_timeout` e il passo 7 resterebbe appeso con pm2 fermo. Se `migrate deploy` fallisce, prima di riprovare: `npx prisma migrate resolve --rolled-back 20261001000000_vault_e2ee`, altrimenti ogni deploy successivo fallisce con P3009.
 4. Commento dello stato del reset in `schema.prisma` (`PENDING_CODE -> COMPLETED | EXPIRED`): va aggiornato in P3 quando si definisce l'annullamento (`CANCELLED`). Solo commento, nessuna migration.
+
+## Addendum dopo la review di T6 (2026-09-30)
+
+Deviazioni dal piano accettate dopo reviewer + red-team, e vincoli per i task successivi:
+
+1. **`authVerifier` legato all'utente.** `authVerifier = HMAC-SHA256(verifierKey, utf8(userId) ‖ "|" ‖ authKey)`. Senza lo userId, chi ha accesso in scrittura al DB (ma non al pepper) potrebbe copiare il proprio `authVerifier` sulla riga della vittima e ottenere con `POST /unlock` il `serverShare` della vittima. Nessuna riga esiste ancora, quindi il cambio non richiede migration. T7 DEVE usare `authVerifierOf(userId, authKey)` (oggi interno a `vault.service.ts`), mai un HMAC ricalcolato a mano.
+2. **`PUT /keyring` con `wrap` e pepper diverso.** Se `row.pepperKeyId` è diverso dall'id corrente → 503 `errors.vault.pepperMismatch`, prima di qualunque scrittura. Altrimenti il nuovo `authVerifier` sarebbe sotto il pepper nuovo e `serverShareEnc` sotto il vecchio: riga irrecuperabile.
+3. **Audit della password errata** su `createKeyring`: `vault.keyring.passwordRejected`, senza details.
+4. `rev` nel payload di `PUT` limitato a `2147483646` (int4 meno 1, così `rev+1` non va in overflow). `VAULT_ROOT_KEYS` è `Object.freeze({})`.
+5. **Per T9 (route `POST /keyring`):** `expectedEpoch` validato come intero `0..2147483647` (altrimenti Prisma dà 500). Il service è già pronto a riusare `b64url` e `keyringUpdatePayloadSchema`.
+6. **Per P3:** con la riga `NONE/epoch N` dopo un reset, un client che manda `expectedEpoch` sbagliato riceve 409 `alreadySetup`. Il client P2/P3 deve rileggere `GET /keyring` su 409 prima di riprovare; valutare in P3 un codice distinto.
