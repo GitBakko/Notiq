@@ -4,10 +4,11 @@ import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
 import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractText';
-import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
+import { NotFoundError, BadRequestError, ConflictError, AppError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { logEvent } from './audit.service';
 import { snapshotPreviousVersion } from './noteVersion.service';
+import { getVaultGuard, assertVaultContent, parseEnvelope, sha256hex } from './vault.service';
 import logger from '../utils/logger';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
@@ -52,6 +53,16 @@ export const createNote = async (
     } else {
       // Create a default notebook? For now throw
       throw new NotFoundError('errors.notebooks.notFound');
+    }
+  }
+
+  // Vault P1: with a keyring the server only accepts envelopes (no CAS on create).
+  if (isVault) {
+    const guard = await getVaultGuard(userId);
+    if (guard) {
+      assertVaultContent(content, guard);
+      if (title !== '') throw new AppError(422, 'errors.vault.plaintextRejected');
+      isEncrypted = true;
     }
   }
 
@@ -199,12 +210,17 @@ export const updateNote = async (userId: string, id: string, data: {
   isVault?: boolean;
   isEncrypted?: boolean;
   tags?: { tag: { id: string } }[];
+  baseHash?: string;
 }) => {
   // Verify ownership first
   const note = await prisma.note.findFirst({ where: { id, userId } });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
-  const { tags, ...rest } = data;
+  // baseHash is only a CAS token: it must never reach Prisma, guard or not.
+  const { tags, baseHash, ...rest } = data;
+
+  // Vault P1: read only when the note is, or is becoming, a vault note (normal notes: no extra query).
+  const guard = (note.isVault || rest.isVault === true) ? await getVaultGuard(userId) : null;
 
   // P3: the target notebook must be the caller's own, as createNote already requires.
   if (rest.notebookId !== undefined) {
@@ -240,6 +256,34 @@ export const updateNote = async (userId: string, id: string, data: {
   const movingToVault = rest.isVault === true && !note.isVault;
   const movingOutOfVault = rest.isVault === false && note.isVault;
 
+  // Vault P1 enforcement (only with a keyring). Metadata-only writes are never checked (RT-4).
+  if (guard) {
+    if (movingToVault) {
+      if (rest.content === undefined) throw new AppError(422, 'errors.vault.plaintextRejected');
+      assertVaultContent(rest.content, guard, baseHash, note.content);
+      rest.title = '';
+      rest.isEncrypted = true;
+    } else if (movingOutOfVault) {
+      if (!guard.ready) throw new AppError(422, 'errors.vault.notReady');
+      if (rest.content === undefined || parseEnvelope(rest.content) !== null) {
+        throw new AppError(422, 'errors.vault.plaintextRequired');
+      }
+      if (!baseHash || baseHash !== sha256hex(note.content)) {
+        throw new AppError(422, 'errors.vault.conflict');
+      }
+      rest.isEncrypted = false;
+    } else if (note.isVault) {
+      if (rest.title !== undefined && rest.title !== '') {
+        throw new AppError(422, 'errors.vault.plaintextRejected');
+      }
+      if (rest.isEncrypted === false) throw new AppError(422, 'errors.vault.plaintextRejected');
+      if (rest.content !== undefined) {
+        assertVaultContent(rest.content, guard, baseHash, note.content);
+        rest.isEncrypted = true;
+      }
+    }
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     if (movingToVault) {
       await tx.sharedNote.deleteMany({ where: { noteId: id } });
@@ -263,7 +307,8 @@ export const updateNote = async (userId: string, id: string, data: {
     const { content: contentField, ...restWithoutContent } = rest;
     let finalContent = contentField;
     if (contentField !== undefined) {
-      finalContent = guardEmptyContentOverwrite(note.content, contentField);
+      // Vault P1: with a keyring the 150-char guard would silently drop short envelopes / plaintext on exit.
+      finalContent = guard ? contentField : guardEmptyContentOverwrite(note.content, contentField);
     }
 
     // Recalculate searchText if content changed
@@ -284,6 +329,10 @@ export const updateNote = async (userId: string, id: string, data: {
       updateData.ydocState = null; // no collaborative state survives in the clear
       updateData.searchText = null; // no derived plaintext either
     }
+    // Vault P1: leaving with a keyring — note.isEncrypted is still true, so the branch above skipped it.
+    if (guard && movingOutOfVault && note.noteType === 'NOTE' && contentField !== undefined) {
+      updateData.searchText = extractTextFromTipTapJson(contentField);
+    }
 
     if (finalContent !== undefined && finalContent !== note.content) {
       try {
@@ -292,6 +341,14 @@ export const updateNote = async (userId: string, id: string, data: {
         // versioning is best-effort — never block the primary save
         logger.warn({ snapErr, noteId: id }, 'updateNote: snapshot failed — save will proceed');
       }
+    }
+
+    // Vault P1: atomic CAS on content (the read of `note` is outside this transaction).
+    // A 422 here rolls back the snapshot too. Without guard or content: unchanged `update` (RT-5).
+    if (guard && contentField !== undefined) {
+      const r = await tx.note.updateMany({ where: { id, content: note.content }, data: updateData });
+      if (r.count === 0) throw new AppError(422, 'errors.vault.conflict');
+      return tx.note.findUniqueOrThrow({ where: { id } });
     }
 
     return tx.note.update({

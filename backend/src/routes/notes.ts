@@ -24,6 +24,7 @@ const updateNoteSchema = z.object({
   isPinned: z.boolean().optional(),
   isVault: z.boolean().optional(),
   isEncrypted: z.boolean().optional(),
+  baseHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   tags: z.array(z.object({
     tag: z.object({
       id: z.string().uuid(),
