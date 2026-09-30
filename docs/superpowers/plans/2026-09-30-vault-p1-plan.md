@@ -626,3 +626,11 @@ Deviazioni dal piano accettate dopo reviewer + red-team, e vincoli per i task su
 3. **Email di lockout fire-and-forget**, compresa la lettura dell'utente: nessun errore DB o SMTP cambia il 403 di un tentativo già contato. `VAULT_LOCKOUT` è transazionale.
 4. **Percorso di successo legato all'epoch:** l'`updateMany` di azzeramento include `epoch: row.epoch`. Un reset più un nuovo setup tra la lettura e l'azzeramento dà 429, non il `serverShare` della vecchia epoch.
 5. **Verifica di concorrenza manuale** (10 `POST /unlock` sbagliati in parallelo, quindi 6×403 + 4×429 e `failedAttempts=6`): resta obbligatoria e si fa subito dopo T9, sul DB dev. I test unitari non la possono dimostrare.
+
+## Addendum dopo la review di T9 (2026-09-30)
+
+1. **Rate limit per utente sulle route vault.** `config.rateLimit` con `keyGenerator: req => req.user.id`, nella fase `onRequest` dopo `authenticate` e prima del parsing del body. Motivo: in `app.ts` `trustProxy: true` più `allowList: ['127.0.0.1','::1']` rende il limite per IP aggirabile con `X-Forwarded-For: 127.0.0.1` (IIS ARR accoda l'header, non lo sostituisce). Il difetto globale resta aperto per le altre route (anche `/auth/login`): task separato, fuori da P1.
+2. **Body malformati.** Error handler con scope sul plugin vault: gli errori `FST_ERR_CTP_*` rispondono con il loro status (400/413/415) e body fisso `errors.vault.invalidPayload`; tutto il resto risale all'handler globale. Difesa in profondità: Fastify 5.7 già non rimanda frammenti del body.
+3. **`/migrate`:** `content` di ogni item ≤ 2 MiB (oltre al `bodyLimit` di 16 MiB del batch).
+4. **Limite noto:** le richieste non autenticate verso `/api/vault/*` non sono limitate (il limite della route sostituisce quello globale per IP e gira dopo `authenticate`). Come ogni altra route con `config.rateLimit`; da risolvere nel task globale del rate limit.
+5. **Verifica live su DB dev (30/09):** boot `vaultPepper: ok`; `GET /keyring` 200 NONE; `POST /keyring` 503 (lock P1); 10 `POST /unlock` sbagliati in parallelo → 6×403 + 4×429, `failedAttempts=6`, lock 15 min UTC; PIN giusto durante il lock → 429; dopo il lock → 200 con `serverShare` corretto; mai 401; boot senza pepper → app su, vault 503.

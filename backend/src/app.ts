@@ -32,13 +32,16 @@ import healthRoutes from './routes/health';
 import announcementRoutes, { adminAnnouncementRoutes } from './routes/announcements';
 import friendshipRoutes from './routes/friendships';
 import chatDirectRoutes from './routes/chat-direct';
+import vaultRoutes from './routes/vault';
+import { REDACT_PATHS } from './utils/logger';
+import { pepperStatus } from './services/vault.service';
 
 
 // ... ensure start
 import './types';
 
 const server = fastify({
-  logger: true,
+  logger: { redact: { paths: REDACT_PATHS, censor: '[REDACTED]' } },
   trustProxy: true, // IIS ARR reverse proxy — read X-Forwarded-For for real client IP
 });
 
@@ -223,6 +226,7 @@ server.register(taskListRoutes, { prefix: '/api/tasklists' });
 server.register(kanbanRoutes, { prefix: '/api/kanban' });
 server.register(announcementRoutes, { prefix: '/api/announcements' });
 server.register(adminAnnouncementRoutes, { prefix: '/api/admin/announcements' });
+server.register(vaultRoutes, { prefix: '/api/vault' });
 server.register(healthRoutes);
 
 // Uploads base directory — consistent with attachment.service.ts
@@ -307,6 +311,9 @@ import type { WebSocket } from 'ws';
 const start = async () => {
   try {
     await server.listen({ port: 3001, host: '0.0.0.0' });
+
+    const vaultPepper = pepperStatus();
+    server.log.info({ vaultPepper: vaultPepper.status, pepperKeyId: vaultPepper.keyId }, 'vault secrets');
 
     // Attach WebSocket servers to Fastify HTTP server
     server.server.on('upgrade', (request, socket, head) => {
