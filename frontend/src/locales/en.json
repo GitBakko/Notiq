@@ -1185,6 +1185,9 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "vaultNoOverwriteSecondDevice": "Vault items not yet downloaded on a device are now loaded from the server and can no longer overwrite the saved copy",
+      "vaultNotesPrivate": "Vault notes are never shared, linked to boards, searched or sent to AI",
+      "vaultResetHonest": "Clearer vault reset: it only forgets the PIN on this device",
       "chatFilesLive": "Files and images in direct chats now reach the other person instantly, with a notification when offline",
       "chatRejectedFileNoMessage": "A rejected file no longer leaves an empty message in the chat",
       "chatSingleTick": "Sent messages show a single tick",

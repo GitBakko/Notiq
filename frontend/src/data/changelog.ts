@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.12.2',
+    date: '2026-09-30',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.vaultNoOverwriteSecondDevice' },
+      { type: 'fix', titleKey: 'whatsNew.entries.vaultNotesPrivate' },
+      { type: 'fix', titleKey: 'whatsNew.entries.vaultResetHonest' },
+    ],
+  },
+  {
     version: '1.12.1',
     date: '2026-09-30',
     entries: [

@@ -809,6 +809,9 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "vaultNoOverwriteSecondDevice": "Gli elementi del vault non ancora scaricati su un dispositivo vengono caricati dal server e non possono più sovrascrivere la copia salvata",
+      "vaultNotesPrivate": "Le note del vault non vengono mai condivise, collegate alle board, cercate o inviate all'AI",
+      "vaultResetHonest": "Reset del vault più chiaro: dimentica solo il PIN su questo dispositivo",
       "chatFilesLive": "File e immagini nelle chat dirette arrivano subito all'altra persona, con notifica se è offline",
       "chatRejectedFileNoMessage": "Un file rifiutato non lascia più un messaggio vuoto nella chat",
       "chatSingleTick": "I messaggi inviati mostrano una spunta singola",
