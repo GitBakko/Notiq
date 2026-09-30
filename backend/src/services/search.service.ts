@@ -37,6 +37,7 @@ export const searchNotes = async (
     WHERE n."userId" = $1
       AND n."isTrashed" = false
       AND n."isEncrypted" = false
+      AND n."isVault" = false
       AND n."searchVector" @@ plainto_tsquery('simple', $2)
       ${countNotebookCond}
   `, ...countParams);
@@ -66,6 +67,7 @@ export const searchNotes = async (
     WHERE n."userId" = $1
       AND n."isTrashed" = false
       AND n."isEncrypted" = false
+      AND n."isVault" = false
       AND n."searchVector" @@ plainto_tsquery('simple', $2)
       ${searchNotebookCond}
     ORDER BY n."isPinned" DESC, "rank" DESC, n."updatedAt" DESC

@@ -486,6 +486,15 @@ Ogni file TIER richiede "proponi prima", il gate e reviewer + red-team.
   - backend: search esclude `isVault`, hocuspocus rifiuta, `shareNote` rifiuta;
   - e2e: `frontend/e2e/vault-overwrite.spec.ts` (2 contesti).
 
+#### §8 P0 — limiti noti fino a P2
+
+Il hotfix P0 non chiude questi casi; restano aperti fino a P2 (i primi due, fino al compare-and-swap lato server, che li chiude entrambi; gli ultimi due vengono chiusi o rivisti in P2).
+
+- **Copia locale obsoleta ma non vuota (offline oppure online):** il hotfix P0 reidrata solo le voci con contenuto locale vuoto. Una voce con contenuto locale non vuoto ma più vecchio della copia del server si apre subito, senza confronto con il server, ed è modificabile; il push successivo può sovrascrivere la copia più recente del server. Vale sia offline sia online, e anche per una voce già aperta mentre un altro dispositivo la modifica. Si chiude solo con il compare-and-swap lato server di P2.
+- **Bundle PWA vecchio in cache (precedente alla 1.12.2):** finché non si ricarica, può ancora sovrascrivere una credenziale breve. Misurato: il testo cifrato di una `EMPTY_CREDENTIAL` è lungo 124-152 caratteri, contro la guardia server a 150 caratteri, quindi una parte dei casi passa sotto la guardia.
+- **Nota condivisa spostata nel vault:** le modifiche collaborative degli ultimi ~2 s (debounce di Hocuspocus) possono non essere salvate, perché le connessioni vengono chiuse subito.
+- **Nota "sicura" (`isEncrypted`) uscita dal vault:** non torna nella ricerca, perché `searchText` non viene ricalcolato per le note `isEncrypted`.
+
 ### P1: fondazioni server + cerimonia root (nessun cambio UX)
 
 - **Scope:**

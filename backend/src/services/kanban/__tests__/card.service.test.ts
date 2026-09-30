@@ -1499,7 +1499,7 @@ describe('getCardActivities', () => {
     // Pin the FILTER, not just the absence of the title: without this, a version
     // that drops every title unconditionally would also pass.
     expect(prismaMock.sharedNote.findMany).toHaveBeenCalledWith({
-      where: { noteId: { in: ['note-1'] }, userId: 'outsider', status: 'ACCEPTED' },
+      where: { noteId: { in: ['note-1'] }, userId: 'outsider', status: 'ACCEPTED', note: { isVault: false } },
       select: { noteId: true },
     });
   });

@@ -102,12 +102,13 @@ export async function linkNoteToCard(
 
   const note = await prisma.note.findUnique({
     where: { id: noteId },
-    select: { id: true, title: true, userId: true },
+    select: { id: true, title: true, userId: true, isVault: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
   // Only the note owner can link their note
   if (note.userId !== actorId) throw new ForbiddenError('errors.kanban.onlyOwnerCanLink');
+  if (note.isVault) throw new BadRequestError('errors.kanban.vaultNoteNotLinkable');
 
   await prisma.kanbanCard.update({
     where: { id: cardId },
@@ -223,12 +224,14 @@ export async function linkNoteToBoard(
 
   const note = await prisma.note.findUnique({
     where: { id: noteId },
-    select: { id: true, title: true, userId: true },
+    select: { id: true, title: true, userId: true, isVault: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
   // Only the note owner can link their note
   if (note.userId !== actorId) throw new ForbiddenError('errors.kanban.onlyOwnerCanLink');
+  // Same as linkNoteToCard: a vault note's title would reach every board participant.
+  if (note.isVault) throw new BadRequestError('errors.kanban.vaultNoteNotLinkable');
 
   const updatedBoard = await prisma.kanbanBoard.update({
     where: { id: boardId },

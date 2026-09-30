@@ -23,6 +23,7 @@ vi.mock('../../hocuspocus', () => ({
     hocuspocus: { closeConnections: vi.fn() },
   },
   extensions: [],
+  disconnectUserFromNote: vi.fn(),
 }));
 
 vi.mock('@hocuspocus/transformer', () => ({
@@ -68,6 +69,7 @@ describe('checkNoteAccess', () => {
       where: { id: 'note-1' },
       select: {
         userId: true,
+        isVault: true,
         sharedWith: { where: { userId: 'user-1', status: 'ACCEPTED' }, select: { permission: true } },
       },
     });
@@ -333,7 +335,7 @@ describe('getNote', () => {
         id: 'n1',
         OR: [
           { userId: 'user-1' },
-          { sharedWith: { some: { userId: 'user-1', status: 'ACCEPTED' } } },
+          { isVault: false, sharedWith: { some: { userId: 'user-1', status: 'ACCEPTED' } } },
         ],
       },
       include: expect.objectContaining({
@@ -363,6 +365,7 @@ describe('getNote', () => {
 
     const where = prismaMock.note.findFirst.mock.calls[0][0].where;
     expect(where.OR).toContainEqual({
+      isVault: false,
       sharedWith: { some: { userId: 'user-2', status: 'ACCEPTED' } },
     });
   });
@@ -420,6 +423,25 @@ describe('updateNote', () => {
     });
   });
 
+  it('a plain REST content change on a normal note does NOT touch ydocState (regression)', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(existingNote);
+    prismaMock.note.update.mockResolvedValue(existingNote);
+    const newContent = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"' + 'B'.repeat(200) + '"}]}]}';
+
+    await updateNote('user-1', 'n1', { content: newContent });
+
+    expect(prismaMock.note.update.mock.calls[0][0].data).not.toHaveProperty('ydocState');
+  });
+
+  it('leaves ydocState alone when the content is unchanged', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(existingNote);
+    prismaMock.note.update.mockResolvedValue(existingNote);
+
+    await updateNote('user-1', 'n1', { title: 'Only a title', content: existingNote.content });
+
+    expect(prismaMock.note.update.mock.calls[0][0].data).not.toHaveProperty('ydocState');
+  });
+
   it('throws when note does not exist or user is not owner', async () => {
     prismaMock.note.findFirst.mockResolvedValue(null);
 
@@ -456,6 +478,118 @@ describe('updateNote', () => {
 
     expect(prismaMock.tagsOnNotes.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1', userId: 'user-1' } });
     expect(prismaMock.tagsOnNotes.createMany).not.toHaveBeenCalled();
+  });
+
+  describe('move to vault revokes sharing', () => {
+    it('deletes shares, clears the public link and kicks live sessions when isVault goes false -> true', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false, isPublic: true, shareId: 'sid' });
+      prismaMock.sharedNote.findMany.mockResolvedValue([{ userId: 'u2' }, { userId: 'u3' }]);
+      prismaMock.sharedNote.deleteMany.mockResolvedValue({ count: 2 });
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { isVault: true });
+
+      expect(prismaMock.sharedNote.deleteMany).toHaveBeenCalledWith({ where: { noteId: 'n1' } });
+      expect(prismaMock.note.update).toHaveBeenCalledWith({
+        where: { id: 'n1' },
+        data: expect.objectContaining({
+          isVault: true,
+          isPublic: false,
+          shareId: null,
+          ydocState: null,
+          searchText: null,
+        }),
+      });
+      // EVERY live connection of the document goes, the owner's other devices included.
+      expect(hocuspocus.hocuspocus.closeConnections).toHaveBeenCalledTimes(1);
+      expect(hocuspocus.hocuspocus.closeConnections).toHaveBeenCalledWith('n1');
+    });
+
+    it('nulls searchText even when the same save carries plain content', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false });
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { isVault: true, content: '{"type":"doc","content":[]}'.padEnd(300, ' ') });
+
+      const data = prismaMock.note.update.mock.calls[0][0].data;
+      expect(data.searchText).toBeNull();
+      expect(data.ydocState).toBeNull();
+    });
+
+    it('does not touch shares when isVault stays false', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false });
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { isVault: false, title: 'x' });
+
+      expect(prismaMock.sharedNote.deleteMany).not.toHaveBeenCalled();
+      expect(hocuspocus.hocuspocus.closeConnections).not.toHaveBeenCalled();
+      const data = prismaMock.note.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('isPublic');
+      expect(data).not.toHaveProperty('shareId');
+    });
+
+    it('does not touch shares when the note was already a vault note', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true });
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { isVault: true });
+
+      expect(prismaMock.sharedNote.deleteMany).not.toHaveBeenCalled();
+      expect(hocuspocus.hocuspocus.closeConnections).not.toHaveBeenCalled();
+    });
+
+    describe('searchText around the vault boundary', () => {
+      const plain = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"hello"}]}]}';
+
+      it('moving OUT of the vault recomputes searchText from the stored content when none is sent', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true, content: plain });
+        prismaMock.note.update.mockResolvedValue(existingNote);
+
+        await updateNote('user-1', 'n1', { isVault: false });
+
+        expect(prismaMock.note.update.mock.calls[0][0].data.searchText).toBe(`extracted:${plain}`);
+      });
+
+      it('moving OUT with content in the same save uses that content', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true, content: 'old' });
+        prismaMock.note.update.mockResolvedValue(existingNote);
+
+        await updateNote('user-1', 'n1', { isVault: false, content: plain });
+
+        expect(prismaMock.note.update.mock.calls[0][0].data.searchText).toBe(`extracted:${plain}`);
+      });
+
+      it('moving OUT of an encrypted note does not derive searchText', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true, isEncrypted: true, content: plain });
+        prismaMock.note.update.mockResolvedValue(existingNote);
+
+        await updateNote('user-1', 'n1', { isVault: false });
+
+        expect(prismaMock.note.update.mock.calls[0][0].data.searchText).toBeUndefined();
+      });
+
+      it('owner saves while the note is in the vault never write searchText (isVault sent or omitted)', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true, content: 'old' });
+        prismaMock.note.update.mockResolvedValue(existingNote);
+
+        await updateNote('user-1', 'n1', { content: plain });
+        await updateNote('user-1', 'n1', { isVault: true, content: plain });
+
+        for (const call of prismaMock.note.update.mock.calls) {
+          expect(call[0].data).not.toHaveProperty('searchText');
+        }
+      });
+    });
+
+    it('a failing session kick never fails the update', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false });
+      prismaMock.sharedNote.findMany.mockResolvedValue([{ userId: 'u2' }]);
+      prismaMock.note.update.mockResolvedValue(existingNote);
+      (hocuspocus.hocuspocus.closeConnections as any).mockImplementationOnce(() => { throw new Error('boom'); });
+
+      await expect(updateNote('user-1', 'n1', { isVault: true })).resolves.toBeDefined();
+    });
   });
 
   describe('notebook and tag ownership (P3, P4)', () => {
@@ -788,12 +922,12 @@ describe('getPublicNote', () => {
       tags: [{ tag: { id: 'tag-1', name: 'demo' } }],
       attachments: [{ id: 'att-1' }],
     };
-    prismaMock.note.findUnique.mockResolvedValue(publicNote);
+    prismaMock.note.findFirst.mockResolvedValue(publicNote);
 
     const result = await getPublicNote('share-abc');
 
-    expect(prismaMock.note.findUnique).toHaveBeenCalledWith({
-      where: { shareId: 'share-abc' },
+    expect(prismaMock.note.findFirst).toHaveBeenCalledWith({
+      where: { shareId: 'share-abc', isVault: false },
       include: {
         tags: { include: { tag: true } },
         attachments: { where: { isLatest: true } },
@@ -803,7 +937,7 @@ describe('getPublicNote', () => {
   });
 
   it('returns null when shareId does not match any note', async () => {
-    prismaMock.note.findUnique.mockResolvedValue(null);
+    prismaMock.note.findFirst.mockResolvedValue(null);
 
     const result = await getPublicNote('nonexistent-share');
     expect(result).toBeNull();
@@ -940,5 +1074,36 @@ describe('getNoteSizeBreakdown', () => {
 
     // Should succeed without throwing
     expect(result.total).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('vault P0 guards', () => {
+  it('checkNoteAccess returns null for a non-owner on a vault note', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({
+      userId: 'owner-1',
+      isVault: true,
+      sharedWith: [{ permission: 'WRITE' }],
+    });
+    expect(await checkNoteAccess('user-2', 'note-1')).toBeNull();
+  });
+
+  it('checkNoteAccess still returns OWNER for the owner of a vault note', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ userId: 'user-1', isVault: true, sharedWith: [] });
+    expect(await checkNoteAccess('user-1', 'note-1')).toBe('OWNER');
+  });
+
+  it('getPublicNote only looks up non-vault notes', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(null);
+    expect(await getPublicNote('share-vault')).toBeNull();
+    expect(prismaMock.note.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { shareId: 'share-vault', isVault: false } }),
+    );
+  });
+
+  it('getNote shared branch excludes vault notes', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(null);
+    await getNote('user-2', 'n1');
+    const where = prismaMock.note.findFirst.mock.calls[0][0].where;
+    expect(where.OR).toContainEqual({ isVault: false, sharedWith: { some: { userId: 'user-2', status: 'ACCEPTED' } } });
   });
 });

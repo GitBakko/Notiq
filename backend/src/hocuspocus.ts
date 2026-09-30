@@ -393,8 +393,14 @@ export const hocuspocus = new Server({
           // [BACKUP] 2026-06-10 — inline <150 guard replaced by shared guard + try/catch
           const existing = await prisma.note.findUnique({
             where: { id: documentName },
-            select: { content: true, title: true },
+            select: { content: true, title: true, isVault: true },
           });
+
+          // Vault notes are E2E client-side and only saved via REST by the owner: never persist a Yjs state over them.
+          if (existing?.isVault) {
+            logger.warn({ documentName }, 'Hocuspocus store: vault note — skipping write');
+            return;
+          }
 
           // Integrity: never replace good content with a degenerate doc (empty/paragraph-only).
           if (isDegenerateTipTapJson(json) && (existing?.content?.length ?? 0) > 150) {
@@ -412,16 +418,11 @@ export const hocuspocus = new Server({
 
           const searchText = extractTextFromTipTapJson(contentStr);
 
-          // Versioning is best-effort — never let a snapshot failure crash the extension or lose the edit.
+          // Conditional write: a store already in flight when the note moved into the vault
+          // (the read above is stale by then) must not write. isVault is re-checked atomically here.
           try {
-            await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
-          } catch (snapErr) {
-            logger.warn({ snapErr, documentName }, 'Hocuspocus store: snapshot failed — continuing with save');
-          }
-
-          try {
-            await prisma.note.update({
-              where: { id: documentName },
+            const { count } = await prisma.note.updateMany({
+              where: { id: documentName, isVault: false },
               data: {
                 content: contentStr,
                 ydocState: Buffer.from(state),
@@ -429,11 +430,24 @@ export const hocuspocus = new Server({
                 updatedAt: new Date(),
               },
             });
+            if (count === 0) {
+              logger.warn({ documentName }, 'Hocuspocus store: note moved into the vault (or gone) while storing — write and snapshot skipped');
+              return;
+            }
           } catch (err) {
             // Never let a persistence failure become an unhandled rejection inside
             // the extension — log loudly; the client keeps the edit in its Yjs doc
             // and the next change retries.
-            logger.error({ err, documentName }, 'Hocuspocus store: prisma.note.update FAILED — edit not persisted');
+            logger.error({ err, documentName }, 'Hocuspocus store: prisma.note.updateMany FAILED — edit not persisted');
+            return;
+          }
+
+          // Versioning is best-effort and runs AFTER the conditional write: a vault note (count 0 above)
+          // never gets a new snapshot. A snapshot failure never loses the edit.
+          try {
+            await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
+          } catch (snapErr) {
+            logger.warn({ snapErr, documentName }, 'Hocuspocus store: snapshot failed — edit already saved');
           }
         } catch (err) {
           logger.error({ err, documentName }, 'Hocuspocus store: unexpected failure — edit not persisted this cycle');
@@ -463,6 +477,9 @@ export const hocuspocus = new Server({
       if (!note) {
         throw new Error('Note not found');
       }
+
+      // Vault notes never go through collaboration (not even for the owner: they save via REST).
+      if (note.isVault) throw new Error('Forbidden');
 
       const isOwner = note.userId === userId;
       const share = note.sharedWith.find((s: SharedNote) => s.userId === userId && s.status === 'ACCEPTED');

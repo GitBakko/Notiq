@@ -21,6 +21,7 @@ export const shareNote = async (ownerId: string, noteId: string, targetEmail: st
   if (!note || note.userId !== ownerId) {
     throw new NotFoundError('errors.notes.notFoundOrDenied');
   }
+  if (note.isVault) throw new BadRequestError('errors.sharing.vaultNotShareable');
 
   // Find target user
   const targetUser = await prisma.user.findUnique({
@@ -159,9 +160,10 @@ export const autoShareNoteForBoard = async (
   permission: Permission,
   boardTitle: string
 ): Promise<void> => {
-  const note = await prisma.note.findUnique({ where: { id: noteId }, select: { title: true, userId: true } });
+  const note = await prisma.note.findUnique({ where: { id: noteId }, select: { title: true, userId: true, isVault: true } });
   if (!note) throw new NotFoundError('errors.notes.notFound');
   if (note.userId !== ownerId) throw new ForbiddenError('errors.sharing.onlyOwnerCanShare');
+  if (note.isVault) return; // vault notes are never shared
 
   const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { name: true, email: true } });
   const sharerName = owner?.name || owner?.email || '?';
@@ -217,7 +219,7 @@ export const autoShareNoteForBoard = async (
 
 export const getAcceptedSharedNotes = async (userId: string) => {
   const shared = await prisma.sharedNote.findMany({
-    where: { userId, status: 'ACCEPTED' },
+    where: { userId, status: 'ACCEPTED', note: { isVault: false } },
     select: {
       permission: true,
       recipientNotebookId: true,
@@ -267,6 +269,7 @@ export const getSharedNotes = async (userId: string) => {
     where: {
       userId,
       status: { in: ['PENDING', 'ACCEPTED'] },
+      note: { isVault: false }, // belt and braces: vault notes are never shared
     },
     select: {
       id: true,
@@ -450,10 +453,13 @@ export const respondToShareById = async (userId: string, itemId: string, type: '
   if (type === 'NOTE') {
     // Check existence and guard against non-PENDING (prevents duplicate notifications on double-click)
     const existing = await prisma.sharedNote.findUnique({
-      where: { noteId_userId: { noteId: itemId, userId } }
+      where: { noteId_userId: { noteId: itemId, userId } },
+      include: { note: { select: { isVault: true } } },
     });
     if (!existing) throw new NotFoundError('errors.sharing.invitationNotFound');
     if (existing.status !== 'PENDING') return { success: true, status: existing.status };
+    // belt and braces: a share of a note that later moved into the vault cannot be accepted
+    if (action === 'accept' && existing.note?.isVault) throw new BadRequestError('errors.sharing.vaultNotShareable');
 
     result = await prisma.sharedNote.update({
       where: {
@@ -767,9 +773,10 @@ export const resendShareInvitation = async (
   if (type === 'NOTE') {
     const share = await prisma.sharedNote.findUnique({
       where: { id: shareId },
-      include: { user: { select: { email: true, locale: true } }, note: { select: { title: true, userId: true } } },
+      include: { user: { select: { email: true, locale: true } }, note: { select: { title: true, userId: true, isVault: true } } },
     });
     if (!share || share.note.userId !== userId) throw new NotFoundError('errors.sharing.notFound');
+    if (share.note.isVault) throw new BadRequestError('errors.sharing.vaultNotShareable');
     if (share.status !== 'PENDING') throw new BadRequestError('errors.sharing.onlyPendingResend');
     targetEmail = share.user.email;
     targetLocale = share.user.locale;
@@ -840,9 +847,10 @@ export const updateSharedNoteContent = async (
 
   const note = await prisma.note.findUnique({
     where: { id: noteId },
-    select: { content: true, title: true },
+    select: { content: true, title: true, isVault: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
+  if (note.isVault) throw new ForbiddenError('errors.sharing.forbidden');
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
 

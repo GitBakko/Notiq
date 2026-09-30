@@ -15,11 +15,13 @@ export const checkNoteAccess = async (userId: string, noteId: string): Promise<'
     where: { id: noteId },
     select: {
       userId: true,
+      isVault: true,
       sharedWith: { where: { userId, status: 'ACCEPTED' }, select: { permission: true } }
     }
   });
   if (!note) return null;
   if (note.userId === userId) return 'OWNER';
+  if (note.isVault) return null; // vault notes are never accessible to non-owners
   if (note.sharedWith.length > 0) return note.sharedWith[0].permission as 'READ' | 'WRITE';
   return null;
 };
@@ -152,7 +154,7 @@ export const getNote = async (userId: string, id: string) => {
         // content and searchText (N1). Every other access check in the codebase —
         // checkNoteAccess above, getBoard's filter, Hocuspocus onAuthenticate —
         // requires ACCEPTED; this one silently did not.
-        { sharedWith: { some: { userId, status: 'ACCEPTED' } } }
+        { isVault: false, sharedWith: { some: { userId, status: 'ACCEPTED' } } }
       ]
     },
     include: {
@@ -230,7 +232,14 @@ export const updateNote = async (userId: string, id: string, data: {
     }
   }
 
-  return prisma.$transaction(async (tx) => {
+  // Moving a note INTO the vault: it must stop being shared (vault notes are owner-only).
+  const movingToVault = rest.isVault === true && !note.isVault;
+  const movingOutOfVault = rest.isVault === false && note.isVault;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (movingToVault) {
+      await tx.sharedNote.deleteMany({ where: { noteId: id } });
+    }
     if (tagIds !== undefined) {
       // Replace tags FOR THIS USER ONLY (not other users' tag associations)
       await tx.tagsOnNotes.deleteMany({ where: { noteId: id, userId } });
@@ -258,8 +267,18 @@ export const updateNote = async (userId: string, id: string, data: {
     if (finalContent !== undefined) {
       updateData.content = finalContent;
     }
-    if (finalContent && !rest.isEncrypted && !note.isEncrypted) {
-      updateData.searchText = extractTextFromTipTapJson(finalContent);
+    // searchText is derived plaintext: never (re)computed while the note is, or stays, in the vault.
+    // Moving OUT of the vault re-derives it from the stored content (it was nulled on the way in).
+    const staysInVault = rest.isVault ?? note.isVault;
+    const searchSource = finalContent ?? (movingOutOfVault ? note.content : undefined);
+    if (searchSource && !staysInVault && !rest.isEncrypted && !note.isEncrypted) {
+      updateData.searchText = extractTextFromTipTapJson(searchSource);
+    }
+    if (movingToVault) {
+      updateData.isPublic = false;
+      updateData.shareId = null;
+      updateData.ydocState = null; // no collaborative state survives in the clear
+      updateData.searchText = null; // no derived plaintext either
     }
 
     if (finalContent !== undefined && finalContent !== note.content) {
@@ -276,6 +295,19 @@ export const updateNote = async (userId: string, id: string, data: {
       data: updateData,
     });
   });
+
+  // Best-effort: close EVERY live collab connection of the document (ex-collaborators and the
+  // owner's other devices alike; onAuthenticate only checks at connect, and reconnects now get
+  // Forbidden because the note is a vault note).
+  if (movingToVault) {
+    try {
+      hocuspocus.hocuspocus.closeConnections(id);
+    } catch (err) {
+      logger.warn({ err, noteId: id }, 'updateNote: could not close collab sessions after move to vault');
+    }
+  }
+
+  return updated;
 };
 
 export const toggleShare = async (userId: string, id: string) => {
@@ -296,8 +328,8 @@ export const toggleShare = async (userId: string, id: string) => {
 };
 
 export const getPublicNote = async (shareId: string) => {
-  return prisma.note.findUnique({
-    where: { shareId },
+  return prisma.note.findFirst({
+    where: { shareId, isVault: false },
     include: {
       tags: { include: { tag: true } },
       attachments: { where: { isLatest: true } }

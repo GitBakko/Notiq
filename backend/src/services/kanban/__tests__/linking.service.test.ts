@@ -156,6 +156,18 @@ describe('checkNoteSharingForBoard', () => {
 // ═════════════════════════════════════════════════════════════
 
 describe('linkNoteToCard', () => {
+  it('rejects linking a vault note', async () => {
+    const user = setupUser();
+    prismaMock.kanbanCard.findUnique.mockResolvedValueOnce({
+      noteId: null,
+      column: { boardId: 'board-1', board: { title: 'Board Title' } },
+    });
+    prismaMock.note.findUnique.mockResolvedValue({ id: 'vn', title: 'Secret', userId: user.id, isVault: true });
+
+    await expect(linkNoteToCard('card-1', 'vn', user.id)).rejects.toThrow('errors.kanban.vaultNoteNotLinkable');
+    expect(prismaMock.kanbanCard.update).not.toHaveBeenCalled();
+  });
+
   it('links note to card, logs NOTE_LINKED activity, and broadcasts update', async () => {
     const user = setupUser();
     const note = makeNote({ userId: user.id, title: 'My Note' });
@@ -498,6 +510,15 @@ describe('linkNoteToBoard', () => {
     await expect(
       linkNoteToBoard('board-1', 'note-2', 'user-1')
     ).rejects.toThrow('errors.kanban.boardAlreadyLinkedNote');
+  });
+
+  it('rejects linking a vault note to a board', async () => {
+    const user = setupUser();
+    prismaMock.kanbanBoard.findUnique.mockResolvedValue({ noteId: null, title: 'B' });
+    prismaMock.note.findUnique.mockResolvedValue({ id: 'vn', title: 'Secret', userId: user.id, isVault: true });
+
+    await expect(linkNoteToBoard('board-1', 'vn', user.id)).rejects.toThrow('errors.kanban.vaultNoteNotLinkable');
+    expect(prismaMock.kanbanBoard.update).not.toHaveBeenCalled();
   });
 
   it('throws ForbiddenError if actor is not the note owner', async () => {

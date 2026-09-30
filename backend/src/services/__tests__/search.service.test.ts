@@ -246,3 +246,13 @@ describe('searchNotes', () => {
     expect(searchSql).toContain('updatedAt');
   });
 });
+
+describe('searchNotes vault exclusion', () => {
+  it('excludes vault notes from both the count and the result SQL', async () => {
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
+    await searchNotes('user-1', 'test');
+    const calls = prismaMock.$queryRawUnsafe.mock.calls;
+    expect(calls).toHaveLength(2);
+    for (const c of calls) expect(c[0]).toContain('n."isVault" = false');
+  });
+});

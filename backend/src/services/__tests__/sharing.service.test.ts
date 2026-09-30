@@ -10,7 +10,9 @@ import {
   revokeNotebookShare,
   getSharedNotebooks,
   respondToShareById,
+  resendShareInvitation,
   updateSharedNoteContent,
+  autoShareNoteForBoard,
   shareKanbanBoard,
   revokeKanbanBoardShare,
 } from '../sharing.service';
@@ -366,7 +368,7 @@ describe('getAcceptedSharedNotes', () => {
 
     expect(prismaMock.sharedNote.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: TARGET_USER_ID, status: 'ACCEPTED' },
+        where: { userId: TARGET_USER_ID, status: 'ACCEPTED', note: { isVault: false } },
       }),
     );
   });
@@ -426,7 +428,7 @@ describe('getSharedNotes', () => {
     expect(result).toEqual(rows);
     expect(prismaMock.sharedNote.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: TARGET_USER_ID, status: { in: ['PENDING', 'ACCEPTED'] } },
+        where: { userId: TARGET_USER_ID, status: { in: ['PENDING', 'ACCEPTED'] }, note: { isVault: false } },
       }),
     );
   });
@@ -714,6 +716,7 @@ describe('respondToShareById', () => {
       expect(result).toEqual({ success: true, status: 'ACCEPTED' });
       expect(prismaMock.sharedNote.findUnique).toHaveBeenCalledWith({
         where: { noteId_userId: { noteId: NOTE_ID, userId: TARGET_USER_ID } },
+        include: { note: { select: { isVault: true } } },
       });
       expect(prismaMock.sharedNote.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -732,6 +735,16 @@ describe('respondToShareById', () => {
         expect.stringContaining('accepted'),
         expect.objectContaining({ itemId: NOTE_ID, type: 'NOTE', action: 'accept' }),
       );
+    });
+
+    it('rejects accepting a share of a vault note (belt and braces)', async () => {
+      prismaMock.sharedNote.findUnique.mockResolvedValue({
+        noteId: NOTE_ID, userId: TARGET_USER_ID, status: 'PENDING', note: { isVault: true },
+      });
+
+      await expect(respondToShareById(TARGET_USER_ID, NOTE_ID, 'NOTE', 'accept'))
+        .rejects.toThrow('errors.sharing.vaultNotShareable');
+      expect(prismaMock.sharedNote.update).not.toHaveBeenCalled();
     });
 
     it('should decline a note share by ID', async () => {
@@ -1040,5 +1053,46 @@ describe('revokeKanbanBoardShare', () => {
     await expect(promise).rejects.toThrow('errors.common.notTheOwner');
 
     expect(disconnectUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('vault P0 guards', () => {
+  it('shareNote rejects a vault note', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ ...sampleNote, isVault: true });
+    await expect(shareNote(OWNER_ID, NOTE_ID, 'x@test.com', 'READ')).rejects.toThrow('errors.sharing.vaultNotShareable');
+    expect(prismaMock.sharedNote.upsert).not.toHaveBeenCalled();
+  });
+
+  it('resendShareInvitation rejects a vault note and sends nothing', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(ownerUser);
+    prismaMock.sharedNote.findUnique.mockResolvedValue({
+      id: 'sh1',
+      status: 'PENDING',
+      user: { email: 'x@test.com', locale: 'en' },
+      note: { title: 'Secret', userId: OWNER_ID, isVault: true },
+    });
+    await expect(resendShareInvitation(OWNER_ID, 'NOTE', 'sh1')).rejects.toThrow('errors.sharing.vaultNotShareable');
+    expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('updateSharedNoteContent rejects a vault note', async () => {
+    prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'ACCEPTED', permission: 'WRITE' });
+    prismaMock.note.findUnique.mockResolvedValue({ content: 'x', title: 'V', isVault: true });
+    await expect(updateSharedNoteContent('user-2', 'note-1', { content: 'y' })).rejects.toThrow(ForbiddenError);
+    expect(prismaMock.note.update).not.toHaveBeenCalled();
+  });
+
+  it('getAcceptedSharedNotes filters out vault notes', async () => {
+    prismaMock.sharedNote.findMany.mockResolvedValue([]);
+    await getAcceptedSharedNotes('user-2');
+    expect(prismaMock.sharedNote.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'user-2', status: 'ACCEPTED', note: { isVault: false } } }),
+    );
+  });
+
+  it('autoShareNoteForBoard silently skips a vault note', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ title: 'V', userId: OWNER_ID, isVault: true });
+    await autoShareNoteForBoard(OWNER_ID, NOTE_ID, [TARGET_USER_ID], 'READ', 'Board');
+    expect(prismaMock.sharedNote.upsert).not.toHaveBeenCalled();
   });
 });

@@ -191,8 +191,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     }, [isChatOpen]);
 
     const shouldConnectCollab = useMemo(() => {
-        return (note.sharedWith && note.sharedWith.length > 0) || isSharedNote;
-    }, [note.sharedWith, isSharedNote]);
+        return !note.isVault && ((note.sharedWith && note.sharedWith.length > 0) || isSharedNote);
+    }, [note.isVault, note.sharedWith, isSharedNote]);
 
     useEffect(() => {
         if (note.id && shouldConnectCollab) {

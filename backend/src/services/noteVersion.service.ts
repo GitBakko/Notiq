@@ -85,7 +85,7 @@ export async function listNoteVersions(userId: string, noteId: string): Promise<
 export async function restoreNoteVersion(userId: string, noteId: string, versionId: string): Promise<{ ok: true }> {
   const note = await prisma.note.findFirst({
     where: { id: noteId, userId },
-    select: { id: true, content: true, title: true, isEncrypted: true },
+    select: { id: true, content: true, title: true, isEncrypted: true, isVault: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
@@ -101,7 +101,7 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
     logger.warn({ snapErr, noteId }, 'restoreNoteVersion: snapshot failed — continuing');
   }
 
-  const searchText = note.isEncrypted ? null : extractTextFromTipTapJson(version.content);
+  const searchText = (note.isEncrypted || note.isVault) ? null : extractTextFromTipTapJson(version.content);
   await prisma.note.update({
     where: { id: noteId },
     // Null ydocState so the next Hocuspocus fetch rebuilds the Yjs doc from restored content.

@@ -39,11 +39,12 @@ export const streamAiResponse = async (
   // Get note content for context
   const note = await prisma.note.findUnique({
     where: { id: noteId },
-    select: { title: true, searchText: true, content: true, isEncrypted: true },
+    select: { title: true, searchText: true, content: true, isEncrypted: true, isVault: true },
   });
 
   if (!note) throw new NotFoundError('errors.notes.notFound');
   if (note.isEncrypted) throw new BadRequestError('errors.ai.cannotProcessEncrypted');
+  if (note.isVault) throw new BadRequestError('errors.ai.cannotProcessVault');
 
   // Use searchText (plain text) for context, truncate to 50k chars
   const noteContext = (note.searchText || '').substring(0, 50000);

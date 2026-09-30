@@ -6,12 +6,15 @@ vi.mock('../plugins/prisma', () => ({
     note: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),
     },
   },
 }));
+
+vi.mock('../services/noteVersion.service', () => ({ snapshotPreviousVersion: vi.fn() }));
 
 vi.mock('../utils/logger', () => ({
   default: {
@@ -102,6 +105,8 @@ import * as Y from 'yjs';
 import { Database } from '@hocuspocus/extension-database';
 import jwt from 'jsonwebtoken';
 import { hocuspocus } from '../hocuspocus';
+import logger from '../utils/logger';
+import { snapshotPreviousVersion } from '../services/noteVersion.service';
 
 const prismaMock = prisma as any;
 const TiptapMock = TiptapTransformer as any;
@@ -292,5 +297,67 @@ describe('Hocuspocus onAuthenticate', () => {
     // Budget intact: a valid token still connects after 15 rejected attempts.
     jwtMock.verify.mockReturnValue({ id: OWNER_ID, email: 'o@test.com', role: 'USER', tokenVersion: 3 });
     await expect(authenticate()).resolves.toMatchObject({ user: { id: OWNER_ID } });
+  });
+});
+
+describe('Hocuspocus vault guards', () => {
+  it('onAuthenticate rejects a vault note, even for the owner', async () => {
+    vi.clearAllMocks();
+    prismaMock.note.findUnique.mockResolvedValue({ id: 'v1', userId: 'owner-1', isVault: true, sharedWith: [] });
+    prismaMock.user.findUnique.mockResolvedValue({ name: 'O', color: '#1', avatarUrl: null, tokenVersion: 1 });
+    jwtMock.verify.mockReturnValue({ id: 'owner-1', email: 'o@test.com', role: 'USER', tokenVersion: 1 });
+    await expect((hocuspocus as any).onAuthenticate({ token: 't', documentName: 'v1' })).rejects.toThrow();
+  });
+
+  it('store() never writes a vault note', async () => {
+    vi.clearAllMocks();
+    const ext = (hocuspocus as any)._config.extensions.find((e: any) => typeof e?.store === 'function');
+    // the module-level Y.Doc double is an arrow fn (not constructible); store() does `new Y.Doc()`
+    (Y.Doc as any).mockImplementationOnce(function (this: any) { this.getXmlFragment = vi.fn(); });
+    TiptapMock.fromYdoc.mockReturnValue({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A'.repeat(300) }] }] });
+    prismaMock.note.findUnique.mockResolvedValue({ content: 'cipher', title: 'V', isVault: true });
+    await ext.store({ documentName: 'v1', state: new Uint8Array([1, 2, 3]) });
+    expect(prismaMock.note.update).not.toHaveBeenCalled();
+  });
+
+  describe('store() conditional write (in-flight store vs move to vault)', () => {
+    const run = async () => {
+      vi.clearAllMocks();
+      const ext = (hocuspocus as any)._config.extensions.find((e: any) => typeof e?.store === 'function');
+      (Y.Doc as any).mockImplementationOnce(function (this: any) { this.getXmlFragment = vi.fn(); });
+      TiptapMock.fromYdoc.mockReturnValue({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A'.repeat(300) }] }] });
+      // the pre-read still saw a NON-vault note: the move to the vault happens after it
+      prismaMock.note.findUnique.mockResolvedValue({ content: 'old content', title: 'T', isVault: false });
+      return ext;
+    };
+
+    it('note moved into the vault after the read: updateMany matches nothing -> no write, no snapshot, warn', async () => {
+      const ext = await run();
+      prismaMock.note.updateMany.mockResolvedValue({ count: 0 });
+      await ext.store({ documentName: 'n1', state: new Uint8Array([1, 2, 3]) });
+      expect(prismaMock.note.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'n1', isVault: false } }));
+      expect(prismaMock.note.update).not.toHaveBeenCalled();
+      expect(snapshotPreviousVersion).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it('normal note: writes through the conditional updateMany, then snapshots the previous version', async () => {
+      const ext = await run();
+      prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+      await ext.store({ documentName: 'n1', state: new Uint8Array([1, 2, 3]) });
+      expect(prismaMock.note.updateMany).toHaveBeenCalledWith({
+        where: { id: 'n1', isVault: false },
+        data: expect.objectContaining({ content: expect.any(String), ydocState: expect.anything(), searchText: expect.any(String), updatedAt: expect.any(Date) }),
+      });
+      expect(snapshotPreviousVersion).toHaveBeenCalledWith(prismaMock, 'n1', 'old content', 'T');
+      expect(prismaMock.note.updateMany.mock.invocationCallOrder[0]).toBeLessThan((snapshotPreviousVersion as any).mock.invocationCallOrder[0]);
+    });
+
+    it('a failing write never throws out of store() and takes no snapshot', async () => {
+      const ext = await run();
+      prismaMock.note.updateMany.mockRejectedValue(new Error('db down'));
+      await expect(ext.store({ documentName: 'n1', state: new Uint8Array([1, 2, 3]) })).resolves.toBeUndefined();
+      expect(snapshotPreviousVersion).not.toHaveBeenCalled();
+    });
   });
 });

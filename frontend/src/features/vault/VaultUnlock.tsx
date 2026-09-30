@@ -26,7 +26,7 @@ export default function VaultUnlock() {
   };
 
   const handleReset = () => {
-    if (resetConfirmation.toUpperCase() === 'DELETE') {
+    if (resetConfirmation.toUpperCase() === 'RESET') {
       resetVault();
       toast.success(t('vault.resetVaultSuccess'));
       setShowResetDialog(false);
@@ -75,7 +75,7 @@ export default function VaultUnlock() {
               type="button" 
               variant="danger" 
               className="flex-1"
-              disabled={resetConfirmation.toUpperCase() !== 'DELETE'}
+              disabled={resetConfirmation.toUpperCase() !== 'RESET'}
               onClick={handleReset}
             >
               {t('vault.resetVaultButton')}

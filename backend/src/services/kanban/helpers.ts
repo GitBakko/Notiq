@@ -89,7 +89,7 @@ export async function accessibleNoteIds(
   const uniqueNoteIds = [...new Set(noteIds)];
 
   const accessibleShares = await prisma.sharedNote.findMany({
-    where: { noteId: { in: uniqueNoteIds }, userId, status: 'ACCEPTED' },
+    where: { noteId: { in: uniqueNoteIds }, userId, status: 'ACCEPTED', note: { isVault: false } },
     select: { noteId: true },
   });
   for (const s of accessibleShares) accessible.add(s.noteId);

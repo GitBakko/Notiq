@@ -305,6 +305,7 @@ export async function getAutoFriendCandidates(userId: string) {
     prisma.sharedNote.findMany({
       where: {
         status: 'ACCEPTED',
+        note: { isVault: false },
         OR: [
           { userId },
           { note: { userId } },

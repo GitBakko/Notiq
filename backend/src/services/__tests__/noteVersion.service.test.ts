@@ -105,6 +105,22 @@ describe('restoreNoteVersion', () => {
     }));
   });
 
+  it('writes searchText null for a vault note, but keeps it for a normal note', async () => {
+    const tiptap = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'secret words' }] }] });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: tiptap, title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.update.mockResolvedValue({});
+
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: true });
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+    expect(prismaMock.note.update.mock.calls[0][0].data.searchText).toBeNull();
+
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: false });
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+    expect(prismaMock.note.update.mock.calls[1][0].data.searchText).toContain('secret words');
+  });
+
   it('throws when the version does not belong to the note', async () => {
     prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1', content: 'x', title: 't', isEncrypted: false });
     prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'OTHER', content: 'y', title: 't' });

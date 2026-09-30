@@ -117,7 +117,7 @@ describe('streamAiResponse', () => {
     expect(getLLMProviderMock).toHaveBeenCalled();
     expect(prismaMock.note.findUnique).toHaveBeenCalledWith({
       where: { id: NOTE_ID },
-      select: { title: true, searchText: true, content: true, isEncrypted: true },
+      select: { title: true, searchText: true, content: true, isEncrypted: true, isVault: true },
     });
 
     // Verify provider.stream was called with correct structure
@@ -197,6 +197,15 @@ describe('streamAiResponse', () => {
     await expect(
       streamAiResponse(USER_ID, NOTE_ID, 'question', 'ask', mockCallbacks),
     ).rejects.toThrow('errors.ai.cannotProcessEncrypted');
+  });
+
+  it('refuses a vault note even when not isEncrypted', async () => {
+    setupSettingsMocks();
+    prismaMock.note.findUnique.mockResolvedValue(makeNote({ id: NOTE_ID, isEncrypted: false, isVault: true }));
+
+    await expect(
+      streamAiResponse(USER_ID, NOTE_ID, 'question', 'ask', mockCallbacks),
+    ).rejects.toThrow('errors.ai.cannotProcessVault');
   });
 
   it('should include conversation history from Prisma in messages', async () => {

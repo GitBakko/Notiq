@@ -10,6 +10,7 @@ import { updateNote, permanentlyDeleteNote } from '../notes/noteService';
 import toast from 'react-hot-toast';
 import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
+import VaultNotLoaded from './VaultNotLoaded';
 
 interface CredentialFormProps {
   note: Note;
@@ -86,22 +87,23 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   // Save using refs so async code always gets the latest state
   const saveNow = useCallback(
     (newData: CredentialData, newTitle: string) => {
-      if (!pin || decryptFailed) return;
+      // Never persist a form built from a row that was never loaded (content '' -> EMPTY_CREDENTIAL)
+      if (!pin || decryptFailed || !note.content) return;
       const encrypted = encryptCredential(newData, pin);
       updateNote(note.id, { title: newTitle, content: encrypted });
     },
-    [note.id, pin, decryptFailed]
+    [note.id, note.content, pin, decryptFailed]
   );
   saveNowRef.current = saveNow;
 
   // Debounced save — reads from refs at fire time to always get the latest state
   const scheduleSave = useCallback(() => {
-    if (!pin || decryptFailed) return;
+    if (!pin || decryptFailed || !note.content) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveNowRef.current(dataRef.current, titleRef.current);
     }, 1000);
-  }, [pin, decryptFailed]);
+  }, [pin, decryptFailed, note.content]);
 
   const updateField = (field: keyof CredentialData, value: string) => {
     const newData = { ...dataRef.current, [field]: value };
@@ -302,6 +304,10 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   const fallbackFavicon = committedUrl ? getFaviconUrl(committedUrl) : null;
   const displayFavicon = faviconError ? fallbackFavicon : (storedFavicon || fallbackFavicon);
   const domain = committedUrl ? extractDomain(committedUrl) : '';
+
+  if (!note.content) {
+    return <VaultNotLoaded onBack={onBack} />;
+  }
 
   if (decryptFailed) {
     return (

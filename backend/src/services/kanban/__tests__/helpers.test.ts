@@ -77,7 +77,7 @@ describe('kanban helpers', () => {
       await accessibleNoteIds(['note-1'], 'user-1');
 
       expect(prisma.sharedNote.findMany).toHaveBeenCalledWith({
-        where: { noteId: { in: ['note-1'] }, userId: 'user-1', status: 'ACCEPTED' },
+        where: { noteId: { in: ['note-1'] }, userId: 'user-1', status: 'ACCEPTED', note: { isVault: false } },
         select: { noteId: true },
       });
     });

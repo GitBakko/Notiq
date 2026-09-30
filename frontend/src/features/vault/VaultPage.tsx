@@ -25,6 +25,8 @@ import { useImport } from '../../hooks/useImport';
 import { FileDown } from 'lucide-react';
 import CredentialCard from './CredentialCard';
 import CredentialForm from './CredentialForm';
+import VaultNotLoaded from './VaultNotLoaded';
+import { useVaultHydration } from './useVaultHydration';
 import { encryptCredential, EMPTY_CREDENTIAL, decryptCredential } from './credentialTypes';
 
 type TypeFilter = 'all' | 'note' | 'credential';
@@ -99,6 +101,7 @@ export default function VaultPage() {
       isVault: true,
       isEncrypted: true,
       noteType: 'NOTE',
+      content: '{"type":"doc","content":[{"type":"paragraph"}]}',
     });
   };
 
@@ -159,6 +162,8 @@ export default function VaultPage() {
 
   // Vault notes use Dexie as source of truth (encrypted content saved locally first, sync is async)
   const selectedNote = vaultNotes?.find(n => n.id === selectedNoteId) as unknown as import('../notes/noteService').Note | undefined;
+
+  const { status: hydration, retry: retryHydration } = useVaultHydration(selectedNote);
 
   // Auto-close if note is removed from vault
   useEffect(() => {
@@ -352,7 +357,16 @@ export default function VaultPage() {
   const renderEditor = () => (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-neutral-900 relative">
       {selectedNote ? (
-        selectedNote.noteType === 'CREDENTIAL' ? (
+        (hydration !== 'ready' && hydration !== 'empty') || (hydration === 'empty' && selectedNote.noteType === 'CREDENTIAL') ? (
+          <VaultNotLoaded
+            key={selectedNote.id}
+            loading={hydration === 'loading'}
+            emptyOnServer={hydration === 'empty'}
+            gone={hydration === 'gone'}
+            onRetry={retryHydration}
+            onBack={() => setSelectedNoteId(null)}
+          />
+        ) : selectedNote.noteType === 'CREDENTIAL' ? (
           <CredentialForm
             key={selectedNote.id}
             note={selectedNote}
