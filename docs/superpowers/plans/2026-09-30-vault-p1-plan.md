@@ -618,3 +618,11 @@ Deviazioni dal piano accettate dopo reviewer + red-team, e vincoli per i task su
 4. `rev` nel payload di `PUT` limitato a `2147483646` (int4 meno 1, così `rev+1` non va in overflow). `VAULT_ROOT_KEYS` è `Object.freeze({})`.
 5. **Per T9 (route `POST /keyring`):** `expectedEpoch` validato come intero `0..2147483647` (altrimenti Prisma dà 500). Il service è già pronto a riusare `b64url` e `keyringUpdatePayloadSchema`.
 6. **Per P3:** con la riga `NONE/epoch N` dopo un reset, un client che manda `expectedEpoch` sbagliato riceve 409 `alreadySetup`. Il client P2/P3 deve rileggere `GET /keyring` su 409 prima di riprovare; valutare in P3 un codice distinto.
+
+## Addendum dopo la review di T7 (2026-09-30)
+
+1. **429 `locked` senza `lockedUntil` nel body** (decisione utente). Il gestore globale (`app.ts:77-78`) manda solo `message`; il client legge `lockedUntil` da `GET /keyring`. Il §4.4 ("restituendo `lockedUntil` letto") è superato su questo punto: T9 non deve reintrodurlo.
+2. **`lockedUntil` scaduto resta sulla riga** dal 7° all'11° tentativo (il `CASE` fa `ELSE "lockedUntil"`), quindi `GET /keyring` può esporre una data passata. Il server confronta sempre con `now()`, quindi è corretto. Il client P2 DEVE trattare `lockedUntil <= now` come sbloccato.
+3. **Email di lockout fire-and-forget**, compresa la lettura dell'utente: nessun errore DB o SMTP cambia il 403 di un tentativo già contato. `VAULT_LOCKOUT` è transazionale.
+4. **Percorso di successo legato all'epoch:** l'`updateMany` di azzeramento include `epoch: row.epoch`. Un reset più un nuovo setup tra la lettura e l'azzeramento dà 429, non il `serverShare` della vecchia epoch.
+5. **Verifica di concorrenza manuale** (10 `POST /unlock` sbagliati in parallelo, quindi 6×403 + 4×429 e `failedAttempts=6`): resta obbligatoria e si fa subito dopo T9, sul DB dev. I test unitari non la possono dimostrare.

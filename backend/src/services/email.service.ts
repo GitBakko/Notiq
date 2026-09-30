@@ -58,12 +58,12 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 };
 
-type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'REGISTRATION_INVITATION' | 'SHARE_RESPONSE' | 'VERIFY_EMAIL' | 'INVITE_APPROVED' | 'INVITE_REJECTED' | 'GROUP_MEMBER_ADDED' | 'GROUP_MEMBER_REMOVED' | 'GROUP_INVITE_REGISTER' | 'GROUP_MEMBER_JOINED' | 'KANBAN_COMMENT' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED';
+type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'REGISTRATION_INVITATION' | 'SHARE_RESPONSE' | 'VERIFY_EMAIL' | 'INVITE_APPROVED' | 'INVITE_REJECTED' | 'GROUP_MEMBER_ADDED' | 'GROUP_MEMBER_REMOVED' | 'GROUP_INVITE_REGISTER' | 'GROUP_MEMBER_JOINED' | 'KANBAN_COMMENT' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED' | 'VAULT_LOCKOUT';
 
 // Transactional emails that are always sent regardless of user email preferences
 const TRANSACTIONAL_EMAIL_TYPES: Set<string> = new Set([
   'VERIFY_EMAIL', 'REGISTRATION_INVITATION', 'INVITE_APPROVED', 'INVITE_REJECTED',
-  'WELCOME', 'RESET_PASSWORD', 'GROUP_INVITE_REGISTER',
+  'WELCOME', 'RESET_PASSWORD', 'GROUP_INVITE_REGISTER', 'VAULT_LOCKOUT',
 ]);
 
 export const sendNotificationEmail = async (
@@ -474,6 +474,33 @@ export const sendNotificationEmail = async (
             <h2>Card Moved</h2>
             <p><strong>${actorName}</strong> moved <strong>"${cardTitle}"</strong> from <em>${fromColumn}</em> to <em>${toColumn}</em>.</p>
             <p><a href="${boardLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Open Board</a></p>
+          </div>
+        `;
+      }
+      break;
+    }
+    case 'VAULT_LOCKOUT': {
+      const lockedUntil = escapeHtml(data.lockedUntil || '');
+      const attempts = escapeHtml(data.attempts || '');
+      const vaultLink = `${FRONTEND_URL}/vault`;
+      if (isIt) {
+        subject = 'Vault bloccato temporaneamente - Notiq';
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Vault bloccato temporaneamente</h2>
+            <p>Il tuo vault Notiq è stato bloccato dopo <strong>${attempts}</strong> tentativi di sblocco con PIN errato. Potrai riprovare dopo le <strong>${lockedUntil}</strong> (UTC).</p>
+            <p>Se non sei stato tu, qualcuno potrebbe avere accesso al tuo account: cambia subito la password dell'account.</p>
+            <p><a href="${vaultLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Apri Notiq</a></p>
+          </div>
+        `;
+      } else {
+        subject = 'Vault temporarily locked - Notiq';
+        html = `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Vault temporarily locked</h2>
+            <p>Your Notiq vault was locked after <strong>${attempts}</strong> unlock attempts with a wrong PIN. You can try again after <strong>${lockedUntil}</strong> (UTC).</p>
+            <p>If this wasn't you, someone may have access to your account: change your account password now.</p>
+            <p><a href="${vaultLink}" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Open Notiq</a></p>
           </div>
         `;
       }

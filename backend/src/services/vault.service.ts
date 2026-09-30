@@ -6,6 +6,8 @@ import prisma from '../plugins/prisma';
 import { AppError, ConflictError, isPrismaError } from '../utils/errors';
 import { VAULT_ROOT_KEYS } from '../utils/vaultRootKeys';
 import { logEvent } from './audit.service';
+import { sendNotificationEmail } from './email.service';
+import logger from '../utils/logger';
 
 // Pepper: letto a ogni chiamata, nessuna cache (i test cambiano process.env).
 function readPepper(): Buffer | 'missing' | 'invalid' {
@@ -344,4 +346,74 @@ export async function updateKeyring(userId: string, payloadRaw: string, proof: B
 
   await logEvent(userId, 'vault.keyring.updated', { wrap: !!wrap, escrow: !!escrow });
   return { rev: payload.rev + 1 };
+}
+
+// ---------------------------------------------------------------- Unlock (T7)
+
+export async function unlock(userId: string, authKey: Buffer): Promise<{ serverShare: Buffer }> {
+  if (!userId) throw new Error('unlock: userId required');
+  const ps = pepperStatus();
+  if (ps.status !== 'ok') throw new AppError(503, 'errors.vault.unavailable');
+
+  const row = await prisma.vaultKeyring.findUnique({
+    where: { userId },
+    select: { status: true, epoch: true, authVerifier: true, serverShareEnc: true, pepperKeyId: true },
+  });
+  if (!row || row.status !== 'READY') throw new AppError(409, 'errors.vault.notReady');
+  // Pepper sostituito: non e' un tentativo, nessun incremento
+  if (row.pepperKeyId !== ps.keyId) throw new AppError(503, 'errors.vault.pepperMismatch');
+
+  const expected = authVerifierOf(userId, authKey);
+  const stored = row.authVerifier ? Buffer.from(row.authVerifier) : null;
+  const ok = !!stored && stored.length === expected.length && crypto.timingSafeEqual(stored, expected);
+
+  if (!ok) {
+    // Un solo statement atomico (RT-3), tempo in UTC: le colonne TIMESTAMP(3) di Prisma sono UTC
+    const rows = await prisma.$queryRaw<{ failedAttempts: number; lockedUntil: Date | null }[]>`
+      UPDATE "VaultKeyring"
+      SET "failedAttempts" = "failedAttempts" + 1,
+          "lockedUntil" = CASE WHEN ("failedAttempts" + 1) % 6 = 0
+            THEN (now() AT TIME ZONE 'UTC') + CASE LEAST(("failedAttempts" + 1) / 6, 3)
+                 WHEN 1 THEN interval '15 minutes' WHEN 2 THEN interval '1 hour' ELSE interval '24 hours' END
+            ELSE "lockedUntil" END,
+          "updatedAt" = now() AT TIME ZONE 'UTC'
+      WHERE "userId" = ${userId} AND "status" = 'READY'
+        AND ("lockedUntil" IS NULL OR "lockedUntil" <= now() AT TIME ZONE 'UTC')
+      RETURNING "failedAttempts", "lockedUntil"`;
+    if (rows.length === 0) throw new AppError(429, 'errors.vault.locked');
+
+    const { failedAttempts: n, lockedUntil } = rows[0];
+    if (n % 6 === 0) {
+      const until = lockedUntil?.toISOString();
+      await logEvent(userId, 'vault.unlock.locked', { n, lockedUntil: until });
+      // fire-and-forget: nessun errore (DB o SMTP) cambia la risposta 403
+      void prisma.user
+        .findUnique({ where: { id: userId }, select: { email: true, locale: true } })
+        .then((user) =>
+          user
+            ? sendNotificationEmail(user.email, 'VAULT_LOCKOUT', {
+                locale: user.locale || 'en',
+                lockedUntil: until ?? '',
+                attempts: String(n),
+              })
+            : undefined,
+        )
+        .catch((err) => logger.warn({ err }, 'vault lockout email failed'));
+    }
+    throw new AppError(403, 'errors.vault.invalidPin');
+  }
+
+  const r = await prisma.vaultKeyring.updateMany({
+    where: {
+      userId,
+      status: 'READY',
+      epoch: row.epoch,
+      OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
+    },
+    data: { failedAttempts: 0, lockedUntil: null },
+  });
+  if (r.count !== 1) throw new AppError(429, 'errors.vault.locked');
+
+  // serverShareEnc null o GCM fallito: stato corrotto, l'errore si propaga (500)
+  return { serverShare: openServerShare(userId, row.epoch, Buffer.from(row.serverShareEnc!)) };
 }
