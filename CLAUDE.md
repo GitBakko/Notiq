@@ -172,3 +172,14 @@ Nessun debito tecnico residuo critico. Remaining low-priority items:
 
 - ~25 `any` type inline disables in frontend (TipTap API limits, justified)
 - ~340 `any` in backend test files (acceptable for test mocks)
+
+<!-- BEGIN multi-model-routing-notiq -->
+## Routing modelli — addendum Notiq
+
+Queste regole si aggiungono a quelle sopra e al routing globale (`~/.claude/CLAUDE.md`); in caso di conflitto prevalgono le regole preesistenti del progetto.
+
+- File TIER 1 o TIER 2 in staging → trattali come `hardRisk` anche se la regex del gate non li riconosce (`syncService.ts`, `db.ts`, `hocuspocus.ts`, `schema.prisma`, `vaultStore.ts`, `api.ts`, `app.ts`, `Editor.tsx`, `email.service.ts`).
+- L'implementazione delegata al subagent Sonnet non scavalca "Proponi prima, applica dopo": sui file TIER 1/2 serve comunque la conferma esplicita (hook `tier1-guard`), anche dopo il plan di `architect`.
+- Le release (`/notiq-release`: solo bump versione + changelog) sono esenti dal gate.
+- FAIL e2e riportato da `triage` → lo verifica il principale; non archiviarlo come flaky senza conferma con `git stash` (`collaboration.spec.ts:249`, `auth.spec.ts:41`).
+<!-- END multi-model-routing-notiq -->
