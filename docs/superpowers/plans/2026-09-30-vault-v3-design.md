@@ -284,7 +284,7 @@ Solo online. Si può fare sia a vault bloccato sia sbloccato, perché serve prop
    - `VaultPage.tsx:92-102` crea le note vault con un documento iniziale non vuoto.
 2. **P2, definitivo.**
    - Ogni item vault è sempre un envelope, anche se vuoto, quindi `''` vuol dire solo "non caricato".
-   - Idratazione tramite `GET /vault/items` (ciphertext + `contentHash`), scritta in Dexie solo dove la riga locale è `synced`.
+   - Idratazione tramite `POST /vault/items` (ciphertext + `contentHash`), scritta in Dexie solo dove la riga locale è `synced`.
    - Il server impone CAS su `baseHash` + formato envelope + epoch corrente.
 
 ### 6.2 Migrazione
@@ -296,7 +296,7 @@ Solo online. Si può fare sia a vault bloccato sia sbloccato, perché serve prop
    - `POST /vault/keyring {…, migrationState:'IN_PROGRESS'}`. Il Kit si mostra dopo il 201.
    - Su 409, un altro dispositivo ha vinto: si sblocca con il suo PIN e si prosegue.
 2. **Vecchi PIN.** Verificati con `hashPin` se c'è un `pinHash` locale. Ciclo su più PIN, perché ogni dispositivo può averne avuto uno diverso.
-3. **Sorgente = server** (`GET /vault/items`), mai la copia locale, che può essere vecchia (`syncService.ts:172-185`). Per ogni item:
+3. **Sorgente = server** (`POST /vault/items`), mai la copia locale, che può essere vecchia (`syncService.ts:172-185`). Per ogni item:
    - nota in chiaro (con `isEncrypted` true o false) → envelope `{t,c}`;
    - credenziale v2 o legacy → `decryptContent` (`crypto.ts:40`) → envelope;
    - roundtrip in memoria `decrypt(envelope) == originale` prima dell'invio.
@@ -305,7 +305,7 @@ Solo online. Si può fare sia a vault bloccato sia sbloccato, perché serve prop
    - **snapshot forzato del plaintext come NoteVersion**, così resta un rollback;
    - `title=''`, `isEncrypted=true`, `searchText=null`, `ydocState=null`.
 5. **Verifica dai byte del server.**
-   - Nuova `GET /vault/items?ids=…`, decifratura e confronto con gli originali ancora in memoria.
+   - Nuova `POST /vault/items` con `{ids}`, decifratura e confronto con gli originali ancora in memoria.
    - Solo per gli id verificati: `POST /vault/finalize {ids}`.
    - Il server ricontrolla che il contenuto sia un envelope dell'epoch corrente e **solo allora** cancella le NoteVersion non-envelope di quegli id.
    - È il fix del finding "purge prima della prova": un bug del client resta reversibile fino alla finalizzazione.
@@ -385,11 +385,13 @@ model VaultRequest {             // una sola tabella per reset e recupero
 
 - `User` riceve solo le back-relation. `Note`, `NoteVersion` e `Tag` restano invariati.
 - Audit: `AuditLog` esistente tramite `logEvent`, con eventi `vault.*`.
-- Nuova env `VAULT_PEPPER_KEY`: il boot fallisce se manca. Va in un backup offline **separato** dai dump del DB.
+- Nuova env `VAULT_PEPPER_KEY`: se manca o è malformata il boot **prosegue** (decisione D1 del piano P1): log `vault secrets` con lo stato e `/api/vault/*` risponde 503. Va in un backup offline **separato** dai dump del DB.
 - **Chiave root: non nel DB.** File cifrato in `VAULT_ROOT_KEY_PATH` (formato `{kdf:"argon2id", kdfParams, salt, iv, ct}`, dove `ct` è la mappa `{rootKeyId → PKCS#8 ECDH + ECDSA}` cifrata con la root passphrase; contiene ogni id ancora referenziato da un keyring, §2.2). Escluso da `npm run backup`, da `Build-Package.ps1` e da `robocopy` del deploy. Se manca, il boot **non** fallisce: il rilascio risponde 503 `errors.vault.rootKeyUnavailable` e il resto del vault funziona. Una copia offline cifrata del file, separata dal backup del pepper.
 - La metà A del codice non si salva in `Notification` in chiaro: `data.sealedCodeA` è cifrato per `clientEphPub` (§3.2.4), quindi chi legge la tabella o un'altra sessione non la vede.
 
 ### 7.2 API
+
+> Nota: le altre deviazioni da questo design (D1, D2 (password dell'account obbligatoria su POST /vault/keyring, plan §10), rate limit per utente, lock di P1, regole su allegati e versioni in chiaro) sono negli addendum in fondo a `2026-09-30-vault-p1-plan.md`, che prevalgono su questo testo.
 
 Nuovo `backend/src/routes/vault.ts`, plugin con `onRequest:[fastify.authenticate]`. I byte viaggiano in base64url con lunghezze esatte in Zod.
 
@@ -399,7 +401,7 @@ Nuovo `backend/src/routes/vault.ts`, plugin con `onRequest:[fastify.authenticate
 | `POST /api/vault/keyring` | `{expectedEpoch, kdf:'argon2id', kdfParams{m≥65536,t≥3,p:1}, pinSalt16, wrappedVkPin60, authKey32, vkSigPub, wrappedVkSigKey, serverShare32, escrowBlob, sealedRootShare, rootKeyId: enum di id fissati, userShareUnderVk}` | 409 se READY; 5/h. `authKey`, `serverShare` e il body di tutte le route vault sono esclusi dai log (`redact`) |
 | `POST /api/vault/unlock` | `{authKey}` → `{serverShare}` | Al 6° errore consecutivo lockout 15m → 1h → 24h, email + audit; 10/min |
 | `PUT /api/vault/keyring` | `{payload, vkProof}`, con `payload` = JSON di `{rev, wrap?, escrow?, rotate?}` | Cambio PIN, rigenerazione Kit (nuovo escrow), rotazione root/VK. Firma verificata con `vkSigPub` (§2.1), poi CAS `updateMany where rev`; 409 se `rev` è vecchio, quindi niente replay; 10/h |
-| `GET /api/vault/items?ids=` | `[{id, noteType, content, contentHash, updatedAt, isTrashed}]` | Solo note vault del proprietario; 60/min |
+| `POST /api/vault/items` | `{ids?, after?}` → `[{id, noteType, content, contentHash, updatedAt, isTrashed}]` | Solo note vault del proprietario; 60/min. Era `GET ?ids=`: diventa POST per RT-2 (`maxQueryString` di IIS) |
 | `POST /api/vault/migrate` | `{items ≤200: {id, baseHash, content, noteType}}` | CAS per item + snapshot forzato |
 | `POST /api/vault/finalize` | `{ids ≤500}` | Controlla gli envelope, cancella le versioni in chiaro, imposta DONE |
 | `POST /api/vault/reset/challenge` | → `{requestId, code, expiresAt, counts}` | 5/h |

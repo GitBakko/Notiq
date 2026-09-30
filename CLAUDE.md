@@ -85,6 +85,8 @@ DATABASE_URL="postgresql://user:pass@localhost:5433/evernote_clone?schema=public
 JWT_SECRET="secret"
 FRONTEND_URL="http://localhost:5173"
 LOG_LEVEL="info"
+VAULT_PEPPER_KEY=<32 byte random base64url, 43 caratteri>   # vault v3 (P1): senza, /api/vault/* risponde 503; MAI nell'env di macchina/utente
+# VAULT_ROOT_KEY_PATH=E:\NotiqSecrets\vault-root.json        # da P4 (non letto in P1)
 
 # SMTP (lette da email.service.ts)
 SMTP_HOST=smtp.office365.com

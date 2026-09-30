@@ -472,7 +472,7 @@ Si esegue **solo quando `content !== undefined`** (RT-4).
 1. **Locale.** Backend: `npm test`, `npx tsc --noEmit`, `npm run lint`.
 2. **Locale, e2e.** Rieseguire `vault-overwrite`, `notes`, `sharing`, `collaboration`, `encryption`, `import` e `offline-first`. `collaboration.spec.ts:249` e `auth.spec.ts:41` sono instabili noti: confermare un eventuale FAIL con `git stash`.
 3. **Pepper.** Generare il pepper (§5.1), salvarlo nel password manager (voce "Notiq VAULT_PEPPER_KEY", separata dai backup DB) e aggiungere `VAULT_PEPPER_KEY=<valore>` a `E:\www\Notiq\backend\.env`.
-4. **Cartella della chiave root.** `mkdir E:\NotiqSecrets`, poi `icacls E:\NotiqSecrets /inheritance:r /grant:r Administrators:(OI)(CI)F`. Il permesso di lettura all'utente pm2 si aggiunge in P4, quando il processo leggerà il file.
+4. **Cartella della chiave root.** `mkdir E:\NotiqSecrets`, poi `icacls E:\NotiqSecrets /inheritance:r /grant:r "Administrators:(OI)(CI)F"` (in una PowerShell **elevata**, Esegui come amministratore, anche per la cerimonia del passo 7). Il permesso di lettura all'utente pm2 si aggiunge in P4, quando il processo leggerà il file.
 5. **Pacchetto.** `Build-Package.ps1`, poi `Deploy-Server.ps1 -DryRun` (pre-flight senza errori), poi `Deploy-Server.ps1`. Controllare nel log del passo 7 che venga applicata **1** migration e che lo health check sia ok.
 6. **Verifiche post-deploy:**
    - `pm2 logs notiq-backend --lines 80 | findstr "vault secrets"` → `vaultPepper:"ok"`. Annotare `pepperKeyId` accanto al pepper nel password manager.

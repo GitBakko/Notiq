@@ -64,3 +64,28 @@ A "skip existing" merge leaves OLD `index.html` + `sw.js` (fixed names, no conte
 - New `uploads/` subdir → needs an explicit static route in `backend/src/app.ts` (no wildcard serving).
 - Prisma 7 CLI: no `--schema` flag (reads `prisma.config.js`); use `db execute --file` not `--stdin`.
 - P2022 (column not found) after deploy → `npx prisma generate` + `pm2 restart notiq-backend`.
+
+## Rilascio vault P1 (una tantum)
+Piano: `docs/superpowers/plans/2026-09-30-vault-p1-plan.md` §6 + addendum. P1 aggiunge la migration `20261001000000_vault_e2ee`, le route `/api/vault/*` (503 sulle scritture finché non c'è la root) e la cerimonia della chiave root. Nessun cambio UX.
+
+1. **Locale.** Backend: `npm test`, `npx tsc --noEmit`, `npm run lint`.
+2. **Locale, e2e.** Rieseguire `vault-overwrite`, `notes`, `sharing`, `collaboration`, `encryption`, `import`, `offline-first`. `collaboration.spec.ts:249` e `auth.spec.ts:41` sono instabili noti: un FAIL si conferma con `git stash`.
+3. **Pepper.** `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Salvarlo nel password manager (voce "Notiq VAULT_PEPPER_KEY", **separata** dai backup DB) e aggiungere `VAULT_PEPPER_KEY=<valore>` a `E:\www\Notiq\backend\.env`. **Mai** nell'env di macchina/utente: `pm2 save` lo scriverebbe nel dump.
+4. **Cartella root.** `mkdir E:\NotiqSecrets`, poi `icacls E:\NotiqSecrets /inheritance:r /grant:r "Administrators:(OI)(CI)F"`. I passi 4 e 7 vanno eseguiti in una PowerShell **elevata** (Esegui come amministratore), altrimenti la cerimonia non riesce a scrivere nella cartella.
+5. **Pacchetto.** `git log --oneline v1.12.2..HEAD` (la build legge il working tree), `Build-Package.ps1`, poi `Deploy-Server.ps1 -DryRun` (pre-flight senza errori), poi `Deploy-Server.ps1`; health check ok (come piano §6).
+   - **Prima del deploy**, su Postgres: `SELECT pid, state, query FROM pg_stat_activity WHERE datname = '<db>' AND state <> 'idle'`. Nessun lock su `"User"`, altrimenti `migrate deploy` resta appeso con pm2 fermo.
+   - `migrate deploy` (passo 7) deve applicare **1** migration (`20261001000000_vault_e2ee`). Se fallisce: `npx prisma migrate resolve --rolled-back 20261001000000_vault_e2ee` prima di riprovare, altrimenti ogni deploy successivo dà P3009.
+   - Il `.env` nel `_backup_<ts>` è **senza** pepper (lo script lo toglie): in caso di ripristino va reinserito dal password manager.
+6. **Verifiche post-deploy.**
+   - `pm2 logs notiq-backend --nostream --lines 80 | findstr /C:"vault secrets"` → `vaultPepper:"ok"`. Annotare `pepperKeyId` accanto al pepper nel password manager.
+   - `pm2 logs notiq-backend --nostream --lines 200 | findstr /C:"remoteAddress"` → devono comparire IP **pubblici e senza porta**.
+     - Solo `127.0.0.1`: ARR non manda `X-Forwarded-For`, il rate limit per IP è di fatto spento.
+     - `ip:porta`: prima `& "$env:windir\system32\inetsrv\appcmd.exe" list config -section:system.webServer/proxy`, poi `& "$env:windir\system32\inetsrv\appcmd.exe" set config -section:system.webServer/proxy /includePortInXForwardedFor:false`. Attenzione: `system.webServer/proxy` e' un'impostazione ARR a livello di server e vale per **ogni** sito che passa da ARR su quel server.
+   - Con un JWT di test: `GET /api/vault/keyring` → 200 `{status:'NONE'}`; `POST /api/vault/keyring` → 503.
+   - `SELECT count(*) FROM "VaultKeyring"` = 0.
+   - Hard reload (vedi sopra): login, nota, vault legacy, condivisione.
+7. **Cerimonia root.** Da console RDP: `cd E:\www\Notiq\backend; npm run vault:root-keygen -- --out E:\NotiqSecrets\vault-root.json`. Passphrase ≥20 caratteri in una voce **diversa** del password manager; salvare l'output (sha256 + JSON `pub`).
+8. **Copia offline.** Copiare il file cifrato fuori dal server, senza la passphrase accanto. Sulla copia: `node dist\scripts\vaultRootKeygen.js --verify <copia>` → stessi id.
+9. **Chiavi pubbliche.** **Non** committarle ora: vanno nel branch P2 (`backend/src/utils/vaultRootKeys.ts` + `frontend/src/utils/vaultRootKeys.ts`, test di parità).
+
+**Rollback.** Ripristinare `dist` da `_backup_<ts>`; il DB resta com'è (migration additiva). Il `.env` live non viene toccato dal deploy: se lo si ripristina dal backup, reinserire il pepper.

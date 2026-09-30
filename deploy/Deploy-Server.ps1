@@ -100,6 +100,14 @@ if (-not (Get-Command pm2 -ErrorAction SilentlyContinue))      { throw "pm2 non 
 if (-not $SkipDbBackup -and -not (Get-Command pg_dump -ErrorAction SilentlyContinue)) {
     throw "pg_dump non trovato sul PATH (usa -SkipDbBackup per saltare, sconsigliato)"
 }
+foreach ($scope in 'Machine', 'User') {
+    if ([Environment]::GetEnvironmentVariable('VAULT_PEPPER_KEY', $scope)) {
+        throw "VAULT_PEPPER_KEY e' impostata nell'ambiente di macchina/utente: rimuovila (pm2 save la salverebbe nel dump). Deve stare solo in backend\.env"
+    }
+}
+if (-not (Select-String -LiteralPath $envFile -Pattern '^\s*(export\s+)?VAULT_PEPPER_KEY\s*[=:]\s*\S' -Quiet)) {
+    Write-Warn2 "VAULT_PEPPER_KEY assente in ${envFile}: le route /api/vault risponderanno 503 (vedi runbook P1)"
+}
 Write-Ok "pacchetto valido, .env presente, pm2/pg_dump disponibili"
 
 if ($DryRun) { Write-Dry "mkdir $BackupDir" } else { New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null }
@@ -139,8 +147,16 @@ if ($SkipDbBackup) {
 Write-Step 3 "Backup applicazione corrente..."
 Invoke-Robocopy (Join-Path $BackendRoot 'dist')   (Join-Path $BackupDir 'backend\dist')   @('/E')
 Invoke-Robocopy (Join-Path $BackendRoot 'prisma') (Join-Path $BackupDir 'backend\prisma') @('/E')
+if ($DryRun) {
+    Write-Dry "copia .env -> backup SENZA la riga VAULT_PEPPER_KEY"
+} else {
+    $envDest = Join-Path $BackupDir 'backend\.env'
+    New-Item -ItemType Directory -Path (Split-Path $envDest) -Force | Out-Null
+    $envLines = @(Get-Content -LiteralPath $envFile -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*(export\s+)?VAULT_PEPPER_KEY(_PREV)?\s*[=:]' })
+    [System.IO.File]::WriteAllLines($envDest, $envLines, (New-Object System.Text.UTF8Encoding $false))
+    Write-Warn2 "pepper non incluso nel backup di .env: in caso di ripristino del .env va reinserito dal password manager (voce 'Notiq VAULT_PEPPER_KEY')"
+}
 if (-not $DryRun) {
-    Copy-Item $envFile (Join-Path $BackupDir 'backend\.env') -Force
     $bePkg = Join-Path $BackendRoot 'package.json'
     if (Test-Path $bePkg) { Copy-Item $bePkg (Join-Path $BackupDir 'backend\package.json') -Force }
 }
