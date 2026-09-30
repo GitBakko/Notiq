@@ -83,6 +83,8 @@ model User {
   chatParticipations     ConversationParticipant[]  @relation("ChatParticipants")
   chatMessagesSent       DirectMessage[]            @relation("ChatMessagesSent")
   chatReactions          MessageReaction[]          @relation("ChatReactions")
+  vaultKeyring           VaultKeyring?
+  vaultRequests          VaultRequest[]
 }
 
 enum Role {
@@ -290,6 +292,7 @@ enum NotificationType {
   KANBAN_COMMENT_ADDED
   KANBAN_CARD_MOVED
   KANBAN_COMMENT_DELETED
+  VAULT_RECOVERY
 }
 
 model PushSubscription {
@@ -770,4 +773,95 @@ model ChatFile {
   createdAt    DateTime      @default(now())
 
   @@index([messageId])
+}
+
+enum VaultStatus {
+  NONE
+  READY
+  RESET_PENDING
+}
+
+enum VaultMigrationState {
+  NONE
+  IN_PROGRESS
+  DONE
+}
+
+enum VaultRequestType {
+  RESET
+  RECOVERY
+}
+
+// reset:    PENDING_CODE → COMPLETED | EXPIRED
+// recupero: PENDING_APPROVAL → PENDING_CODE → WAITING → RELEASED → COMPLETED (| CANCELLED | EXPIRED | REJECTED)
+enum VaultRequestStatus {
+  PENDING_APPROVAL
+  PENDING_CODE
+  WAITING
+  RELEASED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  REJECTED
+}
+
+model VaultKeyring {
+  userId           String              @id
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status           VaultStatus         @default(NONE)
+  epoch            Int                 @default(0)   // durevole: la riga sopravvive al reset
+  rev              Int                 @default(0)   // CAS per PUT /keyring
+  kdf              String?
+  kdfParams        Json?
+  pinSalt          Bytes?
+  wrappedVkPin     Bytes?
+  authVerifier     Bytes?                           // HMAC(pepper-verifier, authKey)
+  serverShareEnc   Bytes?                           // AES-GCM(pepper-sharewrap, serverShare)
+  pepperKeyId      String?
+  vkSigPub         Bytes?                           // SPKI P-256
+  wrappedVkSigKey  Bytes?
+  escrowBlob       Bytes?
+  sealedRootShare  Bytes?
+  rootKeyId        String?
+  userShareUnderVk Bytes?
+  migrationState   VaultMigrationState @default(NONE)
+  failedAttempts   Int                 @default(0)
+  lockedUntil      DateTime?
+  resetScheduledAt DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+model VaultRequest {
+  id                   String             @id @default(uuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                 VaultRequestType
+  status               VaultRequestStatus
+  codeHash             String?
+  codeAHash            String?
+  codeBHash            String?
+  expiresAt            DateTime?
+  attempts             Int                @default(0)
+  clientEphPub         Bytes?
+  fingerprint          String?
+  notBefore            DateTime?
+  requestIp            String?
+  requestUserAgent     String?
+  approvedById         String?
+  approvedAt           DateTime?
+  rejectReason         String?
+  releasedById         String?
+  releasedAt           DateTime?
+  releaseExpiresAt     DateTime?
+  rootShareForClient   Bytes?
+  rootSignature        Bytes?
+  reason               String?
+  completedPayloadHash String?
+  createdAt            DateTime           @default(now())
+  completedAt          DateTime?
+  cancelledAt          DateTime?
+  cancelledBy          String?
+
+  @@index([userId, type, status])
 }

@@ -596,3 +596,14 @@ Regole comuni:
    - Alternativa: generarlo ora e installarlo solo con P2. In quel caso T15 si sposta in P2.
 4. **D4: rollback delle note migrate solo amministrativo** (SQL da runbook), senza aprire un'API "ripristina il plaintext uscendo dal vault".
    - Raccomandazione: **sì**. L'API sarebbe un percorso di scrittura in chiaro in più, da difendere per un caso raro. Lo snapshot forzato resta comunque nel DB fino a `finalize`.
+
+---
+
+## Addendum dopo la review di T1 (2026-09-30)
+
+Finding del red team sulla migration: nessuno richiede di modificarla. Vincoli per le fasi successive:
+
+1. **Una sola richiesta aperta per (userId, type).** Il DB non la impone: un indice unico parziale non si puo' modellare in Prisma e produrrebbe deriva permanente. In P3 e P4 la creazione di una `VaultRequest` DEVE avvenire dentro `$transaction` con `SELECT ... FROM "VaultKeyring" WHERE "userId"=$1 FOR UPDATE` prima del controllo di esistenza, mai con un semplice `findFirst` seguito da `create`.
+2. **Audit delle azioni di root sotto l'attore.** `AuditLog.userId` va in cascata con l'utente: se un SUPERADMIN cancella l'utente, le righe a suo nome spariscono. Le azioni amministrative (approve, reject, release) si registrano con `logEvent(adminId, 'vault.recovery.<azione>', { targetUserId, requestId })`, non sotto l'utente destinatario.
+3. **Deploy della migration (runbook §6).** Prima del deploy controllare che nessuna sessione tenga lock su `"User"` (`SELECT pid, state, query FROM pg_stat_activity WHERE datname = '<db>' AND state <> 'idle'`), perche' Prisma non imposta `lock_timeout` e il passo 7 resterebbe appeso con pm2 fermo. Se `migrate deploy` fallisce, prima di riprovare: `npx prisma migrate resolve --rolled-back 20261001000000_vault_e2ee`, altrimenti ogni deploy successivo fallisce con P3009.
+4. Commento dello stato del reset in `schema.prisma` (`PENDING_CODE -> COMPLETED | EXPIRED`): va aggiornato in P3 quando si definisce l'annullamento (`CANCELLED`). Solo commento, nessuna migration.
