@@ -11,6 +11,20 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.12.0',
+    date: '2026-09-30',
+    entries: [
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanFiltersPersisted' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanAccessibility' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.kanbanFasterSync' },
+      { type: 'fix', titleKey: 'whatsNew.entries.kanbanRealtimeRefresh' },
+      { type: 'fix', titleKey: 'whatsNew.entries.latestMessagesFirst' },
+      { type: 'fix', titleKey: 'whatsNew.entries.noteMoveSync' },
+      { type: 'fix', titleKey: 'whatsNew.entries.friendsListCache' },
+      { type: 'fix', titleKey: 'whatsNew.entries.permissionChecks' },
+    ],
+  },
+  {
     version: '1.11.2',
     date: '2026-09-02',
     entries: [
