@@ -417,3 +417,124 @@ export async function unlock(userId: string, authKey: Buffer): Promise<{ serverS
   // serverShareEnc null o GCM fallito: stato corrotto, l'errore si propaga (500)
   return { serverShare: openServerShare(userId, row.epoch, Buffer.from(row.serverShareEnc!)) };
 }
+
+// ---------------------------------------------------------------- Items, migrate, finalize (T8)
+
+const itemSelect = { id: true, noteType: true, content: true, updatedAt: true, isTrashed: true } as const;
+
+export async function getItems(userId: string, opts: { ids?: string[]; after?: string } = {}) {
+  if (!userId) throw new Error('getItems: userId required');
+  const toItem = (r: { id: string; noteType: string; content: string; updatedAt: Date; isTrashed: boolean }) => ({
+    id: r.id,
+    noteType: r.noteType,
+    content: r.content,
+    contentHash: sha256hex(r.content),
+    updatedAt: r.updatedAt,
+    isTrashed: r.isTrashed,
+  });
+
+  if (opts.ids) {
+    const rows = await prisma.note.findMany({
+      where: { userId, isVault: true, id: { in: opts.ids } },
+      select: itemSelect,
+    });
+    return { items: rows.map(toItem), next: null as string | null };
+  }
+
+  const rows = await prisma.note.findMany({
+    where: { userId, isVault: true, ...(opts.after ? { id: { gt: opts.after } } : {}) },
+    orderBy: { id: 'asc' },
+    take: 101,
+    select: itemSelect,
+  });
+  const page = rows.slice(0, 100);
+  return { items: page.map(toItem), next: rows.length > 100 ? page[99].id : null };
+}
+
+export type MigrateStatus = 'ok' | 'already' | 'conflict' | 'notFound' | 'invalid';
+
+class MigrateConflict extends Error {}
+
+export async function migrateItems(
+  userId: string,
+  items: { id: string; baseHash: string; content: string; noteType: string }[],
+) {
+  if (!userId) throw new Error('migrateItems: userId required');
+  const guard = await getVaultGuard(userId);
+  if (!guard?.ready) throw new AppError(409, 'errors.vault.notReady');
+
+  const results: { id: string; status: MigrateStatus }[] = [];
+  for (const item of items) {
+    let status: MigrateStatus;
+    try {
+      status = await prisma.$transaction(async (tx): Promise<MigrateStatus> => {
+        const current = await tx.note.findFirst({
+          where: { id: item.id, userId, isVault: true },
+          select: { content: true, title: true, noteType: true },
+        });
+        if (!current) return 'notFound';
+        if (parseEnvelope(current.content)?.epoch === guard.epoch) return 'already';
+        const env = parseEnvelope(item.content);
+        if (item.noteType !== current.noteType || !env || env.epoch !== guard.epoch) return 'invalid';
+        if (sha256hex(current.content) !== item.baseHash) return 'conflict';
+
+        await tx.noteVersion.create({ data: { noteId: item.id, content: current.content, title: current.title } });
+        const r = await tx.note.updateMany({
+          where: { id: item.id, userId, isVault: true, content: current.content },
+          data: { content: item.content, title: '', isEncrypted: true, searchText: null, ydocState: null },
+        });
+        // sentinella: fa andare in rollback lo snapshot
+        if (r.count === 0) throw new MigrateConflict();
+        return 'ok';
+      });
+    } catch (e) {
+      if (!(e instanceof MigrateConflict)) throw e;
+      status = 'conflict';
+    }
+    results.push({ id: item.id, status });
+  }
+
+  const count = (s: MigrateStatus) => results.filter((r) => r.status === s).length;
+  await logEvent(userId, 'vault.migrate', {
+    ok: count('ok'),
+    already: count('already'),
+    conflict: count('conflict'),
+    notFound: count('notFound'),
+    invalid: count('invalid'),
+  });
+  return { results };
+}
+
+export async function finalize(userId: string, ids: string[]) {
+  if (!userId) throw new Error('finalize: userId required');
+  const guard = await getVaultGuard(userId);
+  if (!guard?.ready) throw new AppError(409, 'errors.vault.notReady');
+
+  const rows = await prisma.note.findMany({
+    where: { userId, isVault: true, id: { in: ids } },
+    select: { id: true, content: true },
+  });
+  const accepted = rows.filter((r) => parseEnvelope(r.content)?.epoch === guard.epoch).map((r) => r.id);
+  const acceptedSet = new Set(accepted);
+  const rejected = [...new Set(ids)].filter((id) => !acceptedSet.has(id));
+
+  if (accepted.length > 0) {
+    await prisma.noteVersion.deleteMany({
+      where: { noteId: { in: accepted }, NOT: { content: { startsWith: 'nv3.' } } },
+    });
+  }
+
+  const legacyCount = await countLegacyVaultNotes(userId);
+  const ring = await prisma.vaultKeyring.findUnique({ where: { userId }, select: { migrationState: true } });
+  let migrationState = ring?.migrationState ?? 'NONE';
+  if (legacyCount === 0 && migrationState === 'IN_PROGRESS') {
+    await prisma.vaultKeyring.updateMany({
+      where: { userId, migrationState: 'IN_PROGRESS' },
+      data: { migrationState: 'DONE' },
+    });
+    migrationState = 'DONE';
+  }
+
+  await logEvent(userId, 'vault.finalize', { finalized: accepted.length, rejected: rejected.length, legacyCount });
+  return { finalized: accepted.length, rejected, legacyCount, migrationState };
+}
