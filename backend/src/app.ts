@@ -42,7 +42,10 @@ import './types';
 
 const server = fastify({
   logger: { redact: { paths: REDACT_PATHS, censor: '[REDACTED]' } },
-  trustProxy: true, // IIS ARR reverse proxy — read X-Forwarded-For for real client IP
+  // Solo il proxy locale (IIS ARR su loopback) è fidato: X-Forwarded-For si legge da destra
+  // fermandosi al primo indirizzo non loopback, quindi un "127.0.0.1" iniettato dal client
+  // non basta più a finire nell'allowList del rate limit.
+  trustProxy: 'loopback',
 });
 
 // Plugins
