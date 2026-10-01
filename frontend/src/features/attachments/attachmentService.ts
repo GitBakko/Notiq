@@ -1,5 +1,8 @@
 import api from '../../lib/api';
 import { db } from '../../lib/db';
+import queryClient from '../../lib/queryClient';
+import { queryKeys } from '../../lib/queryKeys';
+import type { Note } from '../notes/noteService';
 
 export const uploadAttachment = async (noteId: string, file: File) => {
   const formData = new FormData();
@@ -29,7 +32,14 @@ export const uploadAttachment = async (noteId: string, file: File) => {
           const updatedAttachments = [...otherAttachments, attachment];
           await db.notes.update(noteId, { attachments: updatedAttachments, syncStatus: 'updated' });
       }
-      
+      // Keep the open note's React Query cache in sync so the sidebar updates live
+      // (built from the cached note itself, so it works even if the note is not in Dexie)
+      queryClient.setQueryData(queryKeys.notes.detail(noteId), (old: Note | undefined) =>
+          old
+              ? { ...old, attachments: [...(old.attachments ?? []).filter(a => a.filename !== attachment.filename), attachment] }
+              : old
+      );
+
       return attachment;
   } catch (error) {
       console.error('Upload failed', error);
@@ -53,4 +63,7 @@ export const deleteAttachment = async (noteId: string, attachmentId: string) => 
         const updatedAttachments = (note.attachments || []).filter(a => a.id !== attachmentId);
         await db.notes.update(noteId, { attachments: updatedAttachments, syncStatus: 'updated' });
     }
+    queryClient.setQueryData(queryKeys.notes.detail(noteId), (old: Note | undefined) =>
+        old ? { ...old, attachments: (old.attachments ?? []).filter(a => a.id !== attachmentId) } : old
+    );
 };

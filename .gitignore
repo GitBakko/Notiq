@@ -79,3 +79,6 @@ backend/uploads/
 .claude/skills/*
 !.claude/skills/notiq-deploy/
 !.claude/skills/notiq-release/
+
+# documenti riservati
+docs/*.reserved.*

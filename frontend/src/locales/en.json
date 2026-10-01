@@ -529,6 +529,7 @@
     "linkCopied": "Link copied to clipboard",
     "uploaded": "Uploaded {{name}}",
     "uploadFailed": "Failed to upload {{name}}",
+    "uploadFailedReason": "Could not upload {{name}}: {{reason}}",
     "titlePlaceholder": "Note Title",
     "unpin": "Unpin Note",
     "pin": "Pin Note",
@@ -1550,6 +1551,10 @@
     "encryptedNotSupported": "AI is not available for encrypted notes."
   },
   "errors": {
+    "vault": {
+      "attachmentsBlocked": "attachments are not allowed in encrypted vault notes",
+      "importBlocked": "importing directly into the encrypted vault is not allowed"
+    },
     "common": {
       "accessDenied": "Access denied",
       "writeAccessRequired": "Write access required",
@@ -1623,8 +1628,8 @@
       "onlyCheckerCanUncheck": "Only the user who checked this item can uncheck it"
     },
     "attachments": {
-      "fileTypeNotAllowed": "File type not allowed",
-      "mimeTypeNotAllowed": "MIME type not allowed",
+      "fileTypeNotAllowed": "file type not allowed for security reasons",
+      "mimeTypeNotAllowed": "file type not supported (allowed: images, PDF, text/CSV, Word, Excel, audio, video)",
       "noFileUploaded": "No file uploaded",
       "noteIdRequired": "noteId is required",
       "notFound": "Attachment not found",

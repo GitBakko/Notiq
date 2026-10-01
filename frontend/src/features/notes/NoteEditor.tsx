@@ -4,6 +4,7 @@ import Editor, { type EditorHandle } from '../../components/editor/Editor';
 import { revokeShare, updateNoteLocalOnly, updateSharedNoteNotebook, saveSharedNoteData, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
+import { uploadErrorText } from './uploadErrorText';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import TagSelector from '../../components/editor/TagSelector';
@@ -324,12 +325,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 await uploadAttachment(note.id, file);
                 toast.success(t('notes.uploaded', { name: file.name }));
             } catch (error: unknown) {
-                const axiosErr = error as { response?: { data?: { message?: string } }; message?: string };
-                if (axiosErr.response?.data?.message === 'QUOTA_EXCEEDED' || axiosErr.message === 'QUOTA_EXCEEDED') {
-                    toast.error(t('actions.quotaExceeded'));
-                } else {
-                    toast.error(t('notes.uploadFailed', { name: file.name }));
-                }
+                toast.error(uploadErrorText(t, error, file.name));
             }
         }
     };
@@ -803,12 +799,10 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             toast.error(t('actions.quotaExceeded'));
                             return;
                         }
-                        uploadAttachment(note.id, f).then(() => toast.success(t('notes.uploaded', { name: f.name }))).catch((err) => {
-                            if (err?.response?.data?.message === 'QUOTA_EXCEEDED') toast.error(t('actions.quotaExceeded'));
-                            else toast.error(t('notes.uploadFailed', { name: f.name }));
-                        });
+                        uploadAttachment(note.id, f).then(() => toast.success(t('notes.uploaded', { name: f.name }))).catch((err) => toast.error(uploadErrorText(t, err, f.name)));
                     });
                 }
+                e.target.value = '';
             }} />
 
             {/* [BACKUP] 2026-09-02 — questa .map() non aveva il .filter() davanti, a

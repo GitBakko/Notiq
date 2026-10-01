@@ -220,6 +220,7 @@
     "linkCopied": "Link copiato negli appunti",
     "uploaded": "Caricato {{name}}",
     "uploadFailed": "Caricamento fallito per {{name}}",
+    "uploadFailedReason": "Impossibile caricare {{name}}: {{reason}}",
     "titlePlaceholder": "Titolo della nota",
     "unpin": "Non fissare",
     "pin": "Fissa nota",
@@ -1550,6 +1551,10 @@
     "encryptedNotSupported": "L'AI non e' disponibile per le note criptate."
   },
   "errors": {
+    "vault": {
+      "attachmentsBlocked": "gli allegati non sono consentiti nelle note del vault cifrato",
+      "importBlocked": "l'importazione diretta nel vault cifrato non è consentita"
+    },
     "common": {
       "accessDenied": "Accesso negato",
       "writeAccessRequired": "Accesso in scrittura richiesto",
@@ -1623,8 +1628,8 @@
       "onlyCheckerCanUncheck": "Solo chi ha spuntato questo elemento può deselezionarlo"
     },
     "attachments": {
-      "fileTypeNotAllowed": "Tipo di file non consentito",
-      "mimeTypeNotAllowed": "Tipo MIME non consentito",
+      "fileTypeNotAllowed": "tipo di file non consentito per motivi di sicurezza",
+      "mimeTypeNotAllowed": "tipo di file non supportato (ammessi: immagini, PDF, testo/CSV, Word, Excel, audio, video)",
       "noFileUploaded": "Nessun file caricato",
       "noteIdRequired": "noteId è obbligatorio",
       "notFound": "Allegato non trovato",

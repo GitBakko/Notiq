@@ -12,6 +12,7 @@ vi.mock('../noteService', () => ({
   updateNoteLocalOnly: vi.fn(), updateSharedNoteNotebook: vi.fn(), saveSharedNoteData: vi.fn(),
   deleteNote: vi.fn(), permanentlyDeleteNote: vi.fn(),
 }));
+vi.mock('../../attachments/attachmentService', () => ({ uploadAttachment: vi.fn(), deleteAttachment: vi.fn() }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
