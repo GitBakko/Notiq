@@ -66,7 +66,66 @@ describe('pruneNoteVersions', () => {
   });
 });
 
-import { listNoteVersions, restoreNoteVersion } from '../noteVersion.service';
+import { listNoteVersions, restoreNoteVersion, archiveRestWriteWhileLive } from '../noteVersion.service';
+
+describe('archiveRestWriteWhileLive', () => {
+  const doc = (t: string) => JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+  let n = 0;
+  let id: string; // fresh noteId per test: the coalescing map is module-level
+  beforeEach(() => {
+    id = `note-live-${++n}`;
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.noteVersion.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.noteVersion.create.mockResolvedValue({ id: 'v1' });
+    prismaMock.noteVersion.findUnique.mockReset();
+    prismaMock.noteVersion.update.mockReset();
+  });
+
+  it('first call creates (short content allowed) and prunes', async () => {
+    await archiveRestWriteWhileLive(id, doc('hi'), 'T');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledWith({ data: { noteId: id, content: doc('hi'), title: 'T' } });
+    expect(prismaMock.noteVersion.deleteMany).toHaveBeenCalled(); // prune ran
+  });
+
+  it('second call within the window updates the same version', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
+    await archiveRestWriteWhileLive(id, doc('b'), 'T2');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.noteVersion.update).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { content: doc('b'), title: 'T2' } });
+  });
+
+  it('after the window creates a new version', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
+    (Date.now as any).mockReturnValue(NOW + 3 * 60_000);
+    await archiveRestWriteWhileLive(id, doc('b'), 'T');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('deleted version row within the window -> creates', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    prismaMock.noteVersion.findUnique.mockResolvedValue(null);
+    await archiveRestWriteWhileLive(id, doc('b'), 'T');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('identical latest content -> no-op', async () => {
+    prismaMock.noteVersion.findFirst.mockResolvedValue({ content: doc('a') });
+    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('degenerate content is skipped', async () => {
+    await archiveRestWriteWhileLive(id, '{"type":"doc","content":[]}', 'T');
+    await archiveRestWriteWhileLive(id, '', 'T');
+    expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
+  });
+});
 
 describe('listNoteVersions', () => {
   it('returns versions for an owned note (newest first)', async () => {

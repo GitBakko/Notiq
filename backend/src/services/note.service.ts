@@ -7,7 +7,7 @@ import { extractTextFromTipTapJson, countDocumentStats } from '../utils/extractT
 import { NotFoundError, BadRequestError, ConflictError, AppError } from '../utils/errors';
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { logEvent } from './audit.service';
-import { snapshotPreviousVersion } from './noteVersion.service';
+import { snapshotPreviousVersion, archiveRestWriteWhileLive } from './noteVersion.service';
 import { getVaultGuard, assertVaultContent, parseEnvelope, sha256hex } from './vault.service';
 import logger from '../utils/logger';
 
@@ -285,6 +285,16 @@ export const updateNote = async (userId: string, id: string, data: {
     }
   }
 
+  // 1.13.3: a live collab doc wins. Writing content (and nulling ydocState) under a live doc would either be
+  // reverted by its next store() or, if the doc unloads without storing, make a reconnecting client merge its
+  // old Y state into a doc rebuilt from this content (duplicated text). So we leave Note.content alone and keep
+  // the REST write recoverable in history (coalesced per note to avoid churning the version cap during offline bursts).
+  const liveDoc = hocuspocus.hocuspocus.documents.has(id) || hocuspocus.hocuspocus.loadingDocuments.has(id);
+  const routeLive = liveDoc && rest.content !== undefined && rest.content !== note.content &&
+    !note.isVault && !movingToVault && !movingOutOfVault && rest.isVault !== true &&
+    !note.isEncrypted && rest.isEncrypted !== true && note.noteType === 'NOTE';
+  let liveArchiveContent = undefined as string | undefined; // assigned inside the tx closure
+
   const updated = await prisma.$transaction(async (tx) => {
     if (movingToVault) {
       await tx.sharedNote.deleteMany({ where: { noteId: id } });
@@ -311,11 +321,20 @@ export const updateNote = async (userId: string, id: string, data: {
       // Vault P1: with a keyring the 150-char guard would silently drop short envelopes / plaintext on exit.
       finalContent = guard ? contentField : guardEmptyContentOverwrite(note.content, contentField);
     }
+    // Live path: content never reaches the Note (no content, ydocState, searchText, in-tx snapshot).
+    liveArchiveContent = undefined;
+    if (routeLive && finalContent !== undefined && finalContent !== note.content) {
+      liveArchiveContent = finalContent;
+      finalContent = undefined;
+    }
 
     // Recalculate searchText if content changed
     const updateData: Record<string, unknown> = { ...restWithoutContent, updatedAt: new Date() };
     if (finalContent !== undefined) {
       updateData.content = finalContent;
+      // 1.13.3: new content makes any stored Yjs state stale. Fetch prefers ydocState, so a note
+      // shared again later would load the pre-edit doc and its first store() would revert this write.
+      if (finalContent !== note.content) updateData.ydocState = null;
     }
     // searchText is derived plaintext: never (re)computed while the note is, or stays, in the vault.
     // Moving OUT of the vault re-derives it from the stored content (it was nulled on the way in).
@@ -366,6 +385,14 @@ export const updateNote = async (userId: string, id: string, data: {
       hocuspocus.hocuspocus.closeConnections(id);
     } catch (err) {
       logger.warn({ err, noteId: id }, 'updateNote: could not close collab sessions after move to vault');
+    }
+  }
+
+  if (liveArchiveContent !== undefined) {
+    try {
+      await archiveRestWriteWhileLive(id, liveArchiveContent, updated.title);
+    } catch (err) {
+      logger.warn({ err, noteId: id }, 'updateNote: REST content not archived while collab doc is live');
     }
   }
 

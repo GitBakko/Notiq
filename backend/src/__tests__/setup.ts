@@ -271,6 +271,7 @@ vi.mock('../plugins/prisma', () => {
       findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
       deleteMany: vi.fn(),
       count: vi.fn(),
     },

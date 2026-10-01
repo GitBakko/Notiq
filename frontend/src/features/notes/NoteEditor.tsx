@@ -22,6 +22,7 @@ import VersionHistoryModal from './VersionHistoryModal';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useNoteController } from './useNoteController';
+import { canPersistEditorContent } from './canPersistEditorContent';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryKeys';
 import { useAiStatus } from '../../hooks/useAiStatus';
@@ -81,6 +82,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const mobileMoreRef = useRef<HTMLDivElement>(null);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
+    const providerSyncedOnceRef = useRef(false); // true once the CURRENT provider has synced; reset on new provider
     const [collaborators, setCollaborators] = useState<{ name?: string; color?: string; avatarUrl?: string | null; clientId?: number }[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
@@ -156,6 +158,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         if (note.isTrashed) return; // Don't save if trashed
 
         if (debouncedContent !== note.content) {
+            // v1.13.3: collab editor starts EMPTY until the provider's first sync; never persist
+            // (REST or Dexie) what was typed into it before that, or the real note gets overwritten.
+            if (!canPersistEditorContent({
+                hasProvider: !!provider,
+                hasSyncedOnce: providerSyncedOnceRef.current || provider?.isSynced === true,
+            })) return;
             if (provider || isSharedNote) {
                 // Dexie write is ALWAYS unconditional — UI needs it regardless of collab state.
                 updateNoteLocalOnly(note.id, { content: debouncedContent });
@@ -197,6 +205,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
     useEffect(() => {
         if (note.id && shouldConnectCollab) {
+            providerSyncedOnceRef.current = false;
             const newProvider = new HocuspocusProvider({
                 url: import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws',
                 name: note.id,
@@ -215,7 +224,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 // La libreria accetta una callback e la rivaluta a ogni tentativo.
                 token: () => useAuthStore.getState().token || '',
                 onSynced: () => {
-                    // Sync handled by provider
+                    providerSyncedOnceRef.current = true;
                 },
             });
             setProvider(newProvider);
@@ -818,7 +827,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
             <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
 
-            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote({ title: titleInput, content: contentInput }); if (note.isVault) { await permanentlyDeleteNote(note.id); } else { await deleteNote(note.id); } toast.success(t(note.isVault ? 'vault.deletedPermanently' : 'notes.deleted')); if (onBack) { onBack(); } else { window.history.back(); } }} title={t(note.isVault ? 'vault.deletePermanently' : 'notes.moveToTrash')} message={t(note.isVault ? 'vault.deletePermanentlyConfirm' : 'notes.moveToTrashConfirm')} confirmText={t(note.isVault ? 'common.deleteForever' : 'notes.moveToTrashAction')} variant="danger" />
+            <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote(canPersistEditorContent({ hasProvider: !!provider, hasSyncedOnce: providerSyncedOnceRef.current || provider?.isSynced === true }) ? { title: titleInput, content: contentInput } : { title: titleInput }); if (note.isVault) { await permanentlyDeleteNote(note.id); } else { await deleteNote(note.id); } toast.success(t(note.isVault ? 'vault.deletedPermanently' : 'notes.deleted')); if (onBack) { onBack(); } else { window.history.back(); } }} title={t(note.isVault ? 'vault.deletePermanently' : 'notes.moveToTrash')} message={t(note.isVault ? 'vault.deletePermanentlyConfirm' : 'notes.moveToTrashConfirm')} confirmText={t(note.isVault ? 'common.deleteForever' : 'notes.moveToTrashAction')} variant="danger" />
 
             {isAttachmentSidebarOpen && <AttachmentSidebar noteId={note.id} attachments={note.attachments || []} onClose={() => setIsAttachmentSidebarOpen(false)} onDelete={handleAttachmentDeleteRequest} onAdd={() => fileInputRef.current?.click()} />}
 

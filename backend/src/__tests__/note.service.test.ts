@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock hocuspocus (imported by note.service.ts)
 vi.mock('../hocuspocus', () => ({
-  hocuspocus: { hocuspocus: { closeConnections: vi.fn() } },
+  hocuspocus: { hocuspocus: { closeConnections: vi.fn(), documents: new Map(), loadingDocuments: new Map() } },
   extensions: [],
 }));
 

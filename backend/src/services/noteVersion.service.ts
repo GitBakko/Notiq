@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { extractTextFromTipTapJson } from '../utils/extractText';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import logger from '../utils/logger';
+import { isDegenerateTipTapJson } from '../utils/ydocIntegrity';
 import { getVaultGuard, assertVaultContent } from './vault.service';
 
 // PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
@@ -44,6 +45,43 @@ export async function snapshotPreviousVersion(
     data: { noteId, content: previousContent, title: previousTitle },
   });
   await pruneNoteVersions(db, noteId);
+}
+
+// ponytail: in-process map — single backend process (pm2 fork, 1 instance); per-note coalescing window
+const restArchive = new Map<string, { versionId: string; at: number }>();
+
+/**
+ * Keep a REST content write recoverable when it is NOT applied because a live collab doc wins.
+ * Coalesced per note inside SNAPSHOT_THROTTLE_MS (updates the same version) so an offline push burst
+ * does not churn the 50-version cap. No MIN_SNAPSHOT_LEN floor, degenerate (blank) content is skipped.
+ */
+export async function archiveRestWriteWhileLive(noteId: string, content: string, title: string): Promise<void> {
+  if (!content) return;
+  try {
+    if (isDegenerateTipTapJson(JSON.parse(content))) return;
+  } catch {
+    return; // not TipTap JSON: nothing worth archiving here
+  }
+
+  const latest = await prisma.noteVersion.findFirst({
+    where: { noteId },
+    orderBy: { createdAt: 'desc' },
+    select: { content: true },
+  });
+  if (latest?.content === content) return;
+
+  const prev = restArchive.get(noteId);
+  if (prev && Date.now() - prev.at < SNAPSHOT_THROTTLE_MS) {
+    const exists = await prisma.noteVersion.findUnique({ where: { id: prev.versionId }, select: { id: true } });
+    if (exists) {
+      await prisma.noteVersion.update({ where: { id: prev.versionId }, data: { content, title } });
+      return;
+    }
+  }
+
+  const created = await prisma.noteVersion.create({ data: { noteId, content, title } });
+  await pruneNoteVersions(prisma, noteId);
+  restArchive.set(noteId, { versionId: created.id, at: Date.now() });
 }
 
 /** Retention: drop versions older than 30 days, then any beyond the newest 50. */

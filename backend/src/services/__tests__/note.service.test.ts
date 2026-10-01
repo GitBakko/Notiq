@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prisma from '../../plugins/prisma';
 import {
   checkNoteAccess,
@@ -12,6 +12,8 @@ import {
   getNoteSizeBreakdown,
 } from '../note.service';
 import { hocuspocus } from '../../hocuspocus';
+import { archiveRestWriteWhileLive } from '../noteVersion.service';
+import logger from '../../utils/logger';
 import { NotFoundError, ConflictError } from '../../utils/errors';
 
 // Additional mocks beyond setup.ts
@@ -20,10 +22,15 @@ vi.mock('../../hocuspocus', () => ({
   // Hocuspocus instance (Server.hocuspocus), the same path getWsConnectionCount uses.
   hocuspocus: {
     openDirectConnection: vi.fn(),
-    hocuspocus: { closeConnections: vi.fn() },
+    hocuspocus: { closeConnections: vi.fn(), documents: new Map(), loadingDocuments: new Map() },
   },
   extensions: [],
   disconnectUserFromNote: vi.fn(),
+}));
+
+vi.mock('../noteVersion.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../noteVersion.service')>()),
+  archiveRestWriteWhileLive: vi.fn(),
 }));
 
 vi.mock('@hocuspocus/transformer', () => ({
@@ -450,14 +457,136 @@ describe('updateNote', () => {
     });
   });
 
-  it('a plain REST content change on a normal note does NOT touch ydocState (regression)', async () => {
+  describe('1.13.3 stale ydocState / live collab doc', () => {
+    const body = (c: string) => '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"' + c.repeat(200) + '"}]}]}';
+    const newContent = body('B');
+    const docs = (hocuspocus as any).hocuspocus.documents as Map<string, unknown>;
+    const loading = (hocuspocus as any).hocuspocus.loadingDocuments as Map<string, unknown>;
+    // a live doc is the default so the negative cases below are meaningful
+    beforeEach(() => {
+      docs.clear(); loading.clear(); docs.set('n1', {});
+      prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    });
+    afterEach(() => { docs.clear(); loading.clear(); });
+    const archived = () => (archiveRestWriteWhileLive as any).mock.calls;
+
+    it('live doc + changed content -> no content/ydocState/searchText written, metadata applied, archived once', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, title: 'T', noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { title: 'T', isPinned: true, content: newContent });
+      const data = prismaMock.note.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('content');
+      expect(data).not.toHaveProperty('ydocState');
+      expect(data).not.toHaveProperty('searchText');
+      expect(data).toMatchObject({ title: 'T', isPinned: true });
+      expect(prismaMock.noteVersion.create).not.toHaveBeenCalled(); // no in-tx snapshot of old content either
+      expect(archived()).toEqual([['n1', newContent, 'T']]);
+    });
+
+    it('loading doc -> same live path', async () => {
+      docs.clear();
+      loading.set('n1', Promise.resolve());
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: newContent });
+      const data = prismaMock.note.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('content');
+      expect(data).not.toHaveProperty('ydocState');
+      expect(archived()).toHaveLength(1);
+    });
+
+    it('no live doc -> content written, ydocState null, not archived', async () => {
+      docs.clear();
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, content: newContent, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: newContent });
+      const data = prismaMock.note.update.mock.calls[0][0].data;
+      expect(data.content).toBe(newContent);
+      expect(data.ydocState).toBeNull();
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('metadata-only write -> no ydocState key, not archived', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, title: 'T', noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { title: 'T', isPinned: true });
+      expect(prismaMock.note.update.mock.calls[0][0].data).not.toHaveProperty('ydocState');
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('content equal to stored -> no ydocState key, not archived', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: existingNote.content });
+      expect(prismaMock.note.update.mock.calls[0][0].data).not.toHaveProperty('ydocState');
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('not archived when moving to the vault (connections are closed instead)', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, content: newContent, isVault: true, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { isVault: true, content: newContent });
+      expect(archived()).toHaveLength(0);
+      expect(hocuspocus.hocuspocus.closeConnections).toHaveBeenCalledWith('n1');
+    });
+
+    it('not archived when moving out of the vault', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, content: newContent, isVault: false, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { isVault: false, content: newContent });
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('not archived for an already-vault note', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, content: newContent, isVault: true, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: newContent });
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('not archived for an encrypted note', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isEncrypted: true, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, content: newContent, isEncrypted: true, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: newContent });
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('not archived for a CREDENTIAL note', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'CREDENTIAL' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, content: newContent, noteType: 'CREDENTIAL' });
+      await updateNote('user-1', 'n1', { content: newContent });
+      expect(archived()).toHaveLength(0);
+    });
+
+    it('archive throwing does not fail the save and is logged as a warning', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      const saved = { ...existingNote, noteType: 'NOTE' };
+      prismaMock.note.update.mockResolvedValue(saved);
+      (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
+      await expect(updateNote('user-1', 'n1', { content: newContent })).resolves.toEqual(saved);
+      expect((logger as any).warn).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.stringContaining('REST content not archived'));
+    });
+
+    it('empty-overwrite guard dropping the content -> no ydocState key, not archived', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: '{"type":"doc","content":[]}' });
+      const data = prismaMock.note.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('content');
+      expect(data).not.toHaveProperty('ydocState');
+      expect(archived()).toHaveLength(0);
+    });
+  });
+
+  it('a plain REST content change on a normal note nulls ydocState (1.13.3, was: untouched)', async () => {
     prismaMock.note.findFirst.mockResolvedValue(existingNote);
     prismaMock.note.update.mockResolvedValue(existingNote);
     const newContent = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"' + 'B'.repeat(200) + '"}]}]}';
 
     await updateNote('user-1', 'n1', { content: newContent });
 
-    expect(prismaMock.note.update.mock.calls[0][0].data).not.toHaveProperty('ydocState');
+    expect(prismaMock.note.update.mock.calls[0][0].data.ydocState).toBeNull();
   });
 
   it('leaves ydocState alone when the content is unchanged', async () => {
