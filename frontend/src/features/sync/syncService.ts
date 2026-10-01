@@ -752,6 +752,15 @@ async function dropSupersededItems(done: SyncQueueItem): Promise<void> {
       (i.createdAt < done.createdAt || (i.createdAt === done.createdAt && i.id < doneId)) &&
       (done.type === 'DELETE' ||
         (i.status === 'failed' && i.type === 'UPDATE' && keysOf(i.data).length > 0 && keysOf(i.data).every(k => doneKeys.has(k)))));
+    // A TASK_LIST delete is a soft-trash: the TASK_ITEM rows stay in Dexie, so O1 (entityRowExists) never drops their
+    // queued items. Purge them by parent id. (Kanban board/column deletes hard-delete the child Dexie rows, so O1
+    // already covers those.)
+    if (done.type === 'DELETE' && done.entity === 'TASK_LIST') {
+      for (const i of all) {
+        if (i.id !== undefined && i.userId === done.userId && i.entity === 'TASK_ITEM' &&
+          (i.data as { taskListId?: string } | undefined)?.taskListId === done.entityId) victims.push(i);
+      }
+    }
     for (const v of victims) {
       await db.syncQueue.delete(v.id as number);
       clearFailure(v.id);
@@ -1246,6 +1255,19 @@ const pushQueueOnce = async (): Promise<boolean> => {
   return pushedAny;
 };
 
+// T2: user-editable fields a failed CREATE refreshes from the current Dexie row (see retryFailedSyncItems).
+const CREATE_REFRESH_FIELDS = {
+  KANBAN_CARD: ['title', 'description'],
+  TASK_ITEM: ['text', 'priority', 'dueDate'],
+  TASK_LIST: ['title'],
+  KANBAN_BOARD: ['title', 'description'],
+  KANBAN_COLUMN: ['title'],
+} as const;
+const refreshRowTables = (): Record<keyof typeof CREATE_REFRESH_FIELDS, { get(k: string): Promise<unknown> }> => ({
+  KANBAN_CARD: db.kanbanCards, TASK_ITEM: db.taskItems, TASK_LIST: db.taskLists,
+  KANBAN_BOARD: db.kanbanBoards, KANBAN_COLUMN: db.kanbanColumns,
+});
+
 /**
  * Re-enable all failed queue items for the current user and trigger a push.
  * Called from the SyncStatusIndicator retry action.
@@ -1291,6 +1313,20 @@ export const retryFailedSyncItems = async (): Promise<void> => {
         } else if (item.entity === 'TAG') {
           const t = await db.tags.get(item.entityId);
           if (t) fields = { name: t.name };
+        } else if (item.entity in CREATE_REFRESH_FIELDS) {
+          // Only keys already in the queued payload are refreshed (the CREATE schema may not accept others). A null
+          // optional value is dropped (create schemas take optional-but-not-nullable), except dueDate which is nullable.
+          const row = await refreshRowTables()[item.entity as keyof typeof CREATE_REFRESH_FIELDS].get(item.entityId) as Record<string, unknown> | undefined;
+          if (row) {
+            const payload = { ...(item.data as Record<string, unknown>) };
+            for (const f of CREATE_REFRESH_FIELDS[item.entity as keyof typeof CREATE_REFRESH_FIELDS]) {
+              if (!(f in payload) || row[f] === undefined) continue;
+              if (row[f] !== null) payload[f] = row[f];
+              else if (f === 'dueDate') payload[f] = null;
+              else if (f === 'description') delete payload[f];
+            }
+            data = payload;
+          }
         }
         if (fields) data = { ...(item.data as Record<string, unknown>), ...fields };
       } catch (e) {

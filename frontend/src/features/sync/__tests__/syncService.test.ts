@@ -2534,6 +2534,56 @@ describe('syncPush', () => {
         expect(mockDb.notes.update).toHaveBeenCalledWith('e-p1', { syncStatus: 'synced' });
       });
 
+      it('T2a: KANBAN_CARD CREATE failed 400 with long title, Dexie short -> payload carries the short title; null description dropped', async () => {
+        const item = { ...mk('NOTE', {}), entity: 'KANBAN_CARD' as const, data: { id: 'e-p1', columnId: 'col', title: 'LONG', description: 'old' } };
+        mockDb.syncQueue.toArray.mockResolvedValue([item]);
+        mockDb.kanbanCards.get.mockResolvedValue({ id: 'e-p1', title: 'short', description: null });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          data: { id: 'e-p1', columnId: 'col', title: 'short' },
+        }));
+      });
+
+      it('T2b: TASK_ITEM CREATE failed -> text, priority, dueDate refreshed, taskListId untouched', async () => {
+        const item = { ...mk('NOTE', {}), entity: 'TASK_ITEM' as const, data: { id: 'e-p1', taskListId: 'tl', text: 'LONG', priority: 'LOW', dueDate: null } };
+        mockDb.syncQueue.toArray.mockResolvedValue([item]);
+        mockDb.taskItems.get.mockResolvedValue({ id: 'e-p1', taskListId: 'other', text: 'short', priority: 'HIGH', dueDate: '2026-10-05' });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          data: { id: 'e-p1', taskListId: 'tl', text: 'short', priority: 'HIGH', dueDate: '2026-10-05' },
+        }));
+      });
+
+      it('T2c: KANBAN_BOARD CREATE, Dexie description null -> key removed, _localColumnIds and columnTitles untouched', async () => {
+        const item = { ...mk('NOTE', {}), entity: 'KANBAN_BOARD' as const, data: { id: 'e-p1', title: 'LONG', description: 'old', _localColumnIds: ['c1', 'c2'], columnTitles: ['A', 'B'] } };
+        mockDb.syncQueue.toArray.mockResolvedValue([item]);
+        mockDb.kanbanBoards.get.mockResolvedValue({ id: 'e-p1', title: 'short', description: null });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          data: { id: 'e-p1', title: 'short', _localColumnIds: ['c1', 'c2'], columnTitles: ['A', 'B'] },
+        }));
+      });
+
+      it.each([
+        ['KANBAN_COLUMN', 'kanbanColumns', { id: 'e-p1', boardId: 'b', title: 'LONG' }],
+        ['TASK_LIST', 'taskLists', { id: 'e-p1', title: 'LONG' }],
+      ] as const)('T2d: %s CREATE failed -> title refreshed from Dexie', async (entity, table, data) => {
+        mockDb.syncQueue.toArray.mockResolvedValue([{ ...mk('NOTE', {}), entity, data }]);
+        mockDb[table].get.mockResolvedValue({ id: 'e-p1', title: 'short' });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          data: { ...data, title: 'short' },
+        }));
+      });
+
       it('P1e (O1): Dexie row missing -> the failed CREATE is removed, not re-queued', async () => {
         mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTEBOOK', { name: 'old' })]);
         mockDb.notebooks.get.mockResolvedValue(undefined);
@@ -2975,6 +3025,41 @@ describe('syncPush', () => {
         expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1332);
         expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(1331, expect.anything());
         expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(1332, expect.anything());
+      });
+
+      it('T1: TASK_LIST DELETE 404 purges the failed TASK_LIST CREATE and its TASK_ITEM children (Dexie rows present), not other lists', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkE(1341, 'TASK_ITEM', 'CREATE', 'ti-t1', { status: 'failed' as const, lastError: 'not_found', data: { id: 'ti-t1', taskListId: 'tl-t1' } }),
+          mkE(1342, 'TASK_ITEM', 'CREATE', 'ti-other', { status: 'failed' as const, lastError: 'not_found', data: { id: 'ti-other', taskListId: 'tl-other' } }),
+          { ...mkE(1343, 'TASK_ITEM', 'CREATE', 'tl-t1'), entity: 'TASK_LIST' as const, status: 'failed' as const, data: { id: 'tl-t1' } },
+          { ...mkE(1344, 'TASK_ITEM', 'DELETE', 'tl-t1'), entity: 'TASK_LIST' as const, data: {} },
+        ]);
+        mockDb.taskItems.get.mockResolvedValue({ id: 'ti-t1' });
+        mockApi.delete.mockRejectedValue(serverErr(404));
+
+        await syncPush();
+
+        for (const id of [1341, 1343, 1344]) expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(id);
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1342);
+      });
+
+      it.each([
+        ['404', serverErr(404)],
+        ['200', null],
+      ])('T1b: TASK_LIST DELETE (%s) purges TASK_ITEM children (CREATE failed, UPDATE pending), not other lists', async (_n, err) => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkE(1351, 'TASK_ITEM', 'CREATE', 'ti-a', { status: 'failed' as const, lastError: 'validation', data: { id: 'ti-a', taskListId: 'tl-t1b' } }),
+          mkE(1352, 'TASK_ITEM', 'UPDATE', 'ti-a', { status: 'pending' as const, data: { text: 'x', taskListId: 'tl-t1b' } }),
+          mkE(1353, 'TASK_ITEM', 'CREATE', 'ti-other', { status: 'failed' as const, data: { id: 'ti-other', taskListId: 'tl-other' } }),
+          { ...mkE(1354, 'TASK_ITEM', 'DELETE', 'tl-t1b'), entity: 'TASK_LIST' as const, data: {} },
+        ]);
+        mockDb.taskItems.get.mockResolvedValue({ id: 'ti-a' });
+        if (err) mockApi.delete.mockRejectedValue(err); else mockApi.delete.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        for (const id of [1351, 1352, 1354]) expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(id);
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1353);
       });
 
       it.each([
