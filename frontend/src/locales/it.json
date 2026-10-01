@@ -809,6 +809,9 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "loginRateLimitReliable": "La protezione contro i tentativi di accesso ripetuti ora funziona correttamente dietro il proxy",
+      "noteIdConflictSafe": "Creare una nota con un identificativo già in uso ora fallisce in modo sicuro, senza esporre un'altra nota",
+      "vaultServerFoundations": "Preparazione del server per il nuovo vault cifrato end-to-end (il vault attuale per ora non cambia)",
       "vaultNoOverwriteSecondDevice": "Gli elementi del vault non ancora scaricati su un dispositivo vengono caricati dal server e non possono più sovrascrivere la copia salvata",
       "vaultNotesPrivate": "Le note del vault non vengono mai condivise, collegate alle board, cercate o inviate all'AI",
       "vaultResetHonest": "Reset del vault più chiaro: dimentica solo il PIN su questo dispositivo",

@@ -1185,6 +1185,9 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "loginRateLimitReliable": "Protection against repeated login attempts is now reliable behind the proxy",
+      "noteIdConflictSafe": "Creating a note with an identifier already in use now fails safely instead of exposing another note",
+      "vaultServerFoundations": "Server groundwork for the new end-to-end encrypted vault (no changes to the current vault yet)",
       "vaultNoOverwriteSecondDevice": "Vault items not yet downloaded on a device are now loaded from the server and can no longer overwrite the saved copy",
       "vaultNotesPrivate": "Vault notes are never shared, linked to boards, searched or sent to AI",
       "vaultResetHonest": "Clearer vault reset: it only forgets the PIN on this device",

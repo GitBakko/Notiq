@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.13.0',
+    date: '2026-10-01',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.loginRateLimitReliable' },
+      { type: 'fix', titleKey: 'whatsNew.entries.noteIdConflictSafe' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultServerFoundations' },
+    ],
+  },
+  {
     version: '1.12.2',
     date: '2026-09-30',
     entries: [
