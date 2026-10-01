@@ -810,6 +810,9 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "uploadErrorReason": "Quando un allegato non si può caricare, il messaggio ora spiega il motivo (es. tipo di file non supportato)",
+      "attachmentsSidebarLive": "Il pannello allegati si aggiorna subito dopo il caricamento o l'eliminazione di un file",
+      "vaultSmooth": "Il vault non si blocca più a scatti durante la navigazione tra le credenziali",
       "loginRateLimitReliable": "La protezione contro i tentativi di accesso ripetuti ora funziona correttamente dietro il proxy",
       "noteIdConflictSafe": "Creare una nota con un identificativo già in uso ora fallisce in modo sicuro, senza esporre un'altra nota",
       "vaultServerFoundations": "Preparazione del server per il nuovo vault cifrato end-to-end (il vault attuale per ora non cambia)",

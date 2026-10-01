@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.13.1',
+    date: '2026-10-01',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.uploadErrorReason' },
+      { type: 'fix', titleKey: 'whatsNew.entries.attachmentsSidebarLive' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultSmooth' },
+    ],
+  },
+  {
     version: '1.13.0',
     date: '2026-10-01',
     entries: [

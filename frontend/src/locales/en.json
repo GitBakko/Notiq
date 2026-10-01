@@ -1186,6 +1186,9 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "uploadErrorReason": "When an attachment cannot be uploaded, the message now says why (e.g. unsupported file type)",
+      "attachmentsSidebarLive": "The attachments panel updates immediately after uploading or deleting a file",
+      "vaultSmooth": "The vault no longer freezes while browsing credentials",
       "loginRateLimitReliable": "Protection against repeated login attempts is now reliable behind the proxy",
       "noteIdConflictSafe": "Creating a note with an identifier already in use now fails safely instead of exposing another note",
       "vaultServerFoundations": "Server groundwork for the new end-to-end encrypted vault (no changes to the current vault yet)",
