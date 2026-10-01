@@ -17,7 +17,19 @@ vi.mock('../../services/sharing.service', () => ({
   shareNote: vi.fn(),
 }));
 
+vi.mock('../../services/noteVersion.service', () => ({
+  listNoteVersions: vi.fn(),
+  restoreNoteVersion: vi.fn(),
+}));
+
+vi.mock('../../hocuspocus', () => ({
+  flushLiveDoc: vi.fn(),
+  replaceLiveDocContent: vi.fn(),
+}));
+
 import * as noteService from '../../services/note.service';
+import { restoreNoteVersion } from '../../services/noteVersion.service';
+import { flushLiveDoc, replaceLiveDocContent } from '../../hocuspocus';
 import { AppError, NotFoundError } from '../../utils/errors';
 import noteRoutes from '../notes';
 
@@ -293,5 +305,88 @@ describe('POST /api/notes/:id/share', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual(mockNote);
+  });
+});
+
+describe('POST /api/notes/:id/versions/:versionId/restore', () => {
+  const NOTE = '550e8400-e29b-41d4-a716-446655440000';
+  const VER = '550e8400-e29b-41d4-a716-446655440001';
+  const call = () => app.inject({
+    method: 'POST',
+    url: `/api/notes/${NOTE}/versions/${VER}/restore`,
+    headers: { authorization: `Bearer ${authToken}` },
+  });
+
+  it('pushes the raw restored content into the live collab doc', async () => {
+    const raw = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] });
+    (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: raw });
+    const res = await call();
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload)).toEqual({ ok: true });
+    expect(replaceLiveDocContent).toHaveBeenCalledWith(NOTE, raw);
+  });
+
+  it('passes a beforeRestore hook as 4th arg to restoreNoteVersion', async () => {
+    (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: null });
+    await call();
+    expect(restoreNoteVersion).toHaveBeenCalledWith(
+      TEST_USER.id, NOTE, VER, expect.objectContaining({ beforeRestore: expect.any(Function) }),
+    );
+  });
+
+  it('flushes inside beforeRestore (during restore), then swaps the live doc', async () => {
+    (restoreNoteVersion as any).mockImplementationOnce(async (_u: string, _n: string, _v: string, opts: any) => {
+      await opts.beforeRestore();
+      return { ok: true, restoredContent: '{"type":"doc"}' };
+    });
+    await call();
+    expect(flushLiveDoc).toHaveBeenCalledWith(NOTE);
+    const flushOrder = (flushLiveDoc as any).mock.invocationCallOrder[0];
+    const restoreOrder = (restoreNoteVersion as any).mock.invocationCallOrder[0];
+    const replaceOrder = (replaceLiveDocContent as any).mock.invocationCallOrder[0];
+    expect(restoreOrder).toBeLessThan(flushOrder);
+    expect(flushOrder).toBeLessThan(replaceOrder);
+  });
+
+  it('still restores (200) and warns when the flush fails', async () => {
+    (restoreNoteVersion as any).mockImplementationOnce(async (_u: string, _n: string, _v: string, opts: any) => {
+      await opts.beforeRestore();
+      return { ok: true, restoredContent: '{"type":"doc"}' };
+    });
+    (flushLiveDoc as any).mockRejectedValue(new Error('flush boom'));
+    const logWarn = vi.spyOn(app.log, 'warn');
+    const res = await call();
+    expect(res.statusCode).toBe(200);
+    expect(restoreNoteVersion).toHaveBeenCalledTimes(1);
+    expect(replaceLiveDocContent).toHaveBeenCalledTimes(1);
+    expect(logWarn).toHaveBeenCalled();
+    logWarn.mockRestore();
+    (flushLiveDoc as any).mockReset();
+  });
+
+  it('returns 404 and does not touch the live doc when the restore target is not found', async () => {
+    (restoreNoteVersion as any).mockRejectedValue(new NotFoundError('errors.notes.versionNotFound'));
+    const res = await call();
+    expect(res.statusCode).toBe(404);
+    expect(flushLiveDoc).not.toHaveBeenCalled();
+    expect(replaceLiveDocContent).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the live doc when restoredContent is null', async () => {
+    (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: null });
+    const res = await call();
+    expect(res.statusCode).toBe(200);
+    expect(replaceLiveDocContent).not.toHaveBeenCalled();
+  });
+
+  it('still answers 200 { ok: true } when the live doc update fails', async () => {
+    (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: '{"type":"doc"}' });
+    (replaceLiveDocContent as any).mockRejectedValue(new Error('boom'));
+    const logError = vi.spyOn(app.log, 'error');
+    const res = await call();
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload)).toEqual({ ok: true });
+    expect(logError).toHaveBeenCalled();
+    logError.mockRestore();
   });
 });

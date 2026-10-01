@@ -320,6 +320,92 @@ export function disconnectUserEverywhere(userId: string): void {
   }
 }
 
+/**
+ * Note.content (TipTap JSON string, or legacy HTML/plain text) -> Yjs state update.
+ * Shared by the Database `fetch` and replaceLiveDocContent. Returns null when conversion fails.
+ */
+function contentToYdocState(content: string): Uint8Array | null {
+  try {
+    const json = JSON.parse(content);
+    // @ts-ignore — TiptapTransformer API types incomplete
+    const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
+    const state = Y.encodeStateAsUpdate(doc);
+    return state;
+  } catch (e) {
+    logger.error(e, 'Failed to parse note content as JSON, attempting fallback');
+    try {
+      const text = content.replace(/<[^>]*>/g, ' ').trim();
+      const json = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: text || ' ' }] }],
+      };
+      // @ts-ignore — TiptapTransformer API types incomplete
+      const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
+      return Y.encodeStateAsUpdate(tiptapDoc);
+    } catch (err) {
+      logger.error(err, 'Failed to convert legacy content');
+    }
+  }
+  return null;
+}
+
+/**
+ * Swap the content of a note's LIVE collab doc (no-op when nobody has it open or loading it).
+ * A REST write to Note.content is invisible to a loaded Y doc: its next store() writes the
+ * old in-memory state back. One Yjs transaction: clients get a single update and never see
+ * an empty fragment (Editor.tsx injection guard). Nodes are cloned BEFORE mutating, so a
+ * failure never leaves an empty fragment.
+ * Context { restore: true } on purpose: NO `user` -> onDisconnect does not touch the per-user
+ * WS counter; the Database `store` (also triggered by transact/disconnect, which pass the same
+ * context) skips snapshotPreviousVersion, because restoreNoteVersion already archived the
+ * pre-restore content and a second snapshot would only add the stale in-memory state.
+ * Note: client edits arriving in the few ms between flushLiveDoc and this swap are discarded by
+ * the swap and NOT archived (accepted window).
+ */
+export async function replaceLiveDocContent(noteId: string, content: string): Promise<void> {
+  const inner = hocuspocus.hocuspocus;
+  if (!inner.documents.has(noteId) && !inner.loadingDocuments.has(noteId)) return;
+  const state = contentToYdocState(content);
+  if (!state) throw new Error('replaceLiveDocContent: restored content could not be converted');
+  const tmp = new Y.Doc();
+  Y.applyUpdate(tmp, state);
+  const nodes = tmp.getXmlFragment('default').toArray().map((n) => n.clone()) as Array<Y.XmlElement | Y.XmlText>;
+  if (nodes.length === 0) throw new Error('replaceLiveDocContent: restored content has no nodes');
+  const connection = await inner.openDirectConnection(noteId, { restore: true });
+  try {
+    await connection.transact((doc) => {
+      const fragment = doc.getXmlFragment('default');
+      doc.transact(() => {
+        fragment.delete(0, fragment.length);
+        // Y types cannot move between docs: clone() = unintegrated deep copy.
+        fragment.insert(0, nodes);
+      });
+    });
+  } finally {
+    await connection.disconnect();
+  }
+}
+
+/**
+ * Force-persist a note's LIVE collab doc (no-op when nobody has it open or loading it).
+ * Unsaved client edits live only in memory until the store debounce fires (up to ~10s); a restore
+ * archives the DB content, so without this flush those edits would be swapped away unarchived.
+ * Context { restore: true } (no `user`): the store persists but skips snapshotPreviousVersion, because
+ * restoreNoteVersion's forced snapshot archives the flushed content after its re-read (no duplicates).
+ * DirectConnection.transact always runs the store hooks immediately.
+ * Vault docs are never live (onAuthenticate refuses them, store refuses isVault writes).
+ */
+export async function flushLiveDoc(noteId: string): Promise<void> {
+  const inner = hocuspocus.hocuspocus;
+  if (!inner.documents.has(noteId) && !inner.loadingDocuments.has(noteId)) return;
+  const connection = await inner.openDirectConnection(noteId, { restore: true });
+  try {
+    await connection.transact(() => {});
+  } finally {
+    await connection.disconnect();
+  }
+}
+
 export const hocuspocus = new Server({
   // port: 1234, // Removed to prevent standalone listening
   extensions: [
@@ -356,31 +442,11 @@ export const hocuspocus = new Server({
 
         // Fallback: convert JSON content to Yjs (for notes without ydocState yet)
         if (note.content) {
-          try {
-            const json = JSON.parse(note.content);
-            // @ts-ignore — TiptapTransformer API types incomplete
-            const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
-            const state = Y.encodeStateAsUpdate(doc);
-            return state;
-          } catch (e) {
-            logger.error(e, 'Failed to parse note content as JSON, attempting fallback');
-            try {
-              const text = note.content.replace(/<[^>]*>/g, ' ').trim();
-              const json = {
-                type: 'doc',
-                content: [{ type: 'paragraph', content: [{ type: 'text', text: text || ' ' }] }],
-              };
-              // @ts-ignore — TiptapTransformer API types incomplete
-              const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
-              return Y.encodeStateAsUpdate(tiptapDoc);
-            } catch (err) {
-              logger.error(err, 'Failed to convert legacy content');
-            }
-          }
+          return contentToYdocState(note.content);
         }
         return null;
       },
-      store: async ({ documentName, state }) => {
+      store: async ({ documentName, state, context }) => {
         try {
           // state is a Buffer/Uint8Array
           const doc = new Y.Doc();
@@ -445,7 +511,8 @@ export const hocuspocus = new Server({
           // Versioning is best-effort and runs AFTER the conditional write: a vault note (count 0 above)
           // never gets a new snapshot. A snapshot failure never loses the edit.
           try {
-            await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
+            // restore (replaceLiveDocContent): restoreNoteVersion already archived the pre-restore content
+            if (!context?.restore) await snapshotPreviousVersion(prisma, documentName, existing?.content, existing?.title ?? '');
           } catch (snapErr) {
             logger.warn({ snapErr, documentName }, 'Hocuspocus store: snapshot failed — edit already saved');
           }

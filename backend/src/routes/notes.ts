@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as noteService from '../services/note.service';
 import { shareNote } from '../services/sharing.service';
 import { listNoteVersions, restoreNoteVersion } from '../services/noteVersion.service';
+import { flushLiveDoc, replaceLiveDocContent } from '../hocuspocus';
 
 const createNoteSchema = z.object({
   id: z.string().uuid().optional(),
@@ -104,6 +105,24 @@ export default async function (fastify: FastifyInstance) {
       id: z.string().uuid(),
       versionId: z.string().uuid(),
     }).parse(request.params);
-    return restoreNoteVersion(request.user.id, id, versionId);
+    // Persist unsaved live edits (after ownership/version checks) so restore's forced snapshot archives them. Never blocks the restore.
+    const { restoredContent } = await restoreNoteVersion(request.user.id, id, versionId, {
+      beforeRestore: async () => {
+        try {
+          await flushLiveDoc(id);
+        } catch (err) {
+          request.log.warn({ err, noteId: id }, 'restore: live collab doc not flushed — unsaved edits may not be archived');
+        }
+      },
+    });
+    // An open collab session keeps the OLD Y doc in memory; its next store() would undo the restore.
+    if (restoredContent) {
+      try {
+        await replaceLiveDocContent(id, restoredContent);
+      } catch (err) {
+        request.log.error({ err, noteId: id }, 'restore: live collab doc not updated — open sessions may overwrite it');
+      }
+    }
+    return { ok: true };
   });
 }

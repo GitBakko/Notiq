@@ -1186,6 +1186,9 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "restoreLiveNote": "Restoring a version on a note open elsewhere is no longer overwritten: collaborators see the restored content immediately, without reloading",
+      "restoreArchivesCollabEdits": "Collaborators' unsaved edits are saved into the history before a restore",
+      "restoreVaultConflict": "Restore stops with a clear message if the note is moved into or out of the vault at the same moment",
       "uploadErrorReason": "When an attachment cannot be uploaded, the message now says why (e.g. unsupported file type)",
       "attachmentsSidebarLive": "The attachments panel updates immediately after uploading or deleting a file",
       "vaultSmooth": "The vault no longer freezes while browsing credentials",
@@ -1577,7 +1580,8 @@
       "notFound": "Note not found",
       "notFoundOrDenied": "Note not found or access denied",
       "notFoundOrNotPublic": "Note not found or not public",
-      "versionNotFound": "Version not found."
+      "versionNotFound": "Version not found.",
+      "restoreConflict": "The note changed while restoring. Please try again."
     },
     "notebooks": {
       "notFound": "Notebook not found",

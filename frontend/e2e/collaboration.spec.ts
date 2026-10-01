@@ -284,4 +284,95 @@ test.describe('Collaboration', () => {
       await contextB.close();
     }
   });
+
+  test('Restoring a version updates the live collab doc and is not overwritten by an open session', async ({ browser }) => {
+    test.setTimeout(180000);
+
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+
+    try {
+      const _userA = await registerAndLoginInContext(pageA, { name: 'Restore User A' });
+      const userB = await registerAndLoginInContext(pageB, { name: 'Restore User B' });
+
+      // V1: 'ORIG-' + >=200 chars (short content is never snapshotted as a version)
+      const origText = 'ORIG-' + 'a'.repeat(220);
+      await createNoteAndWait(pageA, 'Restore Live Note', origText);
+      const noteId = new URL(pageA.url()).searchParams.get('noteId');
+      expect(noteId).toBeTruthy();
+
+      // Share with WRITE permission and let B accept
+      await openNoteShareModal(pageA);
+      const emailInput = pageA.locator('input[placeholder="Enter email address"]');
+      await emailInput.locator('..').locator('select').selectOption('WRITE');
+      await emailInput.fill(userB.email);
+      await emailInput.locator('..').locator('button[type="submit"]').click();
+      await expect(pageA.getByText('Invitation sent successfully')).toBeVisible({ timeout: 10000 });
+      await pageA.locator('div.fixed.inset-0.z-50').click({ position: { x: 8, y: 8 } });
+
+      await pageB.goto('/shared');
+      await pageB.waitForLoadState('networkidle');
+      await expect(pageB.getByText('Restore Live Note')).toBeVisible({ timeout: 15000 });
+      await pageB.getByRole('button', { name: 'Accept' }).click();
+      await expect(pageB.getByText('INVITATION', { exact: true })).not.toBeVisible({ timeout: 10000 });
+
+      // A replaces the text; wait for the store() that archives V1
+      const editorA = pageA.locator('.ProseMirror');
+      await editorA.fill('CHANGED-' + 'b'.repeat(220));
+
+      const tokenA: string = await pageA.evaluate(
+        () => JSON.parse(localStorage.getItem('auth-storage') ?? '{}').state?.token,
+      );
+      const auth = { Authorization: `Bearer ${tokenA}` };
+      const findV1 = async () => {
+        const res = await api.get(`/api/notes/${noteId}/versions`, { headers: auth });
+        if (!res.ok()) return undefined;
+        const versions: Array<{ id: string; content: string }> = await res.json();
+        return versions.find((v) => v.content.includes('ORIG-'));
+      };
+      await expect.poll(async () => !!(await findV1()), { timeout: 30000 }).toBe(true);
+      const v1 = await findV1();
+      expect(v1).toBeTruthy();
+
+      // B opens the note (live collab session)
+      await pageB.goto(`/notes?noteId=${noteId}`);
+      const editorB = pageB.locator('.ProseMirror');
+      await expect(editorB).toContainText('CHANGED-', { timeout: 15000 });
+
+      // A restores V1 via API; B must see it without reloading
+      const restoreRes = await api.post(`/api/notes/${noteId}/versions/${v1!.id}/restore`, { headers: auth });
+      expect(restoreRes.ok()).toBeTruthy();
+      await expect(editorB).toContainText('ORIG-', { timeout: 5000 });
+
+      // B types: its session must not write the old content back
+      await editorB.click();
+      await pageB.keyboard.press('ControlOrMeta+End');
+      await pageB.keyboard.type('X');
+      // Wait until B's edit is persisted (store() ran) instead of a fixed sleep
+      await expect.poll(async () => {
+        const r = await api.get(`/api/notes/${noteId}`, { headers: auth });
+        return r.ok() ? ((await r.json()).content as string).includes('X"') : false;
+      }, { timeout: 30000 }).toBe(true);
+
+      await pageA.reload();
+      await pageB.reload();
+      for (const page of [pageA, pageB]) {
+        const editor = page.locator('.ProseMirror');
+        await expect(editor).toContainText('ORIG-', { timeout: 15000 });
+        await expect(editor).not.toContainText('CHANGED-');
+      }
+
+      const noteRes = await api.get(`/api/notes/${noteId}`, { headers: auth });
+      const note = await noteRes.json();
+      expect(note.content).toContain('ORIG-');
+      expect(note.content).not.toContain('CHANGED-');
+    } finally {
+      await api.dispose();
+      await contextA.close();
+      await contextB.close();
+    }
+  });
 });

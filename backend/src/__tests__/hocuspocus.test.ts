@@ -353,6 +353,14 @@ describe('Hocuspocus vault guards', () => {
       expect(prismaMock.note.updateMany.mock.invocationCallOrder[0]).toBeLessThan((snapshotPreviousVersion as any).mock.invocationCallOrder[0]);
     });
 
+    it('context { restore: true } (live doc replace): writes but takes NO snapshot', async () => {
+      const ext = await run();
+      prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+      await ext.store({ documentName: 'n1', state: new Uint8Array([1, 2, 3]), context: { restore: true } });
+      expect(prismaMock.note.updateMany).toHaveBeenCalled();
+      expect(snapshotPreviousVersion).not.toHaveBeenCalled();
+    });
+
     it('a failing write never throws out of store() and takes no snapshot', async () => {
       const ext = await run();
       prismaMock.note.updateMany.mockRejectedValue(new Error('db down'));

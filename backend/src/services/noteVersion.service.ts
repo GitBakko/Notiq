@@ -1,7 +1,7 @@
 import prisma from '../plugins/prisma';
 import { Prisma } from '@prisma/client';
 import { extractTextFromTipTapJson } from '../utils/extractText';
-import { NotFoundError } from '../utils/errors';
+import { NotFoundError, ConflictError } from '../utils/errors';
 import logger from '../utils/logger';
 import { getVaultGuard, assertVaultContent } from './vault.service';
 
@@ -83,8 +83,11 @@ export async function listNoteVersions(userId: string, noteId: string): Promise<
 }
 
 /** Restore a version: archive current content first, then write the old content back. */
-export async function restoreNoteVersion(userId: string, noteId: string, versionId: string): Promise<{ ok: true }> {
-  const note = await prisma.note.findFirst({
+export async function restoreNoteVersion(
+  userId: string, noteId: string, versionId: string,
+  opts?: { beforeRestore?: () => Promise<void> },
+): Promise<{ ok: true; restoredContent: string | null }> {
+  let note = await prisma.note.findFirst({
     where: { id: noteId, userId },
     select: { id: true, content: true, title: true, isEncrypted: true, isVault: true },
   });
@@ -96,6 +99,22 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
   const guard = note.isVault ? await getVaultGuard(userId) : null;
   if (guard) assertVaultContent(version.content, guard);
 
+  // Hook runs only after every check passed (e.g. flush live collab edits to the DB). It may change
+  // note.content, so re-read it: the forced snapshot below must archive the flushed content.
+  if (opts?.beforeRestore) {
+    await opts.beforeRestore();
+    const fresh = await prisma.note.findFirst({
+      where: { id: noteId, userId },
+      select: { id: true, content: true, title: true, isEncrypted: true, isVault: true },
+    });
+    if (!fresh) throw new NotFoundError('errors.notes.notFound');
+    // Vault state flipped since the guard/version checks above: abort, write nothing.
+    if (fresh.isVault !== note.isVault || fresh.isEncrypted !== note.isEncrypted) {
+      throw new ConflictError('errors.notes.restoreConflict');
+    }
+    note = fresh;
+  }
+
   // Archive what we're about to overwrite so a restore is itself undoable.
   // Force-bypass the throttle: a restore is an explicit destructive action and MUST always
   // preserve the current content, even if a snapshot was taken seconds ago.
@@ -106,10 +125,15 @@ export async function restoreNoteVersion(userId: string, noteId: string, version
   }
 
   const searchText = (note.isEncrypted || note.isVault) ? null : extractTextFromTipTapJson(version.content);
-  await prisma.note.update({
-    where: { id: noteId },
+  // Conditional write: if the owner moved the note into/out of the vault since the (re-)read, nothing
+  // matches and we abort, so plaintext never lands in a vault note (or ciphertext in a plain one).
+  const { count } = await prisma.note.updateMany({
+    where: { id: noteId, userId, isVault: note.isVault, isEncrypted: note.isEncrypted },
     // Null ydocState so the next Hocuspocus fetch rebuilds the Yjs doc from restored content.
     data: { content: version.content, title: guard ? '' : version.title, searchText, ydocState: null, updatedAt: new Date() },
   });
-  return { ok: true };
+  if (count === 0) throw new ConflictError('errors.notes.restoreConflict');
+  // onAuthenticate refuses only isVault docs (never live); encrypted notes (isEncrypted, set only by vault
+  // flows) are skipped because their content is ciphertext, not TipTap JSON.
+  return { ok: true, restoredContent: (note.isEncrypted || note.isVault) ? null : version.content };
 }

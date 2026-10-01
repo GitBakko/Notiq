@@ -90,7 +90,7 @@ describe('restoreNoteVersion', () => {
     prismaMock.note.findFirst.mockReset();
     prismaMock.noteVersion.findUnique.mockReset();
     prismaMock.noteVersion.findFirst.mockReset();
-    prismaMock.note.update.mockReset();
+    prismaMock.note.updateMany.mockReset();
   });
 
   it('snapshots current content, writes the version content back, and nulls ydocState', async () => {
@@ -98,11 +98,24 @@ describe('restoreNoteVersion', () => {
     prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
     prismaMock.noteVersion.findFirst.mockResolvedValue(null);
     prismaMock.noteVersion.findMany.mockResolvedValue([]);
-    prismaMock.note.update.mockResolvedValue({});
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
     await restoreNoteVersion('u1', 'note-1', 'v1');
-    expect(prismaMock.note.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prismaMock.note.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ content: 'D'.repeat(200), ydocState: null }),
     }));
+  });
+
+  it('writes conditionally (userId, isVault, isEncrypted from the read); count 0 -> 409 restoreConflict', async () => {
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: true });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.vaultKeyring.findUnique.mockResolvedValue(null);
+    prismaMock.note.updateMany.mockResolvedValue({ count: 0 });
+    await expect(restoreNoteVersion('u1', 'note-1', 'v1'))
+      .rejects.toMatchObject({ statusCode: 409, message: 'errors.notes.restoreConflict' });
+    expect(prismaMock.note.updateMany.mock.calls[0][0].where)
+      .toEqual({ id: 'note-1', userId: 'u1', isVault: true, isEncrypted: false });
   });
 
   it('writes searchText null for a vault note, but keeps it for a normal note', async () => {
@@ -110,15 +123,32 @@ describe('restoreNoteVersion', () => {
     prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: tiptap, title: 'old' });
     prismaMock.noteVersion.findFirst.mockResolvedValue(null);
     prismaMock.noteVersion.findMany.mockResolvedValue([]);
-    prismaMock.note.update.mockResolvedValue({});
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
 
     prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: true });
     await restoreNoteVersion('u1', 'note-1', 'v1');
-    expect(prismaMock.note.update.mock.calls[0][0].data.searchText).toBeNull();
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.searchText).toBeNull();
 
     prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: false });
     await restoreNoteVersion('u1', 'note-1', 'v1');
-    expect(prismaMock.note.update.mock.calls[1][0].data.searchText).toContain('secret words');
+    expect(prismaMock.note.updateMany.mock.calls[1][0].data.searchText).toContain('secret words');
+  });
+
+  it('returns restoredContent for a plain note, null for vault/encrypted', async () => {
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+    const base = { id: 'note-1', content: 'C'.repeat(200), title: 'now' };
+
+    prismaMock.note.findFirst.mockResolvedValue({ ...base, isEncrypted: false, isVault: false });
+    expect(await restoreNoteVersion('u1', 'note-1', 'v1')).toEqual({ ok: true, restoredContent: 'D'.repeat(200) });
+
+    prismaMock.note.findFirst.mockResolvedValue({ ...base, isEncrypted: true, isVault: false });
+    expect((await restoreNoteVersion('u1', 'note-1', 'v1')).restoredContent).toBeNull();
+
+    prismaMock.note.findFirst.mockResolvedValue({ ...base, isEncrypted: false, isVault: true });
+    expect((await restoreNoteVersion('u1', 'note-1', 'v1')).restoredContent).toBeNull();
   });
 
   it('throws when the version does not belong to the note', async () => {
@@ -130,5 +160,87 @@ describe('restoreNoteVersion', () => {
   it('throws when the note is not owned by the user', async () => {
     prismaMock.note.findFirst.mockResolvedValue(null);
     await expect(restoreNoteVersion('u2', 'note-1', 'v1')).rejects.toThrow();
+  });
+
+  describe('beforeRestore hook', () => {
+    const okNote = { id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: false };
+    const okVersion = { id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' };
+
+    it('runs once, after the checks, before the forced snapshot and the note update', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(okNote);
+      prismaMock.noteVersion.findUnique.mockResolvedValue(okVersion);
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
+      prismaMock.noteVersion.create.mockReset();
+      prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+      const beforeRestore = vi.fn().mockResolvedValue(undefined);
+      await restoreNoteVersion('u1', 'note-1', 'v1', { beforeRestore });
+      expect(beforeRestore).toHaveBeenCalledTimes(1);
+      const hookOrder = beforeRestore.mock.invocationCallOrder[0];
+      expect(hookOrder).toBeGreaterThan(prismaMock.noteVersion.findUnique.mock.invocationCallOrder[0]);
+      expect(hookOrder).toBeLessThan(prismaMock.noteVersion.create.mock.invocationCallOrder[0]);
+      expect(hookOrder).toBeLessThan(prismaMock.note.updateMany.mock.invocationCallOrder[0]);
+    });
+
+    it('snapshots the content as re-read after the hook (flushed live edits)', async () => {
+      prismaMock.note.findFirst
+        .mockResolvedValueOnce(okNote)
+        .mockResolvedValueOnce({ ...okNote, content: 'F'.repeat(200) });
+      prismaMock.noteVersion.findUnique.mockResolvedValue(okVersion);
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
+      prismaMock.noteVersion.create.mockReset();
+      prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+      await restoreNoteVersion('u1', 'note-1', 'v1', { beforeRestore: async () => {} });
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ content: 'F'.repeat(200) }),
+      });
+    });
+
+    it('is NOT called when the note is not owned / not found', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(null);
+      const beforeRestore = vi.fn();
+      await expect(restoreNoteVersion('u2', 'note-1', 'v1', { beforeRestore })).rejects.toThrow();
+      expect(beforeRestore).not.toHaveBeenCalled();
+    });
+
+    it('is NOT called when the version is not found', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(okNote);
+      prismaMock.noteVersion.findUnique.mockResolvedValue(null);
+      const beforeRestore = vi.fn();
+      await expect(restoreNoteVersion('u1', 'note-1', 'v1', { beforeRestore })).rejects.toThrow();
+      expect(beforeRestore).not.toHaveBeenCalled();
+    });
+
+    it('is NOT called when the vault guard rejects the version content', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...okNote, isVault: true });
+      prismaMock.noteVersion.findUnique.mockResolvedValue(okVersion); // plaintext, not an envelope
+      prismaMock.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', epoch: 1 });
+      const beforeRestore = vi.fn();
+      await expect(restoreNoteVersion('u1', 'note-1', 'v1', { beforeRestore })).rejects.toThrow();
+      expect(beforeRestore).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['isVault', { isVault: true }],
+      ['isEncrypted', { isEncrypted: true }],
+    ])('aborts with a conflict, writing nothing, when %s flips during the hook', async (_n, flip) => {
+      prismaMock.note.findFirst
+        .mockResolvedValueOnce(okNote)
+        .mockResolvedValueOnce({ ...okNote, ...flip });
+      prismaMock.noteVersion.findUnique.mockResolvedValue(okVersion);
+      prismaMock.noteVersion.create.mockReset();
+      prismaMock.note.updateMany.mockReset();
+      await expect(restoreNoteVersion('u1', 'note-1', 'v1', { beforeRestore: async () => {} }))
+        .rejects.toMatchObject({ statusCode: 409, message: 'errors.notes.restoreConflict' });
+      expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
+      expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('works when opts is omitted', async () => {
+      prismaMock.note.findFirst.mockResolvedValue(okNote);
+      prismaMock.noteVersion.findUnique.mockResolvedValue(okVersion);
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
+      prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+      await expect(restoreNoteVersion('u1', 'note-1', 'v1')).resolves.toEqual({ ok: true, restoredContent: 'D'.repeat(200) });
+    });
   });
 });

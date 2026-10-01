@@ -810,6 +810,9 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "restoreLiveNote": "Il ripristino di una versione su una nota aperta altrove non viene più sovrascritto: i collaboratori vedono subito il contenuto ripristinato, senza ricaricare.",
+      "restoreArchivesCollabEdits": "Le modifiche non ancora salvate dei collaboratori vengono archiviate nella cronologia prima del ripristino.",
+      "restoreVaultConflict": "Il ripristino si ferma con un messaggio chiaro se nello stesso momento la nota viene spostata dentro o fuori dal vault.",
       "uploadErrorReason": "Quando un allegato non si può caricare, il messaggio ora spiega il motivo (es. tipo di file non supportato)",
       "attachmentsSidebarLive": "Il pannello allegati si aggiorna subito dopo il caricamento o l'eliminazione di un file",
       "vaultSmooth": "Il vault non si blocca più a scatti durante la navigazione tra le credenziali",
@@ -1577,7 +1580,8 @@
       "notFound": "Nota non trovata",
       "notFoundOrDenied": "Nota non trovata o accesso negato",
       "notFoundOrNotPublic": "Nota non trovata o non pubblica",
-      "versionNotFound": "Versione non trovata."
+      "versionNotFound": "Versione non trovata.",
+      "restoreConflict": "La nota è cambiata durante il ripristino. Riprova."
     },
     "notebooks": {
       "notFound": "Taccuino non trovato",

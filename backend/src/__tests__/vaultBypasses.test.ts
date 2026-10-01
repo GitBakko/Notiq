@@ -27,7 +27,7 @@ function setVersion(content: string) {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mp.note.update.mockResolvedValue({});
+  mp.note.updateMany.mockResolvedValue({ count: 1 });
   mp.noteVersion.findFirst.mockResolvedValue(null);
   mp.noteVersion.findMany.mockResolvedValue([]);
   mp.noteVersion.deleteMany.mockResolvedValue({ count: 0 });
@@ -45,15 +45,15 @@ describe('restoreNoteVersion su nota vault con keyring', () => {
     expect(e.statusCode).toBe(422);
     expect(e.message).toBe('errors.vault.plaintextRejected');
     expect(mp.noteVersion.create).not.toHaveBeenCalled();
-    expect(mp.note.update).not.toHaveBeenCalled();
+    expect(mp.note.updateMany).not.toHaveBeenCalled();
   });
 
   it('envelope dell epoch corrente con READY: update con title vuoto e content envelope', async () => {
     mp.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', epoch: EPOCH });
     setVersion(env());
     await restoreNoteVersion(U, 'n1', 'v1');
-    expect(mp.note.update).toHaveBeenCalledTimes(1);
-    const data = mp.note.update.mock.calls[0][0].data;
+    expect(mp.note.updateMany).toHaveBeenCalledTimes(1);
+    const data = mp.note.updateMany.mock.calls[0][0].data;
     expect(data.title).toBe('');
     expect(data.content).toBe(env());
     expect(data.searchText).toBeNull();
@@ -67,7 +67,7 @@ describe('restoreNoteVersion su nota vault con keyring', () => {
     expect(e.statusCode).toBe(422);
     expect(e.message).toBe('errors.vault.stale');
     expect(mp.noteVersion.create).not.toHaveBeenCalled();
-    expect(mp.note.update).not.toHaveBeenCalled();
+    expect(mp.note.updateMany).not.toHaveBeenCalled();
   });
 
   it('RESET_PENDING: 422 notReady', async () => {
@@ -77,7 +77,7 @@ describe('restoreNoteVersion su nota vault con keyring', () => {
     expect(e.statusCode).toBe(422);
     expect(e.message).toBe('errors.vault.notReady');
     expect(mp.noteVersion.create).not.toHaveBeenCalled();
-    expect(mp.note.update).not.toHaveBeenCalled();
+    expect(mp.note.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -87,8 +87,8 @@ describe('restoreNoteVersion senza keyring', () => {
     mp.vaultKeyring.findUnique.mockResolvedValue(null);
     setVersion('legacy-cipher');
     await restoreNoteVersion(U, 'n1', 'v1');
-    expect(mp.note.update.mock.calls[0][0].data.title).toBe('Old title');
-    expect(mp.note.update.mock.calls[0][0].data.content).toBe('legacy-cipher');
+    expect(mp.note.updateMany.mock.calls[0][0].data.title).toBe('Old title');
+    expect(mp.note.updateMany.mock.calls[0][0].data.content).toBe('legacy-cipher');
   });
 
   it('nota normale: vaultKeyring.findUnique non chiamato', async () => {
@@ -96,7 +96,7 @@ describe('restoreNoteVersion senza keyring', () => {
     setVersion('{"type":"doc","content":[]}');
     await restoreNoteVersion(U, 'n1', 'v1');
     expect(mp.vaultKeyring.findUnique).not.toHaveBeenCalled();
-    expect(mp.note.update).toHaveBeenCalledTimes(1);
+    expect(mp.note.updateMany).toHaveBeenCalledTimes(1);
   });
 });
 
