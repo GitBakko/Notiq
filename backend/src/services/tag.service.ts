@@ -3,6 +3,12 @@ import { NotFoundError } from '../utils/errors';
 import { checkNoteAccess } from './note.service';
 
 export const createTag = async (userId: string, name: string, isVault: boolean = false, id?: string) => {
+  // P2: idempotent replay of the FE sync CREATE (same id, same user) returns the existing row; a foreign id
+  // falls through to create and hits the unique error (route -> 409) as before.
+  if (id) {
+    const replay = await prisma.tag.findFirst({ where: { id, userId } });
+    if (replay) return replay;
+  }
   return prisma.tag.create({
     data: {
       id,

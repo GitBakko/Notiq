@@ -868,7 +868,7 @@ export const updateSharedNoteContent = async (
       // Snapshot the OLD content before overwriting — best-effort, throttled (not forced)
       // so frequent collaborator saves are deduped alongside the Hocuspocus store() snapshot.
       try {
-        await snapshotPreviousVersion(prisma, noteId, note.content, note.title);
+        await snapshotPreviousVersion(prisma, noteId, note.content, note.title, { writer: `rest:${userId}` });
       } catch (snapErr) {
         logger.warn({ snapErr, noteId }, 'updateSharedNoteContent: snapshot failed — continuing');
       }

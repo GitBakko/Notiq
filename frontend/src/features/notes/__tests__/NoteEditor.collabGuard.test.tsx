@@ -127,7 +127,7 @@ describe('NoteEditor collab pre-sync guard', () => {
       await act(async () => { await Promise.resolve(); });
     };
 
-    it('shows the archiveBusy toast (not sharedSaveFailed) and retries ONCE after 2 minutes with the latest content', async () => {
+    it('shows the archiveBusy toast (not sharedSaveFailed) and retries after 2 minutes with the latest content', async () => {
       const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
       toast.error.mockClear();
       h.saveSharedNoteData.mockReset().mockRejectedValueOnce(busy()).mockResolvedValue(undefined);
@@ -145,6 +145,34 @@ describe('NoteEditor collab pre-sync guard', () => {
       await act(async () => { vi.advanceTimersByTime(2_000); });
       expect(h.saveSharedNoteData.mock.calls.length).toBeGreaterThan(before);
       expect(h.saveSharedNoteData).toHaveBeenLastCalledWith('n1', { content: text('b') });
+    });
+
+    // 1.13.3 L1: the retry itself is re-armed while the answer is still archiveBusy (no cap, note stays open).
+    it('re-arms the retry while the answer is still archiveBusy: busy, busy, ok -> 3 calls, then stops', async () => {
+      h.saveSharedNoteData.mockReset().mockRejectedValueOnce(busy()).mockRejectedValueOnce(busy()).mockResolvedValue(undefined);
+      render(<NoteEditor note={recipient()} />);
+
+      await syncedAndTyped(text('a'));
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(1);
+      await act(async () => { vi.advanceTimersByTime(120_001); });
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(2); // retry 1: busy again
+      await act(async () => { vi.advanceTimersByTime(120_001); });
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(3); // retry 2: ok
+      await act(async () => { vi.advanceTimersByTime(600_000); });
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(3);
+    });
+
+    it('a note change stops the re-armed retry (no further calls)', async () => {
+      h.saveSharedNoteData.mockReset().mockRejectedValue(busy());
+      const { rerender } = render(<NoteEditor note={recipient()} />);
+      await syncedAndTyped(text('a'));
+      await act(async () => { vi.advanceTimersByTime(120_001); });
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(2);
+
+      rerender(<NoteEditor note={mkNote({ id: 'n2', userId: 'u2', ownership: 'shared', sharedPermission: 'WRITE', sharedWith: [] })} />);
+      h.saveSharedNoteData.mockClear();
+      await act(async () => { vi.advanceTimersByTime(600_000); });
+      expect(h.saveSharedNoteData).not.toHaveBeenCalled();
     });
 
     // K4: the retry reads the CURRENT provider (ref), not the one captured when the timer was armed.
@@ -172,6 +200,39 @@ describe('NoteEditor collab pre-sync guard', () => {
       unmount();
       await act(async () => { vi.advanceTimersByTime(130_000); });
       expect(h.saveSharedNoteData).toHaveBeenCalledTimes(1);
+    });
+
+    // 1.13.3 L5: a save in flight when the note unmounts and then rejects busy must not arm a retry.
+    it('save in flight, unmount, then busy rejection -> no retry is armed', async () => {
+      let rejectSave: (e: unknown) => void = () => {};
+      h.saveSharedNoteData.mockReset().mockImplementationOnce(() => new Promise((_, rej) => { rejectSave = rej; }));
+      const { unmount } = render(<NoteEditor note={recipient()} />);
+      await syncedAndTyped(text('a'));
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(1);
+      unmount();
+      await act(async () => { rejectSave(busy()); await Promise.resolve(); });
+      await act(async () => { vi.advanceTimersByTime(300_000); });
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(1);
+    });
+
+    // N3: a retry in flight when note.id changes and then rejects busy must not arm a timer for the OLD id.
+    it('N3: retry in flight, note.id changes, then busy rejection -> no save to the old id, no new timer', async () => {
+      let rejectRetry: (e: unknown) => void = () => {};
+      h.saveSharedNoteData.mockReset()
+        .mockRejectedValueOnce(busy())
+        .mockImplementationOnce(() => new Promise((_, rej) => { rejectRetry = rej; }))
+        .mockResolvedValue(undefined);
+      const { rerender } = render(<NoteEditor note={recipient()} />);
+      await syncedAndTyped(text('a'));
+      await act(async () => { vi.advanceTimersByTime(120_001); });
+      expect(h.saveSharedNoteData).toHaveBeenCalledTimes(2); // retry in flight
+
+      rerender(<NoteEditor note={mkNote({ id: 'n2', userId: 'u2', ownership: 'shared', sharedPermission: 'WRITE', sharedWith: [] })} />);
+      act(() => { h.providers[h.providers.length - 1].opts.onSynced?.(); });
+      await act(async () => { rejectRetry(busy()); await Promise.resolve(); });
+      await act(async () => { vi.advanceTimersByTime(300_000); });
+      // (n2 may save its own carried-over debounced content; what must never happen is another save to n1)
+      expect(h.saveSharedNoteData.mock.calls.slice(2).filter((c) => c[0] === 'n1')).toEqual([]);
     });
   });
 

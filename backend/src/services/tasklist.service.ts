@@ -69,7 +69,10 @@ async function assertWriteAccess(userId: string, taskListId: string): Promise<vo
     select: { userId: true },
   });
 
-  if (taskList && taskList.userId === userId) return;
+  // S1: lista inesistente = 404 (non 403), cosi' il sync FE puo' purgare gli item di una lista gia' cancellata
+  // S1: lista inesistente = 404 (non 403), cosi' il sync FE puo' purgare gli item di una lista gia' cancellata
+  if (!taskList) throw new NotFoundError('errors.tasks.listNotFound');
+  if (taskList.userId === userId) return;
 
   const shared = await prisma.sharedTaskList.findUnique({
     where: { taskListId_userId: { taskListId, userId } },
@@ -152,6 +155,12 @@ async function notifyCollaborators(
 // ── TaskList CRUD ─────────────────────────────────────────────────
 
 export const createTaskList = async (userId: string, title: string, id?: string) => {
+  // R4: idempotent replay of the FE sync CREATE (same id, same owner) returns the existing row; a foreign id
+  // falls through to create and fails as before.
+  if (id) {
+    const replay = await prisma.taskList.findFirst({ where: { id, userId }, include: { items: ITEMS_INCLUDE } });
+    if (replay) return replay;
+  }
   return prisma.taskList.create({
     data: {
       ...(id ? { id } : {}),
@@ -236,7 +245,8 @@ export const deleteTaskList = async (userId: string, id: string) => {
     select: { userId: true },
   });
 
-  if (!taskList || taskList.userId !== userId) {
+  if (!taskList) throw new NotFoundError('errors.tasks.listNotFound');
+  if (taskList.userId !== userId) {
     throw new ForbiddenError('errors.common.accessDenied');
   }
 
@@ -254,6 +264,13 @@ export const addTaskItem = async (
   data: { id?: string; text: string; priority?: 'LOW' | 'MEDIUM' | 'HIGH'; dueDate?: string | null }
 ) => {
   await assertWriteAccess(userId, taskListId);
+
+  // R4: idempotent replay of the FE sync CREATE (same id, same list; write access just verified): no duplicate,
+  // no second notification / kanban card.
+  if (data.id) {
+    const replay = await prisma.taskItem.findFirst({ where: { id: data.id, taskListId } });
+    if (replay) return replay;
+  }
 
   const maxPosition = await prisma.taskItem.aggregate({
     where: { taskListId },

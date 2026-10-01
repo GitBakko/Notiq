@@ -23,6 +23,16 @@ export async function createCard(
   });
   if (!column) throw new NotFoundError('errors.kanban.columnNotFound');
 
+  // R4: idempotent replay of the FE sync CREATE (same id, anywhere on the same board: the card may have been moved
+  // since; the route verified WRITE on this board): return the existing card, no create, no broadcast/activity.
+  if (id) {
+    const replay = await prisma.kanbanCard.findFirst({
+      where: { id, column: { boardId: column.boardId } },
+      select: cardWithAssigneeSelect,
+    });
+    if (replay) return transformCard(replay);
+  }
+
   // aggregate + create in ONE transaction: a read-then-write split across two
   // round trips lets two concurrent creates read the same max and write the
   // same position.

@@ -3,6 +3,13 @@ import { ConflictError, NotFoundError } from '../utils/errors';
 import { logEvent } from './audit.service';
 
 export const createNotebook = async (userId: string, name: string, id?: string) => {
+  // P2: idempotent replay of the FE sync CREATE (same id, same user) returns the row BEFORE the name check
+  // (the name now belongs to this very row). Scoped to the caller: a foreign id falls through to create as before.
+  if (id) {
+    const replay = await prisma.notebook.findFirst({ where: { id, userId } });
+    if (replay) return replay;
+  }
+
   const existing = await prisma.notebook.findFirst({
     where: { userId, name },
   });

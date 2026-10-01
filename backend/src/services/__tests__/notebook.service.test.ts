@@ -48,6 +48,35 @@ describe('createNotebook', () => {
     expect(result).toEqual(created);
   });
 
+  // P2: replay of the same create (same id, same user) is idempotent, even if the name now "exists" (it is itself)
+  it('P2: replay with the same id and user returns the existing row, no name conflict, no create', async () => {
+    const existing = { id: 'nb-replay', name: 'Work', userId: USER_ID };
+    prismaMock.notebook.findFirst.mockImplementation(async ({ where }: any) =>
+      where.id === 'nb-replay' && where.userId === USER_ID ? existing : where.name === 'Work' ? existing : null);
+
+    const result = await createNotebook(USER_ID, 'Work', 'nb-replay');
+
+    expect(result).toEqual(existing);
+    expect(prismaMock.notebook.create).not.toHaveBeenCalled();
+  });
+
+  it('P2: same id owned by another user is not returned (create runs and its error propagates)', async () => {
+    prismaMock.notebook.findFirst.mockResolvedValue(null); // scoped to (id, userId): nothing for this user
+    const p2002 = Object.assign(new Error('unique'), { code: 'P2002' });
+    prismaMock.notebook.create.mockRejectedValue(p2002);
+
+    await expect(createNotebook(USER_ID, 'Work', 'foreign-id')).rejects.toThrow('unique');
+    expect(prismaMock.notebook.findFirst).toHaveBeenCalledWith({ where: { id: 'foreign-id', userId: USER_ID } });
+  });
+
+  it('P2: duplicate name with a different id still throws nameExists', async () => {
+    prismaMock.notebook.findFirst.mockImplementation(async ({ where }: any) =>
+      where.id ? null : { id: 'other', name: 'Work', userId: USER_ID });
+
+    await expect(createNotebook(USER_ID, 'Work', 'new-id')).rejects.toThrow('errors.notebooks.nameExists');
+    expect(prismaMock.notebook.create).not.toHaveBeenCalled();
+  });
+
   it('should throw when a notebook with the same name already exists', async () => {
     prismaMock.notebook.findFirst.mockResolvedValue({
       id: 'existing',

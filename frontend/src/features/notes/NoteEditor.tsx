@@ -145,14 +145,47 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         toast.error(t(key), { id: 'shared-save-failed' });
     }, [t, note.id]);
 
-    // J4: one delayed retry of a shared-note content save refused with archiveBusy.
+    // J4: delayed retry of a shared-note content save refused with archiveBusy. L1 (1.13.3): re-armed while the answer
+    // is still archiveBusy, without a cap, for as long as the note stays open.
     const archiveBusyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const archiveBusyStoppedRef = useRef(false);
     const latestContentRef = useRef(contentInput);
     latestContentRef.current = contentInput;
-    useEffect(() => () => {
-        if (archiveBusyTimerRef.current) clearTimeout(archiveBusyTimerRef.current);
-        archiveBusyTimerRef.current = null;
+    useEffect(() => {
+        archiveBusyStoppedRef.current = false;
+        return () => {
+            archiveBusyStoppedRef.current = true; // an in-flight retry must not re-arm after unmount / note change
+            if (archiveBusyTimerRef.current) clearTimeout(archiveBusyTimerRef.current);
+            archiveBusyTimerRef.current = null;
+        };
     }, [note.id]);
+    const noteIdRef = useRef(note.id);
+    noteIdRef.current = note.id;
+    const scheduleArchiveBusyRetry = useCallback(() => {
+        if (archiveBusyStoppedRef.current || archiveBusyTimerRef.current) return;
+        const forId = note.id; // N3: the effect resets "stopped" for the new note, so also compare ids
+        const arm = () => {
+            archiveBusyTimerRef.current = setTimeout(() => {
+                archiveBusyTimerRef.current = null;
+                // K4: read the CURRENT provider (ref), not the one captured when the timer was set.
+                if (noteIdRef.current !== forId) return;
+                const currentProvider = providerRef.current;
+                if (!canPersistEditorContent({
+                    hasProvider: !!currentProvider,
+                    hasSyncedOnce: providerSyncedOnceRef.current || currentProvider?.isSynced === true,
+                })) return;
+                if (currentProvider?.isSynced === true && currentProvider?.isAuthenticated === true) return; // Hocuspocus owns it now
+                saveSharedNoteData(note.id, { content: latestContentRef.current })
+                    .then(() => { sharedSaveFailedNotifiedRef.current = false; })
+                    .catch((err) => {
+                        if (noteIdRef.current !== forId) return;
+                        notifySharedSaveFailure(err);
+                        if (isArchiveBusyError(err) && !archiveBusyStoppedRef.current && !archiveBusyTimerRef.current) arm();
+                    });
+            }, ARCHIVE_BUSY_RETRY_MS);
+        };
+        arm();
+    }, [note.id, notifySharedSaveFailure]);
 
     // -- Save Effects --
     useEffect(() => {
@@ -208,21 +241,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             // notes bypass the sync queue, so no banner covers this path)
                             .catch((err) => {
                                 notifySharedSaveFailure(err);
-                                if (isArchiveBusyError(err) && !archiveBusyTimerRef.current) {
-                                    archiveBusyTimerRef.current = setTimeout(() => {
-                                        archiveBusyTimerRef.current = null;
-                                        // K4: read the CURRENT provider (ref), not the one captured when the timer was set.
-                                        const currentProvider = providerRef.current;
-                                        if (!canPersistEditorContent({
-                                            hasProvider: !!currentProvider,
-                                            hasSyncedOnce: providerSyncedOnceRef.current || currentProvider?.isSynced === true,
-                                        })) return;
-                                        if (currentProvider?.isSynced === true && currentProvider?.isAuthenticated === true) return; // Hocuspocus owns it now
-                                        saveSharedNoteData(note.id, { content: latestContentRef.current })
-                                            .then(() => { sharedSaveFailedNotifiedRef.current = false; })
-                                            .catch(notifySharedSaveFailure);
-                                    }, ARCHIVE_BUSY_RETRY_MS);
-                                }
+                                if (isArchiveBusyError(err)) scheduleArchiveBusyRetry();
                             });
                     }
                 }
@@ -230,7 +249,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 updateContent(debouncedContent);
             }
         }
-    }, [debouncedContent, note.id, provider, note.isTrashed, isSharedNote, sharedPermission, updateContent, notifySharedSaveFailure]);
+    }, [debouncedContent, note.id, provider, note.isTrashed, isSharedNote, sharedPermission, updateContent, notifySharedSaveFailure, scheduleArchiveBusyRetry]);
 
 
     // -- Hocuspocus / Chat Logic --

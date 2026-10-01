@@ -47,15 +47,19 @@ vi.mock('../../utils/ydoc', () => ({
   rebaseYdocState: vi.fn(() => null),
 }));
 
-vi.mock('../noteVersion.service', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../noteVersion.service')>()),
-  archiveRestWriteWhileLive: vi.fn(),
-}));
+vi.mock('../noteVersion.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../noteVersion.service')>();
+  return {
+    ...actual,
+    archiveRestWriteWhileLive: vi.fn(),
+    snapshotPreviousVersion: vi.fn(actual.snapshotPreviousVersion),
+  };
+});
 
 import { disconnectUser } from '../kanbanSSE';
 import { disconnectUserFromNote, hocuspocus } from '../../hocuspocus';
 import { rebaseYdocState } from '../../utils/ydoc';
-import { archiveRestWriteWhileLive } from '../noteVersion.service';
+import { archiveRestWriteWhileLive, snapshotPreviousVersion, __resetSnapshotStateForTests } from '../noteVersion.service';
 import * as auditService from '../audit.service';
 import * as emailService from '../email.service';
 import * as notificationService from '../notification.service';
@@ -898,6 +902,7 @@ describe('updateSharedNoteContent', () => {
   const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 
   beforeEach(() => {
+    __resetSnapshotStateForTests(); // the snapshot throttle is module-level in-memory state
     prismaMock.sharedNote.findUnique.mockResolvedValue({ status: 'ACCEPTED', permission: 'WRITE' });
     prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared' });
     prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
@@ -922,6 +927,14 @@ describe('updateSharedNoteContent', () => {
       where: { id: 'note-1', isVault: false },
       data: expect.objectContaining({ content: newGood, ydocState: null }),
     }));
+  });
+
+  it('1.13.3: snapshots the old content with the REST writer id (rest:<userId>)', async () => {
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+    await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+    expect(snapshotPreviousVersion).toHaveBeenCalledWith(
+      expect.anything(), 'note-1', SUBSTANTIAL, 'Shared', { writer: 'rest:user-2' },
+    );
   });
 
   it('not live: ydocState = rebase of the stored state onto the accepted content', async () => {

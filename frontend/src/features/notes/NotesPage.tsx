@@ -223,9 +223,16 @@ export default function NotesPage() {
     );
   };
 
+  // R1: once the editor is mounted for a note, a refetch of notes.detail that goes back to "loading" (404 before the
+  // local-first POST landed, then invalidated) must not unmount it: it would lose its local state (e.g. open modals).
+  const [mountedEditorNoteId, setMountedEditorNoteId] = useState<string | null>(null);
+  const showLoading = isLoadingNote && mountedEditorNoteId !== selectedNoteId;
+  const editorNoteId = !showLoading && noteToDisplay ? selectedNoteId : null;
+  if (editorNoteId !== mountedEditorNoteId) setMountedEditorNoteId(editorNoteId); // adjust state during render (converges)
+
   const renderEditor = () => (
     <div className="flex-1 flex flex-col h-full relative bg-white dark:bg-neutral-950">
-      {isLoadingNote ? (
+      {showLoading ? (
         <div className="flex h-full items-center justify-center text-neutral-400">
           {t('common.loading')}
         </div>

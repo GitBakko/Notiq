@@ -60,6 +60,34 @@ describe('createTag', () => {
     expect(result).toEqual(tag);
   });
 
+  // P2: replay of the same create (same id, same user) is idempotent
+  it('P2: replay with the same id and user returns the existing row, no create', async () => {
+    const existing = makeTag({ id: 'tag-replay', name: 'work', userId: 'user-1' });
+    prismaMock.tag.findFirst.mockResolvedValue(existing);
+
+    const result = await createTag('user-1', 'work', false, 'tag-replay');
+
+    expect(prismaMock.tag.findFirst).toHaveBeenCalledWith({ where: { id: 'tag-replay', userId: 'user-1' } });
+    expect(result).toEqual(existing);
+    expect(prismaMock.tag.create).not.toHaveBeenCalled();
+  });
+
+  it('P2: same id owned by another user -> create runs and its unique error propagates (route maps to 409)', async () => {
+    prismaMock.tag.findFirst.mockResolvedValue(null);
+    const p2002 = Object.assign(new Error('unique'), { code: 'P2002' });
+    prismaMock.tag.create.mockRejectedValue(p2002);
+
+    await expect(createTag('user-1', 'work', false, 'foreign-id')).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('P2: no id -> no idempotency lookup', async () => {
+    prismaMock.tag.create.mockResolvedValue(makeTag());
+
+    await createTag('user-1', 'work');
+
+    expect(prismaMock.tag.findFirst).not.toHaveBeenCalled();
+  });
+
   it('uses the provided id when given', async () => {
     const tag = makeTag({ id: 'custom-id', name: 'travel', userId: 'user-1' });
     prismaMock.tag.create.mockResolvedValue(tag);

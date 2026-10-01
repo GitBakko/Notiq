@@ -51,6 +51,17 @@ beforeEach(() => {
 // ─── createColumn ──────────────────────────────────────────────
 
 describe('createColumn', () => {
+  it('R4: replay of the same client id on the same board returns the existing column, no create', async () => {
+    const existing = makeKanbanColumn({ boardId: 'b1' });
+    prismaMock.kanbanColumn.findFirst.mockResolvedValue(existing);
+
+    const result = await createColumn('b1', 'T', existing.id);
+
+    expect(result).toBe(existing);
+    expect(prismaMock.kanbanColumn.findFirst).toHaveBeenCalledWith({ where: { id: existing.id, boardId: 'b1' } });
+    expect(prismaMock.kanbanColumn.create).not.toHaveBeenCalled();
+  });
+
   it('creates a column with auto-incremented position when board has existing columns', async () => {
     const board = makeKanbanBoard();
     const expectedColumn = makeKanbanColumn({ boardId: board.id, position: 3 });

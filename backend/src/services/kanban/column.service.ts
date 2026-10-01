@@ -6,6 +6,12 @@ import { assertBelongsToBoard } from '../kanbanPermissions';
 // ─── Column CRUD ────────────────────────────────────────────
 
 export async function createColumn(boardId: string, title: string, id?: string) {
+  // R4: idempotent replay of the FE sync CREATE (same id, same board; the route verified WRITE on it): return the
+  // existing column, no create, no broadcast.
+  if (id) {
+    const replay = await prisma.kanbanColumn.findFirst({ where: { id, boardId } });
+    if (replay) return replay;
+  }
   // aggregate + create in ONE transaction — see createCard in card.service.ts
   // for the isolation-level caveat.
   const column = await prisma.$transaction(async (tx) => {

@@ -1582,7 +1582,7 @@
       "notFoundOrDenied": "Nota non trovata o accesso negato",
       "notFoundOrNotPublic": "Nota non trovata o non pubblica",
       "versionNotFound": "Versione non trovata.",
-      "archiveBusy": "La nota è occupata in una sessione condivisa. Le tue modifiche verranno ritentate a breve.",
+      "archiveBusy": "La nota è occupata in una sessione condivisa. Riproviamo ogni 2 minuti finché la nota resta aperta.",
       "restoreConflict": "La nota è cambiata durante il ripristino. Riprova.",
       "restoreUnsupportedLive": "Questa versione non può essere ripristinata mentre la nota è aperta in una sessione condivisa. Chiudi la nota sugli altri dispositivi e riprova."
     },

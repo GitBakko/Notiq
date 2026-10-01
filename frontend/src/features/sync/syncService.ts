@@ -546,21 +546,33 @@ let inFlight: Promise<boolean> | null = null;
 let syncPushScheduled = false;
 
 /**
- * A NOTE UPDATE that moves the note or sets its tags references a notebook/tags
- * that may have been created offline too. If their CREATE is still queued (in
- * backoff, or failed awaiting a retry) the server does not know them yet: pushing
- * now 404s (updateNote verifies the notebook, P3) and the update would be dropped.
+ * A NOTE UPDATE or CREATE that moves the note or sets its tags references a notebook/tags
+ * that may have been created offline too. If their CREATE is still queued and NOT
+ * `failed` (pending or in backoff) the server does not know them yet: pushing now
+ * 404s (updateNote verifies the notebook, P3) and the update would be dropped; a NOTE
+ * CREATE would silently land in another notebook (note.service falls back).
  * Reads the live queue, so a CREATE pushed earlier in this same run no longer counts.
+ * K1: a 'failed' reference CREATE does not hold an UPDATE; L6: for a note CREATE, a 'failed' NOTEBOOK CREATE still
+ * counts as pending (the note stays local until the notebook is retried).
  */
 async function hasQueuedReferenceCreate(item: SyncQueueItem): Promise<boolean> {
   const data = item.data as { notebookId?: string; tags?: { tag: { id: string } }[] } | undefined;
-  const notebookId = data?.notebookId;
+  // R5: a NOTE CREATE payload is a snapshot; the note may have been moved to another notebook since (the POST below
+  // sends the current Dexie notebookId), so the reference to wait for is the current one.
+  const local = item.entity === 'NOTE' && item.type === 'CREATE' ? await db.notes.get(item.entityId) : undefined;
+  // S3: a NOTE CREATE whose Dexie row is gone (note deleted locally) has nothing to protect: don't hold it (or the
+  // DELETE queued behind it) for a notebook CREATE.
+  if (item.entity === 'NOTE' && item.type === 'CREATE' && !local) return false;
+  const notebookId = local?.notebookId ?? data?.notebookId;
   const tagIds = new Set((data?.tags ?? []).map(t => t.tag.id));
   if (!notebookId && tagIds.size === 0) return false;
   const pending = await db.syncQueue
     // K1: a 'failed' CREATE is terminal (manual retry only): it must not hold the note forever.
     // The move then goes out, takes the 404/400 and revertRejectedNoteMove puts the note back.
-    .filter(i => i.userId === item.userId && i.type === 'CREATE' && i.status !== 'failed' && (
+    // L6: a NOTE CREATE is the exception for a failed NOTEBOOK CREATE: it would land in another notebook, so it
+    // stays local (red banner) until the notebook is retried.
+    .filter(i => i.userId === item.userId && i.type === 'CREATE' &&
+      (i.status !== 'failed' || (item.type === 'CREATE' && i.entity === 'NOTEBOOK')) && (
       (i.entity === 'NOTEBOOK' && i.entityId === notebookId) ||
       (i.entity === 'TAG' && tagIds.has(i.entityId))
     ))
@@ -670,6 +682,11 @@ const MAX_RETRIES = 5;
 const transportFailureSince = new Map<number, number>();
 const TRANSPORT_FAILURE_CEILING_MS = 10 * 60 * 1000;
 
+// S4: when retryFailedSyncItems refreshes a NOTE CREATE payload from Dexie, the payload now reflects the row at that
+// moment, so the "modified since the item was created" check must compare against the refresh time, not item.createdAt.
+// In-memory only (like failureCounts); dropped by clearFailure.
+const createRefreshedAt = new Map<number, number>();
+
 function shouldRetry(itemId: number | undefined): boolean {
   if (!itemId) return true;
   const info = failureCounts.get(itemId);
@@ -708,13 +725,86 @@ async function recordFailure(item: SyncQueueItem, error: unknown): Promise<void>
     }
   } catch (e) {
     console.error('Sync Push: failed to persist failure metadata', e);
+    // Q6: never leave the in-memory count at MAX_RETRIES without a persisted 'failed' status: shouldRetry would
+    // refuse the item forever with no banner. Step back so it is retried after the backoff.
+    if (info.count >= MAX_RETRIES) {
+      info.count = MAX_RETRIES - 1;
+      failureCounts.set(item.id, info);
+    }
   }
+}
+
+/**
+ * Q1/Q3: after `done` left the queue (2xx, or 404/410 for a DELETE), drop the earlier items of the same entity it
+ * makes obsolete. DELETE: all of them. UPDATE: the earlier 'failed' UPDATEs whose data keys are all contained in its
+ * own, so a manual retry can never restore older values. Best-effort: a failure here only leaves items for later.
+ */
+async function dropSupersededItems(done: SyncQueueItem): Promise<void> {
+  if (done.type === 'CREATE' || done.id === undefined) return;
+  try {
+    const keysOf = (d: unknown) => Object.keys((d ?? {}) as object);
+    const doneKeys = new Set(keysOf(done.data));
+    const doneId = done.id;
+    const all = await db.syncQueue.toArray();
+    const victims = all.filter(i =>
+      i.id !== undefined && i.id !== doneId &&
+      i.userId === done.userId && i.entity === done.entity && i.entityId === done.entityId &&
+      (i.createdAt < done.createdAt || (i.createdAt === done.createdAt && i.id < doneId)) &&
+      (done.type === 'DELETE' ||
+        (i.status === 'failed' && i.type === 'UPDATE' && keysOf(i.data).length > 0 && keysOf(i.data).every(k => doneKeys.has(k)))));
+    for (const v of victims) {
+      await db.syncQueue.delete(v.id as number);
+      clearFailure(v.id);
+    }
+  } catch (e) {
+    console.warn('Sync Push: could not drop superseded queue items:', done.entity, done.entityId, e);
+  }
+}
+
+/**
+ * O1: false only when the entity's Dexie row is CONFIRMED gone. Soft-deleted rows (e.g. trashed task lists) still
+ * exist in Dexie, so they count as present. A Dexie error counts as present (never drop on doubt).
+ */
+async function entityRowExists(item: SyncQueueItem): Promise<boolean> {
+  const tables: Record<SyncQueueItem['entity'], { get(k: string): Promise<unknown> }> = {
+    NOTE: db.notes, NOTEBOOK: db.notebooks, TAG: db.tags, TASK_LIST: db.taskLists, TASK_ITEM: db.taskItems,
+    KANBAN_BOARD: db.kanbanBoards, KANBAN_COLUMN: db.kanbanColumns, KANBAN_CARD: db.kanbanCards,
+  };
+  try {
+    return !!(await tables[item.entity].get(item.entityId));
+  } catch (e) {
+    console.warn('Sync Push: could not check the Dexie row of', item.entity, item.entityId, e);
+    return true;
+  }
+}
+
+/** O1: remove `item` (a CREATE of an entity that no longer exists locally) and every later queue item of that entity. */
+async function dropOrphanedEntityItems(item: SyncQueueItem): Promise<number[]> {
+  const dropped: number[] = [];
+  try {
+    const all = await db.syncQueue.toArray();
+    const victims = all.filter(i => i.id !== undefined &&
+      (i.id === item.id ||
+        (i.userId === item.userId && i.entity === item.entity && i.entityId === item.entityId &&
+          (i.createdAt > item.createdAt || (i.createdAt === item.createdAt && i.id > (item.id ?? 0))))));
+    if (item.id !== undefined && !victims.some(v => v.id === item.id)) await db.syncQueue.delete(item.id);
+    for (const v of victims) {
+      await db.syncQueue.delete(v.id as number);
+      clearFailure(v.id);
+      dropped.push(v.id as number);
+    }
+  } catch (e) {
+    console.warn('Sync Push: could not drop orphaned queue items:', item.entity, item.entityId, e);
+  }
+  if (item.id !== undefined) { clearFailure(item.id); dropped.push(item.id); }
+  return dropped;
 }
 
 function clearFailure(itemId: number | undefined): void {
   if (itemId) {
     failureCounts.delete(itemId);
     transportFailureSince.delete(itemId);
+    createRefreshedAt.delete(itemId);
   }
 }
 
@@ -796,19 +886,29 @@ const pushQueueOnce = async (): Promise<boolean> => {
 
   // J1: FIFO per entity. Once an item of an entity is skipped (backoff / waiting on a reference) or fails with
   // a retryable error, every LATER item of that entity is skipped in this run (stays pending, attempts untouched):
-  // a stale UPDATE must not overtake the earlier one. A permanent 'failed' item does not block (it would wedge the entity).
+  // a stale UPDATE must not overtake the earlier one.
+  // Q1: a CREATE of the entity that is 'failed' (any reason) or fails in this run holds back every later item of the
+  // entity except DELETE (an UPDATE would 404 against an entity the server never got). The DELETE goes out and, once
+  // done, purges the earlier items (dropSupersededItems).
+  // Q3: a non-CREATE 'failed' item never blocks (it would wedge the entity: a deterministic 413/5xx retries the same
+  // payload forever); a later UPDATE that covers its keys supersedes it (dropSupersededItems).
   const blocked = new Set<string>();
+  const failedCreate = new Set<string>();
   for (const item of queue) {
-    // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
-    if (item.status === 'failed') continue;
     const entityKey = `${item.entity}:${item.entityId}`;
+    // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
+    if (item.status === 'failed') {
+      if (item.type === 'CREATE') failedCreate.add(entityKey);
+      continue;
+    }
     if (blocked.has(entityKey)) continue;
+    if (failedCreate.has(entityKey) && item.type !== 'DELETE') continue;
     // Skip items in backoff period
     if (!shouldRetry(item.id)) { blocked.add(entityKey); continue; }
 
     // Wait for the notebook/tags this note update references to reach the server
     // first. Not a failure: no backoff, the item simply stays queued for the next run.
-    if (item.entity === 'NOTE' && item.type === 'UPDATE' && await hasQueuedReferenceCreate(item)) { blocked.add(entityKey); continue; }
+    if (item.entity === 'NOTE' && (item.type === 'UPDATE' || item.type === 'CREATE') && await hasQueuedReferenceCreate(item)) { blocked.add(entityKey); continue; }
 
     let contentDeferred = false;
     try {
@@ -823,7 +923,8 @@ const pushQueueOnce = async (): Promise<boolean> => {
         if (item.type === 'CREATE') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { id, ...data } = item.data as any;
-          await api.post('/notes', { ...data, id });
+          // R5: current notebook from Dexie (the payload may predate a move of the note)
+          await api.post('/notes', { ...data, notebookId: localNote?.notebookId ?? data.notebookId, id });
         } else if (item.type === 'UPDATE') {
           const res = await api.put(`/notes/${item.entityId}`, item.data);
           contentDeferred = res?.data?.contentDeferred === true;
@@ -960,9 +1061,12 @@ const pushQueueOnce = async (): Promise<boolean> => {
         }
       }
 
+      // S4: read before clearFailure() drops it
+      const refreshedAt = item.id ? createRefreshedAt.get(item.id) : undefined;
       // If successful, remove from queue and clear backoff
       if (item.id) await db.syncQueue.delete(item.id);
       clearFailure(item.id);
+      await dropSupersededItems(item);
       pushedAny = true;
       // G6: fire-and-forget (never throws: try/catch covers the whole body) so its GET cannot stall the push queue.
       if (contentDeferred) void handleContentDeferred(item);
@@ -985,7 +1089,7 @@ const pushQueueOnce = async (): Promise<boolean> => {
             // If currentNote.updatedAt > item.createdAt, the user has typed more, so we keep 'updated' status.
             const updatedAtMs = currentNote ? new Date(currentNote.updatedAt).getTime() : 0;
 
-            if (currentNote && updatedAtMs <= item.createdAt) {
+            if (currentNote && updatedAtMs <= Math.max(item.createdAt, refreshedAt ?? 0)) {
               await db.notes.update(item.entityId, { syncStatus: 'synced' });
             }
           } else if (item.entity === 'NOTEBOOK') {
@@ -1038,6 +1142,8 @@ const pushQueueOnce = async (): Promise<boolean> => {
       }
 
     } catch (error: unknown) {
+      // Q1/Q2: a CREATE that fails in this run (any branch) holds back the later items of its entity.
+      if (item.type === 'CREATE') blocked.add(entityKey);
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status === 503 && (error as { response?: { data?: { message?: string } } })?.response?.data?.message === 'errors.notes.archiveBusy') {
         // K2: transient server congestion, not a rejection of the payload: no attempt consumed, item stays
@@ -1059,10 +1165,17 @@ const pushQueueOnce = async (): Promise<boolean> => {
         console.warn(`Sync Push: Removing item (server returned ${status}):`, item.entity, item.entityId);
         if (item.id) await db.syncQueue.delete(item.id);
         clearFailure(item.id);
+        // M3: a DELETE that finds the entity already gone still converges: purge the earlier items.
+        if (item.type === 'DELETE') await dropSupersededItems(item);
         const errorKey = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
         if (item.entity === 'NOTE' && item.type === 'UPDATE' && errorKey === 'errors.notebooks.notFound') {
           await revertRejectedNoteMove(item);
         }
+      } else if ((status === 404 || status === 410) && !(await entityRowExists(item))) {
+        // O1: the entity was deleted locally (its Dexie row is gone) before this CREATE ever reached the server:
+        // nothing to surface, drop the CREATE and the later items of the same entity.
+        console.warn(`Sync Push: CREATE returned ${status} for an entity no longer in Dexie, dropping:`, item.entity, item.entityId);
+        await dropOrphanedEntityItems(item);
       } else if (status === 404 || status === 410) {
         // Same status, but a CREATE — surface it instead (status: 'failed' lights up
         // SyncStatusIndicator's red banner + retry button), same treatment as 400/422.
@@ -1071,7 +1184,10 @@ const pushQueueOnce = async (): Promise<boolean> => {
           await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'not_found' });
         }
         clearFailure(item.id);
-      } else if (status === 400 || status === 422) {
+      } else if (status === 400 || status === 413 || status === 422 ||
+        // R6: a 409 on a client-id CREATE of NOTEBOOK/TAG (unique name clash) is as deterministic as a 400
+        (status === 409 && item.type === 'CREATE' && (item.entity === 'NOTEBOOK' || item.entity === 'TAG'))) {
+        // 413 (payload too large) is as deterministic as 400/422: the same bytes would be rejected on every retry.
         // [BACKUP] 2026-08-23 — 400/422 previously fell through to recordFailure()
         // (backoff retry). A validation error is permanent: the queued payload is
         // byte-identical on every attempt, so the item stayed poisoned in the queue
@@ -1139,14 +1255,49 @@ export const retryFailedSyncItems = async (): Promise<void> => {
   if (!currentUserId) return;
   const failed = await db.syncQueue.where('status').equals('failed')
     .filter(item => item.userId === currentUserId).toArray();
+  const dropped = new Set<number>();
   for (const item of failed) {
-    if (!item.id) continue;
+    if (!item.id || dropped.has(item.id)) continue;
+    // O1: a failed CREATE whose entity no longer exists locally has nothing left to retry: drop it and its followers.
+    if (item.type === 'CREATE' && !(await entityRowExists(item))) {
+      for (const id of await dropOrphanedEntityItems(item)) dropped.add(id);
+      continue;
+    }
     // clearFailure(), not a bare failureCounts.delete(): it also drops any
     // stale transportFailureSince entry, so a fresh transport failure right
     // after this retry gets its own 10-minute window instead of inheriting
     // one that may already be nearly (or fully) elapsed.
     clearFailure(item.id);
-    await db.syncQueue.update(item.id, { status: 'pending' as const, attempts: 0 });
+    // P1 (replaces the old L2 re-queue of an UPDATE {title, content}): a failed CREATE may carry a stale or
+    // rejected payload (e.g. oversized content, or UPDATEs dropped on an old 404). Refresh the user-editable
+    // fields from the CURRENT Dexie row, so after the retry the server receives the Dexie values. Queued UPDATEs
+    // that follow still apply in order and end on the same values. Vault/encrypted notes and missing rows are left
+    // untouched.
+    let data: Record<string, unknown> | undefined;
+    if (item.type === 'CREATE') {
+      try {
+        let fields: Record<string, unknown> | undefined;
+        if (item.entity === 'NOTE') {
+          const n = await db.notes.get(item.entityId);
+          // S2: the payload flags count too (a Dexie row can have lost them while the queued payload is ciphertext)
+          const p = item.data as { isVault?: boolean; isEncrypted?: boolean } | undefined;
+          if (n && !n.isVault && !n.isEncrypted && !p?.isVault && !p?.isEncrypted) {
+            fields = { title: n.title, content: n.content };
+            createRefreshedAt.set(item.id, Date.now());
+          }
+        } else if (item.entity === 'NOTEBOOK') {
+          const nb = await db.notebooks.get(item.entityId);
+          if (nb) fields = { name: nb.name };
+        } else if (item.entity === 'TAG') {
+          const t = await db.tags.get(item.entityId);
+          if (t) fields = { name: t.name };
+        }
+        if (fields) data = { ...(item.data as Record<string, unknown>), ...fields };
+      } catch (e) {
+        console.warn('Sync Push: could not refresh the CREATE payload from Dexie:', e);
+      }
+    }
+    await db.syncQueue.update(item.id, { status: 'pending' as const, attempts: 0, ...(data ? { data } : {}) });
   }
   // The liveQuery count doesn't change on status updates, so useSync won't re-fire — push explicitly
   if (failed.length > 0) void syncPush();

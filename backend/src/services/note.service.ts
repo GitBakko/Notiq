@@ -381,7 +381,7 @@ export const updateNote = async (userId: string, id: string, data: {
 
     if (finalContent !== undefined && finalContent !== note.content) {
       try {
-        await snapshotPreviousVersion(tx, id, note.content, note.title);
+        await snapshotPreviousVersion(tx, id, note.content, note.title, { writer: `rest:${userId}` });
       } catch (snapErr) {
         // versioning is best-effort — never block the primary save
         logger.warn({ snapErr, noteId: id }, 'updateNote: snapshot failed — save will proceed');

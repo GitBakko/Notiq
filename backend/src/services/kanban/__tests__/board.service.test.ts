@@ -169,6 +169,20 @@ describe('board.service', () => {
   // ─── createBoard ───────────────────────────────────────────
 
   describe('createBoard', () => {
+    it('R4: replay of the same client id by the same owner returns the existing board, no create', async () => {
+      const user = makeUser();
+      const existing = { ...makeKanbanBoard({ ownerId: user.id }), columns: [] };
+      m(prisma.kanbanBoard.findFirst).mockResolvedValue(existing as any);
+
+      const result = await createBoard(user.id, 'T', undefined, undefined, existing.id);
+
+      expect(result).toBe(existing);
+      expect(prisma.kanbanBoard.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: existing.id, ownerId: user.id } }),
+      );
+      expect(prisma.kanbanBoard.create).not.toHaveBeenCalled();
+    });
+
     it('creates board with 3 default columns inside a transaction', async () => {
       const user = makeUser();
       const board = makeKanbanBoard({ ownerId: user.id, title: 'My Board' });

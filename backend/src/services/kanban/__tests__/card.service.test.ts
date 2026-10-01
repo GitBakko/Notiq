@@ -98,6 +98,22 @@ describe('createCard', () => {
   const board = makeKanbanBoard();
   const column = makeKanbanColumn({ boardId: board.id });
 
+  it('R4: replay of the same client id on the same board returns the existing card, no create', async () => {
+    prismaMock.kanbanColumn.findUnique.mockResolvedValue({ boardId: board.id, title: column.title });
+    prismaMock.kanbanCard.findFirst.mockResolvedValue({
+      id: 'card-r4', title: 'T', description: null, position: 0, columnId: 'moved-col', assigneeId: null,
+      assignee: null, note: null, _count: { comments: 0 },
+    });
+
+    const result = await createCard(column.id, 'T', undefined, 'u1', 'card-r4');
+
+    expect(result).toHaveProperty('id', 'card-r4');
+    expect(prismaMock.kanbanCard.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'card-r4', column: { boardId: board.id } } }),
+    );
+    expect(prismaMock.kanbanCard.create).not.toHaveBeenCalled();
+  });
+
   it('creates card in column with correct position (empty column)', async () => {
     prismaMock.kanbanColumn.findUnique.mockResolvedValue({
       boardId: board.id,

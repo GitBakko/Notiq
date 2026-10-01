@@ -38,6 +38,7 @@ const { mockDb, mockApi, mockAuthStore } = vi.hoisted(() => {
       count: vi.fn().mockResolvedValue(0),
       delete: vi.fn().mockResolvedValue(undefined),
       update: vi.fn().mockResolvedValue(1),
+      add: vi.fn().mockResolvedValue(1),
       orderBy: vi.fn().mockImplementation(() => table),
     };
     return table;
@@ -126,6 +127,7 @@ const resetAllTableMocks = () => {
       table.count.mockResolvedValue(0);
       table.delete.mockResolvedValue(undefined);
       table.update.mockResolvedValue(1);
+      table.add.mockResolvedValue(1);
     }
   }
   // Reset transaction mock
@@ -1376,6 +1378,60 @@ describe('syncPush', () => {
       expect(mockApi.delete).toHaveBeenCalledWith('/notes/note-1');
     });
 
+    // 1.13.3 L6: a failed notebook CREATE keeps a NOTE CREATE local (else it lands in another notebook).
+    it('L6: a NOTE CREATE waits for a FAILED notebook CREATE (no POST /notes)', async () => {
+      const nbCreate = {
+        id: 1, type: 'CREATE' as const, entity: 'NOTEBOOK' as const, entityId: 'nb-new',
+        userId: 'user-1', data: { id: 'nb-new', name: 'New' }, createdAt: 1000, status: 'failed' as const,
+      };
+      const noteCreate = {
+        id: 2, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { id: 'note-1', title: 'T', content: '', notebookId: 'nb-new' }, createdAt: 2000,
+      };
+      // S3: the note must still exist in Dexie for the CREATE to be held
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', notebookId: 'nb-new', ownership: 'owned' });
+      mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, noteCreate]);
+      queueHolds([nbCreate, noteCreate]);
+      mockApi.post.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.post).not.toHaveBeenCalledWith('/notes', expect.anything());
+      expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(2);
+    });
+
+    // S3: a NOTE CREATE whose Dexie row is gone (note deleted locally) has nothing to protect: it must not
+    // wait for the failed notebook CREATE, otherwise it also holds back the DELETE of the same note.
+    it('S3: NOTE CREATE with no Dexie row does not wait for a failed notebook CREATE; DELETE goes out', async () => {
+      const nbCreate = {
+        id: 1, type: 'CREATE' as const, entity: 'NOTEBOOK' as const, entityId: 'nb-new',
+        userId: 'user-1', data: { id: 'nb-new', name: 'New' }, createdAt: 1000, status: 'failed' as const,
+      };
+      const noteCreate = {
+        id: 2, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { id: 'note-1', title: 'T', content: '', notebookId: 'nb-new' }, createdAt: 2000,
+      };
+      const trash = {
+        id: 3, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { isTrashed: true }, createdAt: 3000,
+      };
+      const del = {
+        id: 4, type: 'DELETE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: {}, createdAt: 4000,
+      };
+      mockDb.notes.get.mockResolvedValue(undefined);
+      mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, noteCreate, trash, del]);
+      queueHolds([nbCreate, noteCreate, trash, del]);
+      mockApi.post.mockResolvedValue({ data: {} });
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockApi.delete.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.delete).toHaveBeenCalledWith('/notes/note-1');
+      for (const id of [2, 3, 4]) expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(id);
+    });
+
     it('defers a tag update while one of its tag CREATEs is still queued (pending)', async () => {
       const tagCreate = {
         id: 1, type: 'CREATE' as const, entity: 'TAG' as const, entityId: 'tag-new',
@@ -1942,6 +1998,7 @@ describe('syncPush', () => {
 
       mockDb.syncQueue.toArray.mockResolvedValue([queueItem]);
       mockApi.post.mockRejectedValue({ response: { status: 404 } });
+      mockDb.kanbanCards.get.mockResolvedValue({ id: 'card-orphan' }); // O1: row still in Dexie -> surfaced
 
       await syncPush();
 
@@ -2382,6 +2439,112 @@ describe('syncPush', () => {
       expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
     });
 
+    // P1: a failed CREATE is retried with the CURRENT Dexie values of the user-editable fields, so the server
+    // never receives the stale creation payload (e.g. oversized content that failed validation).
+    describe('P1 refreshes the CREATE payload from Dexie', () => {
+      const mk = (entity: 'NOTE' | 'NOTEBOOK' | 'TAG', data: Record<string, unknown>) => ({
+        id: 990, type: 'CREATE' as const, entity, entityId: 'e-p1', userId: 'user-1',
+        data: { id: 'e-p1', ...data }, createdAt: 5000, attempts: 5, status: 'failed' as const, lastError: 'validation',
+      });
+
+      it('P1a: NOTE CREATE with BIG content, Dexie small -> payload carries small content and title', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTE', { title: 'old', content: 'BIG', notebookId: 'nb' })]);
+        mockDb.notes.get.mockResolvedValue({ id: 'e-p1', title: 'new', content: 'small', isVault: false, isEncrypted: false });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          status: 'pending',
+          data: { id: 'e-p1', title: 'new', content: 'small', notebookId: 'nb' },
+        }));
+        expect(mockDb.syncQueue.add).not.toHaveBeenCalled();
+      });
+
+      it('P1b: NOTEBOOK CREATE + local rename -> payload carries the new name', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTEBOOK', { name: 'old' })]);
+        mockDb.notebooks.get.mockResolvedValue({ id: 'e-p1', name: 'renamed' });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          data: { id: 'e-p1', name: 'renamed' },
+        }));
+      });
+
+      it('P1c: TAG CREATE + local rename -> payload carries the new name, isVault untouched', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('TAG', { name: 'old', isVault: false })]);
+        mockDb.tags.get.mockResolvedValue({ id: 'e-p1', name: 'renamed', isVault: false });
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(990, expect.objectContaining({
+          data: { id: 'e-p1', name: 'renamed', isVault: false },
+        }));
+      });
+
+      it.each([['isVault'], ['isEncrypted']])('P1d: NOTE with %s -> payload unchanged', async (flag) => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTE', { title: 'old', content: 'cipher' })]);
+        mockDb.notes.get.mockResolvedValue({ id: 'e-p1', title: 'x', content: 'other', [flag]: true });
+
+        await retryFailedSyncItems();
+
+        const arg = mockDb.syncQueue.update.mock.calls[0][1];
+        expect(arg.data).toBeUndefined();
+      });
+
+      it('S2: payload vault, Dexie row in chiaro -> payload unchanged', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTE', { title: 'old', content: 'cipher', isVault: true })]);
+        mockDb.notes.get.mockResolvedValue({ id: 'e-p1', title: 'x', content: 'plain', isVault: false, isEncrypted: false });
+
+        await retryFailedSyncItems();
+
+        const arg = mockDb.syncQueue.update.mock.calls[0][1];
+        expect(arg.data).toBeUndefined();
+      });
+
+      it('S2b: payload encrypted, Dexie row in chiaro -> payload unchanged', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTE', { title: 'old', content: 'cipher', isEncrypted: true })]);
+        mockDb.notes.get.mockResolvedValue({ id: 'e-p1', title: 'x', content: 'plain' });
+
+        await retryFailedSyncItems();
+
+        const arg = mockDb.syncQueue.update.mock.calls[0][1];
+        expect(arg.data).toBeUndefined();
+      });
+
+      it('S4: failed NOTE CREATE refreshed, Dexie updatedAt > item.createdAt, POST 200, queue empty -> synced', async () => {
+        const failedItem = { ...mk('NOTE', { title: 'old', content: 'big', notebookId: 'nb' }), createdAt: 1000 };
+        const pendingItem = { ...failedItem, status: 'pending' as const };
+        const dexieNote = {
+          id: 'e-p1', title: 'new', content: 'small', isVault: false, isEncrypted: false,
+          ownership: 'owned', notebookId: 'nb', updatedAt: new Date(Date.now() - 1000).toISOString(),
+        };
+        mockDb.notes.get.mockResolvedValue(dexieNote);
+        mockDb.syncQueue.toArray
+          .mockResolvedValueOnce([failedItem]) // retryFailedSyncItems
+          .mockResolvedValue([pendingItem]);   // push triggered by the retry
+        mockDb.syncQueue.count.mockResolvedValue(0);
+        mockApi.post.mockResolvedValue({ data: {} });
+
+        await retryFailedSyncItems();
+        await vi.waitFor(() => expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(990));
+        await syncPush(); // drain any in-flight run
+
+        expect(mockApi.post).toHaveBeenCalledWith('/notes', expect.objectContaining({ id: 'e-p1' }));
+        expect(mockDb.notes.update).toHaveBeenCalledWith('e-p1', { syncStatus: 'synced' });
+      });
+
+      it('P1e (O1): Dexie row missing -> the failed CREATE is removed, not re-queued', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk('NOTEBOOK', { name: 'old' })]);
+        mockDb.notebooks.get.mockResolvedValue(undefined);
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(990);
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+      });
+    });
+
     // Task 5 of the offline-first hardening pass: retryFailedSyncItems cleared
     // failureCounts directly instead of calling the existing clearFailure()
     // helper, which also clears transportFailureSince. A retried item that
@@ -2642,6 +2805,288 @@ describe('syncPush', () => {
           await syncPush();
           expect(mockApi.put).toHaveBeenCalledTimes(2);
           expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1041);
+          // order: 1041 goes out before 1042 (guard, green before the 1.13.3 fix too)
+          expect(mockApi.put).toHaveBeenNthCalledWith(1, '/notes/fifo-e', { title: 't1041' });
+          expect(mockApi.put).toHaveBeenNthCalledWith(2, '/notes/fifo-e', { title: 't1042' });
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      // ---- 1.13.3 queue model (Q1-Q7) ----
+      const mkCreate = (id: number, entityId: string, extra: Record<string, unknown> = {}) => ({
+        id, type: 'CREATE' as const, entity: 'NOTE' as const, entityId,
+        userId: 'user-1', data: { id: entityId, title: 'T', content: '<p>c</p>' }, createdAt: Date.now() + id, ...extra,
+      });
+
+      it('A1: a failed (validation) NOTE CREATE holds back the UPDATEs of the same note', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkCreate(1101, 'q-a1', { status: 'failed' as const, lastError: 'validation' }), mk(1102, 'q-a1'),
+        ]);
+        mockApi.put.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.put).not.toHaveBeenCalled();
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1102);
+      });
+
+      it.each([
+        ['network', { lastError: 'network' }],
+        ['not_found', { lastError: 'not_found' }],
+        ['attempts exhausted', { attempts: 5, lastError: 'srv' }],
+      ])('A2: a failed NOTE CREATE (%s) holds back the UPDATEs of the same note', async (_name, extra) => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkCreate(1111, 'q-a2', { status: 'failed' as const, ...extra }), mk(1112, 'q-a2'),
+        ]);
+        mockApi.put.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.put).not.toHaveBeenCalled();
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+      });
+
+      it('A3: a CREATE that reaches MAX_RETRIES (500) turns failed and the UPDATE is not sent, not even next run', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mkCreate(1121, 'q-a3', { attempts: 4 }), mk(1122, 'q-a3')]);
+        mockApi.post.mockRejectedValue(serverErr(500));
+
+        await syncPush();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(1121, expect.objectContaining({ status: 'failed' }));
+        expect(mockApi.put).not.toHaveBeenCalled();
+
+        // next run: the CREATE is now persisted as failed
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkCreate(1121, 'q-a3', { attempts: 5, status: 'failed' as const }), mk(1122, 'q-a3'),
+        ]);
+        await syncPush();
+        expect(mockApi.put).not.toHaveBeenCalled();
+      });
+
+      it('A4 (guard): pending CREATE + UPDATE -> post goes out before put', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mkCreate(1131, 'q-a4'), mk(1132, 'q-a4')]);
+        mockApi.post.mockResolvedValue({ data: {} });
+        mockApi.put.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.post).toHaveBeenCalledTimes(1);
+        expect(mockApi.put).toHaveBeenCalledTimes(1);
+        expect(mockApi.post.mock.invocationCallOrder[0]).toBeLessThan(mockApi.put.mock.invocationCallOrder[0]);
+      });
+
+      it('A5: an UPDATE that hits MAX_RETRIES does not block; the next UPDATE goes out and supersedes it', async () => {
+        const first = mk(1141, 'q-a5', { attempts: 4 });
+        const second = mk(1142, 'q-a5');
+        // first read: the queue as stored; later reads (dropSupersededItems): the first one is now failed
+        mockDb.syncQueue.toArray
+          .mockResolvedValueOnce([first, second])
+          .mockResolvedValue([{ ...first, status: 'failed' as const }, second]);
+        mockApi.put.mockRejectedValueOnce(serverErr(500)).mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.put).toHaveBeenCalledTimes(2);
+        expect(mockApi.put).toHaveBeenLastCalledWith('/notes/q-a5', { title: 't1142' });
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1142);
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1141);
+      });
+
+      it('A5b: a failed UPDATE only partly covered by the successful one stays', async () => {
+        const failedUpd = mk(1151, 'q-a5b', { status: 'failed' as const, attempts: 5, data: { title: 'a', content: 'old' } });
+        const next = mk(1152, 'q-a5b', { data: { content: 'new' } });
+        mockDb.syncQueue.toArray.mockResolvedValue([failedUpd, next]);
+        mockApi.put.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1152);
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1151);
+      });
+
+      it('A6: a CREATE rejected with 404 in this run holds back the later UPDATE (blocked in the same run)', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mkCreate(1161, 'q-a6'), mk(1162, 'q-a6')]);
+        mockApi.post.mockRejectedValue(serverErr(404));
+
+        await syncPush();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(1161, expect.objectContaining({ status: 'failed', lastError: 'not_found' }));
+        expect(mockApi.put).not.toHaveBeenCalled();
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1162);
+      });
+
+      // O1: CREATE 404 on an entity whose Dexie row is gone -> dropped, not surfaced as failed
+      const mkE = (id: number, entity: 'KANBAN_BOARD' | 'KANBAN_CARD' | 'TASK_ITEM', type: 'CREATE' | 'UPDATE' | 'DELETE', entityId: string, extra: Record<string, unknown> = {}) => ({
+        id, type, entity, entityId, userId: 'user-1', data: { id: entityId, columnId: 'col-o1', taskListId: 'tl-o1' }, createdAt: Date.now() + id, ...extra,
+      });
+
+      it('O1a: [board CREATE failed, card CREATE 404, board DELETE 404], Dexie rows absent -> all removed, nothing failed', async () => {
+        const queue = [
+          mkE(1301, 'KANBAN_BOARD', 'CREATE', 'b-o1', { status: 'failed' as const, lastError: 'validation' }),
+          mkE(1302, 'KANBAN_CARD', 'CREATE', 'c-o1'),
+          mkE(1303, 'KANBAN_BOARD', 'DELETE', 'b-o1'),
+        ];
+        mockDb.syncQueue.toArray.mockResolvedValue(queue);
+        mockDb.kanbanBoards.get.mockResolvedValue(undefined);
+        mockDb.kanbanCards.get.mockResolvedValue(undefined);
+        mockApi.post.mockRejectedValue(serverErr(404));
+        mockApi.delete.mockRejectedValue(serverErr(404));
+
+        await syncPush();
+
+        for (const id of [1301, 1302, 1303]) expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(id);
+        const failedUpdates = mockDb.syncQueue.update.mock.calls.filter((c: unknown[]) => (c[1] as { status?: string }).status === 'failed');
+        expect(failedUpdates).toHaveLength(0);
+      });
+
+      it('O1b: TASK_ITEM CREATE 404 with the Dexie row absent -> removed', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mkE(1311, 'TASK_ITEM', 'CREATE', 'ti-o1')]);
+        mockDb.taskItems.get.mockResolvedValue(undefined);
+        mockApi.post.mockRejectedValue(serverErr(404));
+
+        await syncPush();
+
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1311);
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(1311, expect.objectContaining({ status: 'failed' }));
+      });
+
+      it('O1c: TASK_ITEM CREATE 404 with the Dexie row present -> failed not_found as before', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mkE(1321, 'TASK_ITEM', 'CREATE', 'ti-o1c')]);
+        mockDb.taskItems.get.mockResolvedValue({ id: 'ti-o1c' });
+        mockApi.post.mockRejectedValue(serverErr(404));
+
+        await syncPush();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(1321, expect.objectContaining({ status: 'failed', lastError: 'not_found' }));
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1321);
+      });
+
+      it('O1d: retryFailedSyncItems drops a failed CREATE whose Dexie row is gone (and its followers), no re-queue', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkE(1331, 'KANBAN_BOARD', 'CREATE', 'b-o1d', { status: 'failed' as const, lastError: 'validation' }),
+          mkE(1332, 'KANBAN_BOARD', 'UPDATE', 'b-o1d', { status: 'failed' as const }),
+        ]);
+        mockDb.kanbanBoards.get.mockResolvedValue(undefined);
+
+        await retryFailedSyncItems();
+
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1331);
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1332);
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(1331, expect.anything());
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(1332, expect.anything());
+      });
+
+      it.each([
+        ['404', serverErr(404)],
+        ['200', null],
+      ])('M3:[failed CREATE, UPDATE, DELETE] -> DELETE (%s) purges all three, no put', async (_n, err) => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkCreate(1171, 'q-m3', { status: 'failed' as const, lastError: 'validation' }),
+          mk(1172, 'q-m3'),
+          { id: 1173, type: 'DELETE' as const, entity: 'NOTE' as const, entityId: 'q-m3', userId: 'user-1', data: {}, createdAt: Date.now() + 1173 },
+        ]);
+        if (err) mockApi.delete.mockRejectedValue(err); else mockApi.delete.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.put).not.toHaveBeenCalled();
+        expect(mockApi.post).not.toHaveBeenCalled();
+        expect(mockApi.delete).toHaveBeenCalledWith('/notes/q-m3');
+        for (const id of [1171, 1172, 1173]) expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(id);
+      });
+
+      it('S1: TASK_LIST [failed CREATE, UPDATE, DELETE], DELETE 404 -> all three purged, no put', async () => {
+        const tl = (id: number, type: 'CREATE' | 'UPDATE' | 'DELETE', extra: Record<string, unknown> = {}) => ({
+          id, type, entity: 'TASK_LIST' as const, entityId: 'tl-s1', userId: 'user-1',
+          data: type === 'DELETE' ? {} : { title: 'x' }, createdAt: Date.now() + id, ...extra,
+        });
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          tl(1181, 'CREATE', { status: 'failed' as const, lastError: 'forbidden' }),
+          tl(1182, 'UPDATE'),
+          tl(1183, 'DELETE'),
+        ]);
+        mockApi.delete.mockRejectedValue(serverErr(404));
+
+        await syncPush();
+
+        expect(mockApi.put).not.toHaveBeenCalled();
+        expect(mockApi.post).not.toHaveBeenCalled();
+        expect(mockApi.delete).toHaveBeenCalledWith('/tasklists/tl-s1');
+        for (const id of [1181, 1182, 1183]) expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(id);
+      });
+
+      it('M2: a NOTE CREATE waits while the CREATE of its notebook is still queued', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mkCreate(1181, 'q-m2', { data: { id: 'q-m2', title: 'T', notebookId: 'nb-new' } }),
+        ]);
+        mockDb.syncQueue.count.mockResolvedValue(1);
+        mockApi.post.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.post).not.toHaveBeenCalledWith('/notes', expect.anything());
+        expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(1181);
+      });
+
+      it('413 -> failed immediately as validation, attempts untouched', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk(1191, 'q-413')]);
+        mockApi.put.mockRejectedValue(serverErr(413));
+
+        await syncPush();
+
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(1191, { status: 'failed', lastError: 'validation' });
+      });
+
+      it.each([['NOTEBOOK', '/notebooks'], ['TAG', '/tags']] as const)(
+        'R6: a 409 on a %s CREATE -> failed immediately as validation, attempts untouched', async (entity, url) => {
+          const id = entity === 'NOTEBOOK' ? 1211 : 1212;
+          mockDb.syncQueue.toArray.mockResolvedValue([{
+            id, type: 'CREATE' as const, entity, entityId: `r6-${entity}`,
+            userId: 'user-1', data: { id: `r6-${entity}`, name: 'N' }, createdAt: Date.now() + id,
+          }]);
+          mockApi.post.mockRejectedValue(serverErr(409));
+
+          await syncPush();
+
+          expect(mockApi.post).toHaveBeenCalledWith(url, expect.anything());
+          expect(mockDb.syncQueue.update).toHaveBeenCalledWith(id, { status: 'failed', lastError: 'validation' });
+        });
+
+      it('R5: a NOTE CREATE takes the notebookId from the current Dexie row (note moved away from the failed notebook)', async () => {
+        const nbCreate = {
+          id: 1221, type: 'CREATE' as const, entity: 'NOTEBOOK' as const, entityId: 'nb-failed',
+          userId: 'user-1', data: { id: 'nb-failed', name: 'New' }, createdAt: 1000, status: 'failed' as const,
+        };
+        const noteCreate = {
+          id: 1222, type: 'CREATE' as const, entity: 'NOTE' as const, entityId: 'q-r5',
+          userId: 'user-1', data: { id: 'q-r5', title: 'T', content: '', notebookId: 'nb-failed' }, createdAt: 2000,
+        };
+        mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, noteCreate]);
+        mockDb.syncQueue.count.mockImplementation(async () =>
+          [nbCreate, noteCreate].filter((i) => mockDb.syncQueue._filterFn(i)).length);
+        mockDb.notes.get.mockResolvedValue({ id: 'q-r5', ownership: 'owned', notebookId: 'nb-other' });
+        mockApi.post.mockResolvedValue({ data: {} });
+
+        await syncPush();
+
+        expect(mockApi.post).toHaveBeenCalledWith('/notes', expect.objectContaining({ id: 'q-r5', notebookId: 'nb-other' }));
+      });
+
+      it('Q6: if persisting the terminal state throws, the item is retried after the backoff (not stuck at MAX_RETRIES)', async () => {
+        vi.useFakeTimers();
+        try {
+          const item = mk(1201, 'q-q6', { attempts: 4 });
+          mockDb.syncQueue.toArray.mockResolvedValue([item]);
+          mockDb.syncQueue.update.mockRejectedValueOnce(new Error('idb'));
+          mockApi.put.mockRejectedValueOnce(serverErr(500)).mockResolvedValue({ data: {} });
+
+          await syncPush();
+          expect(mockApi.put).toHaveBeenCalledTimes(1);
+
+          vi.advanceTimersByTime(10 * 60 * 1000);
+          await syncPush();
+          expect(mockApi.put).toHaveBeenCalledTimes(2);
         } finally {
           vi.useRealTimers();
         }

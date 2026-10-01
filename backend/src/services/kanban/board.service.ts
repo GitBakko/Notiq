@@ -159,6 +159,15 @@ export async function createBoard(
   columnTitles?: { todo: string; inProgress: string; done: string },
   id?: string
 ) {
+  // R4: idempotent replay of the FE sync CREATE (same id, same owner) returns the existing board; a foreign id
+  // falls through to create and fails as before.
+  if (id) {
+    const replay = await prisma.kanbanBoard.findFirst({
+      where: { id, ownerId: userId },
+      include: { columns: { orderBy: [{ position: 'asc' }, { id: 'asc' }] } },
+    });
+    if (replay) return replay;
+  }
   const cols = columnTitles || { todo: 'TODO', inProgress: 'IN_PROGRESS', done: 'DONE' };
   return prisma.$transaction(async (tx) => {
     const board = await tx.kanbanBoard.create({

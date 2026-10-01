@@ -12,7 +12,7 @@ import {
   getNoteSizeBreakdown,
 } from '../note.service';
 import { hocuspocus } from '../../hocuspocus';
-import { archiveRestWriteWhileLive } from '../noteVersion.service';
+import { archiveRestWriteWhileLive, snapshotPreviousVersion, __resetSnapshotStateForTests } from '../noteVersion.service';
 import { rebaseYdocState } from '../../utils/ydoc';
 import logger from '../../utils/logger';
 import { NotFoundError, ConflictError } from '../../utils/errors';
@@ -29,10 +29,14 @@ vi.mock('../../hocuspocus', () => ({
   disconnectUserFromNote: vi.fn(),
 }));
 
-vi.mock('../noteVersion.service', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../noteVersion.service')>()),
-  archiveRestWriteWhileLive: vi.fn(),
-}));
+vi.mock('../noteVersion.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../noteVersion.service')>();
+  return {
+    ...actual,
+    archiveRestWriteWhileLive: vi.fn(),
+    snapshotPreviousVersion: vi.fn(actual.snapshotPreviousVersion),
+  };
+});
 
 vi.mock('../../utils/ydoc', () => ({
   rebaseYdocState: vi.fn(() => null),
@@ -442,6 +446,8 @@ describe('updateNote', () => {
     isEncrypted: false,
   };
 
+  beforeEach(() => { __resetSnapshotStateForTests(); }); // the snapshot throttle is module-level in-memory state
+
   it('updates note fields and recalculates searchText', async () => {
     prismaMock.note.findFirst.mockResolvedValue(existingNote);
     prismaMock.noteVersion.findFirst.mockResolvedValue(null);
@@ -462,6 +468,18 @@ describe('updateNote', () => {
         updatedAt: expect.any(Date),
       }),
     });
+  });
+
+  it('1.13.3: snapshots the old content with the REST writer id (rest:<userId>)', async () => {
+    prismaMock.note.findFirst.mockResolvedValue(existingNote);
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.update.mockResolvedValue(existingNote);
+    const newContent = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"New long content that is definitely more than 150 characters to pass the empty guard check. We need this to be substantial enough."}]}]}';
+    await updateNote('user-1', 'n1', { content: newContent });
+    expect(snapshotPreviousVersion).toHaveBeenCalledWith(
+      expect.anything(), 'n1', existingNote.content, 'Existing', { writer: 'rest:user-1' },
+    );
   });
 
   describe('1.13.3 stale ydocState / live collab doc', () => {

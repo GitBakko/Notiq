@@ -1582,7 +1582,7 @@
       "notFoundOrDenied": "Note not found or access denied",
       "notFoundOrNotPublic": "Note not found or not public",
       "versionNotFound": "Version not found.",
-      "archiveBusy": "The note is busy in a live shared session. Your changes will be retried shortly.",
+      "archiveBusy": "The note is busy in a live shared session. Retrying every 2 minutes while the note stays open.",
       "restoreConflict": "The note changed while restoring. Please try again.",
       "restoreUnsupportedLive": "This version can't be restored while the note is open in a live shared session. Close the note on the other devices and try again."
     },

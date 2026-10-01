@@ -15,36 +15,105 @@ const MAX_VERSIONS = 50;
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MIN_SNAPSHOT_LEN = 150; // don't archive empty/near-empty content
 
+const MAX_SNAPSHOTS_PER_WINDOW = 3; // non-forced snapshots per note inside one window (hostile writer alternation)
+
+// [BACKUP] 2026-10-01 — the throttle used to read the latest NoteVersion.createdAt (any writer, and
+// archiveRestWriteWhileLive bumps it): a REST archive row silenced the next collab/REST snapshot, losing content.
+//   const latest = await db.noteVersion.findFirst({ where: { noteId }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+//   if (latest && Date.now() - new Date(latest.createdAt).getTime() < SNAPSHOT_THROTTLE_MS) return;
+// ponytail: in-process state (pm2, 1 instance); after a restart at most one extra snapshot. `recent` keeps { at, id }
+// and the cap counts only entries whose row still exists (one findMany when at the cap), so a create undone by a
+// transaction rollback does not consume it. Concurrent collab + REST racing on the cap can overshoot by at most +1: accepted.
+// `restoredVersionByNote` = the version a restore just wrote back: it is compared too, so the next snapshot of that
+// same content is not archived as a duplicate of the version it came from. Kept apart from snapState (which is
+// evicted by time / by other notes' snapshots) and consumed by the first non-forced snapshot of the note.
+type Recent = { at: number; id: string | null };
+type SnapState = { writer: string; snapAt: number; versionId: string | null; recent: Recent[] };
+const snapState = new Map<string, SnapState>();
+const restoredVersionByNote = new Map<string, string>();
+export const __resetSnapshotStateForTests = () => { snapState.clear(); restoredVersionByNote.clear(); };
+
 /**
  * Save the PREVIOUS content of a note as a version, BEFORE it gets overwritten.
- * Throttled per-note (max one snapshot per SNAPSHOT_THROTTLE_MS) unless `options.force`
- * is true — force bypasses the throttle so explicit destructive actions (e.g. restore)
- * always preserve the current content. The MIN_SNAPSHOT_LEN guard is never bypassed.
- * Accepts a prisma client or a transaction client.
+ * Throttle (in-memory, never reads NoteVersion.createdAt): the SAME writer is skipped for SNAPSHOT_THROTTLE_MS after
+ * its last snapshot, but only while that version row still exists; a DIFFERENT writer always snapshots, capped at
+ * MAX_SNAPSHOTS_PER_WINDOW per note per window. `writer` is 'collab' | 'rest:<userId>' | 'restore'.
+ * `options.force` (restore) bypasses throttle and cap. Identical-to-latest content and content shorter than
+ * MIN_SNAPSHOT_LEN are never archived. Accepts a prisma client or a transaction client.
  */
 export async function snapshotPreviousVersion(
   db: Db,
   noteId: string,
   previousContent: string | null | undefined,
   previousTitle: string,
-  options?: { force?: boolean },
+  options?: { force?: boolean; writer?: string },
 ): Promise<void> {
-  if (!previousContent || previousContent.length < MIN_SNAPSHOT_LEN) return;
+  const writer = options?.writer ?? 'collab';
+  const now = Date.now();
+  for (const [k, v] of snapState) {
+    if (now - v.snapAt >= SNAPSHOT_THROTTLE_MS && v.recent.every((r) => now - r.at >= SNAPSHOT_THROTTLE_MS)) snapState.delete(k);
+  }
+  const s = snapState.get(noteId);
+  let recent = (s?.recent ?? []).filter((r) => now - r.at < SNAPSHOT_THROTTLE_MS);
+
+  if (!previousContent || previousContent.length < MIN_SNAPSHOT_LEN) {
+    snapState.set(noteId, { writer, snapAt: 0, versionId: null, recent });
+    return;
+  }
 
   if (!options?.force) {
+    if (
+      s && s.writer === writer && now - s.snapAt < SNAPSHOT_THROTTLE_MS && s.versionId &&
+      await db.noteVersion.findUnique({ where: { id: s.versionId }, select: { id: true } })
+    ) return;
+    if (recent.length >= MAX_SNAPSHOTS_PER_WINDOW) {
+      // P4: count only the creates whose row still exists (a rolled-back create must not use up the cap)
+      const ids = recent.flatMap((r) => (r.id ? [r.id] : []));
+      if (ids.length > 0) {
+        const alive = new Set((await db.noteVersion.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((v) => v.id));
+        recent = recent.filter((r) => !r.id || alive.has(r.id));
+      }
+    }
+    if (recent.length >= MAX_SNAPSHOTS_PER_WINDOW) {
+      // L3: the skipped writer made no snapshot: do not hand it the previous writer's snapAt/versionId
+      snapState.set(noteId, { writer, snapAt: 0, versionId: null, recent });
+      return;
+    }
+    // consumed here: first non-forced snapshot of the note that gets past throttle/cap, create or identical-skip
+    const restoredId = restoredVersionByNote.get(noteId);
+    restoredVersionByNote.delete(noteId);
     const latest = await db.noteVersion.findFirst({
       where: { noteId },
       orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
+      select: { id: true, content: true },
     });
-    if (latest && Date.now() - new Date(latest.createdAt).getTime() < SNAPSHOT_THROTTLE_MS) {
+    if (latest && latest.content === previousContent) {
+      snapState.set(noteId, { writer, snapAt: now, versionId: latest.id, recent });
       return;
     }
+    // P3: the content a restore just wrote back is already archived as that version: no duplicate copy of it
+    if (restoredId) {
+      const restored = await db.noteVersion.findUnique({ where: { id: restoredId }, select: { id: true, content: true } });
+      if (restored && restored.content === previousContent) {
+        snapState.set(noteId, { writer, snapAt: now, versionId: restored.id, recent });
+        return;
+      }
+    }
+  } else {
+    // R3: a forced (restore) snapshot of content that is already archived (latest version, or the version a previous
+    // restore wrote back) would only add a copy of it.
+    const restoredId = restoredVersionByNote.get(noteId);
+    const [latest, restored] = await Promise.all([
+      db.noteVersion.findFirst({ where: { noteId }, orderBy: { createdAt: 'desc' }, select: { id: true, content: true } }),
+      restoredId ? db.noteVersion.findUnique({ where: { id: restoredId }, select: { id: true, content: true } }) : null,
+    ]);
+    if ((latest && latest.content === previousContent) || (restored && restored.content === previousContent)) return;
   }
 
-  await db.noteVersion.create({
+  const created = await db.noteVersion.create({
     data: { noteId, content: previousContent, title: previousTitle },
   });
+  snapState.set(noteId, { writer, snapAt: now, versionId: created?.id ?? null, recent: options?.force ? recent : [...recent, { at: now, id: created?.id ?? null }] }); // L2: forced snapshots do not use up the cap
   await pruneNoteVersions(db, noteId);
 }
 
@@ -94,8 +163,8 @@ export async function archiveRestWriteWhileLive(
   const bump = async (versionId: string) => {
     const exists = await prisma.noteVersion.findUnique({ where: { id: versionId }, select: { id: true } });
     if (!exists) return false;
-    // createdAt bumped so history shows the latest write; the window stays anchored to the first write,
-    // so store() snapshots are suppressed at most SNAPSHOT_THROTTLE_MS after the last one.
+    // createdAt bumped only so history shows the latest write first; the snapshot throttle never reads
+    // NoteVersion rows (it is in-memory state), so this does not suppress any later snapshot.
     await prisma.noteVersion.update({ where: { id: versionId }, data: { content, title, createdAt: new Date() } });
     return true;
   };
@@ -209,6 +278,10 @@ export async function restoreNoteVersion(
   // note.content, so re-read it: the forced snapshot below must archive the flushed content.
   if (opts?.beforeRestore) {
     await opts.beforeRestore();
+    // L4: the note now holds flushed collab content: mark the writer as collab (even if we abort below) so a later
+    // REST write of any user snapshots it.
+    const st = snapState.get(noteId);
+    snapState.set(noteId, { writer: 'collab', snapAt: 0, versionId: null, recent: st?.recent ?? [] });
     const fresh = await prisma.note.findFirst({
       where: { id: noteId, userId },
       select: { id: true, content: true, title: true, isEncrypted: true, isVault: true, noteType: true, ydocState: true },
@@ -239,7 +312,7 @@ export async function restoreNoteVersion(
   // Force-bypass the throttle: a restore is an explicit destructive action and MUST always
   // preserve the current content, even if a snapshot was taken seconds ago.
   try {
-    await snapshotPreviousVersion(prisma, noteId, note.content, note.title, { force: true });
+    await snapshotPreviousVersion(prisma, noteId, note.content, note.title, { force: true, writer: 'restore' });
   } catch (snapErr) {
     logger.warn({ snapErr, noteId }, 'restoreNoteVersion: snapshot failed — continuing');
   }
@@ -262,6 +335,8 @@ export async function restoreNoteVersion(
     },
   });
   if (count === 0) throw new ConflictError('errors.notes.restoreConflict');
+  // P3: remember which version now IS the note content (see snapshotPreviousVersion).
+  restoredVersionByNote.set(noteId, versionId);
   // G7: the restore replaced the content, so pending REST-archive coalescing windows of this note are stale.
   for (const k of restArchive.keys()) {
     if (k.startsWith(`${noteId}:`)) restArchive.delete(k);
