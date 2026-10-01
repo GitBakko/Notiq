@@ -10,6 +10,7 @@ import { logEvent } from './audit.service';
 import { snapshotPreviousVersion, archiveRestWriteWhileLive } from './noteVersion.service';
 import { getVaultGuard, assertVaultContent, parseEnvelope, sha256hex } from './vault.service';
 import logger from '../utils/logger';
+import { rebaseYdocState } from '../utils/ydoc';
 
 export const checkNoteAccess = async (userId: string, noteId: string): Promise<'OWNER' | 'READ' | 'WRITE' | null> => {
   const note = await prisma.note.findUnique({
@@ -172,6 +173,8 @@ export const getNote = async (userId: string, id: string) => {
         { isVault: false, sharedWith: { some: { userId, status: 'ACCEPTED' } } }
       ]
     },
+    // 1.13.3: the binary Yjs state is never needed by the client (and can be large)
+    omit: { ydocState: true },
     include: {
       tags: { where: { userId }, include: { tag: true } },
       attachments: {
@@ -211,9 +214,9 @@ export const updateNote = async (userId: string, id: string, data: {
   isEncrypted?: boolean;
   tags?: { tag: { id: string } }[];
   baseHash?: string;
-}) => {
+}, sessionKey?: string) => {
   // Verify ownership first
-  const note = await prisma.note.findFirst({ where: { id, userId } });
+  const note = await prisma.note.findFirst({ where: { id, userId }, omit: { ydocState: true } });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
   // baseHash is only a CAS token: it must never reach Prisma, guard or not.
@@ -294,6 +297,23 @@ export const updateNote = async (userId: string, id: string, data: {
     !note.isVault && !movingToVault && !movingOutOfVault && rest.isVault !== true &&
     !note.isEncrypted && rest.isEncrypted !== true && note.noteType === 'NOTE';
   let liveArchiveContent = undefined as string | undefined; // assigned inside the tx closure
+  let writtenContent = undefined as string | undefined; // content actually written to Note, assigned inside the tx closure
+
+  // 1.13.3: for a plain note WITHOUT a live doc, rebase the stored Y state onto the new content (outside the tx:
+  // decode + diff is CPU work) so a client still holding the old Y doc merges instead of duplicating every block.
+  // Only for plain TipTap notes: vault / encrypted / CREDENTIAL always keep ydocState null.
+  const plain = !note.isVault && !note.isEncrypted && rest.isVault !== true && rest.isEncrypted !== true && note.noteType === 'NOTE';
+  let rebasedFor: string | undefined;
+  let rebasedState: ReturnType<typeof rebaseYdocState> = null;
+  if (plain && !routeLive && rest.content !== undefined) {
+    const accepted = guardEmptyContentOverwrite(note.content, rest.content);
+    if (accepted !== undefined && accepted !== note.content) {
+      // Re-read: a live doc may have stored since the first read; narrows (does not close) the race.
+      const fresh = await prisma.note.findUnique({ where: { id }, select: { ydocState: true } });
+      rebasedFor = accepted;
+      rebasedState = rebaseYdocState(fresh?.ydocState, accepted);
+    }
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     if (movingToVault) {
@@ -334,7 +354,12 @@ export const updateNote = async (userId: string, id: string, data: {
       updateData.content = finalContent;
       // 1.13.3: new content makes any stored Yjs state stale. Fetch prefers ydocState, so a note
       // shared again later would load the pre-edit doc and its first store() would revert this write.
-      if (finalContent !== note.content) updateData.ydocState = null;
+      // [BACKUP] 2026-10-01 — was `updateData.ydocState = null`: nulling made a stale client duplicate every block on
+      // reconnect; plain notes now get the old state rebased onto the new content (null when in doubt).
+      if (finalContent !== note.content) {
+        updateData.ydocState = (plain && rebasedFor === finalContent) ? rebasedState : null;
+        writtenContent = finalContent;
+      }
     }
     // searchText is derived plaintext: never (re)computed while the note is, or stays, in the vault.
     // Moving OUT of the vault re-derives it from the stored content (it was nulled on the way in).
@@ -388,15 +413,36 @@ export const updateNote = async (userId: string, id: string, data: {
     }
   }
 
+  // contentDeferred: the content was NOT applied (live doc wins) but is safe in version history.
+  // If the archive fails we rethrow: the route answers 5xx and the sync item stays queued with backoff,
+  // instead of a 200 that would make the device drop its only copy of the text.
+  let contentDeferred = false;
   if (liveArchiveContent !== undefined) {
     try {
-      await archiveRestWriteWhileLive(id, liveArchiveContent, updated.title);
+      await archiveRestWriteWhileLive(id, liveArchiveContent, updated.title, userId, sessionKey);
     } catch (err) {
-      logger.warn({ err, noteId: id }, 'updateNote: REST content not archived while collab doc is live');
+      logger.error({ err, noteId: id }, 'updateNote: REST content not archived while collab doc is live');
+      throw err;
+    }
+    // The live doc won and the server did NOT apply this content, whatever the archive outcome (also 'skipped':
+    // empty/degenerate/non-JSON). The FE realigns Dexie only when its local content is the one it pushed.
+    contentDeferred = true;
+  } else if (
+    plain && writtenContent !== undefined &&
+    (hocuspocus.hocuspocus.documents.has(id) || hocuspocus.hocuspocus.loadingDocuments.has(id))
+  ) {
+    // m3: a doc went live after the check above, so the content WAS written and may be reverted by that doc's
+    // next store(). Keep it recoverable; no flag (the content did land).
+    // Accepted residual: if the archive fails we do NOT rethrow (the content is already written, a client retry
+    // would be a no-op); the only loss is the safety copy, in the narrow race where that doc later reverts it.
+    try {
+      await archiveRestWriteWhileLive(id, writtenContent, updated.title, userId, sessionKey);
+    } catch (err) {
+      logger.warn({ err, noteId: id }, 'updateNote: REST content not archived while collab doc is live (content already written)');
     }
   }
 
-  return updated;
+  return (contentDeferred ? { ...updated, contentDeferred: true } : updated) as typeof updated & { contentDeferred?: true };
 };
 
 export const toggleShare = async (userId: string, id: string) => {

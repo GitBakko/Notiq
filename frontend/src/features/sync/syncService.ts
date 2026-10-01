@@ -7,6 +7,8 @@ import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn,
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 import toast from 'react-hot-toast';
 import i18n from 'i18next';
+import queryClient from '../../lib/queryClient';
+import { queryKeys } from '../../lib/queryKeys';
 
 // Kanban 5.2: the list's contentVersion of each board as of its last successful detail
 // pull, keyed by user and board. syncPull runs every 30 s and used to GET every board's
@@ -556,7 +558,9 @@ async function hasQueuedReferenceCreate(item: SyncQueueItem): Promise<boolean> {
   const tagIds = new Set((data?.tags ?? []).map(t => t.tag.id));
   if (!notebookId && tagIds.size === 0) return false;
   const pending = await db.syncQueue
-    .filter(i => i.userId === item.userId && i.type === 'CREATE' && (
+    // K1: a 'failed' CREATE is terminal (manual retry only): it must not hold the note forever.
+    // The move then goes out, takes the 404/400 and revertRejectedNoteMove puts the note back.
+    .filter(i => i.userId === item.userId && i.type === 'CREATE' && i.status !== 'failed' && (
       (i.entity === 'NOTEBOOK' && i.entityId === notebookId) ||
       (i.entity === 'TAG' && tagIds.has(i.entityId))
     ))
@@ -590,6 +594,52 @@ async function revertRejectedNoteMove(item: SyncQueueItem): Promise<void> {
   } catch (err) {
     // Offline again or the note is gone too: the next successful pull/push settles it.
     console.warn('Sync Push: could not restore the rejected note move:', item.entityId, err);
+  }
+}
+
+/**
+ * The server archived this note's content into its version history instead of
+ * writing it, because the note is open in a live collab session (the live doc
+ * wins). Tell the user, refresh the detail query so an open editor picks up
+ * `sharedWith` and switches to the collab provider, and realign the local copy
+ * with the server — syncPull preserves local content of non-dirty notes only
+ * when it matches, so it would never realign it. Same safety rule as a
+ * successful push: only when nothing is queued and the note was not edited since.
+ */
+async function handleContentDeferred(item: SyncQueueItem): Promise<void> {
+  try {
+    // Decide from state, not from this item's payload: the delete flow queues the content save and the
+    // trash flag as two separate items, so the trash may be in Dexie or still waiting in the queue.
+    const localNote = await db.notes.get(item.entityId);
+    const queuedForNote = await db.syncQueue
+      .filter(i => i.entity === 'NOTE' && i.entityId === item.entityId)
+      .toArray();
+    const isTrashed =
+      localNote?.isTrashed === true ||
+      (item.data as { isTrashed?: boolean } | undefined)?.isTrashed === true ||
+      queuedForNote.some(i => (i.data as { isTrashed?: boolean } | undefined)?.isTrashed === true);
+    if (!isTrashed) {
+      toast(i18n.t('sync.contentDeferred'), { id: `content-deferred-${item.entityId}`, duration: 8000 });
+    }
+    void queryClient.invalidateQueries({ queryKey: queryKeys.notes.detail(item.entityId) });
+    const { data: serverNote } = await api.get<{ content?: string }>(`/notes/${item.entityId}`);
+    if (typeof serverNote?.content !== 'string') return;
+    await db.transaction('rw', db.notes, db.syncQueue, async () => {
+      const local = await db.notes.get(item.entityId);
+      if (!local) return;
+      const stillQueued = await db.syncQueue
+        .filter(i => i.entity === 'NOTE' && i.entityId === item.entityId)
+        .count();
+      // G6/K3: realign only if Dexie still holds exactly the string that was pushed. No updatedAt check:
+      // syncPull overwrites it with the server's value, so it says nothing about local edits.
+      const sameAsPushed = local.content === (item.data as { content?: string } | undefined)?.content;
+      if (stillQueued === 0 && sameAsPushed) {
+        await db.notes.update(item.entityId, { content: serverNote.content, syncStatus: 'synced' as const });
+      }
+    });
+  } catch (err) {
+    // Offline again: the device keeps its text, which is already in the version history.
+    console.warn('Sync Push: could not align the deferred note content:', item.entityId, err);
   }
 }
 
@@ -744,16 +794,23 @@ const pushQueueOnce = async (): Promise<boolean> => {
   const allQueue = await db.syncQueue.orderBy('createdAt').toArray();
   const queue = allQueue.filter(item => item.userId === currentUserId);
 
+  // J1: FIFO per entity. Once an item of an entity is skipped (backoff / waiting on a reference) or fails with
+  // a retryable error, every LATER item of that entity is skipped in this run (stays pending, attempts untouched):
+  // a stale UPDATE must not overtake the earlier one. A permanent 'failed' item does not block (it would wedge the entity).
+  const blocked = new Set<string>();
   for (const item of queue) {
     // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
     if (item.status === 'failed') continue;
+    const entityKey = `${item.entity}:${item.entityId}`;
+    if (blocked.has(entityKey)) continue;
     // Skip items in backoff period
-    if (!shouldRetry(item.id)) continue;
+    if (!shouldRetry(item.id)) { blocked.add(entityKey); continue; }
 
     // Wait for the notebook/tags this note update references to reach the server
     // first. Not a failure: no backoff, the item simply stays queued for the next run.
-    if (item.entity === 'NOTE' && item.type === 'UPDATE' && await hasQueuedReferenceCreate(item)) continue;
+    if (item.entity === 'NOTE' && item.type === 'UPDATE' && await hasQueuedReferenceCreate(item)) { blocked.add(entityKey); continue; }
 
+    let contentDeferred = false;
     try {
       if (item.entity === 'NOTE') {
         // Safety: never push shared notes to REST API
@@ -768,7 +825,8 @@ const pushQueueOnce = async (): Promise<boolean> => {
           const { id, ...data } = item.data as any;
           await api.post('/notes', { ...data, id });
         } else if (item.type === 'UPDATE') {
-          await api.put(`/notes/${item.entityId}`, item.data);
+          const res = await api.put(`/notes/${item.entityId}`, item.data);
+          contentDeferred = res?.data?.contentDeferred === true;
         } else if (item.type === 'DELETE') {
           await api.delete(`/notes/${item.entityId}`);
         }
@@ -906,6 +964,8 @@ const pushQueueOnce = async (): Promise<boolean> => {
       if (item.id) await db.syncQueue.delete(item.id);
       clearFailure(item.id);
       pushedAny = true;
+      // G6: fire-and-forget (never throws: try/catch covers the whole body) so its GET cannot stall the push queue.
+      if (contentDeferred) void handleContentDeferred(item);
 
       // Update syncStatus of the entity ONLY if there are no more pending items for this entity
       if (item.type !== 'DELETE') {
@@ -979,7 +1039,17 @@ const pushQueueOnce = async (): Promise<boolean> => {
 
     } catch (error: unknown) {
       const status = (error as { response?: { status?: number } })?.response?.status;
-      if ((status === 404 || status === 410) && item.type !== 'CREATE') {
+      if (status === 503 && (error as { response?: { data?: { message?: string } } })?.response?.data?.message === 'errors.notes.archiveBusy') {
+        // K2: transient server congestion, not a rejection of the payload: no attempt consumed, item stays
+        // pending. Fixed 2 min pause (same in-memory map as the backoff), later items of the note wait.
+        if (item.id) {
+          const info = failureCounts.get(item.id) || { count: item.attempts ?? 0, nextRetryAt: 0 };
+          info.nextRetryAt = Date.now() + 2 * 60 * 1000;
+          failureCounts.set(item.id, info);
+        }
+        blocked.add(entityKey);
+        console.warn('Sync Push: archiveBusy, retrying in 2 min:', item.entity, item.entityId);
+      } else if ((status === 404 || status === 410) && item.type !== 'CREATE') {
         // Resource no longer exists on server — remove from queue to stop infinite retries.
         // NOT for a CREATE: a 404/410 there means the thing the user made never reached
         // the server, so silently dropping it would make it vanish with no trace. (A
@@ -1050,6 +1120,8 @@ const pushQueueOnce = async (): Promise<boolean> => {
         break;
       } else {
         await recordFailure(item, error);
+        // Still retryable (not promoted to terminal 'failed'): hold back the entity's later items.
+        if (item.id && failureCounts.has(item.id)) blocked.add(entityKey);
         console.error('Sync Push Failed for item:', item, error);
       }
     }

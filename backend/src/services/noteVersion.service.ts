@@ -1,10 +1,11 @@
 import prisma from '../plugins/prisma';
 import { Prisma } from '@prisma/client';
 import { extractTextFromTipTapJson } from '../utils/extractText';
-import { NotFoundError, ConflictError } from '../utils/errors';
+import { NotFoundError, ConflictError, AppError } from '../utils/errors';
 import logger from '../utils/logger';
 import { isDegenerateTipTapJson } from '../utils/ydocIntegrity';
 import { getVaultGuard, assertVaultContent } from './vault.service';
+import { rebaseYdocState, contentToYNodes } from '../utils/ydoc';
 
 // PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
 type Db = Prisma.TransactionClient;
@@ -49,18 +50,25 @@ export async function snapshotPreviousVersion(
 
 // ponytail: in-process map — single backend process (pm2 fork, 1 instance); per-note coalescing window
 const restArchive = new Map<string, { versionId: string; at: number }>();
+// per (noteId:userId): the ONE archive CREATE allowed inside the window (timestamp + its version id)
+const restArchiveByUser = new Map<string, { at: number; versionId: string }>();
+const PENDING_VERSION = '';
+export const __restArchiveSizeForTests = () => restArchive.size;
 
 /**
  * Keep a REST content write recoverable when it is NOT applied because a live collab doc wins.
- * Coalesced per note inside SNAPSHOT_THROTTLE_MS (updates the same version) so an offline push burst
- * does not churn the 50-version cap. No MIN_SNAPSHOT_LEN floor, degenerate (blank) content is skipped.
+ * One CREATE per (note, writer) inside SNAPSHOT_THROTTLE_MS; the same login session coalesces into that version
+ * (update) so an offline push burst does not churn the 50-version cap; any other session gets a retryable 503
+ * (errors.notes.archiveBusy). No MIN_SNAPSHOT_LEN floor, degenerate (blank) content is skipped.
  */
-export async function archiveRestWriteWhileLive(noteId: string, content: string, title: string): Promise<void> {
-  if (!content) return;
+export async function archiveRestWriteWhileLive(
+  noteId: string, content: string, title: string, writerUserId: string, sessionKey?: string,
+): Promise<'archived' | 'identical' | 'skipped'> {
+  if (!content) return 'skipped';
   try {
-    if (isDegenerateTipTapJson(JSON.parse(content))) return;
+    if (isDegenerateTipTapJson(JSON.parse(content))) return 'skipped';
   } catch {
-    return; // not TipTap JSON: nothing worth archiving here
+    return 'skipped'; // not TipTap JSON: nothing worth archiving here
   }
 
   const latest = await prisma.noteVersion.findFirst({
@@ -68,20 +76,63 @@ export async function archiveRestWriteWhileLive(noteId: string, content: string,
     orderBy: { createdAt: 'desc' },
     select: { content: true },
   });
-  if (latest?.content === content) return;
+  if (latest?.content === content) return 'identical';
 
-  const prev = restArchive.get(noteId);
-  if (prev && Date.now() - prev.at < SNAPSHOT_THROTTLE_MS) {
-    const exists = await prisma.noteVersion.findUnique({ where: { id: prev.versionId }, select: { id: true } });
-    if (exists) {
-      await prisma.noteVersion.update({ where: { id: prev.versionId }, data: { content, title } });
-      return;
-    }
+  // Keyed per writer AND login session (JWT iat/jti): another user's or another device's write must not
+  // overwrite this writer's archived text. Without a sessionKey we cannot tell devices apart: never coalesce.
+  // Evict expired windows on every call (create AND update branch) so the maps do not grow without bound.
+  const now = Date.now();
+  for (const [k, v] of restArchive) {
+    if (now - v.at >= SNAPSHOT_THROTTLE_MS) restArchive.delete(k);
+  }
+  for (const [k, v] of restArchiveByUser) {
+    if (now - v.at >= SNAPSHOT_THROTTLE_MS) restArchiveByUser.delete(k);
   }
 
-  const created = await prisma.noteVersion.create({ data: { noteId, content, title } });
+  const key = sessionKey ? `${noteId}:${writerUserId}:${sessionKey}` : undefined;
+  const userKey = `${noteId}:${writerUserId}`;
+  const bump = async (versionId: string) => {
+    const exists = await prisma.noteVersion.findUnique({ where: { id: versionId }, select: { id: true } });
+    if (!exists) return false;
+    // createdAt bumped so history shows the latest write; the window stays anchored to the first write,
+    // so store() snapshots are suppressed at most SNAPSHOT_THROTTLE_MS after the last one.
+    await prisma.noteVersion.update({ where: { id: versionId }, data: { content, title, createdAt: new Date() } });
+    return true;
+  };
+
+  const prev = key ? restArchive.get(key) : undefined;
+  // J2: a create by this same session is still in flight (placeholder): same retryable 503, nothing to bump yet.
+  if (prev?.versionId === PENDING_VERSION) throw new AppError(503, 'errors.notes.archiveBusy');
+  if (prev) {
+    if (await bump(prev.versionId)) return 'archived';
+    // The version row is gone (pruned): its slot is free again.
+    restArchive.delete(key!);
+    if (restArchiveByUser.get(userKey)?.versionId === prev.versionId) restArchiveByUser.delete(userKey);
+  }
+
+  // H1: a user mints at most ONE archive version per note per window (token rotation would otherwise let a
+  // collaborator flush the owner's history via the 50 cap). A different session (or one without sessionKey) must
+  // not overwrite the version of another session either, so it is refused with a RETRYABLE 503: the FE queue
+  // backs off and retries (400/403/404/422 are permanent there), and by then the window has expired.
+  if (restArchiveByUser.has(userKey)) throw new AppError(503, 'errors.notes.archiveBusy');
+
+  // J2: check and claim must be synchronous (no await between them), otherwise two concurrent calls both pass the
+  // check above and both create. Claim the slot with a placeholder now, fill in the id after the create.
+  const slot = { at: now, versionId: PENDING_VERSION };
+  restArchiveByUser.set(userKey, slot);
+  if (key) restArchive.set(key, { ...slot });
+  let created: { id: string };
+  try {
+    created = await prisma.noteVersion.create({ data: { noteId, content, title } });
+  } catch (e) {
+    restArchiveByUser.delete(userKey);
+    if (key) restArchive.delete(key);
+    throw e;
+  }
+  slot.versionId = created.id;
+  if (key) restArchive.set(key, { versionId: created.id, at: now });
   await pruneNoteVersions(prisma, noteId);
-  restArchive.set(noteId, { versionId: created.id, at: Date.now() });
+  return 'archived';
 }
 
 /** Retention: drop versions older than 30 days, then any beyond the newest 50. */
@@ -120,6 +171,23 @@ export async function listNoteVersions(userId: string, noteId: string): Promise<
   });
 }
 
+/**
+ * Read-only lookup used by the restore route BEFORE restoring: the version's content and whether the note is a
+ * plain one (not vault/encrypted). Same ownership / version checks as restoreNoteVersion.
+ */
+export async function getVersionForRestoreCheck(
+  userId: string, noteId: string, versionId: string,
+): Promise<{ content: string; plain: boolean }> {
+  const note = await prisma.note.findFirst({
+    where: { id: noteId, userId },
+    select: { isEncrypted: true, isVault: true },
+  });
+  if (!note) throw new NotFoundError('errors.notes.notFound');
+  const version = await prisma.noteVersion.findUnique({ where: { id: versionId }, select: { noteId: true, content: true } });
+  if (!version || version.noteId !== noteId) throw new NotFoundError('errors.notes.versionNotFound');
+  return { content: version.content, plain: !note.isVault && !note.isEncrypted };
+}
+
 /** Restore a version: archive current content first, then write the old content back. */
 export async function restoreNoteVersion(
   userId: string, noteId: string, versionId: string,
@@ -127,7 +195,7 @@ export async function restoreNoteVersion(
 ): Promise<{ ok: true; restoredContent: string | null }> {
   let note = await prisma.note.findFirst({
     where: { id: noteId, userId },
-    select: { id: true, content: true, title: true, isEncrypted: true, isVault: true },
+    select: { id: true, content: true, title: true, isEncrypted: true, isVault: true, noteType: true, ydocState: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
@@ -143,7 +211,7 @@ export async function restoreNoteVersion(
     await opts.beforeRestore();
     const fresh = await prisma.note.findFirst({
       where: { id: noteId, userId },
-      select: { id: true, content: true, title: true, isEncrypted: true, isVault: true },
+      select: { id: true, content: true, title: true, isEncrypted: true, isVault: true, noteType: true, ydocState: true },
     });
     if (!fresh) throw new NotFoundError('errors.notes.notFound');
     // Vault state flipped since the guard/version checks above: abort, write nothing.
@@ -151,6 +219,20 @@ export async function restoreNoteVersion(
       throw new ConflictError('errors.notes.restoreConflict');
     }
     note = fresh;
+  }
+
+  // H5: a doc may have gone live after the route's pre-check. A live (or loading) doc only takes content that
+  // converts strictly to the editor schema (replaceLiveDocContent would throw AFTER the write and the live doc
+  // would re-store the old content): refuse before writing AND before the forced snapshot (a refused restore
+  // must not mint a version). Lazy import: hocuspocus imports this module (cycle) and throws at import time
+  // without JWT_SECRET.
+  if (!note.isEncrypted && !note.isVault) {
+    const { hocuspocus } = await import('../hocuspocus');
+    const inner = hocuspocus.hocuspocus;
+    if (inner.documents.has(noteId) || inner.loadingDocuments.has(noteId)) {
+      const nodes = contentToYNodes(version.content);
+      if (!nodes || nodes.length === 0) throw new AppError(422, 'errors.notes.restoreUnsupportedLive');
+    }
   }
 
   // Archive what we're about to overwrite so a restore is itself undoable.
@@ -167,10 +249,26 @@ export async function restoreNoteVersion(
   // matches and we abort, so plaintext never lands in a vault note (or ciphertext in a plain one).
   const { count } = await prisma.note.updateMany({
     where: { id: noteId, userId, isVault: note.isVault, isEncrypted: note.isEncrypted },
-    // Null ydocState so the next Hocuspocus fetch rebuilds the Yjs doc from restored content.
-    data: { content: version.content, title: guard ? '' : version.title, searchText, ydocState: null, updatedAt: new Date() },
+    // [BACKUP] 2026-10-01 — was `ydocState: null` (next fetch rebuilt the Yjs doc from content, so a stale client
+    // duplicated every block on reconnect). Plain notes now rebase the stored state onto the restored content
+    // (null when in doubt); vault/encrypted keep null.
+    data: {
+      content: version.content,
+      title: guard ? '' : version.title,
+      searchText,
+      // CREDENTIAL notes are not TipTap JSON either: never rebased.
+      ydocState: (note.isEncrypted || note.isVault || note.noteType === 'CREDENTIAL') ? null : rebaseYdocState(note.ydocState, version.content),
+      updatedAt: new Date(),
+    },
   });
   if (count === 0) throw new ConflictError('errors.notes.restoreConflict');
+  // G7: the restore replaced the content, so pending REST-archive coalescing windows of this note are stale.
+  for (const k of restArchive.keys()) {
+    if (k.startsWith(`${noteId}:`)) restArchive.delete(k);
+  }
+  for (const k of restArchiveByUser.keys()) {
+    if (k.startsWith(`${noteId}:`)) restArchiveByUser.delete(k);
+  }
   // onAuthenticate refuses only isVault docs (never live); encrypted notes (isEncrypted, set only by vault
   // flows) are skipped because their content is ciphertext, not TipTap JSON.
   return { ok: true, restoredContent: (note.isEncrypted || note.isVault) ? null : version.content };

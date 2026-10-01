@@ -143,7 +143,8 @@ export default async function sharingRoutes(fastify: FastifyInstance) {
 
     // [BACKUP] 2026-06-10 — inline share-check + persistence moved to sharingService.updateSharedNoteContent (adds empty-overwrite guard)
     try {
-      return await sharingService.updateSharedNoteContent(request.user.id, noteId, { content, title });
+      const { iat, jti, sid } = request.user;
+      return await sharingService.updateSharedNoteContent(request.user.id, noteId, { content, title }, sid ?? jti ?? (iat != null ? String(iat) : undefined));
     } catch (err) {
       if (err instanceof ForbiddenError) return reply.status(403).send({ message: err.message });
       if (err instanceof NotFoundError) return reply.status(404).send({ message: err.message });

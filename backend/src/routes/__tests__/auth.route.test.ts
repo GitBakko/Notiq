@@ -273,3 +273,75 @@ describe('GET /api/auth/config', () => {
     expect(JSON.parse(res.payload)).toEqual({ invitationSystemEnabled: true });
   });
 });
+
+describe('POST /refresh rate limit is per user (I3)', () => {
+  it('two users behind the same IP have independent buckets (30/min each)', async () => {
+    const { default: rateLimit } = await import('@fastify/rate-limit');
+    const rlApp = Fastify();
+    rlApp.register(jwtPlugin, { secret: 'test-secret' });
+    rlApp.register(rateLimit, { global: false });
+    rlApp.decorate('authenticate', async (request: any, reply: any) => {
+      try { await request.jwtVerify(); } catch { return reply.code(401).send({ message: 'Unauthorized' }); }
+    });
+    rlApp.register(authRoutes, { prefix: '/api/auth' });
+    await rlApp.ready();
+    try {
+      const { default: prisma } = await import('../../plugins/prisma');
+      (prisma as any).user.findUnique.mockImplementation(async ({ where }: any) => ({ id: where.id, email: 'a@a.it', role: 'USER', tokenVersion: 0 }));
+      const tokA = rlApp.jwt.sign({ id: 'user-A', email: 'a@a.it', role: 'USER', tokenVersion: 0 });
+      const tokB = rlApp.jwt.sign({ id: 'user-B', email: 'b@b.it', role: 'USER', tokenVersion: 0 });
+      const call = (tok: string) => rlApp.inject({ method: 'POST', url: '/api/auth/refresh', remoteAddress: '10.9.9.9', headers: { authorization: `Bearer ${tok}` } });
+      for (let i = 0; i < 30; i++) expect((await call(tokA)).statusCode).toBe(200);
+      expect((await call(tokA)).statusCode).toBe(429);
+      expect((await call(tokB)).statusCode).toBe(200); // same IP, other user: own bucket
+    } finally {
+      await rlApp.close();
+    }
+  });
+});
+
+describe('JWT jti (H3)', () => {
+  it('login and refresh sign a random jti, distinct on every token', async () => {
+    // (refresh route also carries config.rateLimit 30/min, inert here: the rate-limit plugin is not registered)
+    mockLogin.mockResolvedValue({
+      id: 'user-1', email: 'test@test.com', role: 'USER', tokenVersion: 0,
+      name: 'Test', surname: null, invitesAvailable: 3, avatarUrl: null, color: '#319795', createdAt: new Date(),
+    });
+    const l1 = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'test@test.com', password: 'password123' } });
+    const t1 = JSON.parse(l1.payload).token as string;
+    const j1 = (app.jwt.decode(t1) as any).jti;
+    expect(typeof j1).toBe('string');
+    expect(j1.length).toBeGreaterThan(10);
+
+    const { default: prisma } = await import('../../plugins/prisma');
+    (prisma as any).user.findUnique.mockResolvedValue({ id: 'user-1', email: 'test@test.com', role: 'USER', tokenVersion: 0 });
+    const r1 = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${t1}` } });
+    const r2 = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${t1}` } });
+    const jr1 = (app.jwt.decode(JSON.parse(r1.payload).token) as any).jti;
+    const jr2 = (app.jwt.decode(JSON.parse(r2.payload).token) as any).jti;
+    expect(jr1).toBeTruthy();
+    expect(new Set([j1, jr1, jr2]).size).toBe(3);
+  });
+
+  it('J3: login signs a sid; refresh keeps it; a legacy token without sid gets a new one', async () => {
+    mockLogin.mockResolvedValue({
+      id: 'user-1', email: 'test@test.com', role: 'USER', tokenVersion: 0,
+      name: 'Test', surname: null, invitesAvailable: 3, avatarUrl: null, color: '#319795', createdAt: new Date(),
+    });
+    const l1 = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'test@test.com', password: 'password123' } });
+    const t1 = JSON.parse(l1.payload).token as string;
+    const sid = (app.jwt.decode(t1) as any).sid;
+    expect(typeof sid).toBe('string');
+
+    const { default: prisma } = await import('../../plugins/prisma');
+    (prisma as any).user.findUnique.mockResolvedValue({ id: 'user-1', email: 'test@test.com', role: 'USER', tokenVersion: 0 });
+    const r1 = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${t1}` } });
+    expect((app.jwt.decode(JSON.parse(r1.payload).token) as any).sid).toBe(sid);
+
+    const legacy = app.jwt.sign({ id: 'user-1', email: 'test@test.com', role: 'USER', tokenVersion: 0 });
+    const r2 = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${legacy}` } });
+    const sid2 = (app.jwt.decode(JSON.parse(r2.payload).token) as any).sid;
+    expect(typeof sid2).toBe('string');
+    expect(sid2).not.toBe(sid);
+  });
+});

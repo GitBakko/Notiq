@@ -10,17 +10,7 @@ import logger from './utils/logger';
 import { guardEmptyContentOverwrite } from './utils/contentGuard';
 import { isDegenerateTipTapJson } from './utils/ydocIntegrity';
 import { snapshotPreviousVersion } from './services/noteVersion.service';
-import StarterKit from '@tiptap/starter-kit';
-import { Table } from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
-import TextAlign from '@tiptap/extension-text-align';
-import { TextStyle } from '@tiptap/extension-text-style';
-import { FontFamily } from '@tiptap/extension-font-family';
-// import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import { Node, Extension } from '@tiptap/core';
+import { extensions, contentToYdocState, contentToYNodes } from './utils/ydoc';
 import type { SharedNote } from '@prisma/client';
 
 interface JwtPayload {
@@ -53,214 +43,8 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
 }
 
-// Define custom extensions to match frontend
-const EncryptedBlock = Node.create({
-  name: 'encryptedBlock',
-  group: 'block',
-  atom: true,
-  addAttributes() {
-    return {
-      ciphertext: {
-        default: '',
-      },
-      createdBy: {
-        default: null,
-      }
-    }
-  },
-  parseHTML() {
-    return [{ tag: 'encrypted-block' }]
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['encrypted-block', HTMLAttributes]
-  },
-});
-
-const FontSize = Extension.create({
-  name: 'fontSize',
-  addOptions() {
-    return {
-      types: ['textStyle'],
-    };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          fontSize: {
-            default: null,
-            parseHTML: (element: HTMLElement) => element.style?.fontSize?.replace(/['"]+/g, ''),
-            renderHTML: (attributes) => {
-              if (!attributes.fontSize) return {};
-              return { style: `font-size: ${attributes.fontSize}` };
-            },
-          },
-        },
-      },
-    ];
-  },
-});
-
-const CustomTableHeader = TableHeader.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      borderStyle: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.borderStyle,
-        renderHTML: (attributes) => {
-          if (!attributes.borderStyle) return {};
-          return { style: `border-style: ${attributes.borderStyle}` };
-        },
-      },
-      borderColor: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.borderColor,
-        renderHTML: (attributes) => {
-          if (!attributes.borderColor) return {};
-          return { style: `border-color: ${attributes.borderColor}` };
-        },
-      },
-    };
-  },
-});
-
-const CustomTableCell = TableCell.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      borderStyle: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.borderStyle,
-        renderHTML: (attributes) => {
-          if (!attributes.borderStyle) return {};
-          return { style: `border-style: ${attributes.borderStyle}` };
-        },
-      },
-      borderColor: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.borderColor,
-        renderHTML: (attributes) => {
-          if (!attributes.borderColor) return {};
-          return { style: `border-color: ${attributes.borderColor}` };
-        },
-      },
-    };
-  },
-});
-
-// Mirror of frontend Table.extend — preserves tableWidth attr during Hocuspocus persistence
-const CustomTable = Table.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      tableWidth: {
-        default: null, // null = AUTO (100%), 'free' = column-based
-        parseHTML: (element: HTMLElement) => {
-          const w = element.getAttribute('data-table-width');
-          if (w === 'free') return 'free';
-          return null; // default AUTO
-        },
-        renderHTML: (attributes: Record<string, unknown>) => {
-          if (attributes.tableWidth === 'free') {
-            return { 'data-table-width': 'free' };
-          }
-          return { style: 'width: 100%' }; // AUTO
-        },
-      },
-    };
-  },
-}).configure({
-  resizable: true,
-});
-
-// Mirror of frontend TableRow.extend — preserves rowHeight attr during Hocuspocus persistence
-const CustomTableRow = TableRow.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      rowHeight: {
-        default: null,
-        parseHTML: (element: HTMLElement) => {
-          const h = element.style.height;
-          return (h && h !== 'auto') ? h : null;
-        },
-        renderHTML: (attributes: Record<string, unknown>) => {
-          if (!attributes.rowHeight) return {};
-          return { style: `height: ${attributes.rowHeight}` };
-        },
-      },
-    };
-  },
-});
-
-
-
-const LineHeight = Extension.create({
-  name: 'lineHeight',
-
-  addOptions() {
-    return {
-      types: ['paragraph', 'heading'],
-      defaultLineHeight: '0.5',
-    };
-  },
-
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          lineHeight: {
-            default: this.options.defaultLineHeight,
-            parseHTML: (element: HTMLElement) => element.style.lineHeight || null,
-            renderHTML: (attributes) => {
-              if (!attributes.lineHeight) {
-                return {};
-              }
-              return {
-                style: `line-height: ${attributes.lineHeight}`,
-              };
-            },
-          },
-        },
-      },
-    ];
-  },
-});
-
-export const extensions = [
-  StarterKit,
-  CustomTable,
-  CustomTableRow,
-  CustomTableHeader,
-  CustomTableCell,
-  TextAlign.configure({
-    types: ['heading', 'paragraph'],
-  }),
-  TextStyle,
-  FontFamily,
-  FontSize,
-  // Link, // Removed as it is included in StarterKit v3 or causes duplicate warning
-  EncryptedBlock,
-  LineHeight,
-  Image.extend({
-    addAttributes() {
-      return {
-        ...this.parent?.(),
-        width: {
-          default: null,
-          parseHTML: (element: HTMLElement) => element.style?.width || element.getAttribute('width') || null,
-          renderHTML: (attributes: Record<string, string | null>) => {
-            if (!attributes.width) return {};
-            return { style: `width: ${attributes.width}` };
-          },
-        },
-      };
-    },
-  }).configure({ inline: true }),
-];
+// Server-side TipTap extensions live in utils/ydoc.ts (must match Editor.tsx); re-exported for the existing consumers.
+export { extensions };
 
 
 
@@ -321,35 +105,6 @@ export function disconnectUserEverywhere(userId: string): void {
 }
 
 /**
- * Note.content (TipTap JSON string, or legacy HTML/plain text) -> Yjs state update.
- * Shared by the Database `fetch` and replaceLiveDocContent. Returns null when conversion fails.
- */
-function contentToYdocState(content: string): Uint8Array | null {
-  try {
-    const json = JSON.parse(content);
-    // @ts-ignore — TiptapTransformer API types incomplete
-    const doc = TiptapTransformer.toYdoc(json, 'default', extensions);
-    const state = Y.encodeStateAsUpdate(doc);
-    return state;
-  } catch (e) {
-    logger.error(e, 'Failed to parse note content as JSON, attempting fallback');
-    try {
-      const text = content.replace(/<[^>]*>/g, ' ').trim();
-      const json = {
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: text || ' ' }] }],
-      };
-      // @ts-ignore — TiptapTransformer API types incomplete
-      const tiptapDoc = TiptapTransformer.toYdoc(json, 'default', extensions);
-      return Y.encodeStateAsUpdate(tiptapDoc);
-    } catch (err) {
-      logger.error(err, 'Failed to convert legacy content');
-    }
-  }
-  return null;
-}
-
-/**
  * Swap the content of a note's LIVE collab doc (no-op when nobody has it open or loading it).
  * A REST write to Note.content is invisible to a loaded Y doc: its next store() writes the
  * old in-memory state back. One Yjs transaction: clients get a single update and never see
@@ -365,12 +120,9 @@ function contentToYdocState(content: string): Uint8Array | null {
 export async function replaceLiveDocContent(noteId: string, content: string): Promise<void> {
   const inner = hocuspocus.hocuspocus;
   if (!inner.documents.has(noteId) && !inner.loadingDocuments.has(noteId)) return;
-  const state = contentToYdocState(content);
-  if (!state) throw new Error('replaceLiveDocContent: restored content could not be converted');
-  const tmp = new Y.Doc();
-  Y.applyUpdate(tmp, state);
-  const nodes = tmp.getXmlFragment('default').toArray().map((n) => n.clone()) as Array<Y.XmlElement | Y.XmlText>;
-  if (nodes.length === 0) throw new Error('replaceLiveDocContent: restored content has no nodes');
+  // STRICT conversion: a throw (logged by the route) beats persisting raw JSON/HTML as a text paragraph.
+  const nodes = contentToYNodes(content);
+  if (!nodes) throw new Error('replaceLiveDocContent: restored content could not be converted');
   const connection = await inner.openDirectConnection(noteId, { restore: true });
   try {
     await connection.transact((doc) => {

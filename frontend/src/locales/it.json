@@ -796,7 +796,8 @@
     "pendingToast": "La sincronizzazione sta richiedendo più tempo del solito",
     "sharedSaveFailed": "Le modifiche a questa nota condivisa non sono state salvate sul server — verifica la connessione",
     "sharedSaveForbidden": "Non hai più accesso a questa nota — le ultime modifiche non sono state salvate",
-    "noteMoveReverted": "La nota non è stata spostata: il taccuino non esiste più. È tornata nel taccuino precedente."
+    "noteMoveReverted": "La nota non è stata spostata: il taccuino non esiste più. È tornata nel taccuino precedente.",
+    "contentDeferred": "La nota è aperta in una sessione condivisa: le tue modifiche sono state salvate nella cronologia delle versioni invece di sostituirla."
   },
   "collaboration": {
     "you": "Tu",
@@ -1581,7 +1582,9 @@
       "notFoundOrDenied": "Nota non trovata o accesso negato",
       "notFoundOrNotPublic": "Nota non trovata o non pubblica",
       "versionNotFound": "Versione non trovata.",
-      "restoreConflict": "La nota è cambiata durante il ripristino. Riprova."
+      "archiveBusy": "La nota è occupata in una sessione condivisa. Le tue modifiche verranno ritentate a breve.",
+      "restoreConflict": "La nota è cambiata durante il ripristino. Riprova.",
+      "restoreUnsupportedLive": "Questa versione non può essere ripristinata mentre la nota è aperta in una sessione condivisa. Chiudi la nota sugli altri dispositivi e riprova."
     },
     "notebooks": {
       "notFound": "Taccuino non trovato",

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prisma from '../../plugins/prisma';
 import { ForbiddenError } from '../../utils/errors';
 import {
@@ -40,10 +40,22 @@ vi.mock('../kanbanSSE', () => ({
 
 vi.mock('../../hocuspocus', () => ({
   disconnectUserFromNote: vi.fn(),
+  hocuspocus: { hocuspocus: { documents: new Map(), loadingDocuments: new Map() } },
+}));
+
+vi.mock('../../utils/ydoc', () => ({
+  rebaseYdocState: vi.fn(() => null),
+}));
+
+vi.mock('../noteVersion.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../noteVersion.service')>()),
+  archiveRestWriteWhileLive: vi.fn(),
 }));
 
 import { disconnectUser } from '../kanbanSSE';
-import { disconnectUserFromNote } from '../../hocuspocus';
+import { disconnectUserFromNote, hocuspocus } from '../../hocuspocus';
+import { rebaseYdocState } from '../../utils/ydoc';
+import { archiveRestWriteWhileLive } from '../noteVersion.service';
 import * as auditService from '../audit.service';
 import * as emailService from '../email.service';
 import * as notificationService from '../notification.service';
@@ -910,6 +922,87 @@ describe('updateSharedNoteContent', () => {
       where: { id: 'note-1', isVault: false },
       data: expect.objectContaining({ content: newGood, ydocState: null }),
     }));
+  });
+
+  it('not live: ydocState = rebase of the stored state onto the accepted content', async () => {
+    const stored = Buffer.from([1, 2]);
+    const rebased = Buffer.from([3, 4]);
+    prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared', ydocState: stored, isEncrypted: false });
+    (rebaseYdocState as any).mockReturnValueOnce(rebased);
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+
+    await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+
+    expect(rebaseYdocState).toHaveBeenCalledWith(stored, newGood);
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.ydocState).toBe(rebased);
+    expect(archiveRestWriteWhileLive).not.toHaveBeenCalled();
+  });
+
+  it('not live + encrypted note: ydocState null, rebase not called', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared', ydocState: Buffer.from([1]), isEncrypted: true });
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+    await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+    expect(rebaseYdocState).not.toHaveBeenCalled();
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.ydocState).toBeNull();
+  });
+
+  it('not live + CREDENTIAL note: ydocState null, rebase not called (and noteType is selected)', async () => {
+    prismaMock.note.findUnique.mockResolvedValue({ content: SUBSTANTIAL, title: 'Shared', ydocState: Buffer.from([1]), isEncrypted: false, noteType: 'CREDENTIAL' });
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+    await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+    expect(rebaseYdocState).not.toHaveBeenCalled();
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.ydocState).toBeNull();
+    expect(prismaMock.note.findUnique.mock.calls[0][0].select).toMatchObject({ noteType: true });
+  });
+
+  describe('live collab doc (1.13.3: the live doc wins)', () => {
+    const docs = (hocuspocus as any).hocuspocus.documents as Map<string, unknown>;
+    const loading = (hocuspocus as any).hocuspocus.loadingDocuments as Map<string, unknown>;
+    beforeEach(() => { docs.clear(); loading.clear(); docs.set('note-1', {}); });
+    afterEach(() => { docs.clear(); loading.clear(); });
+    const newGood = SUBSTANTIAL.replace('A'.repeat(200), 'B'.repeat(200));
+
+    it('content + title: only the title is written; content archived instead', async () => {
+      await updateSharedNoteContent('user-2', 'note-1', { content: newGood, title: 'Renamed' });
+      const data = prismaMock.note.updateMany.mock.calls[0][0].data;
+      expect(data).toMatchObject({ title: 'Renamed' });
+      expect(data).not.toHaveProperty('content');
+      expect(data).not.toHaveProperty('searchText');
+      expect(data).not.toHaveProperty('ydocState');
+      expect(prismaMock.noteVersion.create).not.toHaveBeenCalled(); // no in-line snapshot of the old content
+      expect(rebaseYdocState).not.toHaveBeenCalled();
+      expect(archiveRestWriteWhileLive).toHaveBeenCalledWith('note-1', newGood, 'Shared', 'user-2', undefined);
+    });
+
+    it('G3: the sessionKey is forwarded to the archive', async () => {
+      await updateSharedNoteContent('user-2', 'note-1', { content: newGood }, 'iat-7');
+      expect(archiveRestWriteWhileLive).toHaveBeenCalledWith('note-1', newGood, 'Shared', 'user-2', 'iat-7');
+    });
+
+    it('content only: no note write at all, still archived and { ok: true }', async () => {
+      const res = await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+      expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
+      expect(archiveRestWriteWhileLive).toHaveBeenCalledTimes(1);
+      expect(res).toEqual({ ok: true });
+    });
+
+    it('a loading doc counts as live', async () => {
+      docs.clear();
+      loading.set('note-1', Promise.resolve());
+      await updateSharedNoteContent('user-2', 'note-1', { content: newGood });
+      expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
+      expect(archiveRestWriteWhileLive).toHaveBeenCalledTimes(1);
+    });
+
+    it('archive throwing rejects (the device keeps its queued item and retries), as updateNote', async () => {
+      (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
+      await expect(updateSharedNoteContent('user-2', 'note-1', { content: newGood })).rejects.toThrow('boom');
+    });
+
+    it('empty-over-substantial content is dropped, not archived', async () => {
+      await updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC });
+      expect(archiveRestWriteWhileLive).not.toHaveBeenCalled();
+    });
   });
 
   it('snapshots the previous content before accepting a new substantial write', async () => {

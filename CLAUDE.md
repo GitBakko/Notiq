@@ -46,7 +46,7 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 |------|------|
 | Server entry | `backend/src/app.ts` (port 3001, route + upgrade WS su `/ws` e `/chat-ws`) |
 | DB schema | `backend/prisma/schema.prisma` (+ `prisma/migrations/`) |
-| Collab server | `backend/src/hocuspocus.ts` (extensions DEVONO matchare Editor.tsx) |
+| Collab server | `backend/src/hocuspocus.ts` (re-esporta `extensions`, che stanno in `backend/src/utils/ydoc.ts` e DEVONO matchare Editor.tsx) |
 | Chat WS server | `backend/src/chatWebSocket.ts` (protocollo message/reaction/typing/read/presence) |
 | Chat context FE | `frontend/src/features/chat/` (`ChatContext` = singola connessione WS; i componenti usano `useChatContext()`) |
 | Prisma client | `backend/src/plugins/prisma.ts` (singleton, pg adapter) |
@@ -73,7 +73,7 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 - **Styling:** Tailwind utilities + `clsx()`. SEMPRE aggiungere varianti `dark:`.
 - **Nuovo entity Dexie:** incrementare version in `db.ts`, aggiungere in syncPull + syncPush.
 - **Mutation local-first:** se `mutationFn` scrive su Dexie, spreddare `...LOCAL_FIRST` (`lib/networkMode.ts`) nell'oggetto passato a `useMutation`/`useQuery` — senza, TanStack Query la mette in pausa offline e la mutation semplicemente non gira.
-- **Nuova TipTap extension strutturale:** DEVE essere aggiunta sia in `Editor.tsx` CHE in `hocuspocus.ts`.
+- **Nuova TipTap extension strutturale:** DEVE essere aggiunta sia in `Editor.tsx` CHE in `utils/ydoc.ts` (backend).
 - **Chat components:** usare `useChatContext()` dal `ChatContext` condiviso, MAI aprire una connessione WS diretta per componente.
 - **Nuova sottocartella `uploads/`:** richiede route esplicita in `app.ts` (gli static file NON sono serviti con wildcard).
 
@@ -136,7 +136,8 @@ Non modificare questi file senza revisione esplicita dell'impatto.
 |------|--------|
 | `frontend/src/features/sync/syncService.ts` | Motore sync offline. Self-healing, zombie prevention, race condition guards. Errori = note perse o duplicate. |
 | `frontend/src/lib/db.ts` | Schema Dexie (IndexedDB). Un errore di migration corrompe il DB locale di TUTTI gli utenti. MAI modificare versioni esistenti, solo aggiungere nuove. |
-| `backend/src/hocuspocus.ts` | Server collab Yjs. Extensions devono matchare Editor.tsx. Errori = corruzione contenuto note. |
+| `backend/src/hocuspocus.ts` | Server collab Yjs. Errori = corruzione contenuto note. |
+| `backend/src/utils/ydoc.ts` | Sede delle TipTap extensions server (devono matchare Editor.tsx) + `rebaseYdocState`/`contentToYNodes`. Errori = corruzione/duplicazione contenuto note. |
 | `frontend/src/utils/crypto.ts` | Encryption vault. Cambiare algo/parametri rende illeggibili tutte le note vault esistenti. |
 | `frontend/src/store/vaultStore.ts` | Stato vault (`pinHash` persisted). Cambiare `partialize` o storage key invalida tutti i vault. |
 | `backend/prisma/schema.prisma` | Schema DB. Ogni modifica richiede migration. Errori = rollback complessi in prod. |
@@ -180,7 +181,7 @@ Nessun debito tecnico residuo critico. Remaining low-priority items:
 
 Queste regole si aggiungono a quelle sopra e al routing globale (`~/.claude/CLAUDE.md`); in caso di conflitto prevalgono le regole preesistenti del progetto.
 
-- File TIER 1 o TIER 2 in staging → trattali come `hardRisk` anche se la regex del gate non li riconosce (`syncService.ts`, `db.ts`, `hocuspocus.ts`, `schema.prisma`, `vaultStore.ts`, `api.ts`, `app.ts`, `Editor.tsx`, `email.service.ts`).
+- File TIER 1 o TIER 2 in staging → trattali come `hardRisk` anche se la regex del gate non li riconosce (`syncService.ts`, `db.ts`, `hocuspocus.ts`, `utils/ydoc.ts`, `schema.prisma`, `vaultStore.ts`, `api.ts`, `app.ts`, `Editor.tsx`, `email.service.ts`).
 - L'implementazione delegata al subagent Sonnet non scavalca "Proponi prima, applica dopo": sui file TIER 1/2 serve comunque la conferma esplicita (hook `tier1-guard`), anche dopo il plan di `architect`.
 - Le release (`/notiq-release`: solo bump versione + changelog) sono esenti dal gate.
 - FAIL e2e riportato da `triage` → lo verifica il principale; non archiviarlo come flaky senza conferma con `git stash` (`collaboration.spec.ts:249`, `auth.spec.ts:41`).

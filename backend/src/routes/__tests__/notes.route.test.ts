@@ -20,16 +20,23 @@ vi.mock('../../services/sharing.service', () => ({
 vi.mock('../../services/noteVersion.service', () => ({
   listNoteVersions: vi.fn(),
   restoreNoteVersion: vi.fn(),
+  getVersionForRestoreCheck: vi.fn(),
 }));
 
 vi.mock('../../hocuspocus', () => ({
   flushLiveDoc: vi.fn(),
   replaceLiveDocContent: vi.fn(),
+  hocuspocus: { hocuspocus: { documents: new Map(), loadingDocuments: new Map() } },
+}));
+
+vi.mock('../../utils/ydoc', () => ({
+  contentToYNodes: vi.fn(() => [{}]),
 }));
 
 import * as noteService from '../../services/note.service';
-import { restoreNoteVersion } from '../../services/noteVersion.service';
-import { flushLiveDoc, replaceLiveDocContent } from '../../hocuspocus';
+import { restoreNoteVersion, getVersionForRestoreCheck } from '../../services/noteVersion.service';
+import { flushLiveDoc, replaceLiveDocContent, hocuspocus } from '../../hocuspocus';
+import { contentToYNodes } from '../../utils/ydoc';
 import { AppError, NotFoundError } from '../../utils/errors';
 import noteRoutes from '../notes';
 
@@ -194,6 +201,62 @@ describe('PUT /api/notes/:id', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.payload)).toEqual({ message: 'Note updated' });
+  });
+
+  it('H3: prefers the JWT jti over iat as sessionKey', async () => {
+    mockNoteService.updateNote.mockResolvedValue({ id: 'note-1' });
+    const tok = app.jwt.sign({ ...TEST_USER, jti: 'jti-abc' });
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/notes/note-1',
+      headers: { authorization: `Bearer ${tok}` },
+      payload: { title: 'x' },
+    });
+
+    expect(mockNoteService.updateNote.mock.calls.at(-1)[3]).toBe('jti-abc');
+  });
+
+  it('J3: prefers the JWT sid (stable across refresh) over jti as sessionKey', async () => {
+    mockNoteService.updateNote.mockResolvedValue({ id: 'note-1' });
+    const tok = app.jwt.sign({ ...TEST_USER, sid: 'sid-xyz', jti: 'jti-abc' });
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/notes/note-1',
+      headers: { authorization: `Bearer ${tok}` },
+      payload: { title: 'x' },
+    });
+
+    expect(mockNoteService.updateNote.mock.calls.at(-1)[3]).toBe('sid-xyz');
+  });
+
+  it('G3: falls back to the JWT iat as sessionKey (token without jti)', async () => {
+    mockNoteService.updateNote.mockResolvedValue({ id: 'note-1' });
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/notes/note-1',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { title: 'x' },
+    });
+
+    const call = mockNoteService.updateNote.mock.calls.at(-1);
+    expect(call[3]).toMatch(/^\d+$/);
+  });
+
+  it('forwards contentDeferred (live collab doc kept the content out of the note) and never leaks the note', async () => {
+    mockNoteService.updateNote.mockResolvedValue({ id: 'note-1', ydocState: 'secret', contentDeferred: true });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/notes/note-1',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { content: 'x' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload)).toEqual({ message: 'Note updated', contentDeferred: true });
   });
 
   it('returns 404 when note not found', async () => {
@@ -377,6 +440,56 @@ describe('POST /api/notes/:id/versions/:versionId/restore', () => {
     const res = await call();
     expect(res.statusCode).toBe(200);
     expect(replaceLiveDocContent).not.toHaveBeenCalled();
+  });
+
+  describe('live doc + version not convertible (422 before any write)', () => {
+    const docs = (hocuspocus as any).hocuspocus.documents as Map<string, unknown>;
+    const loading = (hocuspocus as any).hocuspocus.loadingDocuments as Map<string, unknown>;
+    beforeEach(() => {
+      docs.clear(); loading.clear();
+      (getVersionForRestoreCheck as any).mockReset();
+      (getVersionForRestoreCheck as any).mockResolvedValue({ content: '<p>legacy</p>', plain: true });
+      (contentToYNodes as any).mockReset();
+    });
+
+    it.each([['null', null], ['zero nodes', []]])('live doc + conversion %s -> 422, nothing written', async (_n, result) => {
+      docs.set(NOTE, {});
+      (contentToYNodes as any).mockReturnValue(result);
+      const res = await call();
+      expect(res.statusCode).toBe(422);
+      expect(JSON.parse(res.payload)).toEqual({ message: 'errors.notes.restoreUnsupportedLive' });
+      expect(restoreNoteVersion).not.toHaveBeenCalled();
+      expect(replaceLiveDocContent).not.toHaveBeenCalled();
+    });
+
+    it('loading doc counts as live', async () => {
+      loading.set(NOTE, Promise.resolve());
+      (contentToYNodes as any).mockReturnValue(null);
+      expect((await call()).statusCode).toBe(422);
+      expect(restoreNoteVersion).not.toHaveBeenCalled();
+    });
+
+    it('live doc + convertible version -> restores', async () => {
+      docs.set(NOTE, {});
+      (contentToYNodes as any).mockReturnValue([{}]);
+      (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: null });
+      expect((await call()).statusCode).toBe(200);
+      expect(restoreNoteVersion).toHaveBeenCalledTimes(1);
+    });
+
+    it('live doc + vault/encrypted note -> no conversion check', async () => {
+      docs.set(NOTE, {});
+      (getVersionForRestoreCheck as any).mockResolvedValue({ content: 'cipher', plain: false });
+      (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: null });
+      expect((await call()).statusCode).toBe(200);
+      expect(contentToYNodes).not.toHaveBeenCalled();
+    });
+
+    it('no live doc -> no lookup at all', async () => {
+      (restoreNoteVersion as any).mockResolvedValue({ ok: true, restoredContent: null });
+      expect((await call()).statusCode).toBe(200);
+      expect(getVersionForRestoreCheck).not.toHaveBeenCalled();
+    });
   });
 
   it('still answers 200 { ok: true } when the live doc update fails', async () => {

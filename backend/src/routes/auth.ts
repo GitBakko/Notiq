@@ -1,6 +1,8 @@
 
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
+import { clientIpKey } from '../utils/clientIpKey';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import prisma from '../plugins/prisma';
 import '../types';
 import * as settingsService from '../services/settings.service';
@@ -53,9 +55,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
     const { email, password } = loginSchema.parse(request.body);
     const user = await loginUser(email, password);
 
+    // jti: random per token (a session identity that cannot be rotated within the same second like `iat`)
     const token = fastify.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion },
-      { expiresIn: '24h' }
+      // sid: stable login-session id, carried over by /refresh (jti rotates on every token)
+      { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion, sid: randomUUID() },
+      { expiresIn: '24h', jti: randomUUID() }
     );
 
     return {
@@ -93,15 +97,19 @@ export default async function authRoutes(fastify: FastifyInstance) {
     return { message: 'Password reset successfully' };
   });
 
-  fastify.post('/refresh', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  // Per-user bucket: @fastify/rate-limit appends its onRequest hook AFTER the route's own, so authenticate has
+  // already populated request.user here (verified token). Fallback to the IP key if it somehow is not set.
+  const refreshKey = (req: FastifyRequest) => (req.user?.id ? `user:${req.user.id}` : clientIpKey(req));
+  fastify.post('/refresh', { onRequest: [fastify.authenticate], config: { rateLimit: { max: 30, timeWindow: '1 minute', keyGenerator: refreshKey } } }, async (request, reply) => {
     const user = await prisma.user.findUnique({
       where: { id: request.user.id },
       select: { id: true, email: true, role: true, tokenVersion: true }
     });
     if (!user) return reply.status(401).send({ message: 'errors.user.notFound' });
     const token = fastify.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion },
-      { expiresIn: '24h' }
+      // keep the session id across refreshes (tokens issued before sid existed get a fresh one)
+      { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion, sid: request.user.sid ?? randomUUID() },
+      { expiresIn: '24h', jti: randomUUID() }
     );
     return { token };
   });

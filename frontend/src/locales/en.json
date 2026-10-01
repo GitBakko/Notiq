@@ -1172,7 +1172,8 @@
     "pendingToast": "Changes are taking longer than usual to sync",
     "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection",
     "sharedSaveForbidden": "You no longer have access to this note — your latest changes were not saved",
-    "noteMoveReverted": "The note was not moved: the notebook no longer exists. It is back in its previous notebook."
+    "noteMoveReverted": "The note was not moved: the notebook no longer exists. It is back in its previous notebook.",
+    "contentDeferred": "This note is open in a live shared session: your changes were saved to its version history instead of replacing it."
   },
   "collaboration": {
     "you": "You",
@@ -1581,7 +1582,9 @@
       "notFoundOrDenied": "Note not found or access denied",
       "notFoundOrNotPublic": "Note not found or not public",
       "versionNotFound": "Version not found.",
-      "restoreConflict": "The note changed while restoring. Please try again."
+      "archiveBusy": "The note is busy in a live shared session. Your changes will be retried shortly.",
+      "restoreConflict": "The note changed while restoring. Please try again.",
+      "restoreUnsupportedLive": "This version can't be restored while the note is open in a live shared session. Close the note on the other devices and try again."
     },
     "notebooks": {
       "notFound": "Notebook not found",

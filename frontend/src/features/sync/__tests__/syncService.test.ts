@@ -82,8 +82,13 @@ const { mockDb, mockApi, mockAuthStore } = vi.hoisted(() => {
 vi.mock('../../../lib/db', () => ({ db: mockDb }));
 vi.mock('../../../lib/api', () => ({ default: mockApi }));
 vi.mock('../../../store/authStore', () => ({ useAuthStore: mockAuthStore }));
-const { mockToast } = vi.hoisted(() => ({ mockToast: { error: vi.fn() } }));
+const { mockToast, mockQueryClient } = vi.hoisted(() => {
+  // toast() itself must be callable (contentDeferred), plus toast.error()
+  const mockToast = Object.assign(vi.fn(), { error: vi.fn() });
+  return { mockToast, mockQueryClient: { invalidateQueries: vi.fn() } };
+});
 vi.mock('react-hot-toast', () => ({ default: mockToast }));
+vi.mock('../../../lib/queryClient', () => ({ default: mockQueryClient }));
 vi.mock('i18next', () => ({ default: { t: (k: string) => k } }));
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1107,162 @@ describe('syncPush', () => {
       expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(2);
     });
 
+    describe('contentDeferred (note open in a live collab session)', () => {
+      const deferredItem = (data: Record<string, unknown> = { content: '<p>device</p>' }) => ({
+        id: 20, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-live',
+        userId: 'user-1', data, createdAt: 1_000_000,
+      });
+
+      // G6: handleContentDeferred is fire-and-forget (void) in the push loop, so let its promises settle.
+      const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+      const setup = (item: ReturnType<typeof deferredItem>, putData: unknown = { contentDeferred: true }) => {
+        mockDb.syncQueue.toArray.mockResolvedValue([item]);
+        mockApi.put.mockResolvedValue({ data: putData });
+        mockDb.syncQueue.count.mockResolvedValue(0);
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>device</p>', updatedAt: new Date(item.createdAt - 1000).toISOString(),
+        });
+      };
+
+      it('toasts, invalidates the detail query and aligns Dexie to the server content', async () => {
+        setup(deferredItem());
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockApi.get).toHaveBeenCalledWith('/notes/note-live');
+        expect(mockToast).toHaveBeenCalledWith('sync.contentDeferred', expect.objectContaining({ id: 'content-deferred-note-live' }));
+        expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['note', 'note-live'] });
+        expect(mockDb.notes.update).toHaveBeenCalledWith('note-live', expect.objectContaining({
+          content: '<p>server</p>', syncStatus: 'synced',
+        }));
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(20);
+      });
+
+      // K3: syncPull overwrites local.updatedAt with the server's, so updatedAt is not a reliable "edited since"
+      // signal. Only same-content-as-pushed + empty queue decide.
+      it('K3: realigns even if updatedAt moved (pull) when content equals the pushed one and the queue is empty', async () => {
+        const item = deferredItem();
+        setup(item);
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>device</p>', updatedAt: new Date(item.createdAt + 5000).toISOString(),
+        });
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockDb.notes.update).toHaveBeenCalledWith('note-live', expect.objectContaining({
+          content: '<p>server</p>', syncStatus: 'synced',
+        }));
+      });
+
+      it('G6: leaves Dexie untouched when local content differs from the pushed content (even if updatedAt is old)', async () => {
+        const item = deferredItem({ content: '<p>device</p>' });
+        setup(item);
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>other</p>', updatedAt: new Date(item.createdAt - 1000).toISOString(),
+        });
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockApi.get).toHaveBeenCalled();
+        expect(mockDb.notes.update).not.toHaveBeenCalledWith('note-live', expect.objectContaining({ content: '<p>server</p>' }));
+      });
+
+      it('leaves Dexie untouched when another item is still queued for the note', async () => {
+        setup(deferredItem());
+        mockDb.syncQueue.count.mockResolvedValue(1);
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockDb.notes.update).not.toHaveBeenCalledWith('note-live', expect.objectContaining({ content: '<p>server</p>' }));
+      });
+
+      it('does not throw and still removes the item when the GET fails', async () => {
+        setup(deferredItem());
+        mockApi.get.mockRejectedValue(new Error('offline'));
+
+        await expect(syncPush()).resolves.not.toThrow();
+        await flush();
+
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(20);
+      });
+
+      it('trash (1): Dexie not trashed + only a queued item with isTrashed -> no toast', async () => {
+        const content = deferredItem({ title: 'T', content: '<p>x</p>' });
+        const trash = { ...deferredItem({ isTrashed: true }), id: 21, createdAt: 1_000_001 };
+        setup(content);
+        mockDb.syncQueue.toArray.mockResolvedValue([content, trash]);
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>x</p>', isTrashed: false, updatedAt: new Date(content.createdAt - 1000).toISOString(),
+        });
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockToast).not.toHaveBeenCalledWith('sync.contentDeferred', expect.anything());
+      });
+
+      it('trash (2): the item itself carries isTrashed -> no toast', async () => {
+        const item = deferredItem({ content: '<p>x</p>', isTrashed: true });
+        setup(item);
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>x</p>', isTrashed: false, updatedAt: new Date(item.createdAt - 1000).toISOString(),
+        });
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockToast).not.toHaveBeenCalledWith('sync.contentDeferred', expect.anything());
+      });
+
+      it('trash (3): Dexie trashed -> no toast', async () => {
+        const item = deferredItem({ title: 'T', content: '<p>x</p>' });
+        setup(item);
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>x</p>', isTrashed: true, updatedAt: new Date(item.createdAt - 1000).toISOString(),
+        });
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockToast).not.toHaveBeenCalledWith('sync.contentDeferred', expect.anything());
+      });
+
+      it('toasts when Dexie is not trashed and no trash item is queued', async () => {
+        setup(deferredItem({ title: 'T', content: '<p>x</p>' }));
+        mockDb.notes.get.mockResolvedValue({
+          id: 'note-live', content: '<p>x</p>', isTrashed: false, updatedAt: new Date(1_000_000 - 1000).toISOString(),
+        });
+        mockApi.get.mockResolvedValue({ data: { id: 'note-live', content: '<p>server</p>' } });
+
+        await syncPush();
+        await flush();
+
+        expect(mockToast).toHaveBeenCalledWith('sync.contentDeferred', expect.objectContaining({ id: 'content-deferred-note-live' }));
+      });
+
+      it('does nothing extra when the response has no contentDeferred flag', async () => {
+        setup(deferredItem(), {});
+
+        await syncPush();
+
+        expect(mockApi.get).not.toHaveBeenCalled();
+        expect(mockToast).not.toHaveBeenCalled();
+        expect(mockQueryClient.invalidateQueries).not.toHaveBeenCalled();
+      });
+    });
+
     it('pushes DELETE note to API', async () => {
       const queueItem = {
         id: 3, type: 'DELETE' as const, entity: 'NOTE' as const, entityId: 'note-del',
@@ -1165,26 +1326,60 @@ describe('syncPush', () => {
         items.filter((i) => mockDb.syncQueue._filterFn(i)).length);
     };
 
-    it('defers a note move while the target notebook CREATE is still queued', async () => {
+    it('defers a note move while the target notebook CREATE is still queued (pending)', async () => {
       const nbCreate = {
         id: 1, type: 'CREATE' as const, entity: 'NOTEBOOK' as const, entityId: 'nb-new',
-        userId: 'user-1', data: { id: 'nb-new', name: 'New' }, createdAt: 1000, status: 'failed' as const,
+        userId: 'user-1', data: { id: 'nb-new', name: 'New' }, createdAt: 1000, status: 'pending' as const,
       };
       const move = noteMove(2, 'nb-new');
-      mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, move]);
-      queueHolds([nbCreate, move]);
+      const content = {
+        id: 3, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { content: '<p>x</p>' }, createdAt: 3000,
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, move, content]);
+      queueHolds([nbCreate, move, content]);
+      mockApi.post.mockRejectedValue(Object.assign(new Error('srv'), { response: { status: 500 } }));
 
       await syncPush();
 
+      // J1: the move waits for its reference and the later item of the same note waits behind it.
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(2);
       expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(2, expect.anything());
     });
 
-    it('defers a tag update while one of its tag CREATEs is still queued', async () => {
+    // K1: a FAILED notebook/tag CREATE is terminal (waits for a manual retry): it must not hold the note
+    // hostage. The move goes out, takes the 404/400 and the existing revert fires.
+    it('K1: a failed notebook CREATE does not block the note updates / delete', async () => {
+      const nbCreate = {
+        id: 1, type: 'CREATE' as const, entity: 'NOTEBOOK' as const, entityId: 'nb-new',
+        userId: 'user-1', data: { id: 'nb-new', name: 'New' }, createdAt: 1000, status: 'failed' as const,
+      };
+      const move = noteMove(2, 'nb-new');
+      const content = {
+        id: 3, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { content: '<p>x</p>' }, createdAt: 3000,
+      };
+      const del = {
+        id: 4, type: 'DELETE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: {}, createdAt: 4000,
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([nbCreate, move, content, del]);
+      queueHolds([nbCreate, move, content, del]);
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockApi.delete.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledWith('/notes/note-1', { notebookId: 'nb-new' });
+      expect(mockApi.put).toHaveBeenCalledWith('/notes/note-1', { content: '<p>x</p>' });
+      expect(mockApi.delete).toHaveBeenCalledWith('/notes/note-1');
+    });
+
+    it('defers a tag update while one of its tag CREATEs is still queued (pending)', async () => {
       const tagCreate = {
         id: 1, type: 'CREATE' as const, entity: 'TAG' as const, entityId: 'tag-new',
-        userId: 'user-1', data: { id: 'tag-new', name: 'new' }, createdAt: 1000, status: 'failed' as const,
+        userId: 'user-1', data: { id: 'tag-new', name: 'new' }, createdAt: 1000, status: 'pending' as const,
       };
       const tagUpdate = {
         id: 2, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1', userId: 'user-1',
@@ -1193,11 +1388,40 @@ describe('syncPush', () => {
       };
       mockDb.syncQueue.toArray.mockResolvedValue([tagCreate, tagUpdate]);
       queueHolds([tagCreate, tagUpdate]);
+      mockApi.post.mockRejectedValue(Object.assign(new Error('srv'), { response: { status: 500 } }));
 
       await syncPush();
 
       expect(mockApi.put).not.toHaveBeenCalled();
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalledWith(2);
+    });
+
+    it('K1: a failed tag CREATE does not block the note updates / delete', async () => {
+      const tagCreate = {
+        id: 1, type: 'CREATE' as const, entity: 'TAG' as const, entityId: 'tag-new',
+        userId: 'user-1', data: { id: 'tag-new', name: 'new' }, createdAt: 1000, status: 'failed' as const,
+      };
+      const tagUpdate = {
+        id: 2, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1', userId: 'user-1',
+        data: { tags: [{ tag: { id: 'tag-new', name: 'new' } }] }, createdAt: 2000,
+      };
+      const content = {
+        id: 3, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: { content: '<p>x</p>' }, createdAt: 3000,
+      };
+      const del = {
+        id: 4, type: 'DELETE' as const, entity: 'NOTE' as const, entityId: 'note-1',
+        userId: 'user-1', data: {}, createdAt: 4000,
+      };
+      mockDb.syncQueue.toArray.mockResolvedValue([tagCreate, tagUpdate, content, del]);
+      queueHolds([tagCreate, tagUpdate, content, del]);
+      mockApi.put.mockResolvedValue({ data: {} });
+      mockApi.delete.mockResolvedValue({ data: {} });
+
+      await syncPush();
+
+      expect(mockApi.put).toHaveBeenCalledTimes(2);
+      expect(mockApi.delete).toHaveBeenCalledWith('/notes/note-1');
     });
 
     it('pushes the note move once nothing it references is queued', async () => {
@@ -2322,6 +2546,106 @@ describe('syncPush', () => {
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(mockApi.delete).not.toHaveBeenCalled();
       expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+    });
+
+    // J1: FIFO per entity. A later item of the same entity must never overtake an earlier one that is
+    // failing (retryable) or backing off.
+    describe('FIFO per entity', () => {
+      const mk = (id: number, entityId: string, extra: Record<string, unknown> = {}) => ({
+        id, type: 'UPDATE' as const, entity: 'NOTE' as const, entityId,
+        userId: 'user-1', data: { title: `t${id}` }, createdAt: Date.now() + id, ...extra,
+      });
+      const serverErr = (status: number, message?: string) =>
+        Object.assign(new Error('srv'), { response: { status, data: message ? { message } : {} } });
+
+      beforeEach(() => {
+        mockDb.notes.get.mockResolvedValue({ id: 'x', ownership: 'owned' });
+      });
+
+      it('(a) first item gets 503 -> second of the same note is not sent and stays untouched', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk(1001, 'fifo-a'), mk(1002, 'fifo-a')]);
+        mockApi.put.mockRejectedValue(serverErr(503));
+
+        await syncPush();
+
+        expect(mockApi.put).toHaveBeenCalledTimes(1);
+        expect(mockDb.syncQueue.update).toHaveBeenCalledTimes(1);
+        expect(mockDb.syncQueue.update).toHaveBeenCalledWith(1001, expect.objectContaining({ attempts: 1, status: 'pending' }));
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalledWith(1002, expect.anything());
+      });
+
+      it('(b) first item in backoff -> second of the same note does not go out', async () => {
+        const q = [mk(1011, 'fifo-b'), mk(1012, 'fifo-b')];
+        mockDb.syncQueue.toArray.mockResolvedValue(q);
+        mockApi.put.mockRejectedValue(serverErr(503));
+        await syncPush(); // item 1011 now in backoff
+        mockApi.put.mockReset();
+        mockApi.put.mockResolvedValue({ data: {} });
+        mockDb.syncQueue.update.mockClear();
+
+        await syncPush();
+
+        expect(mockApi.put).not.toHaveBeenCalled();
+        expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+      });
+
+      it('(c) items of another note are not blocked', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([mk(1021, 'fifo-c1'), mk(1022, 'fifo-c2')]);
+        mockApi.put.mockRejectedValueOnce(serverErr(503)).mockResolvedValue({ data: {} });
+        mockDb.syncQueue.count.mockResolvedValue(0);
+
+        await syncPush();
+
+        expect(mockApi.put).toHaveBeenCalledTimes(2);
+        expect(mockApi.put).toHaveBeenLastCalledWith('/notes/fifo-c2', expect.anything());
+      });
+
+      it('(d) a permanently failed first item does not block the second', async () => {
+        mockDb.syncQueue.toArray.mockResolvedValue([
+          mk(1031, 'fifo-d', { status: 'failed' as const, attempts: 5 }), mk(1032, 'fifo-d'),
+        ]);
+        mockApi.put.mockResolvedValue({ data: {} });
+        mockDb.syncQueue.count.mockResolvedValue(0);
+
+        await syncPush();
+
+        expect(mockApi.put).toHaveBeenCalledTimes(1);
+        expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1032);
+      });
+
+      // K2: archiveBusy is transient server-side congestion, not a rejection of the payload: it must not
+      // consume attempts (3 busy answers in a row must not walk an item toward 'failed').
+      it('(e) 503 archiveBusy keeps the item pending, attempts untouched, 2 min delay, entity blocked', async () => {
+        vi.useFakeTimers();
+        try {
+          vi.setSystemTime(new Date('2026-10-01T10:00:00Z'));
+          const q = [mk(1041, 'fifo-e', { attempts: 3 }), mk(1042, 'fifo-e')];
+          mockDb.syncQueue.toArray.mockResolvedValue(q);
+          mockApi.put.mockRejectedValue(serverErr(503, 'errors.notes.archiveBusy'));
+
+          await syncPush();
+
+          expect(mockApi.put).toHaveBeenCalledTimes(1);
+          expect(mockDb.syncQueue.update).not.toHaveBeenCalled(); // no attempts / status change
+          expect(mockDb.syncQueue.delete).not.toHaveBeenCalled();
+
+          // before 2 minutes: no retry at all
+          vi.advanceTimersByTime(119_000);
+          mockApi.put.mockClear();
+          await syncPush();
+          expect(mockApi.put).not.toHaveBeenCalled();
+
+          // after 2 minutes: retried (and the later item still waits behind the first one)
+          vi.advanceTimersByTime(2_000);
+          mockApi.put.mockResolvedValue({ data: {} });
+          mockDb.syncQueue.count.mockResolvedValue(0);
+          await syncPush();
+          expect(mockApi.put).toHaveBeenCalledTimes(2);
+          expect(mockDb.syncQueue.delete).toHaveBeenCalledWith(1041);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
     });
   });
 

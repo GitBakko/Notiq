@@ -8,9 +8,10 @@ import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors'
 import { guardEmptyContentOverwrite } from '../utils/contentGuard';
 import { createFriendship, getFriendship } from './friendship.service';
 import { disconnectUser } from './kanbanSSE';
-import { disconnectUserFromNote } from '../hocuspocus';
+import { disconnectUserFromNote, hocuspocus } from '../hocuspocus';
 import { extractTextFromTipTapJson } from '../utils/extractText';
-import { snapshotPreviousVersion } from './noteVersion.service';
+import { snapshotPreviousVersion, archiveRestWriteWhileLive } from './noteVersion.service';
+import { rebaseYdocState } from '../utils/ydoc';
 
 export const shareNote = async (ownerId: string, noteId: string, targetEmail: string, permission: Permission) => {
   // Verify ownership
@@ -837,6 +838,7 @@ export const updateSharedNoteContent = async (
   userId: string,
   noteId: string,
   data: { content?: string; title?: string },
+  sessionKey?: string,
 ): Promise<{ ok: boolean }> => {
   const share = await prisma.sharedNote.findUnique({
     where: { noteId_userId: { noteId, userId } },
@@ -847,16 +849,22 @@ export const updateSharedNoteContent = async (
 
   const note = await prisma.note.findUnique({
     where: { id: noteId },
-    select: { content: true, title: true, isVault: true },
+    select: { content: true, title: true, isVault: true, isEncrypted: true, noteType: true, ydocState: true },
   });
   if (!note) throw new NotFoundError('errors.notes.notFound');
   if (note.isVault) throw new ForbiddenError('errors.sharing.forbidden');
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  let liveArchiveContent: string | undefined;
 
   if (data.content && data.content !== note.content) {
     const accepted = guardEmptyContentOverwrite(note.content, data.content);
-    if (accepted !== undefined) {
+    const live = hocuspocus.hocuspocus.documents.has(noteId) || hocuspocus.hocuspocus.loadingDocuments.has(noteId);
+    if (accepted !== undefined && live) {
+      // 1.13.3: a live collab doc wins (same rule as updateNote). Writing content/ydocState under it would be
+      // reverted by its next store() or duplicated on reconnect. Keep the write recoverable in history instead.
+      liveArchiveContent = accepted;
+    } else if (accepted !== undefined) {
       // Snapshot the OLD content before overwriting — best-effort, throttled (not forced)
       // so frequent collaborator saves are deduped alongside the Hocuspocus store() snapshot.
       try {
@@ -866,7 +874,10 @@ export const updateSharedNoteContent = async (
       }
       updateData.content = accepted;
       updateData.searchText = extractTextFromTipTapJson(accepted);
-      updateData.ydocState = null; // only null ydocState when we accept new content
+      // [BACKUP] 2026-10-01 — was `updateData.ydocState = null` (a stale client then duplicated every block on
+      // reconnect). Rebased onto the accepted content; null when in doubt or for encrypted notes.
+      // CREDENTIAL notes are not TipTap JSON either: never rebased.
+      updateData.ydocState = (note.isEncrypted || note.noteType === 'CREDENTIAL') ? null : rebaseYdocState(note.ydocState, accepted);
     }
   }
 
@@ -877,6 +888,15 @@ export const updateSharedNoteContent = async (
   if (Object.keys(updateData).length > 1) {
     const r = await prisma.note.updateMany({ where: { id: noteId, isVault: false }, data: updateData });
     if (r.count === 0) throw new ForbiddenError('errors.sharing.forbidden');
+  }
+  if (liveArchiveContent !== undefined) {
+    try {
+      await archiveRestWriteWhileLive(noteId, liveArchiveContent, note.title, userId, sessionKey);
+    } catch (err) {
+      // Rethrow (as updateNote): a 200 would make the device drop its only copy of the text.
+      logger.error({ err, noteId }, 'updateSharedNoteContent: REST content not archived while collab doc is live');
+      throw err;
+    }
   }
   return { ok: true };
 };

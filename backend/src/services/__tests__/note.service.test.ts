@@ -13,6 +13,7 @@ import {
 } from '../note.service';
 import { hocuspocus } from '../../hocuspocus';
 import { archiveRestWriteWhileLive } from '../noteVersion.service';
+import { rebaseYdocState } from '../../utils/ydoc';
 import logger from '../../utils/logger';
 import { NotFoundError, ConflictError } from '../../utils/errors';
 
@@ -31,6 +32,10 @@ vi.mock('../../hocuspocus', () => ({
 vi.mock('../noteVersion.service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../noteVersion.service')>()),
   archiveRestWriteWhileLive: vi.fn(),
+}));
+
+vi.mock('../../utils/ydoc', () => ({
+  rebaseYdocState: vi.fn(() => null),
 }));
 
 vi.mock('@hocuspocus/transformer', () => ({
@@ -372,6 +377,8 @@ describe('getNote', () => {
           { isVault: false, sharedWith: { some: { userId: 'user-1', status: 'ACCEPTED' } } },
         ],
       },
+      // 1.13.3: ydocState (binary Yjs state, can be large) is never sent to the client
+      omit: { ydocState: true },
       include: expect.objectContaining({
         tags: { where: { userId: 'user-1' }, include: { tag: true } },
         attachments: { where: { isLatest: true } },
@@ -465,6 +472,8 @@ describe('updateNote', () => {
     // a live doc is the default so the negative cases below are meaningful
     beforeEach(() => {
       docs.clear(); loading.clear(); docs.set('n1', {});
+      (archiveRestWriteWhileLive as any).mockReset();
+      (archiveRestWriteWhileLive as any).mockResolvedValue('archived');
       prismaMock.noteVersion.findFirst.mockResolvedValue(null);
       prismaMock.noteVersion.findMany.mockResolvedValue([]);
     });
@@ -481,7 +490,14 @@ describe('updateNote', () => {
       expect(data).not.toHaveProperty('searchText');
       expect(data).toMatchObject({ title: 'T', isPinned: true });
       expect(prismaMock.noteVersion.create).not.toHaveBeenCalled(); // no in-tx snapshot of old content either
-      expect(archived()).toEqual([['n1', newContent, 'T']]);
+      expect(archived()).toEqual([['n1', newContent, 'T', 'user-1', undefined]]);
+    });
+
+    it('G3: the sessionKey is forwarded to the archive', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, title: 'T', noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: newContent }, 'iat-42');
+      expect(archived()).toEqual([['n1', newContent, 'T', 'user-1', 'iat-42']]);
     });
 
     it('loading doc -> same live path', async () => {
@@ -559,13 +575,13 @@ describe('updateNote', () => {
       expect(archived()).toHaveLength(0);
     });
 
-    it('archive throwing does not fail the save and is logged as a warning', async () => {
+    it('archive throwing rejects (route answers 5xx, item stays queued) and is logged', async () => {
       prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
       const saved = { ...existingNote, noteType: 'NOTE' };
       prismaMock.note.update.mockResolvedValue(saved);
       (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
-      await expect(updateNote('user-1', 'n1', { content: newContent })).resolves.toEqual(saved);
-      expect((logger as any).warn).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.stringContaining('REST content not archived'));
+      await expect(updateNote('user-1', 'n1', { content: newContent })).rejects.toThrow('boom');
+      expect((logger as any).error).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.stringContaining('REST content not archived'));
     });
 
     it('empty-overwrite guard dropping the content -> no ydocState key, not archived', async () => {
@@ -576,6 +592,134 @@ describe('updateNote', () => {
       expect(data).not.toHaveProperty('content');
       expect(data).not.toHaveProperty('ydocState');
       expect(archived()).toHaveLength(0);
+    });
+
+    describe('contentDeferred flag (live doc)', () => {
+      it('live doc + archived -> result carries contentDeferred: true', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        const res = await updateNote('user-1', 'n1', { content: newContent });
+        expect(res).toMatchObject({ contentDeferred: true });
+      });
+
+      it('H4: archive identical -> flag true; skipped -> flag true too (server did not apply the content; FE realigns only if its local text is the pushed one)', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        (archiveRestWriteWhileLive as any).mockResolvedValueOnce('identical');
+        expect(await updateNote('user-1', 'n1', { content: newContent })).toMatchObject({ contentDeferred: true });
+        (archiveRestWriteWhileLive as any).mockResolvedValueOnce('skipped');
+        expect(await updateNote('user-1', 'n1', { content: newContent })).toMatchObject({ contentDeferred: true });
+      });
+
+      it('live doc + archive throws -> rejects (the device keeps its text and retries)', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
+        await expect(updateNote('user-1', 'n1', { content: newContent })).rejects.toThrow('boom');
+      });
+
+      it('no live doc -> no flag', async () => {
+        docs.clear();
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        const res = await updateNote('user-1', 'n1', { content: newContent });
+        expect(res).not.toHaveProperty('contentDeferred');
+      });
+    });
+
+    describe('rebaseYdocState on the non-live path', () => {
+      const rebase = rebaseYdocState as unknown as ReturnType<typeof vi.fn>;
+      beforeEach(() => {
+        docs.clear();
+        rebase.mockReset();
+        rebase.mockReturnValue(null);
+      });
+
+      it('plain note, new content -> rebases the RE-READ state and stores the result', async () => {
+        const fresh = Buffer.from([9, 9]);
+        const rebased = Buffer.from([7, 7, 7]);
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.findUnique.mockResolvedValue({ ydocState: fresh });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        rebase.mockReturnValue(rebased);
+
+        await updateNote('user-1', 'n1', { content: newContent });
+
+        expect(prismaMock.note.findUnique).toHaveBeenCalledWith({ where: { id: 'n1' }, select: { ydocState: true } });
+        expect(rebase).toHaveBeenCalledWith(fresh, newContent);
+        expect(prismaMock.note.update.mock.calls[0][0].data.ydocState).toBe(rebased);
+      });
+
+      it('rebase returning null -> ydocState null', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.findUnique.mockResolvedValue({ ydocState: Buffer.from([1]) });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        await updateNote('user-1', 'n1', { content: newContent });
+        expect(prismaMock.note.update.mock.calls[0][0].data.ydocState).toBeNull();
+      });
+
+      it('the selects on the note never load ydocState (omit)', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        await updateNote('user-1', 'n1', { content: newContent });
+        expect(prismaMock.note.findFirst).toHaveBeenCalledWith({ where: { id: 'n1', userId: 'user-1' }, omit: { ydocState: true } });
+      });
+
+      const notCalled = (name: string, note: Record<string, unknown>, data: Record<string, unknown>) =>
+        it(`NOT called: ${name}`, async () => {
+          prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE', ...note });
+          prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE', ...note });
+          await updateNote('user-1', 'n1', { content: newContent, ...data });
+          expect(rebase).not.toHaveBeenCalled();
+          expect(prismaMock.note.update.mock.calls[0][0].data.ydocState ?? null).toBeNull();
+        });
+      notCalled('vault note', { isVault: true }, {});
+      notCalled('encrypted note', { isEncrypted: true }, {});
+      notCalled('moving to the vault', {}, { isVault: true });
+      notCalled('moving out of the vault', { isVault: true }, { isVault: false });
+      notCalled('CREDENTIAL note', { noteType: 'CREDENTIAL' }, {});
+
+      it('NOT called: content unchanged', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        await updateNote('user-1', 'n1', { content: existingNote.content });
+        expect(rebase).not.toHaveBeenCalled();
+      });
+
+      it('NOT called: live doc (the live doc wins)', async () => {
+        docs.set('n1', {});
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        await updateNote('user-1', 'n1', { content: newContent });
+        expect(rebase).not.toHaveBeenCalled();
+      });
+
+      it('m3: doc becomes live INSIDE the transaction -> content was written, so it is archived (no flag)', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, title: 'T', noteType: 'NOTE' });
+        const original = prismaMock.$transaction.getMockImplementation();
+        prismaMock.$transaction.mockImplementationOnce((fn: any) => { docs.set('n1', {}); return fn(prismaMock); });
+
+        const res = await updateNote('user-1', 'n1', { content: newContent });
+
+        expect(prismaMock.note.update.mock.calls[0][0].data.content).toBe(newContent);
+        expect(archived()).toEqual([['n1', newContent, 'T', 'user-1', undefined]]);
+        expect(res).not.toHaveProperty('contentDeferred');
+        if (original) prismaMock.$transaction.mockImplementation(original);
+      });
+
+      it('m3: archive throwing does NOT reject (content already written, a retry would be a no-op): warn, no flag', async () => {
+        prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+        prismaMock.note.update.mockResolvedValue({ ...existingNote, title: 'T', noteType: 'NOTE' });
+        const original = prismaMock.$transaction.getMockImplementation();
+        prismaMock.$transaction.mockImplementationOnce((fn: any) => { docs.set('n1', {}); return fn(prismaMock); });
+        (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
+
+        const res = await updateNote('user-1', 'n1', { content: newContent });
+        expect(res).not.toHaveProperty('contentDeferred');
+        expect((logger as any).warn).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.stringContaining('REST content not archived'));
+        if (original) prismaMock.$transaction.mockImplementation(original);
+      });
     });
   });
 

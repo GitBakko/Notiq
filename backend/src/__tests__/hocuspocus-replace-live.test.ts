@@ -29,6 +29,13 @@ vi.mock('jsonwebtoken', () => ({ default: { verify: vi.fn() } }));
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { hocuspocus, extensions, replaceLiveDocContent, flushLiveDoc } from '../hocuspocus';
+import { extensions as ydocExtensions } from '../utils/ydoc';
+
+describe('extensions', () => {
+  it('hocuspocus exports the very same extensions array as utils/ydoc (single source, cannot drift)', () => {
+    expect(extensions).toBe(ydocExtensions);
+  });
+});
 
 const NOTE_ID = 'note-1';
 const doc = (text: string) => ({
@@ -113,12 +120,24 @@ describe('replaceLiveDocContent', () => {
     expect(connection.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('legacy HTML / plain-text content becomes a fallback paragraph (no throw)', async () => {
+  // 1.13.3 (strict conversion): legacy HTML used to become a fallback text paragraph; now it is refused.
+  it('legacy HTML / plain-text content is refused, live doc untouched', async () => {
     const { ydoc } = liveDoc(doc('OLD'));
 
-    await replaceLiveDocContent(NOTE_ID, '<p>legacy <b>text</b></p>');
+    await expect(replaceLiveDocContent(NOTE_ID, '<p>legacy <b>text</b></p>')).rejects.toThrow('could not be converted');
 
-    expect(fromYdoc(ydoc)).toEqual(fromYdoc(toYdoc(doc('legacy  text')))); // tags -> ' ', as fetch does
+    expect(inner.hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+    expect(fromYdoc(ydoc)).toEqual(fromYdoc(toYdoc(doc('OLD'))));
+  });
+
+  it('content with a node unknown to the schema is refused, live doc untouched', async () => {
+    const { ydoc } = liveDoc(doc('OLD'));
+    const unknown = JSON.stringify({ type: 'doc', content: [{ type: 'taskList', content: [{ type: 'taskItem', content: [doc('x').content[0]] }] }] });
+
+    await expect(replaceLiveDocContent(NOTE_ID, unknown)).rejects.toThrow('could not be converted');
+
+    expect(inner.hocuspocus.openDirectConnection).not.toHaveBeenCalled();
+    expect(fromYdoc(ydoc)).toEqual(fromYdoc(toYdoc(doc('OLD'))));
   });
 
   it('swaps the content in a single update; context { restore: true } and no user key', async () => {
@@ -154,19 +173,19 @@ describe('replaceLiveDocContent', () => {
   it('rejects empty restored content (no nodes) without touching the live doc', async () => {
     const { ydoc } = liveDoc(doc('OLD'));
 
-    await expect(replaceLiveDocContent(NOTE_ID, JSON.stringify({ type: 'doc', content: [] }))).rejects.toThrow('no nodes');
+    await expect(replaceLiveDocContent(NOTE_ID, JSON.stringify({ type: 'doc', content: [] }))).rejects.toThrow('could not be converted'); // schema check() refuses an empty doc (doc = block+), so a converted doc always has >= 1 node
 
     expect(inner.hocuspocus.openDirectConnection).not.toHaveBeenCalled();
     expect(fromYdoc(ydoc)).toEqual(fromYdoc(toYdoc(doc('OLD'))));
   });
 
-  it('rejects when conversion fails on both attempts, without touching the live doc', async () => {
+  it('rejects when the conversion throws, without touching the live doc', async () => {
     const { ydoc } = liveDoc(doc('OLD'));
     const oldJson = fromYdoc(ydoc);
     const spy = vi.spyOn(TiptapTransformer, 'toYdoc').mockImplementation(() => { throw new Error('bad'); });
 
     await expect(replaceLiveDocContent(NOTE_ID, str('NEW'))).rejects.toThrow('could not be converted');
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledTimes(1); // strict: no text fallback attempt
     spy.mockRestore();
 
     expect(inner.hocuspocus.openDirectConnection).not.toHaveBeenCalled();

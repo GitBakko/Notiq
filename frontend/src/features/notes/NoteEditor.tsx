@@ -29,6 +29,12 @@ import { useAiStatus } from '../../hooks/useAiStatus';
 import ScrollToEditButton from '../../components/editor/ScrollToEditButton';
 import KanbanBoardLink from '../kanban/components/KanbanBoardLink';
 
+const ARCHIVE_BUSY_RETRY_MS = 2 * 60 * 1000;
+const isArchiveBusyError = (err: unknown) => {
+    const r = (err as { response?: { status?: number; data?: { message?: string } } } | undefined)?.response;
+    return r?.status === 503 && r?.data?.message === 'errors.notes.archiveBusy';
+};
+
 interface NoteEditorProps {
     note: Note;
     onBack?: () => void;
@@ -82,6 +88,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const mobileMoreRef = useRef<HTMLDivElement>(null);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
+    const providerRef = useRef<HocuspocusProvider | null>(null);
+    providerRef.current = provider;
     const providerSyncedOnceRef = useRef(false); // true once the CURRENT provider has synced; reset on new provider
     const [collaborators, setCollaborators] = useState<{ name?: string; color?: string; avatarUrl?: string | null; clientId?: number }[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -125,12 +133,26 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     // nessuna parte. Un errore deve dire cosa e' successo, non mandare l'utente a
     // cercare la causa dove non e'.
     const notifySharedSaveFailure = useCallback((err?: unknown) => {
+        // J4: 503 archiveBusy is transient and self-healing (a retry is scheduled): say so, don't alarm.
+        if (isArchiveBusyError(err)) {
+            toast.error(t('errors.notes.archiveBusy'), { id: `archive-busy-${note.id}` });
+            return;
+        }
         if (sharedSaveFailedNotifiedRef.current) return;
         sharedSaveFailedNotifiedRef.current = true;
         const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
         const key = status === 403 ? 'sync.sharedSaveForbidden' : 'sync.sharedSaveFailed';
         toast.error(t(key), { id: 'shared-save-failed' });
-    }, [t]);
+    }, [t, note.id]);
+
+    // J4: one delayed retry of a shared-note content save refused with archiveBusy.
+    const archiveBusyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const latestContentRef = useRef(contentInput);
+    latestContentRef.current = contentInput;
+    useEffect(() => () => {
+        if (archiveBusyTimerRef.current) clearTimeout(archiveBusyTimerRef.current);
+        archiveBusyTimerRef.current = null;
+    }, [note.id]);
 
     // -- Save Effects --
     useEffect(() => {
@@ -184,7 +206,24 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             .then(() => { sharedSaveFailedNotifiedRef.current = false; })
                             // Next edit retries; the toast makes the failure visible (shared
                             // notes bypass the sync queue, so no banner covers this path)
-                            .catch(notifySharedSaveFailure);
+                            .catch((err) => {
+                                notifySharedSaveFailure(err);
+                                if (isArchiveBusyError(err) && !archiveBusyTimerRef.current) {
+                                    archiveBusyTimerRef.current = setTimeout(() => {
+                                        archiveBusyTimerRef.current = null;
+                                        // K4: read the CURRENT provider (ref), not the one captured when the timer was set.
+                                        const currentProvider = providerRef.current;
+                                        if (!canPersistEditorContent({
+                                            hasProvider: !!currentProvider,
+                                            hasSyncedOnce: providerSyncedOnceRef.current || currentProvider?.isSynced === true,
+                                        })) return;
+                                        if (currentProvider?.isSynced === true && currentProvider?.isAuthenticated === true) return; // Hocuspocus owns it now
+                                        saveSharedNoteData(note.id, { content: latestContentRef.current })
+                                            .then(() => { sharedSaveFailedNotifiedRef.current = false; })
+                                            .catch(notifySharedSaveFailure);
+                                    }, ARCHIVE_BUSY_RETRY_MS);
+                                }
+                            });
                     }
                 }
             } else {

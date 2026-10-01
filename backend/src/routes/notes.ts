@@ -2,8 +2,10 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as noteService from '../services/note.service';
 import { shareNote } from '../services/sharing.service';
-import { listNoteVersions, restoreNoteVersion } from '../services/noteVersion.service';
-import { flushLiveDoc, replaceLiveDocContent } from '../hocuspocus';
+import { listNoteVersions, restoreNoteVersion, getVersionForRestoreCheck } from '../services/noteVersion.service';
+import { flushLiveDoc, replaceLiveDocContent, hocuspocus } from '../hocuspocus';
+import { contentToYNodes } from '../utils/ydoc';
+import { AppError } from '../utils/errors';
 
 const createNoteSchema = z.object({
   id: z.string().uuid().optional(),
@@ -74,8 +76,12 @@ export default async function (fastify: FastifyInstance) {
   fastify.put('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateNoteSchema.parse(request.body);
-    await noteService.updateNote(request.user.id, id, data);
-    return { message: 'Note updated' };
+    // G3: login-session identity (JWT jti, else iat for tokens issued before jti existed) so the live-doc REST
+    // archive does not merge two devices of one user.
+    // J3: sid (stable across /refresh) first, then jti, then iat.
+    const { iat, jti, sid } = request.user;
+    const r = await noteService.updateNote(request.user.id, id, data, sid ?? jti ?? (iat != null ? String(iat) : undefined));
+    return r?.contentDeferred ? { message: 'Note updated', contentDeferred: true } : { message: 'Note updated' };
   });
 
   fastify.delete('/:id', async (request, reply) => {
@@ -105,6 +111,17 @@ export default async function (fastify: FastifyInstance) {
       id: z.string().uuid(),
       versionId: z.string().uuid(),
     }).parse(request.params);
+    // A live (or loading) doc can only take a version that converts strictly to the editor schema: otherwise
+    // replaceLiveDocContent would throw after the DB write and the live doc would re-store the OLD content.
+    // Refuse BEFORE writing anything.
+    const inner = hocuspocus.hocuspocus;
+    if (inner.documents.has(id) || inner.loadingDocuments.has(id)) {
+      const { content, plain } = await getVersionForRestoreCheck(request.user.id, id, versionId);
+      if (plain) {
+        const nodes = contentToYNodes(content);
+        if (!nodes || nodes.length === 0) throw new AppError(422, 'errors.notes.restoreUnsupportedLive');
+      }
+    }
     // Persist unsaved live edits (after ownership/version checks) so restore's forced snapshot archives them. Never blocks the restore.
     const { restoredContent } = await restoreNoteVersion(request.user.id, id, versionId, {
       beforeRestore: async () => {

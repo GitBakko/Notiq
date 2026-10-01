@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import prisma from '../../plugins/prisma';
 import { snapshotPreviousVersion, pruneNoteVersions } from '../noteVersion.service';
+import { rebaseYdocState, contentToYNodes } from '../../utils/ydoc';
+
+const liveDocs = vi.hoisted(() => new Set<string>());
+vi.mock('../../hocuspocus', () => ({
+  hocuspocus: { hocuspocus: { documents: liveDocs, loadingDocuments: new Set<string>() } },
+}));
+vi.mock('../../utils/ydoc', () => ({
+  rebaseYdocState: vi.fn(() => null),
+  contentToYNodes: vi.fn(() => [{}]),
+}));
 
 const prismaMock = prisma as any;
 const NOW = new Date('2026-06-10T12:00:00Z').getTime();
@@ -66,7 +76,7 @@ describe('pruneNoteVersions', () => {
   });
 });
 
-import { listNoteVersions, restoreNoteVersion, archiveRestWriteWhileLive } from '../noteVersion.service';
+import { listNoteVersions, restoreNoteVersion, archiveRestWriteWhileLive, __restArchiveSizeForTests } from '../noteVersion.service';
 
 describe('archiveRestWriteWhileLive', () => {
   const doc = (t: string) => JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
@@ -83,47 +93,213 @@ describe('archiveRestWriteWhileLive', () => {
   });
 
   it('first call creates (short content allowed) and prunes', async () => {
-    await archiveRestWriteWhileLive(id, doc('hi'), 'T');
+    await archiveRestWriteWhileLive(id, doc('hi'), 'T', 'u1');
     expect(prismaMock.noteVersion.create).toHaveBeenCalledWith({ data: { noteId: id, content: doc('hi'), title: 'T' } });
     expect(prismaMock.noteVersion.deleteMany).toHaveBeenCalled(); // prune ran
   });
 
-  it('second call within the window updates the same version', async () => {
-    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+  it('returns archived / identical / skipped', async () => {
+    expect(await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1')).toBe('archived');
+    prismaMock.noteVersion.findFirst.mockResolvedValue({ content: doc('a') });
+    expect(await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1')).toBe('identical');
+    expect(await archiveRestWriteWhileLive(id, '', 'T', 'u1', 's1')).toBe('skipped');
+    expect(await archiveRestWriteWhileLive(id, 'not json', 'T', 'u1', 's1')).toBe('skipped');
+    expect(await archiveRestWriteWhileLive(id, '{"type":"doc","content":[]}', 'T', 'u1', 's1')).toBe('skipped');
+  });
+
+  it('same user, different session within the window -> retryable 503, the other session version is NOT overwritten', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 'iat-1');
     prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
-    await archiveRestWriteWhileLive(id, doc('b'), 'T2');
+    await expect(archiveRestWriteWhileLive(id, doc('b'), 'T', 'u1', 'iat-2'))
+      .rejects.toMatchObject({ statusCode: 503, message: 'errors.notes.archiveBusy' });
     expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
-    expect(prismaMock.noteVersion.update).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { content: doc('b'), title: 'T2' } });
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('no sessionKey and a create already in the window -> 503 (never coalesces, never creates a second)', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1');
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
+    await expect(archiveRestWriteWhileLive(id, doc('b'), 'T', 'u1')).rejects.toMatchObject({ statusCode: 503 });
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('second call within the window (same session) updates the same version', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1');
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
+    await archiveRestWriteWhileLive(id, doc('b'), 'T2', 'u1', 's1');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+    // createdAt is bumped so the history shows the latest write, but `prev.at` stays anchored to the first write
+    expect(prismaMock.noteVersion.update).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { content: doc('b'), title: 'T2', createdAt: expect.any(Date) } });
+  });
+
+  it('two different writers on the same note within the window -> two versions (no overwrite)', async () => {
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1');
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
+    await archiveRestWriteWhileLive(id, doc('b'), 'T', 'u2', 's1');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('evicts expired coalescing entries (the map does not grow without bound)', async () => {
+    await archiveRestWriteWhileLive(`${id}-a`, doc('a'), 'T', 'u1', 's1');
+    await archiveRestWriteWhileLive(`${id}-b`, doc('b'), 'T', 'u1', 's1');
+    expect(__restArchiveSizeForTests()).toBeGreaterThanOrEqual(2);
+    (Date.now as any).mockReturnValue(NOW + 10 * 60_000);
+    await archiveRestWriteWhileLive(`${id}-c`, doc('c'), 'T', 'u1', 's1');
+    expect(__restArchiveSizeForTests()).toBe(1);
   });
 
   it('after the window creates a new version', async () => {
-    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1');
     prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1' });
     (Date.now as any).mockReturnValue(NOW + 3 * 60_000);
-    await archiveRestWriteWhileLive(id, doc('b'), 'T');
+    await archiveRestWriteWhileLive(id, doc('b'), 'T', 'u1', 's1');
     expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
     expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
   });
 
   it('deleted version row within the window -> creates', async () => {
-    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1');
     prismaMock.noteVersion.findUnique.mockResolvedValue(null);
-    await archiveRestWriteWhileLive(id, doc('b'), 'T');
+    await archiveRestWriteWhileLive(id, doc('b'), 'T', 'u1', 's1');
     expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
     expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
   });
 
   it('identical latest content -> no-op', async () => {
     prismaMock.noteVersion.findFirst.mockResolvedValue({ content: doc('a') });
-    await archiveRestWriteWhileLive(id, doc('a'), 'T');
+    await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1');
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
     expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
   });
 
   it('degenerate content is skipped', async () => {
-    await archiveRestWriteWhileLive(id, '{"type":"doc","content":[]}', 'T');
-    await archiveRestWriteWhileLive(id, '', 'T');
+    await archiveRestWriteWhileLive(id, '{"type":"doc","content":[]}', 'T', 'u1');
+    await archiveRestWriteWhileLive(id, '', 'T', 'u1');
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
+  });
+
+  describe('H1: per (note, user) create cap inside the window', () => {
+    let seq: number;
+    beforeEach(() => {
+      seq = 0;
+      prismaMock.noteVersion.create.mockImplementation(async () => ({ id: `v${++seq}` }));
+      prismaMock.noteVersion.findUnique.mockImplementation(async ({ where }: any) => ({ id: where.id }));
+    });
+
+    const attempt = async (u: string, s: string | undefined, text: string) => {
+      try { await archiveRestWriteWhileLive(id, doc(text), 'T', u, s); return 'ok'; } catch (e: any) { return e.statusCode; }
+    };
+
+    it('60 PUTs with a different sessionKey each -> exactly 1 create, 1 ok, 59 x 503, no update', async () => {
+      const out: any[] = [];
+      for (let i = 0; i < 60; i++) out.push(await attempt('u1', `jti-${i}`, `t${i}`));
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+      expect(out.filter((o) => o === 'ok')).toHaveLength(1);
+      expect(out.filter((o) => o === 503)).toHaveLength(59);
+    });
+
+    it('same session after its create -> coalescing update, never a second create', async () => {
+      expect(await attempt('u1', 's1', 'a')).toBe('ok');
+      expect(await attempt('u1', 's1', 'b')).toBe('ok');
+      expect(await attempt('u1', 's1', 'c')).toBe('ok');
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.noteVersion.update).toHaveBeenCalledTimes(2);
+      expect(prismaMock.noteVersion.update.mock.calls.every((c: any) => c[0].where.id === 'v1')).toBe(true);
+    });
+
+    it('J2: two concurrent calls from different sessions -> 1 create + 1 x 503', async () => {
+      const out = await Promise.all([attempt('u1', 'sA', 'a'), attempt('u1', 'sB', 'b')]);
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+      expect(out.filter((o) => o === 'ok')).toHaveLength(1);
+      expect(out.filter((o) => o === 503)).toHaveLength(1);
+    });
+
+    it('J2: a failed create releases the placeholder so a retry can create', async () => {
+      prismaMock.noteVersion.create.mockRejectedValueOnce(new Error('db down'));
+      await expect(archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 'sA')).rejects.toThrow('db down');
+      expect(await attempt('u1', 'sB', 'b')).toBe('ok');
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('no sessionKey is capped too (1 create, rest 503)', async () => {
+      const out: any[] = [];
+      for (let i = 0; i < 10; i++) out.push(await attempt('u1', undefined, `t${i}`));
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+      expect(out.filter((o) => o === 503)).toHaveLength(9);
+    });
+
+    it('after the window -> create again', async () => {
+      for (let i = 0; i < 5; i++) await attempt('u1', `s${i}`, `t${i}`);
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+      (Date.now as any).mockReturnValue(NOW + 3 * 60_000);
+      expect(await attempt('u1', 'sX', 'late')).toBe('ok');
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('different users are independent', async () => {
+      for (let i = 0; i < 5; i++) await attempt('u1', `s${i}`, `a${i}`);
+      for (let i = 0; i < 5; i++) await attempt('u2', `s${i}`, `b${i}`);
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('a version row pruned inside the window frees the slot (next write creates, no 503)', async () => {
+      expect(await attempt('u1', 's1', 'a')).toBe('ok');
+      prismaMock.noteVersion.findUnique.mockResolvedValue(null);
+      expect(await attempt('u1', 's1', 'b')).toBe('ok');
+      expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('expired entries are evicted also when the call takes the update branch', async () => {
+      (Date.now as any).mockReturnValue(NOW + 30 * 60_000); // past every entry left by earlier tests
+      await archiveRestWriteWhileLive(`${id}-x`, doc('x'), 'T', 'u1', 's1');
+      (Date.now as any).mockReturnValue(NOW + 30 * 60_000 + 100_000);
+      await archiveRestWriteWhileLive(id, doc('a'), 'T', 'u1', 's1');
+      expect(__restArchiveSizeForTests()).toBe(2);
+      (Date.now as any).mockReturnValue(NOW + 30 * 60_000 + 110_000);
+      await archiveRestWriteWhileLive(id, doc('b'), 'T', 'u1', 's1'); // same session in window -> update branch
+      expect(prismaMock.noteVersion.update).toHaveBeenCalledTimes(1);
+      (Date.now as any).mockReturnValue(NOW + 30 * 60_000 + 125_000); // only `${id}-x` expired
+      await archiveRestWriteWhileLive(id, doc('c'), 'T', 'u1', 's1'); // session entry (+100s) still valid -> update
+      expect(prismaMock.noteVersion.update).toHaveBeenCalledTimes(2);
+      expect(__restArchiveSizeForTests()).toBe(1);
+    });
+  });
+});
+
+describe('restoreNoteVersion H5: live doc + unconvertible version', () => {
+  const setup = () => {
+    prismaMock.note.findFirst.mockReset();
+    prismaMock.noteVersion.findUnique.mockReset();
+    prismaMock.noteVersion.findFirst.mockReset();
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.updateMany.mockReset();
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'n1', content: 'C'.repeat(200), title: 't', isEncrypted: false, isVault: false, ydocState: null });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'n1', content: 'D'.repeat(200), title: 'old' });
+  };
+
+  it.each([null, []])('live doc and contentToYNodes -> %j: 422 restoreUnsupportedLive, nothing written', async (conv) => {
+    setup();
+    (contentToYNodes as any).mockReturnValueOnce(conv);
+    liveDocs.add('n1');
+    try {
+      await expect(restoreNoteVersion('u1', 'n1', 'v1')).rejects.toMatchObject({ statusCode: 422, message: 'errors.notes.restoreUnsupportedLive' });
+      expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
+      expect(prismaMock.noteVersion.create).not.toHaveBeenCalled(); // refused BEFORE the forced snapshot
+    } finally {
+      liveDocs.delete('n1');
+    }
+  });
+
+  it('no live doc -> restore proceeds even if the content does not convert', async () => {
+    setup();
+    (contentToYNodes as any).mockReturnValue(null);
+    await expect(restoreNoteVersion('u1', 'n1', 'v1')).resolves.toMatchObject({ ok: true });
+    (contentToYNodes as any).mockReturnValue([{}]);
   });
 });
 
@@ -162,6 +338,83 @@ describe('restoreNoteVersion', () => {
     expect(prismaMock.note.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ content: 'D'.repeat(200), ydocState: null }),
     }));
+  });
+
+  it('G7: a successful restore clears the coalescing entries of the note (next live archive creates, not updates)', async () => {
+    const d = (t: string) => JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.noteVersion.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.noteVersion.create.mockReset();
+    prismaMock.noteVersion.create.mockResolvedValue({ id: 'vA' });
+    prismaMock.noteVersion.update.mockReset();
+    await archiveRestWriteWhileLive('note-g7', d('a'), 'T', 'u1', 's1');
+    expect(__restArchiveSizeForTests()).toBeGreaterThanOrEqual(1);
+
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-g7', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: false, ydocState: null });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-g7', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+    await restoreNoteVersion('u1', 'note-g7', 'v1');
+
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'vA' });
+    prismaMock.noteVersion.create.mockClear();
+    await archiveRestWriteWhileLive('note-g7', d('b'), 'T', 'u1', 's1');
+    expect(prismaMock.noteVersion.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.noteVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('plain note: ydocState = rebase of the stored state onto the restored content (and the read selects ydocState)', async () => {
+    const stored = Buffer.from([1, 2, 3]);
+    const rebased = Buffer.from([4, 5]);
+    (rebaseYdocState as any).mockClear();
+    (rebaseYdocState as any).mockReturnValueOnce(rebased);
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: false, ydocState: stored });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+
+    expect(rebaseYdocState).toHaveBeenCalledWith(stored, 'D'.repeat(200));
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.ydocState).toBe(rebased);
+    expect(prismaMock.note.findFirst.mock.calls[0][0].select).toMatchObject({ ydocState: true });
+  });
+
+  it('vault / encrypted note: ydocState null, rebase not called', async () => {
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.vaultKeyring.findUnique.mockResolvedValue(null);
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+    (rebaseYdocState as any).mockClear();
+    (rebaseYdocState as any).mockReturnValue(Buffer.from([9]));
+
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: true, ydocState: Buffer.from([1]) });
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: true, isVault: false, ydocState: Buffer.from([1]) });
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+
+    expect(rebaseYdocState).not.toHaveBeenCalled();
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.ydocState).toBeNull();
+    expect(prismaMock.note.updateMany.mock.calls[1][0].data.ydocState).toBeNull();
+    (rebaseYdocState as any).mockReturnValue(null);
+  });
+
+  it('CREDENTIAL note: ydocState null, rebase not called (and noteType is selected)', async () => {
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'D'.repeat(200), title: 'old' });
+    prismaMock.noteVersion.findFirst.mockResolvedValue(null);
+    prismaMock.noteVersion.findMany.mockResolvedValue([]);
+    prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+    (rebaseYdocState as any).mockClear();
+    (rebaseYdocState as any).mockReturnValue(Buffer.from([9]));
+    prismaMock.note.findFirst.mockReset();
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: false, noteType: 'CREDENTIAL', ydocState: Buffer.from([1]) });
+    await restoreNoteVersion('u1', 'note-1', 'v1');
+    expect(rebaseYdocState).not.toHaveBeenCalled();
+    expect(prismaMock.note.updateMany.mock.calls[0][0].data.ydocState).toBeNull();
+    expect(prismaMock.note.findFirst.mock.calls[0][0].select).toMatchObject({ noteType: true });
+    (rebaseYdocState as any).mockReturnValue(null);
   });
 
   it('writes conditionally (userId, isVault, isEncrypted from the read); count 0 -> 409 restoreConflict', async () => {
@@ -252,6 +505,21 @@ describe('restoreNoteVersion', () => {
       expect(prismaMock.noteVersion.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ content: 'F'.repeat(200) }),
       });
+    });
+
+    it('rebases onto the ydocState as re-read after the hook, not the pre-hook one', async () => {
+      const before = Buffer.from([1]);
+      const after = Buffer.from([2, 2]);
+      (rebaseYdocState as any).mockClear();
+      prismaMock.note.findFirst
+        .mockResolvedValueOnce({ ...okNote, ydocState: before })
+        .mockResolvedValueOnce({ ...okNote, ydocState: after });
+      prismaMock.noteVersion.findUnique.mockResolvedValue(okVersion);
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
+      prismaMock.note.updateMany.mockResolvedValue({ count: 1 });
+      await restoreNoteVersion('u1', 'note-1', 'v1', { beforeRestore: async () => {} });
+      expect(rebaseYdocState).toHaveBeenCalledTimes(1);
+      expect(rebaseYdocState).toHaveBeenCalledWith(after, okVersion.content);
     });
 
     it('is NOT called when the note is not owned / not found', async () => {

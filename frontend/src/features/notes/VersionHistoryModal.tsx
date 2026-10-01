@@ -65,8 +65,13 @@ export default function VersionHistoryModal({ noteId, onClose, onRestored }: Ver
       toast.success(t('notes.versions.restored'));
       setConfirmId(null);
       onRestored();
-    } catch {
-      toast.error(t('notes.versions.restoreFailed'));
+    } catch (err) {
+      const res = (err as { response?: { status?: number; data?: { message?: string } } })?.response;
+      toast.error(
+        res?.status === 422 && res.data?.message === 'errors.notes.restoreUnsupportedLive'
+          ? t('errors.notes.restoreUnsupportedLive')
+          : t('notes.versions.restoreFailed'),
+      );
     } finally {
       setRestoring(false);
     }
