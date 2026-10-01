@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.13.2',
+    date: '2026-10-01',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.restoreLiveNote' },
+      { type: 'fix', titleKey: 'whatsNew.entries.restoreArchivesCollabEdits' },
+      { type: 'fix', titleKey: 'whatsNew.entries.restoreVaultConflict' },
+    ],
+  },
+  {
     version: '1.13.1',
     date: '2026-10-01',
     entries: [
