@@ -35,6 +35,7 @@ import chatDirectRoutes from './routes/chat-direct';
 import vaultRoutes from './routes/vault';
 import { REDACT_PATHS } from './utils/logger';
 import { pepperStatus } from './services/vault.service';
+import { clientIpKey } from './utils/clientIpKey';
 
 
 // ... ensure start
@@ -134,6 +135,7 @@ server.register(rateLimit, {
   // app traffic headroom; sensitive write endpoints keep their stricter per-route limits.
   max: 600,
   timeWindow: '1 minute',
+  keyGenerator: clientIpKey,
   allowList: ['127.0.0.1', '::1'], // localhost exempt (health checks, internal)
 });
 
