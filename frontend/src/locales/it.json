@@ -811,6 +811,11 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "liveNoteKeepsOfflineSave": "Una nota aperta in una sessione condivisa non viene più sovrascritta da un salvataggio offline fatto da un altro dispositivo: il testo offline finisce nella cronologia delle versioni e ricevi un avviso.",
+      "noDuplicatedParagraphs": "Niente più paragrafi duplicati quando un dispositivo rimasto inattivo si riconnette a una nota condivisa dopo un ripristino o una modifica fatta altrove.",
+      "editorWaitsForSync": "L'editor non salva più prima di essersi sincronizzato con la sessione condivisa, evitando sovrascritture vuote o obsolete.",
+      "syncQueueInOrder": "La sincronizzazione offline mantiene l'ordine delle modifiche di ogni elemento e non perde più quelle fatte dopo una creazione fallita; ritentare una creazione offline non crea più duplicati né errori; le modifiche in sospeso agli elementi di una lista eliminata non restano più bloccate.",
+      "restoreLiveNoteMessage": "Ripristinare una versione non applicabile a una nota aperta in una sessione condivisa ora mostra un messaggio chiaro, invece di venire annullato in silenzio.",
       "restoreLiveNote": "Il ripristino di una versione su una nota aperta altrove non viene più sovrascritto: i collaboratori vedono subito il contenuto ripristinato, senza ricaricare.",
       "restoreArchivesCollabEdits": "Le modifiche non ancora salvate dei collaboratori vengono archiviate nella cronologia prima del ripristino.",
       "restoreVaultConflict": "Il ripristino si ferma con un messaggio chiaro se nello stesso momento la nota viene spostata dentro o fuori dal vault.",

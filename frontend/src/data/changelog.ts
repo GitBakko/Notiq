@@ -11,6 +11,17 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.13.3',
+    date: '2026-10-02',
+    entries: [
+      { type: 'fix', titleKey: 'whatsNew.entries.liveNoteKeepsOfflineSave' },
+      { type: 'fix', titleKey: 'whatsNew.entries.noDuplicatedParagraphs' },
+      { type: 'fix', titleKey: 'whatsNew.entries.editorWaitsForSync' },
+      { type: 'fix', titleKey: 'whatsNew.entries.syncQueueInOrder' },
+      { type: 'fix', titleKey: 'whatsNew.entries.restoreLiveNoteMessage' },
+    ],
+  },
+  {
     version: '1.13.2',
     date: '2026-10-01',
     entries: [

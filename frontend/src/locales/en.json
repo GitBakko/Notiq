@@ -1187,6 +1187,11 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "liveNoteKeepsOfflineSave": "A note open in a live shared session is no longer overwritten by an offline save from another device: the offline text goes into the version history and you get a notice",
+      "noDuplicatedParagraphs": "No more duplicated paragraphs when a device that was asleep reconnects to a shared note after a restore or a change made elsewhere",
+      "editorWaitsForSync": "The editor no longer saves before it has synced with the shared session, preventing empty or outdated overwrites",
+      "syncQueueInOrder": "Offline sync keeps each item's changes in order and no longer drops edits made after a failed creation; retrying an offline creation no longer creates duplicates or fails; pending changes to the items of a deleted list no longer get stuck",
+      "restoreLiveNoteMessage": "Restoring a version that can't be applied to a note open in a live shared session now shows a clear message, instead of the restore being silently undone",
       "restoreLiveNote": "Restoring a version on a note open elsewhere is no longer overwritten: collaborators see the restored content immediately, without reloading",
       "restoreArchivesCollabEdits": "Collaborators' unsaved edits are saved into the history before a restore",
       "restoreVaultConflict": "Restore stops with a clear message if the note is moved into or out of the vault at the same moment",
