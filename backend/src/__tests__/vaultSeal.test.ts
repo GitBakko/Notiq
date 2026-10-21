@@ -19,6 +19,15 @@ export const V1 = {
   sealed: '040f3b4e71292f2de3a7c7befb785008417858f3cffe8192345e11735f4e75ed8a20218bddfd9c6656943b2db8cabf2e40b3348bbbecff8a7b144d73259b20018e9f44f4dac25be0069344c0c70ef4ba5d830080a52f8a05a423b6e83b93e8923ea0a1a2a3a4a5a6a7a8a9aaaba29ee45dc9f9b44717853c6efb31537a20ba4b840e413a722f3f28b3a3e7b9db615d64bb8f607aee6e313f7fe8af9247',
 };
 
+// Vettore V2: sealed prodotto dal frontend (utils/vaultCrypto.ts, WebCrypto) per la stessa chiave root di V1.
+export const V2 = {
+  sRoot: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+  userId: 'user-v2',
+  epoch: 5,
+  rootKeyId: 'rk_0123456789abcdef',
+  sealed: '04c2e9292994719fb0d3b81987e90bcdbc2a9bfc0dc9d04b4c28f1f64b9337d55f0b90359340119a92ba6bcfc1e9d25d6afb7c29f890e86e4cdef9773093a94d347883cb3567d685c026773cc0fb4b48d0c9e6a73ab67f2ef1af97b2c618da1f5fdb6857a7a547a0ab2d0cc1a4371fb373344211d854c2a8e0fb6cb3c3fb5c40f7afdb0bfe5068304e0573249e4d22c74bb03222931871af208e78a5f9',
+};
+
 const sRoot = Buffer.from(V1.sRoot, 'hex');
 const origEnv = process.env.NODE_ENV;
 afterEach(() => { process.env.NODE_ENV = origEnv; });
@@ -152,5 +161,10 @@ describe('vaultSeal', () => {
     dc.setAuthTag(sealed.subarray(141));
     const out = Buffer.concat([dc.update(sealed.subarray(109, 141)), dc.final()]);
     expect(out.toString('hex')).toBe(V1.sRoot);
+  });
+
+  it('vettore V2: sealed prodotto dal frontend aperto con openRootShare', () => {
+    expect(openRootShare(Buffer.from(V2.sealed, 'hex'), Buffer.from(V1.rootPrivPkcs8, 'hex'), V2.userId, V2.epoch, V2.rootKeyId).toString('hex')).toBe(V2.sRoot);
+    expect(() => openRootShare(Buffer.from(V2.sealed, 'hex'), Buffer.from(V1.rootPrivPkcs8, 'hex'), V2.userId, V2.epoch + 1, V2.rootKeyId)).toThrow(SEAL);
   });
 });
