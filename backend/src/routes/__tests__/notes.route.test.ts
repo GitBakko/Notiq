@@ -146,7 +146,22 @@ describe('GET /api/notes', () => {
 
     expect(res.statusCode).toBe(200);
     expect(mockNoteService.getNotes).toHaveBeenCalledWith(
-      TEST_USER.id, nbId, 'hello', undefined, undefined, false, 2, 10
+      TEST_USER.id, nbId, 'hello', undefined, undefined, false, 2, 10, false
+    );
+  });
+
+  it('passes all=true when ?all=1', async () => {
+    mockNoteService.getNotes.mockResolvedValue([]);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/notes?all=1',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockNoteService.getNotes).toHaveBeenCalledWith(
+      TEST_USER.id, undefined, undefined, undefined, undefined, false, 1, 50, true
     );
   });
 

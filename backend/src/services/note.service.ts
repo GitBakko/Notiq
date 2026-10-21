@@ -96,7 +96,7 @@ export const createNote = async (
   }
 };
 
-export const getNotes = async (userId: string, notebookId?: string, search?: string, tagId?: string, reminderFilter?: 'all' | 'pending' | 'done', includeTrashed: boolean = false, page: number = 1, limit: number = 50) => {
+export const getNotes = async (userId: string, notebookId?: string, search?: string, tagId?: string, reminderFilter?: 'all' | 'pending' | 'done', includeTrashed: boolean = false, page: number = 1, limit: number = 50, all: boolean = false) => {
   const whereClause = {
     userId,
     ...(notebookId ? { notebookId } : {}),
@@ -118,8 +118,7 @@ export const getNotes = async (userId: string, notebookId?: string, search?: str
   const notes = await prisma.note.findMany({
     where: whereClause,
     orderBy: { updatedAt: 'desc' },
-    skip: (page - 1) * limit,
-    take: limit,
+    ...(all ? {} : { skip: (page - 1) * limit, take: limit }),
     select: {
       id: true,
       title: true,

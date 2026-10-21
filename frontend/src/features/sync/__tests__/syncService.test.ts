@@ -282,7 +282,7 @@ describe('syncPull', () => {
       ];
 
       mockApi.get.mockImplementation((url: string) => {
-        if (url === '/notes?includeTrashed=true') return Promise.resolve({ data: serverNotes });
+        if (url === '/notes?includeTrashed=true&all=1') return Promise.resolve({ data: serverNotes });
         return Promise.resolve({ data: [] });
       });
 
@@ -321,7 +321,7 @@ describe('syncPull', () => {
       ];
 
       mockApi.get.mockImplementation((url: string) => {
-        if (url === '/notes?includeTrashed=true') return Promise.resolve({ data: serverNotes });
+        if (url === '/notes?includeTrashed=true&all=1') return Promise.resolve({ data: serverNotes });
         return Promise.resolve({ data: [] });
       });
 
@@ -357,7 +357,7 @@ describe('syncPull', () => {
       ];
 
       mockApi.get.mockImplementation((url: string) => {
-        if (url === '/notes?includeTrashed=true') return Promise.resolve({ data: serverNotes });
+        if (url === '/notes?includeTrashed=true&all=1') return Promise.resolve({ data: serverNotes });
         return Promise.resolve({ data: [] });
       });
 
@@ -381,6 +381,52 @@ describe('syncPull', () => {
       await syncPull();
 
       expect(mockDb.notes.bulkDelete).toHaveBeenCalledWith(['note-gone']);
+    });
+
+    it('requests the unpaginated notes list (all=1)', async () => {
+      await syncPull();
+      expect(mockApi.get).toHaveBeenCalledWith('/notes?includeTrashed=true&all=1');
+    });
+
+    it('deletes nothing when server returns all 120 synced local notes', async () => {
+      const mk = (i: number) => ({
+        id: `note-${i}`, title: `N${i}`, notebookId: 'nb-1', userId: 'user-1',
+        isTrashed: false, createdAt: '2026-01-01', updatedAt: '2026-01-01',
+        tags: [], attachments: [],
+      });
+      const serverNotes = Array.from({ length: 120 }, (_, i) => mk(i));
+      const localNotes = serverNotes.map(n => ({ id: n.id, ownership: 'owned', syncStatus: 'synced' }));
+
+      mockApi.get.mockImplementation((url: string) =>
+        Promise.resolve({ data: url === '/notes?includeTrashed=true&all=1' ? serverNotes : [] }),
+      );
+      let calls = 0;
+      mockDb.notes.toArray.mockImplementation(() => {
+        calls++;
+        return Promise.resolve(calls === 1 ? [] : calls === 2 ? localNotes : []);
+      });
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+      mockDb.notes.bulkGet.mockResolvedValue([]);
+
+      await syncPull();
+
+      expect(mockDb.notes.bulkDelete).not.toHaveBeenCalled();
+    });
+
+    it('deletes no local notes when the notes GET rejects', async () => {
+      // Both note GETs reject, so neither the owned nor the shared block may delete anything.
+      mockApi.get.mockImplementation((url: string) =>
+        url === '/notes?includeTrashed=true&all=1' || url === '/share/notes/accepted'
+          ? Promise.reject(new Error('boom'))
+          : Promise.resolve({ data: [] }),
+      );
+      // A synced local row exists: a rejected GET treated as an empty list would delete it.
+      mockDb.notes.toArray.mockResolvedValue([{ id: 'note-1', ownership: 'owned', syncStatus: 'synced' }]);
+      mockDb.syncQueue.toArray.mockResolvedValue([]);
+
+      await syncPull();
+
+      expect(mockDb.notes.bulkDelete).not.toHaveBeenCalled();
     });
   });
 
@@ -1008,7 +1054,7 @@ describe('syncPull', () => {
       mockApi.get.mockImplementation((url: string) => {
         if (url === '/notebooks') return Promise.resolve({ data: [] });
         if (url === '/tags') return Promise.resolve({ data: [] });
-        if (url === '/notes?includeTrashed=true') return Promise.resolve({ data: [] });
+        if (url === '/notes?includeTrashed=true&all=1') return Promise.resolve({ data: [] });
         if (url === '/share/notes/accepted') return Promise.reject(new Error('403'));
         if (url === '/tasklists') return Promise.resolve({ data: [] });
         if (url === '/share/tasklists/accepted') return Promise.resolve({ data: [] });
@@ -1026,12 +1072,12 @@ describe('syncPull', () => {
       // Other endpoints were still called
       expect(mockApi.get).toHaveBeenCalledWith('/notebooks');
       expect(mockApi.get).toHaveBeenCalledWith('/tags');
-      expect(mockApi.get).toHaveBeenCalledWith('/notes?includeTrashed=true');
+      expect(mockApi.get).toHaveBeenCalledWith('/notes?includeTrashed=true&all=1');
     });
 
     // Kanban 3.7: notebooks, tags and notes used to share the outer try, so one
     // failing endpoint skipped the rest of the pull — kanban prune included.
-    it.each(['/notebooks', '/tags', '/notes?includeTrashed=true'])(
+    it.each(['/notebooks', '/tags', '/notes?includeTrashed=true&all=1'])(
       'still reaches every other section and the kanban prune when %s throws',
       async (failing) => {
         mockApi.get.mockImplementation((url: string) =>
@@ -1047,7 +1093,7 @@ describe('syncPull', () => {
         for (const url of [
           '/notebooks',
           '/tags',
-          '/notes?includeTrashed=true',
+          '/notes?includeTrashed=true&all=1',
           '/share/notes/accepted',
           '/tasklists',
           '/kanban/boards',

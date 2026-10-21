@@ -749,6 +749,16 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
       - Sicurezza: un server malevolo potrebbe abbassare `t` solo fino al pavimento 3, perché il client rifiuta `t<3` e `m<65536` (§3). Il costo per tentativo cala al massimo di un fattore t_finale/3. Il tetto t≤10 limita il DoS a circa 3,3x rispetto a t=3. Un server malevolo può comunque servire un bundle manomesso (§12.4), quindi B non aggiunge un rischio nuovo, ma neanche un vantaggio di sicurezza.
       - Costo: un campo nuovo nella risposta di `GET /keyring` con stato NONE, parsing e validazione della env sul BE, un validatore sul FE e test nuovi. In più serve comunque `pm2 restart` (dotenv si legge al boot). Tutto per evitare al massimo un ciclo di deploy di circa 30 min.
 21. **Controllo del ruolo del bench solo client:** un non-SUPERADMIN può caricare il chunk lazy (precachato da `globPatterns`, `vite.config.ts:62`), ma non trova segreti e la pagina non scrive dati né chiama API. Rischio accettato. iOS può limitare i Worker in background: la misura si fa con lo schermo attivo.
+22. **`GET /notes?all=1` senza tetto.** Emerso dalla review di T0 (red-team, MAJOR) e accettato dall'utente il 21/10.
+   - La lista contiene `searchText`, il testo in chiaro. Serve alla ricerca offline (`useNotes.ts:48`) e all'anteprima (`NoteList.tsx:86`).
+   - `content` non ha limite di lunghezza fino a T2 (D10: 2 MiB).
+   - Un utente invitato malintenzionato, con migliaia di note grandi, può esaurire la memoria del processo Node con una sola pull.
+   - È il comportamento di prima di 73ae89a. L'app è solo su invito e in prod nessun utente supera le 50 note (21/10).
+   - Un tetto di righe che tronca la risposta è vietato: le righe mancanti verrebbero cancellate dalla pull (`syncService.ts:166-171`).
+   - Backlog: pull incrementale per `updatedAt`.
+23. **Timeout di 30 s della pull (`api.ts`).** Emerso dalla review di T0 (red-team, MINOR), accettato.
+   - Con una lista molto pesante su rete lenta la pull va sempre in timeout. Non cancella nulla (il catch salta la transazione), ma quel dispositivo smette di aggiornare le note.
+   - Con meno di 50 note per utente non succede. Si riapre insieme alla pull incrementale.
 
 ---
 
@@ -854,3 +864,9 @@ Revisione 4. Fonte: decisioni dell'utente del 21/10 più l'emendamento dell'arch
 | H5 | MINOR (round 3): reset/terminate rifiutano subito le richieste pendenti con `kdfFailed`; il timer termina solo la propria istanza; test in volo + reset | §5.1, T5 |
 | H6 | MINOR (round 3): `errors.vault.invalidPayload` assente dai locali, si aggiunge in T24 | §3, T24, G3 |
 | H7 | NIT (round 3): yield 250 ms dopo il reset, un retry per campione a freddo, campo `retries` nel JSON | Dettaglio T6 |
+
+## Addendum dopo la review di T0 (21/10)
+
+- **Reviewer: OK.** Ha segnalato un MINOR, già corretto: il test della fetch fallita non aveva righe locali da cancellare. Ora rifiutano entrambe le GET (note proprie e condivise) e c'è una riga `synced` locale, quindi il test fallisce se una GET rifiutata venisse trattata come lista vuota.
+- **Red-team:** ha segnalato un MAJOR (DoS di `all=1` senza tetto) e un MINOR (timeout di 30 s). L'utente li ha accettati come residui, vedi §12.22 e §12.23.
+- **Correzione respinta:** `take: 5000` con `all`. Riaprirebbe il troncamento che T0 chiude.

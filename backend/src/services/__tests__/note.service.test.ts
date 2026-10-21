@@ -360,6 +360,18 @@ describe('getNotes', () => {
       expect.objectContaining({ skip: 20, take: 10 })
     );
   });
+
+  it('with all=true omits skip/take and returns every note', async () => {
+    const notes = Array.from({ length: 150 }, (_, i) => ({ id: `n${i}` }));
+    prismaMock.note.findMany.mockResolvedValue(notes);
+
+    const result = await getNotes('user-1', undefined, undefined, undefined, undefined, true, 1, 50, true);
+
+    const call = prismaMock.note.findMany.mock.calls[0][0];
+    expect(call).not.toHaveProperty('skip');
+    expect(call).not.toHaveProperty('take');
+    expect(result).toHaveLength(150);
+  });
 });
 
 // ---------------------------------------------------------------------------

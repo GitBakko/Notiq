@@ -115,7 +115,7 @@ export const syncPull = async () => {
 
     try {
       // Pull Notes
-      const notesRes = await api.get<Note[]>('/notes?includeTrashed=true');
+      const notesRes = await api.get<Note[]>('/notes?includeTrashed=true&all=1');
       await db.transaction('rw', db.notes, db.syncQueue, async () => {
         // We need to be careful not to overwrite dirty notes
         // For MVP, let's just overwrite everything that is 'synced'

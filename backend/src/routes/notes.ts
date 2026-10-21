@@ -44,6 +44,7 @@ const getNotesQuerySchema = z.object({
   includeTrashed: z.string().optional(),
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(50),
+  all: z.literal('1').optional(),
 });
 
 export default async function (fastify: FastifyInstance) {
@@ -56,12 +57,13 @@ export default async function (fastify: FastifyInstance) {
   });
 
   fastify.get('/', async (request, reply) => {
-    const { notebookId, search, tagId, reminderFilter, includeTrashed, page, limit } = getNotesQuerySchema.parse(request.query);
+    const { notebookId, search, tagId, reminderFilter, includeTrashed, page, limit, all } = getNotesQuerySchema.parse(request.query);
     const notes = await noteService.getNotes(
       request.user.id, notebookId, search, tagId, reminderFilter,
       includeTrashed === 'true',
       page,
-      limit
+      limit,
+      all === '1'
     );
     return notes;
   });
