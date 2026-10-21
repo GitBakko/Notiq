@@ -2,6 +2,7 @@ import api from '../../lib/api';
 import queryClient from '../../lib/queryClient';
 import { queryKeys } from '../../lib/queryKeys';
 import type { Tag } from '../tags/tagService';
+import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 
 
 export interface Note {
@@ -108,7 +109,23 @@ import { db } from '../../lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuthStore } from '../../store/authStore';
 
+/** Rete di sicurezza vault (P2 5.9): errore tipizzato per le scritture che metterebbero testo in chiaro in una nota vault. */
+export class VaultPlaintextGuardError extends Error {
+  constructor(reason: string) {
+    super(`vault.plaintextGuard: ${reason}`);
+    this.name = 'VaultPlaintextGuardError';
+  }
+}
+
+const rejectVaultWrite = (reason: string): never => {
+  console.warn('[noteService] scrittura vault rifiutata:', reason);
+  throw new VaultPlaintextGuardError(reason);
+};
+
 export const createNote = async (data: { title: string; notebookId: string; content?: string; isVault?: boolean; isEncrypted?: boolean; noteType?: 'NOTE' | 'CREDENTIAL' }) => {
+  if (data.isVault && (data.title !== '' || !ENVELOPE_RE.test(data.content ?? '') || data.isEncrypted === false)) {
+    rejectVaultWrite('createNote vault richiede envelope, title vuoto e isEncrypted non false');
+  }
   const id = uuidv4();
   const userId = useAuthStore.getState().user?.id || 'current-user';
   const newNote = {
@@ -118,7 +135,7 @@ export const createNote = async (data: { title: string; notebookId: string; cont
     userId,
     isTrashed: false,
     isVault: data.isVault || false,
-    isEncrypted: data.isEncrypted || false,
+    isEncrypted: data.isVault ? true : (data.isEncrypted || false),
     noteType: data.noteType || 'NOTE',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -147,23 +164,32 @@ export const createNote = async (data: { title: string; notebookId: string; cont
 };
 
 export const updateNote = async (id: string, data: Partial<Note>) => {
-  // Shared notes: only update locally, Hocuspocus handles server sync
-  const existing = await db.notes.get(id);
-  if (existing?.ownership === 'shared') {
-    return updateNoteLocalOnly(id, data);
-  }
-
+  // Solo vaultMove cambia isVault (scrive Dexie direttamente)
+  if ('isVault' in data) rejectVaultWrite('updateNote non puo cambiare isVault');
   const updatedAt = new Date().toISOString();
-  await db.notes.update(id, { ...data, updatedAt, syncStatus: 'updated' });
   const userId = useAuthStore.getState().user?.id || 'current-user';
-  await db.syncQueue.add({
-    type: 'UPDATE',
-    entity: 'NOTE',
-    entityId: id,
-    userId,
-    data,
-    createdAt: Date.now()
+  // Lettura, guardia, update e coda nella stessa transazione: guardia e scrittura vedono la stessa riga.
+  const shared = await db.transaction('rw', db.notes, db.syncQueue, async () => {
+    const existing = await db.notes.get(id);
+    if (existing?.isVault) {
+      if (data.content !== undefined && !ENVELOPE_RE.test(data.content)) rejectVaultWrite('content non envelope su nota vault');
+      if (data.title !== undefined && data.title !== '') rejectVaultWrite('title non vuoto su nota vault');
+      if (data.isEncrypted === false) rejectVaultWrite('isEncrypted:false su nota vault');
+    }
+    // Shared notes: only update locally, Hocuspocus handles server sync
+    if (existing?.ownership === 'shared') return true;
+    await db.notes.update(id, { ...data, updatedAt, syncStatus: 'updated' });
+    await db.syncQueue.add({
+      type: 'UPDATE',
+      entity: 'NOTE',
+      entityId: id,
+      userId,
+      data,
+      createdAt: Date.now()
+    });
+    return false;
   });
+  if (shared) return updateNoteLocalOnly(id, data);
 
   // Keep React Query cache in sync so switching notes doesn't show stale content
   queryClient.setQueryData(queryKeys.notes.detail(id), (old: Note | undefined) =>
