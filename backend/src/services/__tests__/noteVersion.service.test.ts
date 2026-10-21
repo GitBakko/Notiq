@@ -654,7 +654,7 @@ describe('restoreNoteVersion', () => {
     await expect(restoreNoteVersion('u1', 'note-1', 'v1'))
       .rejects.toMatchObject({ statusCode: 409, message: 'errors.notes.restoreConflict' });
     expect(prismaMock.note.updateMany.mock.calls[0][0].where)
-      .toEqual({ id: 'note-1', userId: 'u1', isVault: true, isEncrypted: false });
+      .toEqual({ id: 'note-1', userId: 'u1', isVault: true, isEncrypted: false, content: 'C'.repeat(200) });
   });
 
   it('writes searchText null for a vault note, but keeps it for a normal note', async () => {

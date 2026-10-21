@@ -4,7 +4,7 @@ import { extractTextFromTipTapJson } from '../utils/extractText';
 import { NotFoundError, ConflictError, AppError } from '../utils/errors';
 import logger from '../utils/logger';
 import { isDegenerateTipTapJson } from '../utils/ydocIntegrity';
-import { getVaultGuard, assertVaultContent } from './vault.service';
+import { getVaultGuard, assertVaultContent, parseEnvelope } from './vault.service';
 import { rebaseYdocState, contentToYNodes } from '../utils/ydoc';
 
 // PrismaClient is assignable to TransactionClient, so this accepts both prisma and a tx client.
@@ -254,6 +254,7 @@ export async function getVersionForRestoreCheck(
   if (!note) throw new NotFoundError('errors.notes.notFound');
   const version = await prisma.noteVersion.findUnique({ where: { id: versionId }, select: { noteId: true, content: true } });
   if (!version || version.noteId !== noteId) throw new NotFoundError('errors.notes.versionNotFound');
+  if (!note.isVault && parseEnvelope(version.content)) throw new AppError(422, 'errors.vault.plaintextRequired');
   return { content: version.content, plain: !note.isVault && !note.isEncrypted };
 }
 
@@ -270,6 +271,9 @@ export async function restoreNoteVersion(
 
   const version = await prisma.noteVersion.findUnique({ where: { id: versionId } });
   if (!version || version.noteId !== noteId) throw new NotFoundError('errors.notes.versionNotFound');
+
+  // A vault ciphertext envelope must never land in a non-vault note.
+  if (!note.isVault && parseEnvelope(version.content)) throw new AppError(422, 'errors.vault.plaintextRequired');
 
   const guard = note.isVault ? await getVaultGuard(userId) : null;
   if (guard) assertVaultContent(version.content, guard);
@@ -321,7 +325,8 @@ export async function restoreNoteVersion(
   // Conditional write: if the owner moved the note into/out of the vault since the (re-)read, nothing
   // matches and we abort, so plaintext never lands in a vault note (or ciphertext in a plain one).
   const { count } = await prisma.note.updateMany({
-    where: { id: noteId, userId, isVault: note.isVault, isEncrypted: note.isEncrypted },
+    // Vault: CAS on content too, so a client write between the read and this write is not overwritten.
+    where: { id: noteId, userId, isVault: note.isVault, isEncrypted: note.isEncrypted, ...(note.isVault ? { content: note.content } : {}) },
     // [BACKUP] 2026-10-01 — was `ydocState: null` (next fetch rebuilt the Yjs doc from content, so a stale client
     // duplicated every block on reconnect). Plain notes now rebase the stored state onto the restored content
     // (null when in doubt); vault/encrypted keep null.
