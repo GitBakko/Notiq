@@ -9,6 +9,7 @@ vi.mock('../../services/vault.service', async () => {
   return {
     b64url: actual.b64url,
     pepperStatus: actual.pepperStatus,
+    KDF_T_MIN: actual.KDF_T_MIN,
     getKeyring: vi.fn(),
     createKeyring: vi.fn(),
     unlock: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../../services/vault.service', async () => {
 });
 
 import * as vaultService from '../../services/vault.service';
+import { KDF_T_MIN } from '../../services/vault.service';
 import { AppError } from '../../utils/errors';
 import vaultRoutes from '../vault';
 
@@ -223,6 +225,19 @@ describe('vault routes', () => {
       expect(res.statusCode).toBe(400);
       expect(res.json().message).toBe('errors.vault.invalidPayload');
       expect(svc.createKeyring).not.toHaveBeenCalled();
+    });
+
+    it('kdfParams.t = KDF_T_MIN-1 -> 400, createKeyring non chiamato', async () => {
+      const res = await call('POST', '/keyring', keyringBody({ kdfParams: { m: 65536, t: KDF_T_MIN - 1, p: 1 } }));
+      expect(res.statusCode).toBe(400);
+      expect(svc.createKeyring).not.toHaveBeenCalled();
+    });
+
+    it('kdfParams.t = KDF_T_MIN -> accettato, createKeyring chiamato', async () => {
+      svc.createKeyring.mockResolvedValue({ status: 'READY', epoch: 1, rev: 1 });
+      const res = await call('POST', '/keyring', keyringBody({ kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 } }));
+      expect(res.statusCode).not.toBe(400);
+      expect(svc.createKeyring).toHaveBeenCalledTimes(1);
     });
 
     it('P-256 valido -> 201 e service chiamato con Buffer decodificati', async () => {

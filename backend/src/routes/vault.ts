@@ -3,7 +3,7 @@ import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../utils/errors';
 import * as vaultService from '../services/vault.service';
-import { b64url, pepperStatus } from '../services/vault.service';
+import { b64url, pepperStatus, KDF_T_MIN } from '../services/vault.service';
 
 const bytes = (v: string) => Buffer.from(v, 'base64url');
 
@@ -13,7 +13,7 @@ const keyringSchema = z.object({
   kdf: z.literal('argon2id'),
   kdfParams: z.object({
     m: z.number().int().min(65536).max(1048576),
-    t: z.number().int().min(3).max(10),
+    t: z.number().int().min(KDF_T_MIN).max(10),
     p: z.literal(1),
   }),
   pinSalt: b64url(16),

@@ -160,7 +160,7 @@ export async function getKeyring(userId: string) {
     select: {
       status: true, epoch: true, rev: true, kdf: true, kdfParams: true, pinSalt: true,
       wrappedVkPin: true, wrappedVkSigKey: true, rootKeyId: true, migrationState: true,
-      lockedUntil: true, resetScheduledAt: true,
+      lockedUntil: true, resetScheduledAt: true, escrowBlob: true,
     },
   });
   const legacyCount = await countLegacyVaultNotes(userId);
@@ -168,11 +168,17 @@ export async function getKeyring(userId: string) {
     return {
       status: 'NONE', epoch: 0, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null,
       wrappedVkSigKey: null, rootKeyId: null, migrationState: 'NONE', lockedUntil: null,
-      resetScheduledAt: null, legacyCount,
+      resetScheduledAt: null, escrowHash: null, legacyCount,
     };
   }
+  const { escrowBlob, ...rest } = row;
+  // hash dei byte grezzi (stesso calcolo del client, T13)
+  const escrowHash = escrowBlob
+    ? crypto.createHash('sha256').update(Buffer.from(escrowBlob)).digest('hex')
+    : null;
   return {
-    ...row,
+    ...rest,
+    escrowHash,
     pinSalt: toB64(row.pinSalt),
     wrappedVkPin: toB64(row.wrappedVkPin),
     wrappedVkSigKey: toB64(row.wrappedVkSigKey),
@@ -181,6 +187,8 @@ export async function getKeyring(userId: string) {
 }
 
 type Bytes = Buffer<ArrayBuffer>;
+
+export const KDF_T_MIN = 3;
 
 // ES2022 Object.hasOwn non e' nella lib di questo tsconfig
 const isRootKey = (id: string) => Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, id);
@@ -206,6 +214,12 @@ export async function createKeyring(userId: string, dto: CreateKeyringDto) {
   // RT-1: prima di qualsiasi lettura
   if (Object.keys(VAULT_ROOT_KEYS).length === 0) throw new AppError(503, 'errors.vault.unavailable');
   if (!isRootKey(dto.rootKeyId)) throw new AppError(400, 'errors.vault.invalidRootKey');
+
+  // kill switch: letto a ogni chiamata, assente = chiuso
+  const allow = process.env.VAULT_SETUP_USERS ?? '';
+  if (allow !== '*' && !allow.split(',').some((u) => u.trim() === userId)) {
+    throw new AppError(503, 'errors.vault.setupDisabled');
+  }
 
   // D2: password dell'account obbligatoria
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { password: true } });
@@ -278,7 +292,7 @@ export const keyringUpdatePayloadSchema = z.object({
       kdf: z.literal('argon2id'),
       kdfParams: z.object({
         m: z.number().int().min(65536).max(1048576),
-        t: z.number().int().min(3).max(10),
+        t: z.number().int().min(KDF_T_MIN).max(10),
         p: z.literal(1),
       }),
       pinSalt: b64url(16),
@@ -420,13 +434,21 @@ export async function unlock(userId: string, authKey: Buffer): Promise<{ serverS
 
 // ---------------------------------------------------------------- Items, migrate, finalize (T8)
 
-const itemSelect = { id: true, noteType: true, content: true, updatedAt: true, isTrashed: true } as const;
+const itemSelect = {
+  id: true, noteType: true, title: true, content: true, updatedAt: true, isTrashed: true,
+  _count: { select: { versions: { where: { NOT: { content: { startsWith: 'nv3.' } } } } } },
+} as const;
 
 export async function getItems(userId: string, opts: { ids?: string[]; after?: string } = {}) {
   if (!userId) throw new Error('getItems: userId required');
-  const toItem = (r: { id: string; noteType: string; content: string; updatedAt: Date; isTrashed: boolean }) => ({
+  const toItem = (r: {
+    id: string; noteType: string; title: string; content: string; updatedAt: Date; isTrashed: boolean;
+    _count: { versions: number };
+  }) => ({
     id: r.id,
     noteType: r.noteType,
+    title: r.title,
+    hasPlaintextVersions: r._count.versions > 0,
     content: r.content,
     contentHash: sha256hex(r.content),
     updatedAt: r.updatedAt,

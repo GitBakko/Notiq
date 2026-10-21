@@ -19,6 +19,7 @@ import {
   getKeyring,
   updateKeyring,
   openServerShare,
+  KDF_T_MIN,
   sha256hex,
   pepperStatus,
   verifierKey,
@@ -35,7 +36,7 @@ const dto = (o: Partial<CreateKeyringDto> = {}): CreateKeyringDto => ({
   expectedEpoch: 0,
   password: PASSWORD,
   kdf: 'argon2id',
-  kdfParams: { m: 65536, t: 3, p: 1 },
+  kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 },
   pinSalt: Buffer.alloc(16, 1),
   wrappedVkPin: Buffer.alloc(60, 2),
   authKey,
@@ -75,13 +76,37 @@ async function fail(p: Promise<unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env.VAULT_SETUP_USERS = '*';
   mp.user.findUnique.mockResolvedValue({ password: 'hash' });
   (bcrypt.compare as any).mockResolvedValue(true);
   mp.note.count.mockResolvedValue(0);
   mp.auditLog.create.mockResolvedValue({});
 });
 
+// Condiviso con T13 (frontend): stesso vettore per l'hash dell'escrowBlob (60 B = 0x00..0x3b)
+const ESCROW_VECTOR_HASH = '0ddde28e40838ef6f9853e887f597d6adb5f40eb35d5763c52e1e64d8ba3bfff';
+
 describe('createKeyring', () => {
+  it('kill switch: variabile assente -> 503 setupDisabled prima di bcrypt', async () => {
+    delete process.env.VAULT_SETUP_USERS;
+    const e = await fail(createKeyring('u1', dto()));
+    expect(e.statusCode).toBe(503);
+    expect(e.message).toBe('errors.vault.setupDisabled');
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+    expect(mp.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('kill switch: lista con u1 -> u1 passa, u2 503; "*" -> passa', async () => {
+    mp.vaultKeyring.create.mockResolvedValue({ rev: 0 });
+    process.env.VAULT_SETUP_USERS = 'x, u1 ,y';
+    await expect(createKeyring('u1', dto())).resolves.toMatchObject({ status: 'READY' });
+    const e = await fail(createKeyring('u2', dto()));
+    expect(e.statusCode).toBe(503);
+    expect(e.message).toBe('errors.vault.setupDisabled');
+    process.env.VAULT_SETUP_USERS = '*';
+    await expect(createKeyring('u2', dto())).resolves.toMatchObject({ status: 'READY' });
+  });
+
   it('password errata -> 403, nessuna scrittura', async () => {
     (bcrypt.compare as any).mockResolvedValue(false);
     const e = await fail(createKeyring('u1', dto()));
@@ -209,7 +234,7 @@ describe('createKeyring', () => {
 
 describe('getKeyring', () => {
   const RESERVED = [
-    'authVerifier', 'serverShareEnc', 'escrowBlob', 'sealedRootShare', 'userShareUnderVk',
+    'authVerifier', 'serverShareEnc', 'sealedRootShare', 'userShareUnderVk',
     'vkSigPub', 'pepperKeyId', 'failedAttempts',
   ];
 
@@ -236,6 +261,29 @@ describe('getKeyring', () => {
     for (const k of RESERVED) expect(sel).not.toHaveProperty(k);
   });
 
+  it('escrowHash = sha256 hex dei byte grezzi; escrowBlob mai nella risposta', async () => {
+    const blob = Buffer.from(Array.from({ length: 60 }, (_, i) => i));
+    mp.vaultKeyring.findUnique.mockResolvedValue({
+      status: 'READY', epoch: 0, rev: 1, kdf: 'argon2id', kdfParams: { m: 1 }, pinSalt: Buffer.alloc(16, 1),
+      wrappedVkPin: Buffer.alloc(60, 2), wrappedVkSigKey: Buffer.alloc(80, 3), rootKeyId: RK,
+      migrationState: 'NONE', lockedUntil: null, resetScheduledAt: null, escrowBlob: new Uint8Array(blob),
+    });
+    const r: any = await getKeyring('u1');
+    expect(r.escrowHash).toBe(ESCROW_VECTOR_HASH);
+    expect(r).not.toHaveProperty('escrowBlob');
+  });
+
+  it('escrowHash null senza riga o senza blob', async () => {
+    mp.vaultKeyring.findUnique.mockResolvedValue(null);
+    expect(((await getKeyring('u1')) as any).escrowHash).toBeNull();
+    mp.vaultKeyring.findUnique.mockResolvedValue({
+      status: 'READY', epoch: 0, rev: 1, kdf: 'argon2id', kdfParams: { m: 1 }, pinSalt: null,
+      wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: null, migrationState: 'NONE',
+      lockedUntil: null, resetScheduledAt: null, escrowBlob: null,
+    });
+    expect(((await getKeyring('u1')) as any).escrowHash).toBeNull();
+  });
+
   it('userId vuoto -> lancia', async () => {
     await expect(getKeyring('')).rejects.toThrow();
   });
@@ -256,7 +304,7 @@ describe('updateKeyring', () => {
     return { raw, sig: crypto.sign('sha256', Buffer.from(msg), { key: privateKey, dsaEncoding: 'ieee-p1363' }) };
   };
   const wrap = () => ({
-    kdf: 'argon2id', kdfParams: { m: 65536, t: 3, p: 1 }, pinSalt: b64(16), wrappedVkPin: b64(60),
+    kdf: 'argon2id', kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 }, pinSalt: b64(16), wrappedVkPin: b64(60),
     authKey: b64(32, 0x55),
   });
   const escrow = (rootKeyId = RK) => ({
@@ -275,6 +323,15 @@ describe('updateKeyring', () => {
     expect(arg.where).toEqual({ userId: 'u1', status: 'READY', epoch: 2, rev: 4 });
     expect(arg.data.rev).toEqual({ increment: 1 });
     expect(arg.data.rootKeyId).toBe(RK);
+  });
+
+  it('wrap con kdfParams.t < KDF_T_MIN -> 400 invalidPayload', async () => {
+    const w = wrap();
+    const { raw, sig } = signed({ rev: 4, wrap: { ...w, kdfParams: { ...w.kdfParams, t: KDF_T_MIN - 1 } } });
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(400);
+    expect(e.message).toBe('errors.vault.invalidPayload');
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
   });
 
   it('replay -> 409 staleRev', async () => {

@@ -279,11 +279,11 @@ describe('createKeyring: P1 lock', () => {
     const bcrypt = (await import('bcrypt')).default;
     const spy = vi.spyOn(bcrypt, 'compare');
     vi.clearAllMocks();
-    const { createKeyring } = await import('../services/vault.service');
+    const { createKeyring, KDF_T_MIN } = await import('../services/vault.service');
     const b = Buffer.alloc(4);
     await expect(
       createKeyring('u1', {
-        expectedEpoch: 0, password: 'pw', kdf: 'argon2id', kdfParams: { m: 65536, t: 3, p: 1 },
+        expectedEpoch: 0, password: 'pw', kdf: 'argon2id', kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 },
         pinSalt: b, wrappedVkPin: b, authKey: b, serverShare: b, vkSigPub: b, wrappedVkSigKey: b,
         escrowBlob: b, sealedRootShare: b, rootKeyId: 'rk_x', userShareUnderVk: b,
       }),

@@ -27,8 +27,18 @@ beforeEach(() => {
 });
 
 describe('getItems', () => {
-  const row = (id: string, content = 'x') => ({
-    id, noteType: 'text', content, updatedAt: new Date(0), isTrashed: false,
+  const row = (id: string, content = 'x', plainVersions = 0) => ({
+    id, noteType: 'text', title: 'T', content, updatedAt: new Date(0), isTrashed: false,
+    _count: { versions: plainVersions },
+  });
+
+  it('title e hasPlaintextVersions (true con versioni non nv3., false altrimenti)', async () => {
+    mp.note.findMany.mockResolvedValue([row('a', 'x', 1), row('b', 'x', 0)]);
+    const r = await getItems(U, { ids: ['a', 'b'] });
+    expect(r.items.map((i: any) => [i.title, i.hasPlaintextVersions])).toEqual([['T', true], ['T', false]]);
+    const sel = mp.note.findMany.mock.calls[0][0].select;
+    expect(sel.title).toBe(true);
+    expect(sel._count.select.versions.where).toEqual({ NOT: { content: { startsWith: 'nv3.' } } });
   });
 
   it('con ids: where con userId, isVault e id in; next null; contentHash corretto', async () => {
