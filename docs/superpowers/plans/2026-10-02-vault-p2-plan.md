@@ -870,3 +870,45 @@ Revisione 4. Fonte: decisioni dell'utente del 21/10 più l'emendamento dell'arch
 - **Reviewer: OK.** Ha segnalato un MINOR, già corretto: il test della fetch fallita non aveva righe locali da cancellare. Ora rifiutano entrambe le GET (note proprie e condivise) e c'è una riga `synced` locale, quindi il test fallisce se una GET rifiutata venisse trattata come lista vuota.
 - **Red-team:** ha segnalato un MAJOR (DoS di `all=1` senza tetto) e un MINOR (timeout di 30 s). L'utente li ha accettati come residui, vedi §12.22 e §12.23.
 - **Correzione respinta:** `take: 5000` con `all`. Riaprirebbe il troncamento che T0 chiude.
+
+## Addendum dopo la review di T1-T4 (21/10)
+
+Commit: T1 `95c1814`, T3 `31a097f`, T4 `3591b99`, T2 nel commit seguente. Ogni task ha avuto reviewer e red-team, più un secondo giro mirato dove servivano correzioni.
+
+**Decisioni che cambiano il piano (T2), approvate dall'utente**
+- **Fail closed sul flush.** Se `flushLiveDoc` fallisce, l'ingresso nel vault risponde 422 `errors.vault.conflict`, senza rilettura né scrittura, e il client ritenta. Il piano diceva "si prosegue (CAS)". Così però le modifiche non salvate del doc live si perdevano in silenzio, perché la CAS confronta il DB e non la memoria.
+- **`hocuspocus.ts` (TIER 1).** `flushLiveDoc` apre la connessione con `{ restore: true, flush: true, flushFailed: false }`.
+  - Nei due catch di `store()`, con `flush` attivo, si imposta `context.flushFailed = true`, e `flushLiveDoc` lancia dopo il disconnect.
+  - `store()` non deve mai lanciare. Nel debouncer di Hocuspocus 3.4.4 (`useDebounce`), una run rifiutata lascia una voce in `runningExecutions`: ogni store successivo dello stesso doc fallirebbe, oppure produrrebbe un unhandled rejection. Il backend non ha un handler per gli unhandled rejection.
+  - Una prima versione rilanciava da `store()`: scartata per questo motivo.
+  - I salti voluti di `store()` non impostano il flag: nota vault, doc degenere, guardia del contenuto vuoto, `count 0`.
+  - Il restore della 1.13.2 non cambia: la route intercetta l'errore di `flushLiveDoc` e prosegue, con un warn in più.
+- **`searchText` delle CREDENTIAL.** All'update diventa `null` (prima veniva solo saltato il ricalcolo), coerente con `createNote`. Le righe esistenti che hanno già un `searchText` di una CREDENTIAL si puliscono solo con una scrittura in prod, da decidere col runbook. Query di verifica: `SELECT count(*) FROM "Note" WHERE "noteType"='CREDENTIAL' AND "searchText" IS NOT NULL;`.
+
+**Correzioni nate dalla review**
+- T1: il test del pavimento su POST passava anche senza pavimento, perché `assertP256` rifiutava prima un `vkSigPub` finto. È stato spostato in `vault.route.test.ts`, con `keyringBody` e un controllo positivo.
+- T3: aggiunto il test della CAS sul contenuto riletto dopo `beforeRestore`.
+- T4: V1 ora ha input letterali, SPKI e x/y. Aggiunti:
+  - un test di apertura indipendente, con stringhe AAD e info letterali;
+  - `diffieHellman` su `KeyObject`, senza esportare la scalare privata;
+  - input `Uint8Array`, cioè le colonne `Bytes` di Prisma;
+  - la validazione di epoch, id (anche senza il carattere separatore), `sRoot`, iv e sealed;
+  - iniezione consentita solo con `NODE_ENV=test`, perché in prod pm2 non imposta `NODE_ENV`;
+  - errori `errors.vault.invalidSealInput` e `errors.vault.invalidSeal`.
+
+**Residui accettati**
+- T2:
+  - `content` ha il massimo di 2 MiB contato in caratteri UTF-16, mentre `bodyLimit` conta i byte. Un contenuto non ASCII molto grande dà 413 invece di 400. Gli envelope sono ASCII, e il limite resta più largo di prima (1 MiB globale).
+  - Le modifiche che arrivano fra il flush e `closeConnections` si perdono (decine di ms). È preesistente in P1, accettato come in `replaceLiveDocContent`.
+  - Se il flush fallisce, il debouncer ha già cancellato il timer pendente del client. Le modifiche degli ultimi 2 s restano solo nel doc Yjs del client finché non si riconnette. Succede solo con il DB in errore. Backlog: riprogrammare uno store debounced quando `flushFailed` è vero (TIER 1).
+  - Il flush dell'ingresso nel vault usa `restore: true` e quindi salta lo snapshot del contenuto pre-flush. Dalla cronologia sparisce una versione intermedia, non il contenuto.
+  - Una WS che finisce di caricare il doc dopo `closeConnections` resta aperta su una nota ormai vault, e i suoi salvataggi vengono scartati da `store()`. È preesistente. Backlog: ricontrollare `isVault` al caricamento.
+  - La route `PUT /share/notes/:noteId/content` resta a 1 MiB senza `max`, e `title` non ha `max`. Backlog.
+- T3: con il 409 della CAS lo snapshot forzato è già scritto: resta una versione in più, nessuna perdita. Stesso comportamento del 409 sul cambio di vault.
+- T1: il 503 `setupDisabled` non scrive un evento di audit.
+- Frontend (da coprire in T23/T24): mancano in `en.json`/`it.json` le chiavi `errors.vault.setupDisabled`, `errors.vault.plaintextRequired` e `errors.vault.invalidPayload`. Inoltre il 409 `restoreConflict` va mappato in `VersionHistoryModal.tsx`.
+
+**Da fare in P4, quando si userà `vaultSeal`:**
+- controllare il tipo di `userId`/`rootKeyId`;
+- validare `rootPrivateKey`, che deve essere un `KeyObject` privato `secp384r1` oppure PKCS#8, altrimenti `invalidSealInput`;
+- aggiungere test sul materiale di chiave non valido.
