@@ -79,6 +79,11 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
     }
     throw err;
   });
+  // Materiale crittografico: mai in cache (browser, proxy, SW), anche sulle risposte di errore.
+  fastify.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('Cache-Control', 'no-store');
+    return payload;
+  });
   fastify.addHook('onRequest', fastify.authenticate);
   fastify.addHook('preHandler', async () => {
     if (pepperStatus().status !== 'ok') throw new AppError(503, 'errors.vault.unavailable');

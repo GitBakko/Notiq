@@ -138,6 +138,34 @@ describe('vault routes', () => {
     expect(svc.getKeyring).not.toHaveBeenCalled();
   });
 
+  describe('Cache-Control: no-store', () => {
+    it('200 -> no-store', async () => {
+      svc.getKeyring.mockResolvedValue({ status: 'NONE', epoch: 0, rev: 0, migrationState: 'NONE', legacyCount: 0 });
+      const res = await call('GET', '/keyring');
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('400 di validazione -> no-store', async () => {
+      const res = await call('POST', '/unlock', { authKey: 'x' });
+      expect(res.statusCode).toBe(400);
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('errore del service (409) -> no-store', async () => {
+      svc.getKeyring.mockRejectedValue(new AppError(409, 'errors.vault.x'));
+      const res = await call('GET', '/keyring');
+      expect(res.statusCode).toBe(409);
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('401 senza token -> no-store', async () => {
+      const res = await call('GET', '/keyring', undefined, null);
+      expect(res.statusCode).toBe(401);
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+  });
+
   describe.each(routes)('%s %s', (method, url, payload, fn) => {
     it.each([
       ['mancante', undefined],
