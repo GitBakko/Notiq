@@ -1,5 +1,5 @@
 import prisma from '../plugins/prisma';
-import { hocuspocus, extensions } from '../hocuspocus';
+import { hocuspocus, extensions, flushLiveDoc } from '../hocuspocus';
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import * as Y from 'yjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -215,7 +215,7 @@ export const updateNote = async (userId: string, id: string, data: {
   baseHash?: string;
 }, sessionKey?: string) => {
   // Verify ownership first
-  const note = await prisma.note.findFirst({ where: { id, userId }, omit: { ydocState: true } });
+  let note = await prisma.note.findFirst({ where: { id, userId }, omit: { ydocState: true } });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
   // baseHash is only a CAS token: it must never reach Prisma, guard or not.
@@ -223,6 +223,21 @@ export const updateNote = async (userId: string, id: string, data: {
 
   // Vault P1: read only when the note is, or is becoming, a vault note (normal notes: no extra query).
   const guard = (note.isVault || rest.isVault === true) ? await getVaultGuard(userId) : null;
+
+  // P2: entering the vault with a live doc — persist the live content first so the client's baseHash/CAS is checked
+  // against what the editors actually have; the CAS on the final write closes the window after this re-read.
+  if (guard && rest.isVault === true && !note.isVault &&
+    (hocuspocus.hocuspocus.documents.has(id) || hocuspocus.hocuspocus.loadingDocuments.has(id))) {
+    try {
+      await flushLiveDoc(id);
+    } catch (e) {
+      logger.warn({ err: e, noteId: id }, 'updateNote: flush of live doc before vault entry failed — aborting');
+      // Fail closed: the live doc may hold unsaved edits; proceeding would lose them silently.
+      throw new AppError(422, 'errors.vault.conflict');
+    }
+    note = await prisma.note.findFirst({ where: { id, userId }, omit: { ydocState: true } });
+    if (!note) throw new NotFoundError('errors.notes.notFound');
+  }
 
   // P3: the target notebook must be the caller's own, as createNote already requires.
   if (rest.notebookId !== undefined) {
@@ -364,8 +379,9 @@ export const updateNote = async (userId: string, id: string, data: {
     // Moving OUT of the vault re-derives it from the stored content (it was nulled on the way in).
     const staysInVault = rest.isVault ?? note.isVault;
     const searchSource = finalContent ?? (movingOutOfVault ? note.content : undefined);
+    // A CREDENTIAL never has a searchText (createNote leaves it null): clear any legacy plaintext one.
     if (searchSource && !staysInVault && !rest.isEncrypted && !note.isEncrypted) {
-      updateData.searchText = extractTextFromTipTapJson(searchSource);
+      updateData.searchText = note.noteType === 'CREDENTIAL' ? null : extractTextFromTipTapJson(searchSource);
     }
     if (movingToVault) {
       updateData.isPublic = false;

@@ -367,5 +367,61 @@ describe('Hocuspocus vault guards', () => {
       await expect(ext.store({ documentName: 'n1', state: new Uint8Array([1, 2, 3]) })).resolves.toBeUndefined();
       expect(snapshotPreviousVersion).not.toHaveBeenCalled();
     });
+
+    describe('context.flush (flushLiveDoc fails closed)', () => {
+      const mkFlush = (): any => ({ restore: true, flush: true, flushFailed: false });
+      const st = () => new Uint8Array([1, 2, 3]);
+
+      it('flush: a failing write resolves and sets flushFailed', async () => {
+        const ext = await run();
+        const ctx = mkFlush();
+        prismaMock.note.updateMany.mockRejectedValue(new Error('db down'));
+        await expect(ext.store({ documentName: 'n1', state: st(), context: ctx })).resolves.toBeUndefined();
+        expect(ctx.flushFailed).toBe(true);
+      });
+
+      it('flush: an unexpected failure (findUnique) resolves and sets flushFailed', async () => {
+        const ext = await run();
+        const ctx = mkFlush();
+        prismaMock.note.findUnique.mockRejectedValue(new Error('read down'));
+        await expect(ext.store({ documentName: 'n1', state: st(), context: ctx })).resolves.toBeUndefined();
+        expect(ctx.flushFailed).toBe(true);
+      });
+
+      it('no flush: a failing write resolves and flushFailed stays undefined', async () => {
+        const ext = await run();
+        const ctx: any = { restore: true };
+        prismaMock.note.updateMany.mockRejectedValue(new Error('db down'));
+        await expect(ext.store({ documentName: 'n1', state: st(), context: ctx })).resolves.toBeUndefined();
+        expect(ctx.flushFailed).toBeUndefined();
+        const ext2 = await run();
+        const ctx2: any = { user: { id: 'u' } };
+        prismaMock.note.updateMany.mockRejectedValue(new Error('db down'));
+        await expect(ext2.store({ documentName: 'n1', state: st(), context: ctx2 })).resolves.toBeUndefined();
+        expect(ctx2.flushFailed).toBeUndefined();
+      });
+
+      it('flush: deliberate skips resolve with flushFailed false (vault note, degenerate over substantial, count 0)', async () => {
+        let ext = await run();
+        let ctx = mkFlush();
+        prismaMock.note.findUnique.mockResolvedValue({ content: 'cipher', title: 'V', isVault: true });
+        await expect(ext.store({ documentName: 'n1', state: st(), context: ctx })).resolves.toBeUndefined();
+        expect(ctx.flushFailed).toBe(false);
+
+        ext = await run();
+        ctx = mkFlush();
+        TiptapMock.fromYdoc.mockReturnValue({ type: 'doc', content: [] });
+        prismaMock.note.findUnique.mockResolvedValue({ content: 'x'.repeat(400), title: 'T', isVault: false });
+        await expect(ext.store({ documentName: 'n1', state: st(), context: ctx })).resolves.toBeUndefined();
+        expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
+        expect(ctx.flushFailed).toBe(false);
+
+        ext = await run();
+        ctx = mkFlush();
+        prismaMock.note.updateMany.mockResolvedValue({ count: 0 });
+        await expect(ext.store({ documentName: 'n1', state: st(), context: ctx })).resolves.toBeUndefined();
+        expect(ctx.flushFailed).toBe(false);
+      });
+    });
   });
 });

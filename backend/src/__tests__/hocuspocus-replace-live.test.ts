@@ -73,12 +73,12 @@ describe('flushLiveDoc', () => {
     expect(inner.hocuspocus.openDirectConnection).not.toHaveBeenCalled();
   });
 
-  it('persists a live doc: context { restore: true } (no user), one transact, disconnect', async () => {
+  it('persists a live doc: context { restore: true, flush: true } (no user), one transact, disconnect', async () => {
     const { connection } = liveDoc(doc('OLD'));
 
     await flushLiveDoc(NOTE_ID);
 
-    expect(inner.hocuspocus.openDirectConnection).toHaveBeenCalledWith(NOTE_ID, { restore: true });
+    expect(inner.hocuspocus.openDirectConnection).toHaveBeenCalledWith(NOTE_ID, { restore: true, flush: true, flushFailed: false });
     expect(inner.hocuspocus.openDirectConnection.mock.calls[0][1]).not.toHaveProperty('user');
     expect(connection.transact).toHaveBeenCalledTimes(1);
     expect(connection.disconnect).toHaveBeenCalledTimes(1);
@@ -100,6 +100,21 @@ describe('flushLiveDoc', () => {
 
     await expect(flushLiveDoc(NOTE_ID)).rejects.toThrow('boom');
     expect(connection.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects after disconnect when store marks ctx.flushFailed', async () => {
+    const { connection } = liveDoc(doc('OLD'));
+    connection.transact.mockImplementation(async () => {
+      inner.hocuspocus.openDirectConnection.mock.calls[0][1].flushFailed = true;
+    });
+
+    await expect(flushLiveDoc(NOTE_ID)).rejects.toThrow('flushLiveDoc: live doc not persisted');
+    expect(connection.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves when flushFailed is not set', async () => {
+    liveDoc(doc('OLD'));
+    await expect(flushLiveDoc(NOTE_ID)).resolves.toBeUndefined();
   });
 });
 

@@ -145,17 +145,22 @@ export async function replaceLiveDocContent(noteId: string, content: string): Pr
  * Context { restore: true } (no `user`): the store persists but skips snapshotPreviousVersion, because
  * restoreNoteVersion's forced snapshot archives the flushed content after its re-read (no duplicates).
  * DirectConnection.transact always runs the store hooks immediately.
+ * With flush: true a persistence error sets context.flushFailed (store never throws); flushLiveDoc throws after the disconnect.
  * Vault docs are never live (onAuthenticate refuses them, store refuses isVault writes).
  */
 export async function flushLiveDoc(noteId: string): Promise<void> {
   const inner = hocuspocus.hocuspocus;
   if (!inner.documents.has(noteId) && !inner.loadingDocuments.has(noteId)) return;
-  const connection = await inner.openDirectConnection(noteId, { restore: true });
+  // store() marks flushFailed on the same object; it must never throw: a rejected run leaves a stale
+  // entry in Hocuspocus 3.4.4's debouncer and every later store of this doc would fail.
+  const context = { restore: true, flush: true, flushFailed: false };
+  const connection = await inner.openDirectConnection(noteId, context);
   try {
     await connection.transact(() => {});
   } finally {
     await connection.disconnect();
   }
+  if (context.flushFailed) throw new Error('flushLiveDoc: live doc not persisted');
 }
 
 export const hocuspocus = new Server({
@@ -257,6 +262,7 @@ export const hocuspocus = new Server({
             // the extension — log loudly; the client keeps the edit in its Yjs doc
             // and the next change retries.
             logger.error({ err, documentName }, 'Hocuspocus store: prisma.note.updateMany FAILED — edit not persisted');
+            if (context?.flush) context.flushFailed = true;
             return;
           }
 
@@ -270,6 +276,7 @@ export const hocuspocus = new Server({
           }
         } catch (err) {
           logger.error({ err, documentName }, 'Hocuspocus store: unexpected failure — edit not persisted this cycle');
+          if (context?.flush) context.flushFailed = true;
         }
       },
     }),

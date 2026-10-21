@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../hocuspocus', () => ({
   hocuspocus: { hocuspocus: { closeConnections: vi.fn(), documents: new Map(), loadingDocuments: new Map() } },
   extensions: [],
+  flushLiveDoc: vi.fn(),
 }));
 
 vi.mock('@hocuspocus/transformer', () => ({
@@ -19,6 +20,10 @@ vi.mock('yjs', () => ({
   applyUpdate: vi.fn(),
 }));
 
+vi.mock('../utils/logger', () => ({
+  default: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
 vi.mock('uuid', () => ({
   v4: vi.fn().mockReturnValue('generated-uuid'),
 }));
@@ -31,6 +36,8 @@ vi.mock('../utils/extractText', () => ({
 import prisma from '../plugins/prisma';
 import { createNote, getNote, getNotes, updateNote, deleteNote, toggleShare, checkNoteAccess } from '../services/note.service';
 import { sha256hex } from '../services/vault.service';
+import { hocuspocus, flushLiveDoc } from '../hocuspocus';
+import logger from '../utils/logger';
 
 const prismaMock = vi.mocked(prisma, true);
 
@@ -316,6 +323,42 @@ describe('vault P1 enforcement (T10)', () => {
       expect(data).not.toHaveProperty('content');
     });
 
+    it('P2: no keyring + live doc -> flushLiveDoc not called', async () => {
+      const docs = (hocuspocus as any).hocuspocus.documents as Map<string, unknown>;
+      docs.set('n1', {});
+      (flushLiveDoc as any).mockReset();
+      keyring.mockResolvedValue(null);
+      noteMock.findFirst.mockResolvedValue(plainNote('A'.repeat(300)));
+      noteMock.update.mockResolvedValue({ id: 'n1' });
+      prismaMock.sharedNote.deleteMany.mockResolvedValue({ count: 0 } as any);
+      try {
+        await updateNote('u1', 'n1', { isVault: true });
+      } finally {
+        docs.clear();
+      }
+      expect(flushLiveDoc).not.toHaveBeenCalled();
+    });
+
+    it('P2: CREDENTIAL leaving the vault without keyring gets searchText null, not recomputed', async () => {
+      keyring.mockResolvedValue(null);
+      noteMock.findFirst.mockResolvedValue(vaultNote('A'.repeat(300), { noteType: 'CREDENTIAL', isEncrypted: false }));
+      noteMock.update.mockResolvedValue({ id: 'n1' });
+      await updateNote('u1', 'n1', { isVault: false });
+      expect(noteMock.update.mock.calls[0][0].data.searchText).toBeNull();
+    });
+
+    it('CREDENTIAL with updated content -> searchText null; NOTE -> recomputed', async () => {
+      noteMock.update.mockResolvedValue({ id: 'n1' });
+      noteMock.findFirst.mockResolvedValue(plainNote('A'.repeat(300), { noteType: 'CREDENTIAL' }));
+      await updateNote('u1', 'n1', { content: 'B'.repeat(300) });
+      expect(noteMock.update.mock.calls[0][0].data.searchText).toBeNull();
+
+      noteMock.update.mockClear();
+      noteMock.findFirst.mockResolvedValue(plainNote('A'.repeat(300)));
+      await updateNote('u1', 'n1', { content: 'B'.repeat(300) });
+      expect(noteMock.update.mock.calls[0][0].data.searchText).toBe('extracted plain text');
+    });
+
     it('createNote with isVault false: vaultKeyring.findUnique not called', async () => {
       prismaMock.notebook.findFirst.mockResolvedValue({ id: 'nb-1' } as any);
       noteMock.create.mockResolvedValue({ id: 'n1' });
@@ -420,6 +463,67 @@ describe('vault P1 enforcement (T10)', () => {
       expect(data.isEncrypted).toBe(true);
       expect(data.searchText).toBeNull();
       expect(prismaMock.sharedNote.deleteMany).toHaveBeenCalled();
+    });
+
+    describe('P2 flush of the live doc before entering the vault', () => {
+      const docs = (hocuspocus as any).hocuspocus.documents as Map<string, unknown>;
+      const flush = flushLiveDoc as any;
+      const loading = (hocuspocus as any).hocuspocus.loadingDocuments as Map<string, unknown>;
+      beforeEach(() => { docs.clear(); loading.clear(); flush.mockReset(); });
+
+      it('live doc: flush runs before assertVaultContent and note is re-read', async () => {
+        docs.set('n1', {});
+        const old = 'A'.repeat(300);
+        const fresh = 'B'.repeat(300);
+        const order: string[] = [];
+        flush.mockImplementation(async () => { order.push('flush'); });
+        noteMock.findFirst.mockImplementation(async () => { order.push('read'); return plainNote(order.includes('flush') ? fresh : old); });
+        noteMock.updateMany.mockResolvedValue({ count: 1 });
+        noteMock.findUniqueOrThrow.mockResolvedValue({ id: 'n1' });
+        prismaMock.sharedNote.deleteMany.mockResolvedValue({ count: 0 } as any);
+
+        await updateNote('u1', 'n1', { isVault: true, content: env(), baseHash: sha256hex(fresh) });
+
+        expect(order).toEqual(['read', 'flush', 'read']);
+        expect(noteMock.updateMany.mock.calls[0][0].where).toEqual({ id: 'n1', content: fresh });
+      });
+
+      it('re-read content differs from the client baseHash -> 422 conflict', async () => {
+        docs.set('n1', {});
+        const old = 'A'.repeat(300);
+        let flushed = false;
+        flush.mockImplementation(async () => { flushed = true; });
+        noteMock.findFirst.mockImplementation(async () => plainNote(flushed ? 'B'.repeat(300) : old));
+        await fail(updateNote('u1', 'n1', { isVault: true, content: env(), baseHash: sha256hex(old) }), 'errors.vault.conflict');
+        expect(noteMock.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('flush throws -> 422 conflict, warn with noteId, no write', async () => {
+        docs.set('n1', {});
+        const old = 'A'.repeat(300);
+        flush.mockRejectedValue(new Error('boom'));
+        noteMock.findFirst.mockResolvedValue(plainNote(old));
+        await fail(updateNote('u1', 'n1', { isVault: true, content: env(), baseHash: sha256hex(old) }), 'errors.vault.conflict');
+        expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.any(String));
+        expect(noteMock.updateMany).not.toHaveBeenCalled();
+        expect(noteMock.findFirst).toHaveBeenCalledTimes(1);
+        expect(noteMock.update).not.toHaveBeenCalled();
+        expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      });
+
+      it('id only in loadingDocuments -> flush called once', async () => {
+        loading.set('n1', {});
+        const old = 'A'.repeat(300);
+        flush.mockResolvedValue(undefined);
+        noteMock.findFirst.mockResolvedValue(plainNote(old));
+        noteMock.updateMany.mockResolvedValue({ count: 1 });
+        noteMock.findUniqueOrThrow.mockResolvedValue({ id: 'n1' });
+        prismaMock.sharedNote.deleteMany.mockResolvedValue({ count: 0 } as any);
+
+        await updateNote('u1', 'n1', { isVault: true, content: env(), baseHash: sha256hex(old) });
+
+        expect(flush).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('entering the vault with attachments -> 422 attachmentsBlocked, no write', async () => {

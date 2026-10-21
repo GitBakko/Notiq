@@ -11,7 +11,7 @@ const createNoteSchema = z.object({
   id: z.string().uuid().optional(),
   title: z.string().default(''),
   notebookId: z.string().uuid(),
-  content: z.string().optional(),
+  content: z.string().max(2 * 1024 * 1024).optional(),
   isVault: z.boolean().optional(),
   isEncrypted: z.boolean().optional(),
   noteType: z.enum(['NOTE', 'CREDENTIAL']).optional().default('NOTE'),
@@ -19,7 +19,7 @@ const createNoteSchema = z.object({
 
 const updateNoteSchema = z.object({
   title: z.string().optional(),
-  content: z.string().optional(),
+  content: z.string().max(2 * 1024 * 1024).optional(),
   notebookId: z.string().uuid().optional(),
   isTrashed: z.boolean().optional(),
   reminderDate: z.string().nullable().optional(),
@@ -50,7 +50,8 @@ const getNotesQuerySchema = z.object({
 export default async function (fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
-  fastify.post('/', async (request, reply) => {
+  // bodyLimit above content max (2 MiB) so title/tags/etc. never tip a valid payload into 413; matches routes/vault.ts.
+  fastify.post('/', { bodyLimit: 3 * 1024 * 1024 }, async (request, reply) => {
     const { notebookId, title, content, id, isVault, isEncrypted, noteType } = createNoteSchema.parse(request.body);
     const note = await noteService.createNote(request.user.id, title, (content || ''), notebookId, isVault, isEncrypted, id, noteType);
     return note;
@@ -75,7 +76,7 @@ export default async function (fastify: FastifyInstance) {
     return note;
   });
 
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', { bodyLimit: 3 * 1024 * 1024 }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateNoteSchema.parse(request.body);
     // G3: login-session identity (JWT jti, else iat for tokens issued before jti existed) so the live-doc REST
