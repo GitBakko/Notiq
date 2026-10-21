@@ -5,7 +5,17 @@ import { BrowserRouter } from 'react-router-dom'
 import './i18n'
 import App from './App'
 import queryClient from './lib/queryClient'
+import { purgeApiCache } from './lib/apiCache'
+import packageJson from '../package.json'
 import './index.css'
+
+// Una volta per versione: elimina le voci api-cache salvate dal SW precedente (keyring, note in chiaro)
+try {
+  const k = 'api-cache-purged';
+  if (localStorage.getItem(k) !== packageJson.version) {
+    void purgeApiCache().then(() => { try { localStorage.setItem(k, packageJson.version); } catch { /* storage non disponibile */ } });
+  }
+} catch { /* storage non disponibile: nessun purge */ }
 
 // Auto-reload when a new service worker takes control (new app version deployed)
 let refreshing = false;

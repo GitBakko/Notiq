@@ -62,7 +62,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         importScripts: ['/push-sw.js'],
         runtimeCaching: [{
-          urlPattern: ({ url }) => url.pathname.startsWith('/api'),
+          // INLINE e senza riferimenti esterni: generateSW lo serializza con toString() in sw.js.
+          // Esclusi (vanno in rete senza handler): keyring/vault e tutto il sottoalbero /api/notes/ (contenuto e versioni in chiaro).
+          urlPattern: ({ url }) => url.pathname.startsWith('/api') && !url.pathname.startsWith('/api/vault/') && !url.pathname.startsWith('/api/notes/'),
           handler: 'NetworkFirst',
           options: {
             cacheName: 'api-cache',
