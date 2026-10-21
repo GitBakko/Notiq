@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
 import {
   Shield, LayoutDashboard, Users, History, Settings, Mail,
-  HeartPulse, LogOut, Megaphone, HardDrive
+  HeartPulse, LogOut, Megaphone, HardDrive, Gauge
 } from 'lucide-react';
 import api from '../../lib/api';
 import type { DashboardStats, SystemHealth } from './types';
@@ -92,6 +92,12 @@ export default function AdminPage() {
               <Icon size={20} /> {label}
             </button>
           ))}
+          <Link
+            to="/admin/vault-bench"
+            className="w-full min-h-[44px] flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700"
+          >
+            <Gauge size={20} /> {t('vaultBench.link')}
+          </Link>
           <Link
             to="/"
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700 mt-auto border-t border-neutral-100 dark:border-neutral-700/40"

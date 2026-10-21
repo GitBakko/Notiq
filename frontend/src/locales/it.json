@@ -1393,6 +1393,28 @@
   },
   "saved": "Salvato",
   "saving": "Salvataggio...",
+  "vaultBench": {
+    "title": "Benchmark Argon2id",
+    "intro": "Solo super admin. Misura la derivazione della chiave del vault su questo dispositivo (64 MiB, t = 3..10). Tieni lo schermo acceso e nessun'altra app in primo piano. Nulla viene salvato.",
+    "link": "Benchmark vault",
+    "back": "Torna all'admin",
+    "insecure": "Serve un contesto sicuro (HTTPS con Web Crypto). Il benchmark non puo' partire.",
+    "model": "Modello del dispositivo",
+    "ios": "Versione iOS",
+    "start": "Avvia",
+    "stop": "Stop",
+    "copy": "Copia",
+    "copied": "Copiato",
+    "copyFailed": "Copia non riuscita",
+    "output": "Risultati del benchmark (JSON)",
+    "status": {
+      "idle": "Pronto",
+      "running": "In corso...",
+      "done": "Completato",
+      "stopped": "Fermato",
+      "violated": "Fermato: limite superato"
+    }
+  },
   "admin": {
     "dashboard": "Pannello Amministratore",
     "manageSettings": "Gestisci impostazioni di sistema",

@@ -37,6 +37,7 @@ const AnnouncementHistoryPage = lazy(() => import('./features/announcements/Anno
 
 // Admin
 const AdminPage = lazy(() => import('./features/admin/AdminPage'));
+const VaultBenchPage = lazy(() => import('./features/admin/VaultBenchPage'));
 
 function App() {
   return (
@@ -87,6 +88,7 @@ function App() {
 
           {/* Admin Route */}
           <Route path="admin" element={<AdminPage />} />
+          <Route path="admin/vault-bench" element={<VaultBenchPage />} />
 
           {/* Catch all - redirect to notes or a 404 page */}
           <Route path="*" element={<Navigate to="/notes" replace />} />
