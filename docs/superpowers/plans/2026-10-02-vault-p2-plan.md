@@ -4,6 +4,8 @@ Questo piano l'ho scritto in sola lettura: non ho modificato nessun file. I rife
 
 Revisione 3 (02/10): applicati i gap G1-G8 della verifica finale di completezza (G1 MAJOR: predicato Workbox inline).
 
+Revisione 4 (21/10): decisioni D1-D13 dell'utente ed emendamento D13/D4 (benchmark in prod), con review e red-team; vedi Appendice C.
+
 Abbreviazioni:
 - design = `docs/superpowers/plans/2026-09-30-vault-v3-design.md`, citato come "design:N";
 - piano P1 = `docs/superpowers/plans/2026-09-30-vault-p1-plan.md`, citato come "P1:N";
@@ -18,7 +20,7 @@ Abbreviazioni:
   7. sblocco offline OFF: niente `wrappedVkPin`/share, avviso offline;
   8. logout → login porta allo sblocco, non al setup;
   9. offline: sblocco con cache, avviso senza, mai il setup;
-  10. `kdfParams` manomessi → sblocco fallito;
+  10. `kdfParams` manomessi → sblocco fallito (al setup i parametri vengono da `DEFAULT_KDF`; allo sblocco arrivano dal server e li proteggono il controllo client di §3, riga "Controllo `kdfParams`", più `kdfCanon` nell'AAD);
   11. 3 edit offline con riferimento in coda → 0 conflitti falsi;
   12. edit concorrente reale → 1 copia, nessuna perdita;
   13. utente legacy seed migrato con valori identici;
@@ -91,7 +93,7 @@ Gli addendum P1 prevalgono sul design (design:394). Dove questo piano prevale su
 | `POST /items` invariato | + `title` e `hasPlaintextVersions` (T1) | `title`: sorgente dei titoli della migrazione (`GET /notes` è paginato a 50, `routes/notes.ts:46`). `hasPlaintextVersions`: riprendere `finalize` senza stato sul client (P1:640) |
 | — | Kill switch `VAULT_SETUP_USERS` (T1) | Canary (D2) |
 | — | `GET /notes?all=1` + pull non paginata (T0) | La pull chiede `/notes?includeTrashed=true` (`syncService.ts:118`), che restituisce 50 righe (`routes/notes.ts:46`, `note.service.ts:121-122`), poi cancella le righe `synced` locali assenti (`:157-172`). L'idratazione vault e la preservazione di `vaultBaseHash` richiedono le righe |
-| Esclusione di `vite.config.ts` | `vite.config.ts` si tocca (T6, T12) | La cache Workbox `NetworkFirst` su tutto `/api` (`vite.config.ts:64-76`) salverebbe la risposta keyring e i `GET /notes/:id` in chiaro |
+| Esclusione di `vite.config.ts` | `vite.config.ts` si tocca (T12) | La cache Workbox `NetworkFirst` su tutto `/api` (`vite.config.ts:64-76`) salverebbe la risposta keyring e i `GET /notes/:id` in chiaro |
 | Kit e cambio PIN in Impostazioni (design:123) | Dentro `VaultPage` (sheet "Impostazioni vault"). In `SettingsPage` restano switch offline, rimozione e spiegazione | `VaultPage` blocca il vault all'unmount (`VaultPage.tsx:179-184`): in Impostazioni il vault è sempre bloccato. Il lock all'unmount resta (sicurezza) |
 | Job admin, script `legacyCount`, banner di sollecito (design:316, :336) | Job → P3; script → SQL nel runbook; banner → solo in `VaultPage` | In prod `legacyCount` è 2 per un solo account |
 | Spostamento nel vault via syncQueue (`NoteEditor.tsx:347-374`) | **Solo online**, con chiamata API diretta; `noteService` rifiuta ogni cambio di `isVault` (T21a) | La CAS e `finalize` sono online per definizione (D7) |
@@ -161,7 +163,14 @@ Convenzioni:
 **Argon2id.**
 - `hash-wasm ^4.12.0`, come il backend (`backend/package.json:62`), con il WASM in base64 nel chunk.
 - Worker con `new Worker(new URL('./argon2.worker.ts', import.meta.url), {type:'module'})`. Il chunk `.js` è precachato da `globPatterns` (`vite.config.ts:62`).
-- Default `{m:65536, t:3, p:1}`, valore finale deciso dal benchmark (D4).
+- `DEFAULT_KDF = {m:65536, t:3, p:1}` è una costante unica esportata da `utils/argon2.ts` (T5).
+  - La usano solo i keyring NUOVI (setup e kdfParams del nuovo wrap nel cambio PIN, T13). Lo sblocco usa sempre i `kdfParams` del keyring.
+  - `t` si fissa dopo la misura in prod (D4, runbook §11, passo 6). Se cambia, si cambiano nello stesso commit `DEFAULT_KDF.t` e il valore di `KDF_T_MIN` (vedi sotto), prima del canary. I test usano la costante, non il letterale.
+  - **Pavimento server (F2, G1).** Il pavimento di `t` vive in DUE schemi backend: `backend/src/routes/vault.ts:16` (POST setup) e `backend/src/services/vault.service.ts:281` (`keyringUpdatePayloadSchema`, cambio PIN via `updateKeyring`), oggi entrambi `min(3).max(10)`.
+    - Nel task server di P2 che tocca `vault.service.ts` (T1) si introduce `export const KDF_T_MIN = 3` in `vault.service.ts`, usata da ENTRAMBI gli schemi (`min(KDF_T_MIN)`); `routes/vault.ts` la importa.
+    - Se la misura dà t>3, nello STESSO commit di `DEFAULT_KDF.t` si cambia SOLO il valore di `KDF_T_MIN` (al t scelto). Nessun altro file di produzione.
+    - I test che oggi scrivono `t: 3` a mano (`vault.keyring.test.ts:38` e `:259`, `vault.service.test.ts:286`) usano la costante.
+  - Effetto: un bundle vecchio in cache che tenta setup o cambio PIN con t=3 (sotto il pavimento nuovo) riceve 400: setup o cambio PIN non avvengono, il client mostra `errors.vault.invalidPayload` (oggi assente da `frontend/src/locales/en.json` e `it.json`: si aggiunge in T24, coperta da `i18nVaultKeys.test.ts`); per proseguire serve un hard reload. Il valore di `KDF_T_MIN` cambia solo nel ramo t>3.
 
 **Policy del PIN (`PinPolicy.ts`, design:71).**
 - Regex `^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{6}$`.
@@ -231,7 +240,10 @@ Convenzioni:
 - **`utils/argon2.worker.ts` + `utils/argon2.ts`:**
   - `argon2Raw(pin, salt, params)` senza controlli, usata dai test KAT;
   - `deriveS(pin, salt, params)` con NFC + controllo di `kdfParams`;
-  - un solo Worker, timeout 30 s, errore `kdfFailed`; fallback diretto solo se `typeof Worker === 'undefined'`.
+  - un solo Worker, timeout 30 s, errore `kdfFailed`; fallback diretto solo se `typeof Worker === 'undefined'`;
+  - dopo un rifiuto o un timeout: `worker.terminate()` e ricreazione lazy alla chiamata seguente (un Worker bloccato o morto per OOM non avvelena le derivazioni successive); `resetArgon2Worker()` e il terminate dopo rifiuto/timeout rifiutano subito con `kdfFailed` le richieste pendenti di quel Worker; il timer di timeout cattura la propria istanza di Worker e non termina mai un'istanza diversa;
+  - esporta `resetArgon2Worker()` (G2): `terminate()` del Worker corrente e riferimento a `null`; il Worker si ricrea in modo lazy alla chiamata seguente di `deriveS`. Lo usa il bench (T6) per i campioni a freddo;
+  - esporta `DEFAULT_KDF` (§3).
 - **`utils/vaultCrypto.ts`:** tutto §3 tranne il Kit. Funzioni pure.
 - **`utils/vaultKit.ts`:** Kit.
 - **`utils/vaultRootKeys.ts`:** chiavi pubbliche fissate (T25).
@@ -297,7 +309,7 @@ Convenzioni:
   6. `POST /keyring {expectedEpoch: GET.epoch, …}`.
   - **201:** cache `byUser`, unlock, `shareEnc` (se `offlineUnlock`), `purgeApiCache()`, poi `RecoveryKitSheet` (PDF, copia, riscrittura di 2 gruppi a caso; il setup non si chiude senza).
   - **409 `alreadySetup`:** `GET` (P1:620) → READY → "Vault già creato su un altro dispositivo: inserisci quel PIN". Marker cancellato, Kit locale mai mostrato.
-  - **403** `invalidPassword`, **400** `invalidRootKey`, **503** `setupDisabled`: messaggio.
+  - **403** `invalidPassword`, **400** `invalidRootKey`, **503** `setupDisabled`: messaggio. Su 400/403/503 il marker pending `{kind:'kit'}` si cancella subito (G6).
   - Frasi di rischio (design:96, :192) nel setup.
 - **Sblocco online:**
   1. `GET`;
@@ -310,7 +322,7 @@ Convenzioni:
 - **Cambio PIN** (online, vault sbloccato, dallo sheet in `VaultPage`):
   1. PIN attuale (unlock online);
   2. nuovo PIN (policy);
-  3. `payload = {rev, wrap:{kdf, kdfParams, pinSalt, wrappedVkPin, authKey}}` firmato **solo in memoria**;
+  3. `payload = {rev, wrap:{kdf, kdfParams, pinSalt, wrappedVkPin, authKey}}` firmato **solo in memoria**; i `kdfParams` del nuovo wrap sono `DEFAULT_KDF` (così un `t` alzato in seguito si applica al primo cambio PIN) e la derivazione del nuovo PIN usa gli stessi;
   4. `pending{kind:'pin', rev, wrappedVkPinHash: hex(sha256(wrappedVkPin))}`;
   5. `PUT`.
   - 409 `staleRev` nella sessione: `GET`. Se `sha256(wrappedVkPin)` è uguale → riuscito; altrimenti si ricostruisce dal nuovo PIN ancora in memoria.
@@ -520,7 +532,7 @@ Tutti i punti 3-8 valgono **solo se `isV3Active`** (§5.0). Senza, il codice di 
 - P2 tocca circa 50 file.
 - Ogni file TIER richiede "proponi prima, applica dopo", la conferma dell'hook `tier1-guard` e, dopo `git add`, il gate con `reviewer` + `red-team`.
 - Lo sviluppo avviene sul branch `feat/vault-p2`, unito su `main` solo al rilascio (RT-1).
-- T0 può uscire prima come hotfix (D12).
+- T0 sta dentro P2 (D12, esito del 21/10).
 
 | TIER | File | Modifica | Approvazione |
 |---|---|---|---|
@@ -530,10 +542,12 @@ Tutti i punti 3-8 valgono **solo se `isV3Active`** (§5.0). Senza, il codice di 
 | **2** | `frontend/src/store/authStore.ts` | `:76` | **Sì** |
 | (1, non modificato) | `backend/src/hocuspocus.ts` | Solo `flushLiveDoc`, già importato (`note.service.ts:2`) | — |
 | — | BE: `vault.service.ts`, `note.service.ts`, `routes/notes.ts`, `noteVersion.service.ts`, `utils/vaultRootKeys.ts`, `utils/vaultSeal.ts` (nuovo) + test | §4 | No (gate) |
-| — | `frontend/vite.config.ts` | Esclusione dalla cache (T12) + https solo dev per il bench (T6) | No |
+| — | `frontend/vite.config.ts` | Esclusione dalla cache (T12) | No |
+| — | `features/admin/VaultBenchPage.tsx` (nuovo), `App.tsx` (rotta `admin/vault-bench` fuori da `<AppLayout/>`), `AdminPage.tsx` (link) | T6 | No |
+| — | `backend/src/services/vault.service.ts` (`KDF_T_MIN`, `:281`), `backend/src/routes/vault.ts` (`:16`, importa `KDF_T_MIN`) + test del keyring | `KDF_T_MIN = 3` introdotta in T1 (G1); il suo **valore** cambia solo nel ramo t>3 del runbook (§3, passo 7) | No (gate) |
 | — | `frontend/package.json` (+ lock) | `hash-wasm ^4.12.0` | No |
 | — | `features/notes/noteService.ts` | Guardie di T21a | No (gate) |
-| — | Nuovi FE: `utils/{argon2.worker,argon2,vaultCrypto,vaultKit,vaultRootKeys,legacyDecrypt.worker}.ts`, `lib/{vaultApi,vaultSession,vaultMove}.ts`, `features/vault/{deviceKeyStore,vaultCodec,vaultReconcile,vaultMigration,PinPolicy,pinBlocklist,kitPdf}.ts`, `features/vault/{VaultMigrate,VaultNoteEditor,VaultOfflineNotice,VaultSettingsSheet,Argon2Bench}.tsx`, `components/vault/{RecoveryKitSheet,VaultUnlockDialog,VaultSettingsSection}.tsx` | §5-§6 | No |
+| — | Nuovi FE: `utils/{argon2.worker,argon2,vaultCrypto,vaultKit,vaultRootKeys,legacyDecrypt.worker}.ts`, `lib/{vaultApi,vaultSession,vaultMove}.ts`, `features/vault/{deviceKeyStore,vaultCodec,vaultReconcile,vaultMigration,PinPolicy,pinBlocklist,kitPdf}.ts`, `features/vault/{VaultMigrate,VaultNoteEditor,VaultOfflineNotice,VaultSettingsSheet}.tsx`, `components/vault/{RecoveryKitSheet,VaultUnlockDialog,VaultSettingsSection}.tsx` | §5-§6 | No |
 | — | `features/vault/{VaultPage,VaultSetup,VaultUnlock,CredentialForm,CredentialCard}.tsx`, `credentialTypes.ts`, `useVaultHydration.ts` (rimosso) | §5 | No |
 | — | `features/notes/NoteEditor.tsx`, `features/notes/NotesPage.tsx` (solo se NoteEditor non ha già una prop di chiusura), `VersionHistoryModal.tsx`, `RemindersPage.tsx`, `SettingsPage.tsx`, `App.tsx` | §5 | No |
 | — | `locales/en.json`, `it.json`; `frontend/e2e/vault-*.spec.ts`; documentazione | — | No |
@@ -555,19 +569,19 @@ Tutti i punti 3-8 valgono **solo se `isV3Active`** (§5.0). Senza, il codice di 
 | # | File | Contenuto | Criteri di accettazione e test |
 |---|---|---|---|
 | **T0** ⚠T1 | `routes/notes.ts`, `note.service.ts`, `syncService.ts` (`:118`) + test | §4.0; pull con `all=1` | BE: `?all=1` con 150 note mockate → 150; senza → 50 (invariato). FE: la pull chiede `all=1`; con 120 note sul server e 120 righe `synced` locali → 0 `bulkDelete`. Con fetch fallita → nessuna cancellazione (comportamento esistente) |
-| **T1** | `vault.service.ts`, `__tests__/vault.keyring.test.ts` (root key mockate, `:8-9`), `__tests__/vault.items.test.ts` | §4.1 | `escrowHash` = vettore fisso: blob di 60 B `0x00..0x3b` → hex atteso calcolato con `createHash().update(Buffer)` e scritto come costante condivisa con T13. Body senza `escrowBlob`. Senza riga → `null`. `/items` contiene `title` e `hasPlaintextVersions` (true con 1 versione non-`nv3.`, false altrimenti). Kill switch: assente → 503 prima di bcrypt; `'u1'` → u1 passa, u2 503; `'*'` → passa. Il test "P1 lock" resta verde |
+| **T1** | `vault.service.ts`, `routes/vault.ts` (`:16`, import di `KDF_T_MIN`), `__tests__/vault.keyring.test.ts` (root key mockate, `:8-9`), `__tests__/vault.service.test.ts` (`:286`), `__tests__/vault.items.test.ts` | §4.1 | `escrowHash` = vettore fisso: blob di 60 B `0x00..0x3b` → hex atteso calcolato con `createHash().update(Buffer)` e scritto come costante condivisa con T13. Body senza `escrowBlob`. Senza riga → `null`. `/items` contiene `title` e `hasPlaintextVersions` (true con 1 versione non-`nv3.`, false altrimenti). Kill switch: assente → 503 prima di bcrypt; `'u1'` → u1 passa, u2 503; `'*'` → passa. Il test "P1 lock" resta verde. **G1: `export const KDF_T_MIN = 3` in `vault.service.ts`, usata da `keyringUpdatePayloadSchema` (`:281`) e da `routes/vault.ts:16` (import); i test che scrivono `t:3` a mano (`vault.keyring.test.ts:38` e `:259`, `vault.service.test.ts:286`) usano la costante; test nuovi: `POST /keyring` con `kdfParams.t = KDF_T_MIN-1` → 400 e `PUT /keyring` con `wrap.kdfParams.t = KDF_T_MIN-1` → 400** |
 | **T2** | `note.service.ts`, `routes/notes.ts`, `note.service.test.ts` | §4.2 | Con guard + doc live mockato → `flushLiveDoc` chiamato prima di `assertVaultContent`; la rilettura cambia `content` → 422 `conflict`. Flush che lancia → warn, la richiesta prosegue (CAS). **Senza guard** + doc live → `flushLiveDoc` non chiamato. CREDENTIAL in uscita senza keyring → `searchText` non ricalcolato. Payload con `content` di 2 MiB + altri campi (`tags`, `title`) oltre 2 MiB totali → non 413; `content` di 2 MiB+1 → 400. I test 1.13.3 restano verdi |
 | **T3** | `noteVersion.service.ts`, `__tests__/vaultBypasses.test.ts` | §4.3 | Restore vault con `content` cambiato → 409. Versione `nv3.` su nota non vault → 422, nessuno snapshot. Restore normale invariato |
 | **T4** | `utils/vaultSeal.ts`, `__tests__/vaultSeal.test.ts` | §4.4 | Round-trip; alterazioni → errore; 157 B; vettore V1 esportato |
-| **T5** | `package.json`, `utils/argon2.worker.ts`, `utils/argon2.ts`, test | §3, §5.1 | KAT su **`argon2Raw`** identico a `vaultRootKeyFile.test.ts:229-264` (t=2, m=1024). `deriveS` rifiuta `m:32768`, `t:2`, `p:2`. `argon2Raw` con stringa NFD (`'e\u0301…'`) dopo NFC = hash della forma NFC. Build: chunk worker, nessun `.wasm` |
-| **T6** | `Argon2Bench.tsx`, `App.tsx`, `vite.config.ts` (solo `server.https`/`preview.https` se `BENCH_HTTPS_CERT`/`BENCH_HTTPS_KEY` sono impostati) | Rotta `/__vault-bench` solo con `VITE_VAULT_BENCH==='1'` | Build senza flag → `grep -r "__vault-bench" dist` vuoto; senza variabili https, `vite.config` ha un output identico. Gate D4: misura su iPhone in **contesto sicuro** (https con CA mkcert installata e fidata sull'iPhone; D13), Safari **e** PWA installata, controllo che `crypto.subtle` sia definito |
+| **T5** | `package.json`, `utils/argon2.worker.ts`, `utils/argon2.ts`, test | §3, §5.1 | KAT su **`argon2Raw`** identico a `vaultRootKeyFile.test.ts:229-264` (t=2, m=1024). `deriveS` rifiuta `m:32768`, `t:2`, `p:2`. `argon2Raw` con stringa NFD (`'e\u0301…'`) dopo NFC = hash della forma NFC. Build: chunk worker, nessun `.wasm`. `DEFAULT_KDF` esportata. **Dopo rifiuto o timeout: `worker.terminate()` e Worker ricreato alla chiamata seguente; test che fa fallire la prima chiamata e verifica che la seconda riesca. G2: `resetArgon2Worker()` esportata (terminate + riferimento a null, ricreazione lazy); test "dopo reset la chiamata seguente crea un Worker nuovo". H5: test "`deriveS` in volo + reset → rifiuto immediato con `kdfFailed`; la chiamata seguente riesce"** |
+| **T6** | `features/admin/VaultBenchPage.tsx` (nuovo, default export lazy), `App.tsx` (rotta `admin/vault-bench` accanto alla rotta `admin`, FUORI da `<AppLayout/>`: `App.tsx:89`, così `useSync` di `AppLayout.tsx:22` non gira durante la misura), `AdminPage.tsx` (link), `en.json`/`it.json`, test | Benchmark Argon2id in prod, solo SUPERADMIN (D13). Dettaglio sotto la tabella | Vedi "Dettaglio T6" sotto la tabella |
 | **T7** | `utils/vaultCrypto.ts`, test (`@vitest-environment node`), `backend/__tests__/vaultSeal.test.ts` (V2) | §3 | Lunghezze uguali allo Zod P1. Round-trip; AAD cambiata → errore; `stale`; `kdfCanon` indipendente dall'ordine; `kdfParams` manomessi → unwrap fallisce; `vkProof` verificato con `node:crypto.verify(..., ieee-p1363)`; V1 in WebCrypto, V2 con `openRootShare`; regex `:49`. `contentHash` = `sha256hex` del BE sulla stessa stringa |
 | **T8** | `utils/vaultKit.ts`, `kitPdf.ts`, test | Kit, PDF a mano (D9) | 32×31 sostituzioni + 31 scambi rilevati; normalizzazione; PDF `%PDF-1.4` di 1 pagina |
 | **T9** | `PinPolicy.ts`, `pinBlocklist.ts`, test | Policy | Rifiutati: `123456`, `abcdef`, `k7Rq2`, `k7Rq2xZ`, `Marco1`, `luca99`, `2024ab`, `qwer12`, `a1a1a1`, `a1b2c3`, `1203ab`, nome/email. Accettato: `k7Rq2x`. Blocklist in un chunk separato |
 | **T10** | `lib/vaultApi.ts`, test | §5.1 | Mapping per 400/403/409/422/429/503; 429 su `/items`/`/migrate` → 1 retry con backoff; `POST /keyring` con `password`, senza `migrationState` |
 | **T11** ⚠T1 | `store/vaultStore.ts`, test | §5.2, **additivo** | Chiave invariata; lo storage vecchio si carica (`byUser={}`); `partialize` senza chiavi né `isUnlocked`. `lockVault` chiama i flusher con le chiavi catturate **prima** di azzerarle (test: il flusher riceve chiavi non nulle, lo store ha già `keys===null`). Auto-lock a 10 min. Chiavi di u1 non disponibili per u2. **I campi legacy esistono ancora** (`tsc` verde senza toccare i consumatori) |
 | **T12** ⚠T2 | `store/authStore.ts`, `vite.config.ts` + test | §5.5 | `logout()` → `lockVault` + `clearLegacy` + `purgeApiCache` (`caches.delete('api-cache')` mockato); `byUser` intatto. Test che importa la config, prende `runtimeCaching[0].urlPattern`, la ricostruisce con `new Function('return ' + fn.toString())()` (stessa serializzazione di workbox) e verifica `/api/notes` true, `/api/notes/abc` false, `/api/vault/keyring` false, `/api/notebooks` true; dopo `npm run build`, `grep -c "api/vault/" dist/sw.js` ≥ 1 |
-| **T13** | `deviceKeyStore.ts`, `lib/vaultSession.ts`, test | §5.4 | Setup: marker salvato prima della POST; 201 → cache + share + Kit dopo il 201 + `purgeApiCache`; 409 → nessun Kit, `GET`. Unlock: 403, 429 → `GET` + `lockedUntil`, `lockedUntil` passato → ok. Switch OFF → nessuno share. **Rigenerazione: PUT prima della cerimonia**; 409 + `escrowHash` uguale (stesso vettore di T1 lato FE) → successo; diverso → `kitNotUpdated`. Marker non confermato + `GET` uguale al riavvio → banner. **Pending PIN senza `authKey`** (test: nello store raw non ci sono 32 B di `authKey` né il payload) |
+| **T13** | `deviceKeyStore.ts`, `lib/vaultSession.ts`, test | §5.4 | Setup: marker salvato prima della POST; 201 → cache + share + Kit dopo il 201 + `purgeApiCache`; 409 → nessun Kit, `GET`. Unlock: 403, 429 → `GET` + `lockedUntil`, `lockedUntil` passato → ok. Switch OFF → nessuno share. **Setup e cambio PIN: i `kdfParams` del nuovo wrap sono `DEFAULT_KDF` (test con la costante, non il letterale; test che la sostituisce con t=4 e verifica il wrap).** **G6: setup con 400/403/503 → il marker `pending{kind:'kit'}` è cancellato subito (assert sullo store raw).** **Rigenerazione: PUT prima della cerimonia**; 409 + `escrowHash` uguale (stesso vettore di T1 lato FE) → successo; diverso → `kitNotUpdated`. Marker non confermato + `GET` uguale al riavvio → banner. **Pending PIN senza `authKey`** (test: nello store raw non ci sono 32 B di `authKey` né il payload) |
 | **T14** ⚠T1 | `lib/db.ts`, `syncService.ts`, test | §5.7 | (a) La pull preserva `vaultBaseHash`. (b) UPDATE v3: `content` Dexie + `baseHash`, senza `title`. (c) 3 edit offline + CREATE di un tag → 1 PUT, 0 `failed` (accettazione 11). (d) `vaultBaseHash = sha256(inviato)`; riga modificata durante la PUT → resta `updated`; `updatedAt` invariato e nessun altro item → `synced`. (e) 422 `conflict` → `vault:conflict`, UPDATE successivi bloccati, DELETE sì. (f) Il retry salta `vault:*` e gli item legacy su righe vault. (g) CREATE → `sha256(res.data.content)`. (h) Righe non vault: payload byte-identici. **(i) Senza keyring READY in cache: UPDATE vault con `content` in chiaro e `title` → payload inviato invariato; CREATE vault con titolo → titolo inviato invariato.** (j) `grep -c "version(" db.ts` invariato |
 | **T15** | `vaultCodec.ts`, `vaultReconcile.ts`, test | §5.6, §5.8 | Idratazione `synced` → aggiornata; dirty → no; **id in `openVaultNoteIds` → non toccato**. 2 `vault:conflict` → 1 copia. **Item solo-titolo con `lastError:'validation'` su riga vault → preso, `t` nella copia, item cancellato.** CREATE legacy senza nota sul server → ri-cifrata sul posto. `finalize` solo con decifratura valida. Cache svuotata al lock |
 | **T16** | `RecoveryKitSheet.tsx`, `VaultSetup.tsx`, `VaultUnlock.tsx` | §5.4 UI | Kit solo dopo il 201; "Fine" disabilitato finché i 2 gruppi non sono corretti; setup offline disabilitato; frase di rischio; niente reset locale; "PIN dimenticato" (D5); bottom sheet, `dark:`, 44 px, `aria` |
@@ -579,11 +593,36 @@ Tutti i punti 3-8 valgono **solo se `isV3Active`** (§5.0). Senza, il codice di 
 | **T21** | `NoteEditor.tsx` (`:191-252`, `:347-374`, `:749`), `VaultUnlockDialog.tsx`, `lib/vaultMove.ts` (ingresso) + `NoteEditor.vault.test.tsx` | §5.9 | Test esistente invertito (PUT con `nv3.`, `baseHash`, `title:''`). **Testo digitato meno di 1 s prima di "sposta" → il flush avviene prima della GET, nessun `updateContent` in chiaro dopo il 200 (debounce finto); `setSelectedNoteId(null)` prima della scrittura Dexie.** `NONE` → navigazione a `/vault`, nessuna PUT. Offline → disabilitato. Allegati → messaggio. Round-trip prima della PUT; `finalize` dopo la rilettura |
 | **T22** | `VaultSettingsSheet.tsx` (in `VaultPage`), `components/vault/VaultSettingsSection.tsx`, `SettingsPage.tsx` | §5.4 | Sheet (da sbloccato): cambio PIN, rigenerazione del Kit. Settings: switch offline, rimozione (rifiutata con pending), "Come funziona", link a `/vault`. `ConfirmDialog` |
 | **T23** | `VersionHistoryModal.tsx`, `RemindersPage.tsx` | §5.10, D8 | Versioni `nv3.` nascoste; errori tradotti; etichetta generica |
-| **T24** | `en.json`, `it.json`, `i18nVaultKeys.test.ts` | Tutti gli `errors.vault.*` + `setupDisabled` + testi nuovi | Presenza in entrambi i file |
+| **T24** | `en.json`, `it.json`, `i18nVaultKeys.test.ts` | Tutti gli `errors.vault.*` (incluso `invalidPayload`, assente oggi: H6) + `setupDisabled` + testi nuovi | Presenza in entrambi i file |
 | **T24b** ⚠T1 | `store/vaultStore.ts`, `credentialTypes.ts` + test | Rimozione di `pin`, `setupVault`, `unlockVault`, `resetVault` e del `cachePut` legato al PIN (`credentialTypes.ts:35-40`) | `grep -rn "resetVault\|unlockVault\|setupVault\|\.pin\b" frontend/src` vuoto (escluse le occorrenze legacy di `decryptCredential`); `tsc` verde |
 | **T25** ⚠ RT-1 | `backend/utils/vaultRootKeys.ts`, `frontend/utils/vaultRootKeys.ts`, test di parità, `vault.service.test.ts` (`:276-277`) | Chiave `rk_68a265761e7e37c7` (SPKI dall'utente) | Parità; id = `rk_+sha256(ecdhSpki‖ecdsaSpki)[0:16]`; secp384r1; `grep -rn "rk_e434f78b8f179ab3"` vuoto; commit unico |
 | **T26** | `frontend/e2e/vault-{kit,multidevice,offline,migration,conflict}.spec.ts`, `vault-overwrite.spec.ts` | §10 | Verdi in locale (`VAULT_SETUP_USERS=*`) |
 | **T27** | `CLAUDE.md`, `SKILL.md` deploy, design | Documentazione + runbook §11 | Revisione |
+
+**Dettaglio T6 (benchmark in prod, D4, D13).**
+- **Guard:** nessun utente → `<Navigate to="/login" replace/>`; `user.role !== 'SUPERADMIN'` → `<Navigate to="/notes" replace/>`. L'enum è `USER|SUPERADMIN` (`schema.prisma:90-93`, `Sidebar.tsx:200`), non esiste `ADMIN`. Il controllo è solo lato client ed è accettabile: la pagina non contiene segreti e non chiama API. Un non-SUPERADMIN può caricare il chunk, ma non trova nulla.
+- **Contesto:** se `!window.isSecureContext || !crypto?.subtle` → messaggio e pulsante "Avvia" disabilitato.
+- **Input fittizi:** PIN `k7Rq2x`, salt di 16 B da `crypto.getRandomValues`. Chiama `deriveS` di T5 (stesso percorso dello sblocco), m=65536, p=1.
+- **Sequenza (F9):** t=3..10 in ordine crescente. Ci si ferma dopo il primo t che viola uno dei due vincoli di D4. Un errore o OOM del Worker viene annotato per quel t e conta come violazione.
+  - Campioni a caldo: N=20 per t.
+  - Campioni a freddo: 3 per t. Prima di ogni campione a freddo si chiama `resetArgon2Worker()` (T5), poi `deriveS` (stesso percorso dello sblocco); si prende il peggiore.
+  - **H7:** dopo ogni `resetArgon2Worker()` si attende un breve yield (250 ms) prima della `deriveS` a freddo. Su errore/OOM di un campione a freddo, il campione si ripete UNA sola volta prima di contarlo come violazione; il JSON annota i retry (campo `retries` per t).
+  - **Criterio vitest (G2, H4):** con spy condivisi, l'ordine delle chiamate (`mock.invocationCallOrder`) è reset, deriveS, reset, deriveS, reset, deriveS per ogni t; nessuna deriveS a freddo senza un reset immediatamente precedente.
+- **Statistiche:** mediana; p95 nearest-rank (il 19° di 20 valori ordinati); min e max.
+- **Rilevamento:** `matchMedia('(display-mode: standalone)').matches || navigator.standalone` (Safari o PWA); `navigator.userAgent`; versione dell'app; due campi di testo "modello" e "iOS" (precompilato dall'UA), non salvati.
+- **Output (F11, F13):** JSON in una `<textarea readonly>` più il pulsante "Copia" (`navigator.clipboard.writeText`, con fallback select-all).
+  - Il JSON contiene anche `DEFAULT_KDF` e il nome dell'entry `index-*.js` (es. da `document.querySelector('script[type="module"][src*="/assets/index-"]')`).
+  - La textarea si aggiorna in modo incrementale (dopo ogni campione, o almeno dopo ogni t), con t crescente, e c'è un pulsante "Stop".
+  - Su iOS un OOM vero ricarica la pagina e il bench non salva su storage (vincolo sotto): per questo la verifica manuale 1 prevede uno screenshot dopo ogni t.
+- **Vincoli:** nessun import di `lib/db`, `syncService`, `lib/api`; nessun `localStorage`/`sessionStorage`/`caches`; nessuna rete.
+- **UI:** `dark:` su ogni elemento, controlli `min-h-[44px] min-w-[44px]`, `aria-label`, safe area, tutte le stringhe via `t()`.
+- **Criteri di accettazione:**
+  - Vitest con utente assente → redirect a `/login`; ruolo `USER` → redirect a `/notes` e `deriveS` mai chiamato; `SUPERADMIN` → pagina renderizzata; `isSecureContext=false` → "Avvia" disabilitato.
+  - Corsa completa con `deriveS` mockato e `@/lib/db`, `@/lib/api`, `localStorage.setItem` e `caches.open` mockati in modo da lanciare → nessun lancio. Il JSON contiene, per ogni t eseguito, `n=20`, `median`, `p95` (uguale al 19° valore), `cold` (3 campioni e il peggiore), `errors`, più `DEFAULT_KDF` e l'entry. Test di arresto: un t che viola un vincolo ferma la sequenza. Test della scrittura incrementale e del pulsante Stop.
+  - `grep -nE "lib/db|syncService|lib/api|localStorage|sessionStorage|caches\." frontend/src/features/admin/VaultBenchPage.tsx` → vuoto. `git diff --stat` di T6 senza `vite.config.ts`.
+  - La rotta sta fuori da `<AppLayout/>` (test di rendering: `useSync` non montato).
+  - `i18nVaultKeys.test.ts` (T24) copre `vaultBench.*` in `en.json` e `it.json`.
+  - Verde su `npx vitest run`, `npx tsc -p tsconfig.app.json --noEmit`, `npm run lint`.
 
 ---
 
@@ -595,7 +634,7 @@ Tutti i punti 3-8 valgono **solo se `isV3Active`** (§5.0). Senza, il codice di 
 
 Si fanno a mano sul DB dev e si annotano nell'addendum.
 
-**Unit FE:** T0, T5, T7-T15, T16-T22, T24, T24b. `vaultCrypto` gira in ambiente `node`.
+**Unit FE:** T0, T5, T6, T7-T15, T16-T22, T24, T24b. `vaultCrypto` gira in ambiente `node`.
 
 **E2E nuovi** (Playwright, `localhost:5173`):
 - **`vault-kit`:** setup, Kit dopo il 201, gruppo sbagliato → non chiude. Rigenerazione **dallo sheet in `VaultPage`**, `escrowHash` diverso. Da bloccato l'azione non c'è.
@@ -618,7 +657,12 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 **Da rilanciare:** `offline-first`, `dexie`, `encryption`, `notes`, `collaboration`, `sharing`. Instabili noti: `collaboration.spec.ts:249`, `:288`, `auth.spec.ts:41`. Un FAIL va confermato su `main` pulito.
 
 **Manuali:**
-1. **Benchmark iOS** (T6, D4, D13): https con un certificato fidato; Safari **e** PWA installata; mediana e p95 per t=3..6 a 64 MiB; modello e versione iOS.
+1. **Benchmark iOS** (T6, D4, D13), in prod dopo il passo 5 del runbook, con `VAULT_SETUP_USERS` vuoto, sull'iPhone di riferimento (iPhone 12 o più recente, A14+; se ne hai più d'uno, il più vecchio).
+   - Prima in Safari, poi nella PWA installata; schermo sempre acceso e nessun'altra app in primo piano.
+   - Rotta `/admin/vault-bench`, account SUPERADMIN. t=3..10 in ordine crescente, a 64 MiB; si ferma dopo il primo t che viola un vincolo.
+   - **Screenshot dopo ogni t** (su iOS un OOM vero ricarica la pagina e il bench non salva su storage per vincolo).
+   - Si copia il JSON (mediana e p95 a caldo, campioni a freddo, `DEFAULT_KDF`, entry, modello, iOS, standalone) e lo si incolla nell'addendum D4.
+   - **t scelto = il massimo che rispetta ENTRAMBI i vincoli, in Safari E nella PWA:** p95 a caldo ≤ 1,5 s (20 campioni) e sblocco a freddo ≤ 2 s (3 campioni, il peggiore). Minimo 3. Se t=3 non li rispetta → ramo STOP del runbook (passo 7). Se esiste un solo iPhone A14+ più recente del 12, il margine resta ignoto e va dichiarato nell'addendum.
 2. **Cross-device:** cambio PIN su PC; il telefono offline accetta il vecchio PIN, online il nuovo.
 3. **Accettazione 4** (policy).
 4. **Kill switch:** 503 `setupDisabled` + testo.
@@ -630,20 +674,30 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 
 **Punto di non ritorno:** il primo keyring READY in prod. Prima si torna al `dist` precedente; dopo, forward-fix, `pg_dump` o SQL per utente prima di `finalize` (D6).
 
-1. **Locale:** BE e FE `test`/`tsc`/`lint`/`build`; e2e completi + i 5 nuovi; D4 chiuso; T25 con gli SPKI reali.
+1. **Locale:** BE e FE `test`/`tsc`/`lint`/`build`; e2e completi + i 5 nuovi; T6 verde; D4 si chiude al passo 6 (misura in prod); T25 con gli SPKI reali.
 2. **Pre-deploy, in prod:**
    - `SELECT count(*) FROM "VaultKeyring";` → 0;
    - `SELECT "userId", count(*) FROM "Note" WHERE "isVault" AND content NOT LIKE 'nv3.%' GROUP BY 1;` → annotare;
    - `SELECT n.id FROM "Note" n WHERE n."isVault" AND EXISTS (SELECT 1 FROM "Attachment" a WHERE a."noteId"=n.id);` → note vault con allegati (D3);
    - `SELECT "userId", count(*) FROM "Note" GROUP BY 1 HAVING count(*) > 50;` → utenti toccati da T0;
    - controllo dei lock su `"User"`.
-3. **`.env` di prod:** `VAULT_SETUP_USERS=<id admin>`.
-4. **Pacchetto:**
-   - `git log --oneline v1.13.3..HEAD` (oppure `v1.13.4..HEAD` se T0 è uscito prima, D12);
+3. **`.env` di prod:** `VAULT_SETUP_USERS=` vuoto o assente → 503 `setupDisabled` per tutti. Quindi nessun keyring READY può nascere prima del passo 8.
+4. **Pacchetto (primo deploy, senza tag):**
+   - `git log --oneline v1.13.3..HEAD`;
    - `Build-Package.ps1`, poi `Deploy-Server.ps1 -DryRun`, poi `Deploy-Server.ps1`;
-   - il `pg_dump` deve completarsi; `migrate deploy` → "No pending migrations"; health check ok.
+   - il `pg_dump` deve completarsi; `migrate deploy` → "No pending migrations"; health check ok;
+   - **annotare il timestamp `ts1` di `_backup_<ts1>`:** il rollback pre-P2 è sempre `_backup_<ts1>` (non quello del secondo deploy, che contiene già il primo `dist` P2);
+   - annotare SHA256 e entry `index-*.js` del pacchetto nell'addendum D4 (i due zip hanno la stessa versione in `frontend/package.json`).
 5. **Bundle:** si verifica che sia servito l'entry nuovo (hash `index-*.js`), poi hard reload. Su questo IIS un asset mancante risponde 200 con `index.html`.
-6. **Canary admin:**
+6. **Misura (D4, D13):** verifica manuale 1 (§10) dal SUPERADMIN, con `VAULT_SETUP_USERS` ancora vuoto. Poi `SELECT count(*) FROM "VaultKeyring";` → 0.
+7. **Correzione:**
+   - se t=3: niente;
+   - se t>3: un unico commit con `DEFAULT_KDF.t` (§3) e il solo valore di `KDF_T_MIN` in `vault.service.ts` (usata da `routes/vault.ts:16` e `vault.service.ts:281`, F2/G1). **Verifica esplicita (G5):** commit fatto; `vault.keyring.test.ts` e `vault.service.test.ts` verdi; la verifica "POST e PUT con `t < KDF_T_MIN` → 400" è coperta dai test di T1 (`kdfParams.t = KDF_T_MIN-1` → 400 su POST e PUT), che devono passare verdi col nuovo valore di `KDF_T_MIN`; nessuna chiamata contro prod. Poi `Build-Package.ps1` e `Deploy-Server.ps1` (secondo deploy, `pg_dump` incluso: non usare `-SkipDbBackup`). Verifica del nuovo `index-*.js` con hard reload e smoke: il JSON del bench mostra `DEFAULT_KDF.t` = t scelto e la nuova entry. Annotare SHA256 e entry anche di questo pacchetto;
+   - se OOM o violazione dei vincoli D4 già con t=3: **STOP**. Rollback del `dist` da `_backup_<ts1>` (ammesso, perché non esiste nessun keyring) e si torna dall'utente;
+   - il tag git va solo sul pacchetto finale.
+8. **Canary SUPERADMIN:**
+   - `VAULT_SETUP_USERS=<id SUPERADMIN>` + `pm2 restart notiq-backend`;
+   - prima del setup, sul dispositivo del canary (browser del PC): hard reload, aprire il bench e verificare che `DEFAULT_KDF.t` e l'entry siano uguali a quelli del pacchetto deployato (il pavimento server di F2 resta la rete di sicurezza);
    - migrazione nel browser;
    - `SELECT content ~ '^nv3\.' AS env, title='' AS t, "searchText" IS NULL AS s, "ydocState" IS NULL AS y, count(*) FROM "Note" WHERE "userId"='<admin>' AND "isVault" GROUP BY 1,2,3,4;` → solo `true`, tranne le bloccate o quelle troppo grandi elencate;
    - `SELECT count(*) FROM "NoteVersion" v JOIN "Note" n ON n.id=v."noteId" WHERE n."userId"='<admin>' AND n."isVault" AND v.content NOT LIKE 'nv3.%';` → 0;
@@ -652,15 +706,17 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
    - telefono: sblocco con il PIN, offline ok;
    - rigenerazione del Kit → `md5("escrowBlob")` diverso;
    - Cache Storage come nella verifica manuale 5.
-7. **Apertura:** `VAULT_SETUP_USERS=*`, poi `pm2 restart notiq-backend` (dotenv si legge al boot, `app.ts:1`). Fra i passi 4 e 7 gli altri utenti legacy **non accedono** al vault: ridurre la finestra al minimo.
-8. **Dopo l'apertura:**
-   - query legacy settimanale; contattare chi non ha migrato;
-   - `legacyCount` comprende il cestino, le credenziali bloccate e gli item oltre 2 MiB (§12.7);
-   - retention dei dump con plaintext (design:335).
-9. **E2E dopo eventuali hotfix:** §10.
+9. **Apertura:** `VAULT_SETUP_USERS=*`, poi `pm2 restart notiq-backend` (dotenv si legge al boot, `app.ts:1`). Fra i passi 4 e 9 gli altri utenti legacy **non accedono** al vault: ridurre la finestra al minimo.
+10. **Dopo l'apertura:**
+    - query legacy settimanale; contattare chi non ha migrato;
+    - `legacyCount` comprende il cestino, le credenziali bloccate e gli item oltre 2 MiB (§12.7);
+    - retention dei dump con plaintext (design:335).
+11. **E2E dopo eventuali hotfix:** §10.
+
+**Finestra (conseguenza di D2).** L'account con vault legacy non apre il vault, né online né offline, dal passo 4 all'apertura del canary (passo 8). Stima: deploy 30' + misura 30-45' + secondo deploy eventuale 30' + canary 1-2 h, quindi 2-4 h, al massimo 1 giorno lavorativo. Riguarda 1 solo account: quello dell'utente, lo stesso SUPERADMIN che fa il canary (confermato 21/10). Nessun avviso ad altri utenti.
 
 **Rollback:**
-- Prima del passo 6: `dist` da `_backup_<ts>`. T0 è retrocompatibile (`all` opt-in).
+- Prima del passo 8: `dist` da `_backup_<ts1>` (il backup del primo deploy). T0 è retrocompatibile (`all` opt-in).
 - Dopo:
   - utente singolo prima di `finalize`: SQL dell'admin (`UPDATE "Note"` dalla `NoteVersion` più recente non-`nv3.`, con `isEncrypted` d'origine, poi `DELETE FROM "VaultKeyring" WHERE "userId"=…`);
   - altrimenti `pg_dump`.
@@ -670,7 +726,7 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 ## 12. Rischi, residui accettati, domande aperte
 
 1. **PIN dimenticato prima di P3/P4:** il vault resta bloccato. Testo esplicito; P3 subito dopo (D5).
-2. **OOM di Argon2 su iOS:** gate D4 in contesto sicuro (D13).
+2. **OOM di Argon2 su iOS:** misura in prod in https prima del canary (T6, §11, passo 6). Con OOM o vincoli violati già a t=3 si fa il rollback del `dist` (passo 7, ramo STOP). La riduzione di `m` sotto 64 MiB è vietata da §3 (controllo `kdfParams`) e richiede una decisione nuova.
 3. **Dispositivo rubato con cache offline:** è il rischio principale (design:591). Il cambio PIN non invalida la cache rubata; la rotazione di VK è rimandata (D1). Residuo dichiarato.
 4. **Bundle o SW manomessi, operatore con DB + pepper:** residuo di design (§9.1-9.2).
 5. **TOCTOU P1 T10 #3: accettato.** Il plaintext che perde la gara torna `legacyCount>0` e il reconcile lo ri-migra.
@@ -686,17 +742,29 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 15. **`bulkPut` di tutte le note a ogni pull** (HANDOFF §3.2): con `all=1` il costo cresce col numero di note. Rimandato: un ticket dopo P2, solo se misurato.
 16. **Peso di `GET /notes?all=1`:** è il comportamento di prima di 73ae89a (la lista è senza `content`). Il conteggio del runbook al passo 2 lo verifica.
 17. **Kit non confermato:** se la pagina muore fra il 200 e la conferma, l'utente ha un Kit valido ma non visto. Il marker propone di rigenerarlo; il Kit non si ri-mostra (design:50).
-18. **Domanda aperta:** in prod ci sono utenti con più di 50 note che oggi vedono la lista locale troncata? Da verificare con la query del passo 2 (decide D12).
+18. **Chiusa (21/10):** in prod nessun utente ha più di 50 note (la query del passo 2 ha dato 0 righe). T0 resta dentro P2, senza hotfix 1.13.4 (D12).
 19. **Fuori P2, già tracciati:** rate limit globale per IP aggirabile e richieste non autenticate su `/api/vault/*` (P1 addendum T9 #1, #4); vincoli P3/P4 (P1 addendum T1 #1-#2, #4; T6 #6).
+20. **Secondo deploy per `t` (D13): Opzione A.** `DEFAULT_KDF` resta costante nel bundle (`utils/argon2.ts`, T5). Se la misura dà t≠3 serve un secondo deploy prima del canary. È sicuro: con `VAULT_SETUP_USERS` vuoto `createKeyring` risponde 503, quindi non esiste nessun keyring READY.
+    - **Opzione B respinta** (default `t` dal server via env).
+      - Sicurezza: un server malevolo potrebbe abbassare `t` solo fino al pavimento 3, perché il client rifiuta `t<3` e `m<65536` (§3). Il costo per tentativo cala al massimo di un fattore t_finale/3. Il tetto t≤10 limita il DoS a circa 3,3x rispetto a t=3. Un server malevolo può comunque servire un bundle manomesso (§12.4), quindi B non aggiunge un rischio nuovo, ma neanche un vantaggio di sicurezza.
+      - Costo: un campo nuovo nella risposta di `GET /keyring` con stato NONE, parsing e validazione della env sul BE, un validatore sul FE e test nuovi. In più serve comunque `pm2 restart` (dotenv si legge al boot). Tutto per evitare al massimo un ciclo di deploy di circa 30 min.
+21. **Controllo del ruolo del bench solo client:** un non-SUPERADMIN può caricare il chunk lazy (precachato da `globPatterns`, `vite.config.ts:62`), ma non trova segreti e la pagina non scrive dati né chiama API. Rischio accettato. iOS può limitare i Worker in background: la misura si fa con lo schermo attivo.
 
 ---
 
 ## 13. Decisioni utente richieste
 
+> **Esito (21/10, decisioni dell'utente):**
+> - **D1, D2, D3, D5, D6, D7, D8, D9, D10, D11: accettate come raccomandato** qui sotto.
+> - **D12: T0 dentro P2, niente hotfix 1.13.4.** La query del runbook (`HAVING count(*) > 50`) lanciata in prod il 21/10 non ha restituito righe.
+> - **D2:** accettata. Finestra in cui il vault legacy non si apre (né online né offline): dal deploy (passo 4) all'apertura del canary, stima 2-4 h, al massimo 1 giorno lavorativo. Riguarda solo l'account dell'utente (l'unico legacy in prod, lo stesso SUPERADMIN del canary, confermato 21/10): nessun avviso ad altri utenti.
+> - **D4:** `m=64 MiB`, `p=1`. Dispositivo di riferimento: **iPhone 12 o più recente** (A14+). `t` = il massimo che rispetta ENTRAMBI i vincoli, in Safari E nella PWA installata: p95 a caldo ≤ 1,5 s (20 campioni) E sblocco a freddo ≤ 2 s (3 campioni, ciascuno con Worker appena ricreato, si prende il peggiore). Minimo 3; se t=3 non li rispetta → ramo STOP del runbook (passo 7). `t` si fissa dopo la misura.
+> - **D13:** rotta di benchmark solo SUPERADMIN nel rilascio P2, misurata in prod con `VAULT_SETUP_USERS` vuoto prima del canary; variante mkcert scartata; secondo deploy solo se t≠3 (Opzione A: `DEFAULT_KDF` costante nel bundle); Opzione B (default dal server) respinta. Emendamento applicato il 21/10 (revisione 4).
+
 1. **D1: rotazione di VK fuori da P2.** Raccomandazione: **sì** (serve un sub-design: ri-cifratura per epoch, item `stale` in coda, versioni, escrow). Conseguenza: rischio 3.
-2. **D2: canary con `VAULT_SETUP_USERS`.** Raccomandazione: **sì**. Durante il canary gli altri utenti legacy **non possono aprire il vault** (il bundle nuovo non ha lo sblocco legacy) e chi non ha un vault non può crearlo. In prod il legacy è di un solo account: finestra di poche ore.
+2. **D2: canary con `VAULT_SETUP_USERS`.** Raccomandazione: **sì**. Durante il canary gli altri utenti legacy **non possono aprire il vault** (il bundle nuovo non ha lo sblocco legacy) e chi non ha un vault non può crearlo. In prod il legacy è di un solo account: finestra di 2-4 h, al massimo 1 giorno lavorativo (esito 21/10: solo l'account dell'utente, lo stesso SUPERADMIN del canary).
 3. **D3: note vault legacy con allegati:** migrare il corpo e segnalare. Raccomandazione: **sì**.
-4. **D4: parametri Argon2id** dopo il benchmark: `m=64 MiB`, `t` = il massimo con p95 ≤ 1,5 s sull'iPhone più vecchio (minimo 3). **Serve la misura.**
+4. **D4: parametri Argon2id** dopo il benchmark in prod: `m=64 MiB`, `p=1`, `t` = il massimo con p95 a caldo ≤ 1,5 s (20 campioni) e sblocco a freddo ≤ 2 s (3 campioni, il peggiore), sull'iPhone di riferimento (iPhone 12 o più recente, A14+), in Safari e nella PWA (minimo 3). **Serve la misura.**
 5. **D5: P2 senza reset né recupero.** Raccomandazione: **sì**, con avviso.
 6. **D6: rollback dopo il primo keyring = forward-fix**, SQL o `pg_dump`. **Accettare.**
 7. **D7: spostamento dentro e fuori solo online**, con chiamata diretta. **Sì.**
@@ -704,8 +772,8 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 9. **D9: PDF del Kit a mano.** **Sì.**
 10. **D10: `bodyLimit` di 3 MiB + `content` al massimo 2 MiB.** **Sì.**
 11. **D11: job admin e banner di sollecito rimandati.** **Sì.**
-12. **D12: T0 (pull completa) come hotfix 1.13.4 prima di P2**, perché è indipendente dal vault e corregge un possibile troncamento della lista locale per chi ha più di 50 note. Raccomandazione: **sì**, se la query del runbook al passo 2 trova utenti oltre 50. Altrimenti dentro P2.
-13. **D13: metodo del benchmark iOS.** Raccomandazione: https locale con CA mkcert installata e fidata sull'iPhone (configurazione solo dev in `vite.config.ts`, T6). Alternativa se mkcert non è praticabile: rotta di benchmark solo admin nel rilascio P2, misurata in prod con `VAULT_SETUP_USERS` vuoto prima del canary. Costa però un secondo deploy se i parametri cambiano.
+12. **D12: T0 (pull completa).** Storico: proposto come hotfix 1.13.4 se la query del passo 2 avesse trovato utenti oltre 50 note. **Esito (21/10):** 0 righe, quindi T0 dentro P2, nessun hotfix.
+13. **D13: metodo del benchmark iOS.** Storico: la raccomandazione era https locale con CA mkcert (scartata). **Scelta dell'utente (21/10):** rotta di benchmark solo SUPERADMIN nel rilascio P2, misurata in prod con `VAULT_SETUP_USERS` vuoto prima del canary. Costa un secondo deploy solo se t≠3 (§12.20).
 
 ---
 
@@ -715,7 +783,7 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 |---|---|---|
 | RT-H1: VaultNoteEditor con `useLiveQuery` che tratta il cambio di `vaultBaseHash` come conflitto | **Respinto in parte.** Adottato solo il registro `openVaultNoteIds` (il reconcile salta gli id aperti) | Se il reconcile non tocca la riga aperta, `vaultBaseHash` cambia solo per i salvataggi dell'editor stesso. Il salvataggio usa il vecchio hash → la CAS del server (`note.service.ts:394`) dà 422 `conflict` → copia. Un secondo meccanismo client duplicherebbe la CAS |
 | RT-M (T2): "flush → rilettura → `$transaction` senza altri await in mezzo" | **Respinto in parte** | Fra la rilettura e la tx restano gli await di `:229-256` e `:265`. Toglierli significa riordinare il percorso caldo 1.13.3. La finestra la chiude la CAS di `:394` con il `content` riletto, e il piano lo rende vincolante (§4.2) |
-| RT-M (T6): percorso di staging su IIS per il benchmark | **Non adottato come primario** (D13) | Su IIS non c'è staging; un deploy solo per il benchmark costa un ciclo completo. Resta come alternativa |
+| RT-M (T6) | Adottato in variante (D13) | Nessuno staging: la misura avviene sul deploy P2 vero, con l'apertura chiusa dal kill switch |
 | R-M (Workbox): check e2e sulla Cache Storage | **Sostituito** con il test del predicato serializzato di T12 (`new Function` + `grep dist/sw.js`) + verifica manuale 5 | In `localhost:5173` (dev) il SW di regola non è registrato: un e2e passerebbe a vuoto |
 
 ## Appendice B: Tracciabilità review
@@ -746,6 +814,43 @@ Si fanno a mano sul DB dev e si annotano nell'addendum.
 | RT-M2 | MEDIUM | Item oltre 2 MiB irraggiungibili | §5.6 sola lettura + "Togli dal vault"; §6.5; §12.7 |
 | RT-M3 | MEDIUM | `authKey` nel pending del PIN | §5.1, §5.4: pending `{rev, wrappedVkPinHash}`; T13 |
 | RT-M4 | MEDIUM | Lock con salvataggio pendente | §5.2 `registerPreLock`, `touchVault`; T11, T18 |
-| RT-M5 | MEDIUM | Benchmark su http non sicuro | T6 https solo dev; §10 manuale 1; D13 |
-| RT-M6 | MEDIUM | Wording di D2 ("sola lettura") | §5.3, D2, runbook §11.7, T17 |
+| RT-M5 | MEDIUM | Benchmark su http non sicuro | T6 controllo `isSecureContext`/`crypto.subtle` + https di prod; §10 manuale 1; D13 |
+| RT-M6 | MEDIUM | Wording di D2 ("sola lettura") | §5.3, D2, runbook §11.9, T17 |
 | RT-1 | vincolo di processo | T25 rimuove il lock P1 (`VAULT_ROOT_KEYS` non vuota): da quel commit un keyring READY è possibile, quindi T25 si unisce a `main` solo insieme a tutto P2 (branch `feat/vault-p2`), P1:446-449/:536 e addendum T10 #5 | §8 branch `feat/vault-p2`; T25 |
+
+## Appendice C: emendamento D13/D4 (21/10)
+
+Revisione 4. Fonte: decisioni dell'utente del 21/10 più l'emendamento dell'architect, con le correzioni F1-F17 che prevalgono dove lo contraddicono.
+
+| ID | Correzione | Dove applicata |
+|---|---|---|
+| F1 | Runbook passo 1: "D4 chiuso" diventa "T6 verde; D4 si chiude al passo 6 (misura in prod)" | §11 passo 1 |
+| F2 | Se t>3, nello stesso commit di `DEFAULT_KDF.t` si cambia il solo valore di `KDF_T_MIN` (costante esportata da `vault.service.ts`, usata dai DUE schemi: `routes/vault.ts:16` e `vault.service.ts:281`); test del keyring con la costante; un bundle vecchio con t=3 riceve 400 (rivista in G1) | §3 (Argon2id), T1, §11 passo 7, §8 |
+| F3 | Dopo rifiuto o timeout: `worker.terminate()` e ricreazione lazy; test prima chiamata fallita / seconda riuscita; `resetArgon2Worker()` esportata e chiamata prima di ogni campione a freddo (G2); tolto il rischio "riuso del Worker ignoto" | §5.1, T5, Dettaglio T6 |
+| F4 | Vecchi passi 8-9 del runbook diventano 10-11; "Fra i passi 4 e 7" diventa "4 e 9"; RT-M6 punta a §11.9 (apertura) | §11, Appendice B |
+| F5 | `Argon2Bench` tolto; il file è `features/admin/VaultBenchPage.tsx` | §8, T6 |
+| F6 | Il nuovo wrap del cambio PIN usa `DEFAULT_KDF`; test in T13 | §5.4, T13 |
+| F7 | Accettazione 10: al setup i parametri vengono da `DEFAULT_KDF`; allo sblocco arrivano dal server e li proteggono il controllo client di §3 più `kdfCanon` nell'AAD | Elenco accettazioni (intestazione) |
+| F8 | Opzione B respinta senza l'argomento "rompe `vault.keyring.test.ts:220`" (il test usa `toMatchObject`) | §12.20 |
+| F9 | Sequenza t=3..10 crescente, stop al primo t che viola un vincolo D4 (caldo p95 ≤ 1,5 s E freddo ≤ 2 s, Safari e PWA) | §13 D4, §10 manuale 1, Dettaglio T6 |
+| F10 | D2: finestra 2-4 h, massimo 1 giorno lavorativo, solo l'account dell'utente. Tolti i residui di D12 (§8 hotfix, `v1.13.4..HEAD`); §12.18 chiusa con l'esito del 21/10 | §11 (Finestra), §13 D2/D12, §8, §12.18 |
+| F11 | Il JSON del bench contiene `DEFAULT_KDF` e l'entry `index-*.js`; smoke del passo 7: `DEFAULT_KDF.t` = t scelto e nuova entry | Dettaglio T6, §11 passo 7 |
+| F12 | Passo 8, prima del setup: hard reload sul dispositivo del canary, bench aperto, `DEFAULT_KDF.t` ed entry uguali al pacchetto | §11 passo 8 |
+| F13 | Output incrementale (almeno per ogni t), t crescente, pulsante Stop; screenshot dopo ogni t su iOS | Dettaglio T6, §10 manuale 1 |
+| F14 | `ts1` di `_backup_<ts1>` al passo 4; rollback pre-P2 sempre `_backup_<ts1>`; SHA256 ed entry di ogni pacchetto nell'addendum D4; tag solo sul pacchetto finale | §11 passi 4 e 7, Rollback |
+| F15 | Rotta `admin/vault-bench` fuori da `<AppLayout/>` (`App.tsx:89`); guard: nessun utente → `/login`, non SUPERADMIN → `/notes` | T6, §8, criteri vitest |
+| F16 | Ruolo SUPERADMIN (enum `USER\|SUPERADMIN`), mai ADMIN, sul bench | Dettaglio T6, §10, §11, §13 |
+| F17 | Riquadro "Esito": riga D4 (vincolo a freddo), riga D13 ("emendamento applicato il 21/10, revisione 4"), nuova riga D2 | §13 |
+| G1 | MAJOR (round 2, 21/10): Il pavimento di `t` vive in due schemi (`routes/vault.ts:16`, `vault.service.ts:281`): costante `KDF_T_MIN` in T1, test 400 su POST e PUT | §3, §8, T1, §11 passo 7, F2 |
+| G2 | MAJOR (round 2): `resetArgon2Worker()` esportata, test di ricreazione, chiamata prima dei campioni a freddo, criterio vitest | §5.1, T5, Dettaglio T6, F3 |
+| G3 | MINOR (round 2): Formula del 400 con ricarica sostituita: setup o cambio PIN non avvengono, `errors.vault.invalidPayload` (elencata in §7 riga 31, T10, T24, ma oggi NON presente in `frontend/src/locales/en.json` e `it.json`: va aggiunta in T24, coperta da `i18nVaultKeys.test.ts`), serve hard reload | §3 |
+| G4 | MINOR (round 2): Riga RT-1 rimessa nell'Appendice B dopo RT-M6; Appendice C dopo | Appendice B/C |
+| G5 | MINOR (round 2): T13 solo test FE su `DEFAULT_KDF`; controllo BE del ramo t>3 come verifica esplicita nel runbook | T13, §11 passo 7 |
+| G6 | NIT (round 2): Setup: su 400/403/503 il marker `pending{kind:'kit'}` si cancella subito; assert in T13 | §5.4, T13 |
+| H1 | MINOR (round 3, 21/10, senza nuova review): T1 elenca anche `routes/vault.ts` (`:16`) e `__tests__/vault.service.test.ts` (`:286`) | T1 |
+| H2 | NIT (round 3): ramo t>3 = cambiano nello stesso commit `DEFAULT_KDF.t` e `KDF_T_MIN` | §3 |
+| H3 | MINOR (round 3): verifica 400 POST/PUT del runbook coperta dai test di T1, nessuna chiamata contro prod | §11 passo 7 |
+| H4 | MINOR (round 3): criterio vitest dei campioni a freddo sull'ordine con `mock.invocationCallOrder` | Dettaglio T6 |
+| H5 | MINOR (round 3): reset/terminate rifiutano subito le richieste pendenti con `kdfFailed`; il timer termina solo la propria istanza; test in volo + reset | §5.1, T5 |
+| H6 | MINOR (round 3): `errors.vault.invalidPayload` assente dai locali, si aggiunge in T24 | §3, T24, G3 |
+| H7 | NIT (round 3): yield 250 ms dopo il reset, un retry per campione a freddo, campo `retries` nel JSON | Dettaglio T6 |
