@@ -28,6 +28,7 @@ const V1 = {
   sealed: '040f3b4e71292f2de3a7c7befb785008417858f3cffe8192345e11735f4e75ed8a20218bddfd9c6656943b2db8cabf2e40b3348bbbecff8a7b144d73259b20018e9f44f4dac25be0069344c0c70ef4ba5d830080a52f8a05a423b6e83b93e8923ea0a1a2a3a4a5a6a7a8a9aaaba29ee45dc9f9b44717853c6efb31537a20ba4b840e413a722f3f28b3a3e7b9db615d64bb8f607aee6e313f7fe8af9247',
 };
 // V2: sealed prodotto da sealRootShare di vaultCrypto.ts (WebCrypto) per la stessa chiave root di V1.
+// sha256(bytes di V2.sealed) = 5756b0bea4b86fad9cd3f0151b54bda8eca74a8b6c917ad1107d43bfe0608f09 (stesso valore nel test backend vaultSeal.test.ts)
 const V2 = {
   sRoot: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
   userId: 'user-v2',
@@ -103,6 +104,76 @@ describe('vaultCrypto', () => {
     await expect(unwrapEscrow(rk, e, U, EPOCH, 'rk_b')).rejects.toThrow('decryptFailed');
     const tampered = new Uint8Array(w); tampered[20] ^= 1;
     await expect(unwrapVkPin(kek, tampered, U, EPOCH, PARAMS)).rejects.toThrow('decryptFailed');
+  });
+
+  it('chiavi derivate/importate non-extractable', async () => {
+    const vk = await importVk(generateVkRaw());
+    const kek = await deriveKekPin(new Uint8Array(32), new Uint8Array(32), new Uint8Array(16), U);
+    const nk = await deriveNoteKey(vk, 'n1');
+    for (const k of [vk.aes, vk.hkdf, nk, kek]) expect(k.extractable).toBe(false);
+    expect(vk.hkdf.usages).toEqual(['deriveKey']);
+  });
+
+  it('validatore unico: epoch non valida / "|" -> invalidInput in ogni costruttore', async () => {
+    const kek = await deriveKekPin(new Uint8Array(32), new Uint8Array(32), new Uint8Array(16), U);
+    const vkRaw = generateVkRaw();
+    const vk = await importVk(vkRaw);
+    const rk = await deriveRk(new Uint8Array(32), new Uint8Array(20), U);
+    const sig = await generateSigKey();
+    const dev = await generateDeviceKey();
+    const w = await wrapVkPin(kek, vkRaw, U, EPOCH, PARAMS);
+    const ws = await wrapVkSigKey(vk, sig.pkcs8, U, EPOCH);
+    const esc = await wrapEscrow(rk, vkRaw, U, EPOCH, 'rk_a');
+    const nk = await deriveNoteKey(vk, 'n1');
+    const ictx = { userId: U, noteId: 'n1', noteType: 'NOTE', epoch: EPOCH };
+    const env = await encryptItem(nk, ictx, { t: '', c: '' });
+    const share = new Uint8Array(32);
+    for (const epoch of [-1, 1.5, Number.NaN, undefined as unknown as number]) {
+      await expect(wrapVkPin(kek, vkRaw, U, epoch, PARAMS)).rejects.toThrow('invalidInput');
+      await expect(unwrapVkPin(kek, w, U, epoch, PARAMS)).rejects.toThrow('invalidInput');
+      await expect(wrapVkSigKey(vk, sig.pkcs8, U, epoch)).rejects.toThrow('invalidInput');
+      await expect(unwrapVkSigKey(vk, ws, U, epoch)).rejects.toThrow('invalidInput');
+      await expect(wrapEscrow(rk, vkRaw, U, epoch, 'rk_a')).rejects.toThrow('invalidInput');
+      await expect(unwrapEscrow(rk, esc, U, epoch, 'rk_a')).rejects.toThrow('invalidInput');
+      await expect(wrapUserShare(vk, share, U, epoch)).rejects.toThrow('invalidInput');
+      await expect(signVkProof(sig.privateKey, U, epoch, 0, '{}')).rejects.toThrow('invalidInput');
+      await expect(encryptShare(dev, share, U, epoch)).rejects.toThrow('invalidInput');
+      await expect(decryptShare(dev, share, U, epoch)).rejects.toThrow('invalidInput');
+      await expect(sealRootShare(hex(V1.sRoot), hex(V1.rootEcdhSpki), U, epoch, 'rk_a')).rejects.toThrow('invalidInput');
+      await expect(openRootShare(hex(V1.sealed), await rootPriv(), U, epoch, 'rk_a')).rejects.toThrow('invalidInput');
+      await expect(decryptItem(nk, { ...ictx, epoch }, env)).rejects.toThrow('invalidInput');
+    }
+    const bad = 'a|b';
+    await expect(wrapVkPin(kek, vkRaw, bad, EPOCH, PARAMS)).rejects.toThrow('invalidInput');
+    await expect(wrapVkSigKey(vk, sig.pkcs8, bad, EPOCH)).rejects.toThrow('invalidInput');
+    await expect(wrapEscrow(rk, vkRaw, bad, EPOCH, 'rk_a')).rejects.toThrow('invalidInput');
+    await expect(wrapEscrow(rk, vkRaw, U, EPOCH, bad)).rejects.toThrow('invalidInput');
+    for (const missing of [undefined, null] as unknown as string[]) {
+      await expect(wrapEscrow(rk, vkRaw, U, EPOCH, missing)).rejects.toThrow('invalidInput');
+      await expect(unwrapEscrow(rk, esc, U, EPOCH, missing)).rejects.toThrow('invalidInput');
+      await expect(sealRootShare(hex(V1.sRoot), hex(V1.rootEcdhSpki), U, EPOCH, missing)).rejects.toThrow('invalidInput');
+      await expect(openRootShare(hex(V1.sealed), await rootPriv(), U, EPOCH, missing)).rejects.toThrow('invalidInput');
+    }
+    await expect(wrapUserShare(vk, share, bad, EPOCH)).rejects.toThrow('invalidInput');
+    await expect(signVkProof(sig.privateKey, bad, EPOCH, 0, '{}')).rejects.toThrow('invalidInput');
+    await expect(encryptShare(dev, share, bad, EPOCH)).rejects.toThrow('invalidInput');
+    await expect(decryptItem(nk, { ...ictx, userId: bad }, env)).rejects.toThrow('invalidInput');
+    await expect(deriveAuthKey(share, bad)).rejects.toThrow('invalidInput');
+    await expect(deriveKekPin(share, share, new Uint8Array(16), bad)).rejects.toThrow('invalidInput');
+    await expect(deriveRk(share, share, bad)).rejects.toThrow('invalidInput');
+    await expect(deriveAuthKey(share, '')).rejects.toThrow('invalidInput');
+  });
+
+  it('AAD cambiata: vksig e escrow con epoch/userId diversi -> decryptFailed', async () => {
+    const vkRaw = generateVkRaw();
+    const vk = await importVk(vkRaw);
+    const sig = await generateSigKey();
+    const ws = await wrapVkSigKey(vk, sig.pkcs8, U, EPOCH);
+    await expect(unwrapVkSigKey(vk, ws, U, EPOCH + 1)).rejects.toThrow('decryptFailed');
+    await expect(unwrapVkSigKey(vk, ws, 'user-2', EPOCH)).rejects.toThrow('decryptFailed');
+    const rk = await deriveRk(new Uint8Array(32), new Uint8Array(20), U);
+    const e = await wrapEscrow(rk, vkRaw, U, EPOCH, 'rk_a');
+    await expect(unwrapEscrow(rk, e, U, EPOCH + 1, 'rk_a')).rejects.toThrow('decryptFailed');
   });
 
   it('kdfCanon indipendente dall ordine delle chiavi', () => {
@@ -213,6 +284,23 @@ describe('vaultCrypto', () => {
       expect(V2.sealed).toHaveLength(SEALED_ROOT_SHARE_LEN * 2);
       const out = await openRootShare(hex(V2.sealed), await rootPriv(), V2.userId, V2.epoch, V2.rootKeyId);
       expect(Buffer.from(out).toString('hex')).toBe(V2.sRoot);
+      expect(createHash('sha256').update(Buffer.from(V2.sealed, 'hex')).digest('hex')).toBe('5756b0bea4b86fad9cd3f0151b54bda8eca74a8b6c917ad1107d43bfe0608f09');
+    });
+
+    it('V2: sealRootShare con gli input di V2 -> 157 B, 0x04, round trip', async () => {
+      const s = await sealRootShare(hex(V2.sRoot), hex(V1.rootEcdhSpki), V2.userId, V2.epoch, V2.rootKeyId);
+      expect(s).toHaveLength(SEALED_ROOT_SHARE_LEN);
+      expect(s[0]).toBe(0x04);
+      expect(Buffer.from(await openRootShare(s, await rootPriv(), V2.userId, V2.epoch, V2.rootKeyId)).toString('hex')).toBe(V2.sRoot);
+    });
+
+    it('contratto errori: SPKI non P-384 -> invalidInput; ECDH con chiave sbagliata -> decryptFailed', async () => {
+      const p256 = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+      const spki256 = new Uint8Array(await crypto.subtle.exportKey('spki', p256.publicKey));
+      await expect(sealRootShare(hex(V1.sRoot), spki256, U, EPOCH, 'rk_a')).rejects.toThrow('invalidInput');
+      const s = await sealRootShare(hex(V1.sRoot), hex(V1.rootEcdhSpki), U, EPOCH, 'rk_a');
+      const wrongKey = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+      await expect(openRootShare(s, wrongKey.privateKey, U, EPOCH, 'rk_a')).rejects.toThrow('decryptFailed');
     });
 
     it('input non validi', async () => {

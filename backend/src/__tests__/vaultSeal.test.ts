@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { createDecipheriv, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from 'node:crypto';
+import { createHash, createDecipheriv, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from 'node:crypto';
 import { sealRootShare, openRootShare, SEALED_ROOT_SHARE_LEN } from '../utils/vaultSeal';
 
 // Vettore V1 (confronto incrociato con il frontend, T7). Tutti i valori sono letterali.
@@ -19,6 +19,7 @@ export const V1 = {
   sealed: '040f3b4e71292f2de3a7c7befb785008417858f3cffe8192345e11735f4e75ed8a20218bddfd9c6656943b2db8cabf2e40b3348bbbecff8a7b144d73259b20018e9f44f4dac25be0069344c0c70ef4ba5d830080a52f8a05a423b6e83b93e8923ea0a1a2a3a4a5a6a7a8a9aaaba29ee45dc9f9b44717853c6efb31537a20ba4b840e413a722f3f28b3a3e7b9db615d64bb8f607aee6e313f7fe8af9247',
 };
 
+// sha256(bytes di V2.sealed) = 5756b0bea4b86fad9cd3f0151b54bda8eca74a8b6c917ad1107d43bfe0608f09 (stesso valore nel test frontend frontend/src/utils/__tests__/vaultCrypto.test.ts)
 // Vettore V2: sealed prodotto dal frontend (utils/vaultCrypto.ts, WebCrypto) per la stessa chiave root di V1.
 export const V2 = {
   sRoot: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
@@ -161,6 +162,10 @@ describe('vaultSeal', () => {
     dc.setAuthTag(sealed.subarray(141));
     const out = Buffer.concat([dc.update(sealed.subarray(109, 141)), dc.final()]);
     expect(out.toString('hex')).toBe(V1.sRoot);
+  });
+
+  it('vettore V2: sha256 del sealed uguale al commento nel test frontend', () => {
+    expect(createHash('sha256').update(Buffer.from(V2.sealed, 'hex')).digest('hex')).toBe('5756b0bea4b86fad9cd3f0151b54bda8eca74a8b6c917ad1107d43bfe0608f09');
   });
 
   it('vettore V2: sealed prodotto dal frontend aperto con openRootShare', () => {

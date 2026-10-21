@@ -11,6 +11,18 @@ const utf8 = (s: string) => bs(enc.encode(s));
 const EMPTY = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
 const fail = (m: string) => new Error(m);
 
+const badPart = (x: unknown) => typeof x !== 'string' || !x || x.includes('|');
+/** Unico validatore di AAD/info (stessa regola di encryptItem); epoch null = non usato dal costruttore. */
+function checkAad(userId: string, epoch: number | null) {
+  if (badPart(userId)) throw fail('invalidInput');
+  if (epoch !== null && (!Number.isSafeInteger(epoch) || epoch < 0 || epoch > 999999999)) throw fail('invalidInput');
+}
+/** Come checkAad, ma rootKeyId e' sempre nell'AAD/info: mancante (undefined/null) = invalidInput. */
+function checkRootAad(userId: string, epoch: number | null, rootKeyId: string) {
+  checkAad(userId, epoch);
+  if (badPart(rootKeyId)) throw fail('invalidInput');
+}
+
 export const IV_LEN = 12;
 export const TAG_LEN = 16;
 /** Uguale a `ENVELOPE_RE` di backend/src/services/vault.service.ts. */
@@ -61,8 +73,10 @@ export function kdfCanon({ m, t, p }: KdfParams): string {
 /** iv || ct || tag */
 async function seal(key: CryptoKey, plain: Uint8Array, aad: string): Promise<Uint8Array<ArrayBuffer>> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
-  const ct = await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: utf8(aad), tagLength: 128 }, key, bs(plain));
-  return concat(iv, new Uint8Array(ct));
+  try {
+    const ct = await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: utf8(aad), tagLength: 128 }, key, bs(plain));
+    return concat(iv, new Uint8Array(ct));
+  } catch { throw fail('invalidInput'); }
 }
 
 async function open(key: CryptoKey, blob: Uint8Array, aad: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -79,8 +93,8 @@ async function open(key: CryptoKey, blob: Uint8Array, aad: string): Promise<Uint
   }
 }
 
-async function hkdfKey(ikm: Uint8Array): Promise<CryptoKey> {
-  return subtle().importKey('raw', bs(ikm), 'HKDF', false, ['deriveBits', 'deriveKey']);
+async function hkdfKey(ikm: Uint8Array, usages: KeyUsage[] = ['deriveKey']): Promise<CryptoKey> {
+  return subtle().importKey('raw', bs(ikm), 'HKDF', false, usages);
 }
 
 const hkdfParams = (salt: Uint8Array, info: string) => ({ name: 'HKDF', hash: 'SHA-256', salt: bs(salt), info: utf8(info) });
@@ -93,11 +107,14 @@ async function hkdfAes(ikm: Uint8Array, salt: Uint8Array, info: string): Promise
 
 /** authKey = HKDF(S, salt vuoto, info auth|userId), 32 B. */
 export async function deriveAuthKey(S: Uint8Array, userId: string): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await subtle().deriveBits(hkdfParams(EMPTY, `${P}auth|${userId}`), await hkdfKey(S), 256));
+  checkAad(userId, null);
+  // chiave HKDF transitoria: qui deriveBits serve, non e' la chiave di VK
+  return new Uint8Array(await subtle().deriveBits(hkdfParams(EMPTY, `${P}auth|${userId}`), await hkdfKey(S, ['deriveBits']), 256));
 }
 
 /** KEK_pin = HKDF(S || serverShare, salt = pinSalt, info kek|userId) -> AES-GCM non-extractable. */
 export async function deriveKekPin(S: Uint8Array, serverShare: Uint8Array, pinSalt: Uint8Array, userId: string): Promise<CryptoKey> {
+  checkAad(userId, null);
   const ikm = concat(S, serverShare);
   try {
     return await hkdfAes(ikm, pinSalt, `${P}kek|${userId}`);
@@ -118,20 +135,28 @@ export function generateVkRaw(): Uint8Array<ArrayBuffer> {
 export async function importVk(raw: Uint8Array): Promise<VaultKey> {
   if (raw.length !== 32) throw fail('invalidInput');
   return {
-    hkdf: await hkdfKey(raw),
+    // Solo deriveKey (non deriveBits). Limite residuo: deriveKey con extractable=true permette comunque di ottenere i byte di K_note.
+    hkdf: await hkdfKey(raw, ['deriveKey']),
     aes: await subtle().importKey('raw', bs(raw), 'AES-GCM', false, ['encrypt', 'decrypt']),
   };
 }
 
-const vkAad = (userId: string, epoch: number, canon: string) => `vk|${userId}|${epoch}|${canon}`;
+const vkAad = (userId: string, epoch: number, canon: string) => {
+  checkAad(userId, epoch);
+  return `vk|${userId}|${epoch}|${canon}`;
+};
+const sigAad = (userId: string, epoch: number) => {
+  checkAad(userId, epoch);
+  return `vksig|${userId}|${epoch}`;
+};
 
 /** wrappedVkPin, 60 B. Il kdfCanon e' nell'AAD: kdfParams manomessi -> unwrap fallisce. */
-export function wrapVkPin(kek: CryptoKey, vkRaw: Uint8Array, userId: string, epoch: number, params: KdfParams) {
+export async function wrapVkPin(kek: CryptoKey, vkRaw: Uint8Array, userId: string, epoch: number, params: KdfParams) {
   return seal(kek, vkRaw, vkAad(userId, epoch, kdfCanon(params)));
 }
 
 /** VK grezza (32 B): chi chiama la importa e fa fill(0). */
-export function unwrapVkPin(kek: CryptoKey, wrapped: Uint8Array, userId: string, epoch: number, params: KdfParams) {
+export async function unwrapVkPin(kek: CryptoKey, wrapped: Uint8Array, userId: string, epoch: number, params: KdfParams) {
   return open(kek, wrapped, vkAad(userId, epoch, kdfCanon(params)));
 }
 
@@ -153,12 +178,12 @@ export async function generateSigKey(): Promise<SigKeyPair> {
 }
 
 /** wrappedVkSigKey = AES-GCM(VK, PKCS#8, AAD vksig|userId|epoch). */
-export function wrapVkSigKey(vk: VaultKey, pkcs8: Uint8Array, userId: string, epoch: number) {
-  return seal(vk.aes, pkcs8, `vksig|${userId}|${epoch}`);
+export async function wrapVkSigKey(vk: VaultKey, pkcs8: Uint8Array, userId: string, epoch: number) {
+  return seal(vk.aes, pkcs8, sigAad(userId, epoch));
 }
 
 export async function unwrapVkSigKey(vk: VaultKey, wrapped: Uint8Array, userId: string, epoch: number): Promise<CryptoKey> {
-  const pkcs8 = await open(vk.aes, wrapped, `vksig|${userId}|${epoch}`);
+  const pkcs8 = await open(vk.aes, wrapped, sigAad(userId, epoch));
   try {
     return await importSig(pkcs8);
   } catch {
@@ -170,6 +195,7 @@ export async function unwrapVkSigKey(vk: VaultKey, wrapped: Uint8Array, userId: 
 
 /** vkProof, 64 B (r||s, IEEE P1363 come richiede il backend). Path costante, rev <= 2147483646. */
 export async function signVkProof(sigKey: CryptoKey, userId: string, epoch: number, rev: number, payloadRaw: string) {
+  checkAad(userId, epoch);
   if (!Number.isInteger(rev) || rev < 0 || rev > 2147483646) throw fail('invalidInput');
   const msg = `${P}proof|PUT /api/vault/keyring|${userId}|${epoch}|${rev}|${await sha256hex(payloadRaw)}`;
   return new Uint8Array(await subtle().sign({ name: 'ECDSA', hash: 'SHA-256' }, sigKey, utf8(msg)));
@@ -183,18 +209,22 @@ export async function deriveNoteKey(vk: VaultKey, noteId: string): Promise<Crypt
 }
 
 export interface ItemCtx { userId: string; noteId: string; noteType: string; epoch: number }
-const itemAad = (c: ItemCtx) => `${P}item|${c.userId}|${c.noteId}|${c.noteType}|${c.epoch}`;
+const itemAad = (c: ItemCtx) => {
+  checkAad(c.userId, c.epoch);
+  if (badPart(c.noteId) || badPart(c.noteType)) throw fail('invalidInput');
+  return itemAad0(c);
+};
+const itemAad0 = (c: ItemCtx) => `${P}item|${c.userId}|${c.noteId}|${c.noteType}|${c.epoch}`;
 
 /** `nv3.<epoch>.<b64u iv>.<b64u ct||tag>`, plaintext JSON {v:1,t,c}. */
 export async function encryptItem(noteKey: CryptoKey, ctx: ItemCtx, item: { t: string; c: string }): Promise<string> {
-  if (!Number.isSafeInteger(ctx.epoch) || ctx.epoch < 0 || ctx.epoch > 999999999) throw fail('invalidInput');
-  if ([ctx.userId, ctx.noteId, ctx.noteType].some((x) => x.includes('|'))) throw fail('invalidInput');
   const blob = await seal(noteKey, utf8(JSON.stringify({ v: 1, t: item.t, c: item.c })), itemAad(ctx));
   return `nv3.${ctx.epoch}.${b64uEncode(blob.subarray(0, IV_LEN))}.${b64uEncode(blob.subarray(IV_LEN))}`;
 }
 
 /** Epoch diverso da quello atteso -> 'stale'; formato non valido -> 'invalidEnvelope'. */
 export async function decryptItem(noteKey: CryptoKey, ctx: ItemCtx, envelope: string): Promise<{ t: string; c: string }> {
+  itemAad(ctx);
   const m = ENVELOPE_RE.exec(envelope);
   if (!m) throw fail('invalidEnvelope');
   if (Number(m[1]) !== ctx.epoch) throw fail('stale');
@@ -220,13 +250,19 @@ export async function decryptItem(noteKey: CryptoKey, ctx: ItemCtx, envelope: st
 // ---------------------------------------------------------------- root share, escrow
 
 export const SEALED_ROOT_SHARE_LEN = 157;
-const sealInfo = (userId: string, rootKeyId: string) => `${P}rootseal|${userId}|${rootKeyId}`;
-const rootAad = (userId: string, epoch: number, rootKeyId: string) => `${P}rootshare|${userId}|${epoch}|${rootKeyId}`;
+const sealInfo = (userId: string, rootKeyId: string) => {
+  checkRootAad(userId, null, rootKeyId);
+  return `${P}rootseal|${userId}|${rootKeyId}`;
+};
+const rootAad = (userId: string, epoch: number, rootKeyId: string) => {
+  checkRootAad(userId, epoch, rootKeyId);
+  return `${P}rootshare|${userId}|${epoch}|${rootKeyId}`;
+};
+const escrowAad = (userId: string, epoch: number, rootKeyId: string) => {
+  checkRootAad(userId, epoch, rootKeyId);
+  return `escrow|${userId}|${epoch}|${rootKeyId}`;
+};
 const P384 = { name: 'ECDH', namedCurve: 'P-384' } as const;
-
-function checkCtx(userId: string, rootKeyId: string) {
-  if (!userId || !rootKeyId || userId.includes('|') || rootKeyId.includes('|')) throw fail('invalidInput');
-}
 
 async function ecdhAes(priv: CryptoKey, pub: CryptoKey, ephPubRaw: Uint8Array, userId: string, rootKeyId: string) {
   const shared = new Uint8Array(await subtle().deriveBits({ name: 'ECDH', public: pub }, priv, 384));
@@ -239,9 +275,10 @@ async function ecdhAes(priv: CryptoKey, pub: CryptoKey, ephPubRaw: Uint8Array, u
 
 /** sealedRootShare (157 B) = ephPubRaw(97) || iv || AES-GCM(Kseal, S_root) || tag. */
 export async function sealRootShare(sRoot: Uint8Array, rootEcdhSpki: Uint8Array, userId: string, epoch: number, rootKeyId: string) {
-  checkCtx(userId, rootKeyId);
-  if (sRoot.length !== 32 || !Number.isSafeInteger(epoch) || epoch < 0) throw fail('invalidInput');
-  const rootPub = await subtle().importKey('spki', bs(rootEcdhSpki), P384, false, []);
+  checkRootAad(userId, epoch, rootKeyId);
+  if (sRoot.length !== 32) throw fail('invalidInput');
+  let rootPub: CryptoKey;
+  try { rootPub = await subtle().importKey('spki', bs(rootEcdhSpki), P384, false, []); } catch { throw fail('invalidInput'); }
   const eph = await subtle().generateKey(P384, false, ['deriveBits']);
   const ephPubRaw = new Uint8Array(await subtle().exportKey('raw', eph.publicKey));
   const key = await ecdhAes(eph.privateKey, rootPub, ephPubRaw, userId, rootKeyId);
@@ -250,17 +287,19 @@ export async function sealRootShare(sRoot: Uint8Array, rootEcdhSpki: Uint8Array,
 
 /** Apertura lato client (test e P5): rootPrivate = ECDH P-384 con usage deriveBits. */
 export async function openRootShare(sealed: Uint8Array, rootPrivate: CryptoKey, userId: string, epoch: number, rootKeyId: string) {
-  checkCtx(userId, rootKeyId);
+  checkRootAad(userId, epoch, rootKeyId);
   if (sealed.length !== SEALED_ROOT_SHARE_LEN || sealed[0] !== 0x04) throw fail('decryptFailed');
   const ephPubRaw = sealed.subarray(0, 97);
   let eph: CryptoKey;
   try { eph = await subtle().importKey('raw', bs(ephPubRaw), P384, false, []); } catch { throw fail('decryptFailed'); }
-  const key = await ecdhAes(rootPrivate, eph, ephPubRaw, userId, rootKeyId);
+  let key: CryptoKey;
+  try { key = await ecdhAes(rootPrivate, eph, ephPubRaw, userId, rootKeyId); } catch { throw fail('decryptFailed'); }
   return open(key, sealed.subarray(97), rootAad(userId, epoch, rootKeyId));
 }
 
 /** RK = HKDF(S_root || S_user, salt vuoto, info escrow|userId) -> AES-GCM. */
 export async function deriveRk(sRoot: Uint8Array, sUser: Uint8Array, userId: string): Promise<CryptoKey> {
+  checkAad(userId, null);
   const ikm = concat(sRoot, sUser);
   try {
     return await hkdfAes(ikm, EMPTY, `${P}escrow|${userId}`);
@@ -270,17 +309,22 @@ export async function deriveRk(sRoot: Uint8Array, sUser: Uint8Array, userId: str
 }
 
 /** escrowBlob (60 B) = AES-GCM(RK, VK, AAD escrow|userId|epoch|rootKeyId). */
-export function wrapEscrow(rk: CryptoKey, vkRaw: Uint8Array, userId: string, epoch: number, rootKeyId: string) {
-  return seal(rk, vkRaw, `escrow|${userId}|${epoch}|${rootKeyId}`);
+export async function wrapEscrow(rk: CryptoKey, vkRaw: Uint8Array, userId: string, epoch: number, rootKeyId: string) {
+  return seal(rk, vkRaw, escrowAad(userId, epoch, rootKeyId));
 }
 
-export function unwrapEscrow(rk: CryptoKey, blob: Uint8Array, userId: string, epoch: number, rootKeyId: string) {
-  return open(rk, blob, `escrow|${userId}|${epoch}|${rootKeyId}`);
+export async function unwrapEscrow(rk: CryptoKey, blob: Uint8Array, userId: string, epoch: number, rootKeyId: string) {
+  return open(rk, blob, escrowAad(userId, epoch, rootKeyId));
 }
+
+const shareAad = (userId: string, epoch: number) => {
+  checkAad(userId, epoch);
+  return `usershare|${userId}|${epoch}`;
+};
 
 /** userShareUnderVk (48 B) = AES-GCM(VK, S_user, AAD usershare|userId|epoch). */
-export function wrapUserShare(vk: VaultKey, sUser: Uint8Array, userId: string, epoch: number) {
-  return seal(vk.aes, sUser, `usershare|${userId}|${epoch}`);
+export async function wrapUserShare(vk: VaultKey, sUser: Uint8Array, userId: string, epoch: number) {
+  return seal(vk.aes, sUser, shareAad(userId, epoch));
 }
 
 // ---------------------------------------------------------------- dispositivo
@@ -289,13 +333,16 @@ export function generateDeviceKey(): Promise<CryptoKey> {
   return subtle().generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']) as Promise<CryptoKey>;
 }
 
-const deviceAad = (userId: string, epoch: number) => `${P}device|${userId}|${epoch}`;
+const deviceAad = (userId: string, epoch: number) => {
+  checkAad(userId, epoch);
+  return `${P}device|${userId}|${epoch}`;
+};
 
 /** shareEnc = AES-GCM(devKey, serverShare, AAD device|userId|epoch). */
-export function encryptShare(devKey: CryptoKey, serverShare: Uint8Array, userId: string, epoch: number) {
+export async function encryptShare(devKey: CryptoKey, serverShare: Uint8Array, userId: string, epoch: number) {
   return seal(devKey, serverShare, deviceAad(userId, epoch));
 }
 
-export function decryptShare(devKey: CryptoKey, shareEnc: Uint8Array, userId: string, epoch: number) {
+export async function decryptShare(devKey: CryptoKey, shareEnc: Uint8Array, userId: string, epoch: number) {
   return open(devKey, shareEnc, deviceAad(userId, epoch));
 }
