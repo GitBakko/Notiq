@@ -912,3 +912,56 @@ Commit: T1 `95c1814`, T3 `31a097f`, T4 `3591b99`, T2 nel commit seguente. Ogni t
 - controllare il tipo di `userId`/`rootKeyId`;
 - validare `rootPrivateKey`, che deve essere un `KeyObject` privato `secp384r1` oppure PKCS#8, altrimenti `invalidSealInput`;
 - aggiungere test sul materiale di chiave non valido.
+
+## Addendum dopo la review di T5-T12 (21/10)
+
+Commit: T5 `ef2b841`, T7 `1e7ad11` (più un follow-up), T8 `4cccc2a`, T10 `64c0914`, parte vite di T12 `32c7453`, T6 `e438df5`, `no-store` sulle risposte vault `b2668e1`, T9 `3c990e1`. T11 e T12 (TIER, diff approvati dall'utente in due versioni) sono nel commit seguente.
+
+**Decisioni che cambiano il piano**
+- **Cache Workbox (§5.5).** Il predicato esclude tutto `/api/notes/` (e non solo `/api/notes/:id`) oltre a `/api/vault/`. `GET /api/notes/:id/versions` restituisce il content di ogni versione, comprese quelle in chiaro delle note vault legacy. La lista `/api/notes` resta in cache. All'avvio, una volta per versione dell'app, `main.tsx` chiama `purgeApiCache()`: le voci salvate dal SW precedente (keyring, note in chiaro) non restano per 24 h.
+- **`lib/apiCache.ts`.** Modulo senza import con `purgeApiCache` e `purgeVaultCache`, usato da `vaultApi.ts`, `authStore.ts` e `main.tsx` (niente cicli con `api.ts`).
+- **`Cache-Control: no-store`** su tutte le risposte `/api/vault/*`, con un hook `onSend` in `routes/vault.ts`. Non va inviato come header di richiesta: non è CORS-safelisted, e in dev l'API è cross-origin.
+- **`vaultStore` (T11).**
+  - `lockVault()` restituisce `Promise<void>`. Lo stato si azzera in modo sincrono, poi `Promise.allSettled` sui flusher, con gli errori loggati.
+  - `unlock()` con un vault già sbloccato blocca prima, così i flusher cifrano con le chiavi vecchie.
+  - `setKeyringCache` salva solo i campi di `VaultUserCache` e scarta `wrappedVkPin` con offline OFF.
+  - Listener `storage`: rehydrate su `vault-storage`, lock quando il token di `auth-storage` sparisce (logout in un'altra scheda).
+- **`logout` (T12).** Prima `lockVault()`, poi via token e utente, poi `clearLegacy`, `purgeApiCache`, `queryClient.clear()`.
+- **Vincolo per T18.** Il flusher pre-lock di `VaultNoteEditor` scrive l'envelope in locale (Dexie + syncQueue), mai via REST: al logout il token non c'è più.
+- **`vaultCrypto` (T7).**
+  - Un solo validatore per ogni costruttore di AAD o info: epoch intero 0..999999999; userId, noteId, noteType e rootKeyId non vuoti e senza separatore. Il contratto degli errori resta di 4 codici.
+  - La chiave HKDF di VK ha solo `deriveKey`: con `deriveBits` un attaccante con XSS avrebbe potuto esportare i byte di `K_note`. Resta il limite di `deriveKey` con `extractable`.
+  - V2 è prodotto e verificato dal `sealRootShare` del frontend, con lo sha256 incrociato sui due letterali.
+- **`argon2` (T5).** Un solo helper `rawArgon2` in `argon2Core.ts`, usato sia dal Worker sia dal fallback: il KAT copre il codice del Worker. `deriveS` accetta solo un `Uint8Array` di 16 B.
+- **Policy del PIN (T9).** Blocklist con i prefissi di 4-5 lettere delle parole lunghe. In più rifiuta:
+  - una parola in qualunque posizione;
+  - un carattere ripetuto 3 o più volte;
+  - blocchi ripetuti, anche non adiacenti;
+  - 3 o meno caratteri distinti;
+  - righe e colonne di tastiera, anche intercalate a cifre;
+  - nomi di 3 lettere;
+  - nomi con accenti, normalizzati prima del confronto.
+  Chiusa dopo 2 round di red-team per decisione dell'utente: è una difesa in profondità.
+
+**Finding respinto**
+- T12 vite, red-team MAJOR: `/api/share/notes/accepted` e `/api/search` in `api-cache` con testo in chiaro. Sono note non vault, già in chiaro in IndexedDB per l'offline (design dell'app). L'invariante del piano riguarda il testo in chiaro del vault, e le note vault non si condividono.
+
+**Residui accettati**
+- Lista `/api/notes` in cache con titoli e `searchText` delle note vault legacy, fino alla migrazione. Si chiude con `/vault/migrate`.
+- Il PDF del Kit usa Helvetica/Courier WinAnsi: i caratteri fuori Latin-1 diventano `?`.
+- Il test di App per il bench non ha un controllo positivo (una route dentro `AppLayout` che faccia partire il sync).
+- I flusher pre-lock al logout causato da un 401 non hanno più il token: per questo il vincolo su T18 (scrittura locale).
+
+**Da fare in T16 (Kit):** tenere il Kit solo nello stato del componente, `URL.revokeObjectURL` del PDF alla chiusura, mai in Dexie, localStorage o log, `fill(0)` del `Uint8Array` dopo l'uso.
+
+**Chiavi i18n da aggiungere in T24** (en.json e it.json, coperte da `i18nVaultKeys.test.ts`; l'ambito del test va esteso alle `errors.common.*`):
+- `errors.vault.setupDisabled`, `errors.vault.plaintextRequired`, `errors.vault.invalidPayload`, `errors.vault.rateLimited`, `errors.vault.unavailable`, `errors.vault.locked`;
+- `errors.common.networkError`, `errors.common.unknownError`;
+- `vault.kit.errors.invalidLength`, `vault.kit.errors.invalidChar`, `vault.kit.errors.checksum`, `vault.kit.errors.pdfOverflow`;
+- `vault.pinPolicy.format`, `.date`, `.sequence`, `.repetition`, `.common`, `.personal`;
+- inoltre il 409 `restoreConflict` va mappato in `VersionHistoryModal.tsx` (T23).
+- **T11, terzo giro del red-team (OK).** Il flusher riceve il contesto catturato `{ keys, userId, epoch }` e non deve leggere `userId`/`epoch` dagli store (vincolo per T18). Dopo il rehydrate da un'altra scheda il vault si blocca se `byUser[unlockedUserId]` manca, non è `READY` o ha un epoch diverso. Anche `localStorage.clear()` (evento `storage` con `key` null) blocca.
+- **Backlog per T13 (`vaultSession`), MINOR.** Un cambio utente senza logout (`/login` → `setAuth(u2)`, anche in un'altra scheda) lascia sbloccato il vault di u1. Nessuna chiave viene usata per u2: `getKeysFor` fallisce chiuso e la sync filtra per `userId`. Da fare: in `setAuth` e nel listener `auth-storage`, `lockVault()` se `unlockedUserId` è diverso dal nuovo utente (tocca `authStore.ts`, TIER 2).
+- **Residui accettati (NIT).**
+  - `removeItem('vault-storage')` in un'altra scheda non blocca: nessun codice lo fa, e `clear()` è già coperto.
+  - Durante il rollout una scheda col bundle pre-v3 riscrive `vault-storage` senza `byUser`. Al reload successivo lo sblocco offline richiede di nuovo la rete.

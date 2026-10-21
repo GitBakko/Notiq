@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as userService from '../features/user/userService';
 import queryClient from '../lib/queryClient';
+import { purgeApiCache } from '../lib/apiCache';
 import { useVaultStore } from './vaultStore';
 
 interface User {
@@ -72,8 +73,13 @@ export const useAuthStore = create<AuthState>()(
         await userService.changePassword(token, { oldPassword, newPassword });
       },
       logout: () => {
+        // [BACKUP] 2026-10-21 — resetVault() cancellava anche la cache del keyring; v3 la mantiene (byUser intatto)
+        // useVaultStore.getState().resetVault();
+        const vault = useVaultStore.getState();
+        void vault.lockVault();
         set({ user: null, token: null });
-        useVaultStore.getState().resetVault();
+        vault.clearLegacy();
+        void purgeApiCache();
         queryClient.clear();
       },
     }),
