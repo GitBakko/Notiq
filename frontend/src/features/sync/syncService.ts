@@ -3,7 +3,7 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import type { Notebook } from '../notebooks/notebookService';
 import type { Tag } from '../tags/tagService';
-import type { LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard, SyncQueueItem } from '../../lib/db';
+import type { LocalNote, LocalTaskList, LocalTaskItem, LocalKanbanBoard, LocalKanbanColumn, LocalKanbanCard, SyncQueueItem } from '../../lib/db';
 import type { KanbanBoardListItem, KanbanBoard } from '../kanban/types';
 import toast from 'react-hot-toast';
 import i18n from 'i18next';
@@ -176,16 +176,32 @@ export const syncPull = async () => {
         const existingNoteIds = filteredNotesToPut.map(n => n.id);
         const existingNotes = await db.notes.bulkGet(existingNoteIds);
         const localContentMap = new Map<string, string>();
+        // Vault v3: the server never sends vaultBaseHash (it is the local CAS base of the next push); bulkPut replaces
+        // the whole row, so carry it over like the content.
+        const localVaultBaseHashMap = new Map<string, string>();
+        const localVaultSentHashMap = new Map<string, string>();
         for (const existing of existingNotes) {
+          if (existing?.vaultSentHash) {
+            localVaultSentHashMap.set(existing.id, existing.vaultSentHash);
+          }
           if (existing?.content) {
             localContentMap.set(existing.id, existing.content);
           }
+          if (existing?.vaultBaseHash) {
+            localVaultBaseHashMap.set(existing.id, existing.vaultBaseHash);
+          }
         }
 
-        const notesWithPreservedContent = filteredNotesToPut.map(n => ({
-          ...n,
-          content: n.content ?? localContentMap.get(n.id) ?? '',
-        }));
+        const notesWithPreservedContent = filteredNotesToPut.map(n => {
+          const vaultBaseHash = localVaultBaseHashMap.get(n.id);
+          const vaultSentHash = localVaultSentHashMap.get(n.id);
+          return {
+            ...n,
+            content: n.content ?? localContentMap.get(n.id) ?? '',
+            ...(vaultBaseHash ? { vaultBaseHash } : {}),
+            ...(vaultSentHash ? { vaultSentHash } : {}),
+          };
+        });
 
         // Update local DB with server notes (wins over synced)
         await db.notes.bulkPut(notesWithPreservedContent);
@@ -537,6 +553,49 @@ export const syncPull = async () => {
 
 
 import { useAuthStore } from '../../store/authStore';
+import { useVaultStore } from '../../store/vaultStore';
+import { ENVELOPE_RE, sha256hex } from '../../utils/vaultCrypto';
+
+/**
+ * Vault v3 (plan 5.0): the vault push/retry rules below apply only when this user's keyring is READY in the local
+ * cache. Without it every payload (titles included) leaves exactly as before, and the server decides.
+ */
+function isV3Active(userId: string): boolean {
+  const c = useVaultStore.getState().byUser[userId];
+  return c?.status === 'READY' && Number.isInteger(c.epoch);
+}
+
+/** The server's `errors.vault.<x>` 422 key as the queue `lastError` `vault:<x>` (reconcile resolves these items). */
+const vaultErrorOf = (error: unknown): string | undefined => {
+  const msg = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  return typeof msg === 'string' ? /^errors\.vault\.(\w+)$/.exec(msg)?.[1] : undefined;
+};
+
+type VaultPlan =
+  | { kind: 'hold' } // content is not an envelope: the item stays pending
+  | { kind: 'skip' } // the server already holds exactly this content: no call
+  | { kind: 'send'; body: Record<string, unknown>; hash?: string };
+
+/**
+ * Plan 5.7.3-5.7.4: what a NOTE CREATE/UPDATE on a vault row sends. The queued payload is never trusted for the
+ * content: Dexie holds the newest envelope, so N offline edits collapse into one PUT (the following items find the
+ * server already at the same hash and skip the call). null = rules do not apply, push the item as-is.
+ */
+async function planVaultNotePush(item: SyncQueueItem, local: LocalNote | undefined): Promise<VaultPlan | null> {
+  if (item.entity !== 'NOTE' || item.type === 'DELETE' || !isV3Active(item.userId)) return null;
+  const data = (item.data ?? {}) as Record<string, unknown>;
+  const isCreate = item.type === 'CREATE';
+  if (!(local?.isVault === true || (isCreate && data.isVault === true))) return null;
+  if (!isCreate && !('content' in data)) return null;
+  const content = local?.content ?? (isCreate ? data.content : undefined);
+  if (typeof content !== 'string' || !ENVELOPE_RE.test(content)) return { kind: 'hold' };
+  if (isCreate) return { kind: 'send', body: { ...data, content, title: '' } };
+  const hash = await sha256hex(content);
+  const { title: _title, ...rest } = data;
+  void _title; // the title of a vault note is never sent (it lives inside the envelope)
+  if (hash === local?.vaultBaseHash && Object.keys(rest).every(k => k === 'content')) return { kind: 'skip' };
+  return { kind: 'send', body: { ...rest, content, baseHash: local?.vaultBaseHash }, hash };
+}
 
 // [BACKUP] 2026-09-29 — kanban 3.4: was `let isSyncing = false;`. A call made while a
 // push was running returned false at once and a follow-up ran 1 s later via
@@ -903,15 +962,19 @@ const pushQueueOnce = async (): Promise<boolean> => {
   // payload forever); a later UPDATE that covers its keys supersedes it (dropSupersededItems).
   const blocked = new Set<string>();
   const failedCreate = new Set<string>();
+  // Vault v3 (5.7.7): a 'vault:*' failure (or a vault item waiting for an envelope) holds back the later items of the
+  // note except DELETE, like a failed CREATE: pushing them would write over a state vaultReconcile has yet to resolve.
+  const vaultHeld = new Set<string>();
   for (const item of queue) {
     const entityKey = `${item.entity}:${item.entityId}`;
     // Failed items are terminal — only an explicit user retry (retryFailedSyncItems) re-enables them
     if (item.status === 'failed') {
       if (item.type === 'CREATE') failedCreate.add(entityKey);
+      else if (item.lastError?.startsWith('vault:')) vaultHeld.add(entityKey);
       continue;
     }
     if (blocked.has(entityKey)) continue;
-    if (failedCreate.has(entityKey) && item.type !== 'DELETE') continue;
+    if ((failedCreate.has(entityKey) || vaultHeld.has(entityKey)) && item.type !== 'DELETE') continue;
     // Skip items in backoff period
     if (!shouldRetry(item.id)) { blocked.add(entityKey); continue; }
 
@@ -920,6 +983,10 @@ const pushQueueOnce = async (): Promise<boolean> => {
     if (item.entity === 'NOTE' && (item.type === 'UPDATE' || item.type === 'CREATE') && await hasQueuedReferenceCreate(item)) { blocked.add(entityKey); continue; }
 
     let contentDeferred = false;
+    // Vault v3 (5.7): set only for a NOTE CREATE/UPDATE on a vault row with an active keyring.
+    let vaultPlan: VaultPlan | null = null;
+    let vaultRowUpdatedAt: string | undefined;
+    let createdContent: unknown;
     try {
       if (item.entity === 'NOTE') {
         // Safety: never push shared notes to REST API
@@ -929,14 +996,31 @@ const pushQueueOnce = async (): Promise<boolean> => {
           clearFailure(item.id);
           continue;
         }
+        // read BEFORE the request: 5.7.5 marks the row synced only if it did not move during the PUT
+        vaultRowUpdatedAt = localNote?.updatedAt;
+        vaultPlan = await planVaultNotePush(item, localNote);
+        if (vaultPlan?.kind === 'hold') {
+          // Not an envelope (yet): stay pending, attempts untouched. vaultReconcile / the editor resolves it.
+          if (item.id && item.lastError !== 'vault:notEnvelope') await db.syncQueue.update(item.id, { lastError: 'vault:notEnvelope' });
+          vaultHeld.add(entityKey);
+          continue;
+        }
+        // Lost-response marker, written BEFORE the request. Touches neither updatedAt nor syncStatus: the synced rule
+        // below compares updatedAt before/after the PUT, and this write must not look like an edit.
+        if (vaultPlan?.kind === 'send' && typeof vaultPlan.body.content === 'string') {
+          await db.notes.update(item.entityId, { vaultSentHash: await sha256hex(vaultPlan.body.content) });
+        }
         if (item.type === 'CREATE') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { id, ...data } = item.data as any;
           // R5: current notebook from Dexie (the payload may predate a move of the note)
-          await api.post('/notes', { ...data, notebookId: localNote?.notebookId ?? data.notebookId, id });
+          const res = await api.post('/notes', { ...(vaultPlan?.kind === 'send' ? vaultPlan.body : data), notebookId: localNote?.notebookId ?? data.notebookId, id });
+          createdContent = res?.data?.content;
         } else if (item.type === 'UPDATE') {
-          const res = await api.put(`/notes/${item.entityId}`, item.data);
-          contentDeferred = res?.data?.contentDeferred === true;
+          if (vaultPlan?.kind !== 'skip') {
+            const res = await api.put(`/notes/${item.entityId}`, vaultPlan?.kind === 'send' ? vaultPlan.body : item.data);
+            contentDeferred = res?.data?.contentDeferred === true;
+          }
         } else if (item.type === 'DELETE') {
           await api.delete(`/notes/${item.entityId}`);
         }
@@ -1070,6 +1154,15 @@ const pushQueueOnce = async (): Promise<boolean> => {
         }
       }
 
+      // Vault v3 (5.7.5): the server now holds this envelope; its hash is the CAS base of the next push. UPDATE: what
+      // was sent. CREATE: what the server answered (also when the id already existed, P2002). 'skip' sent nothing.
+      if (vaultPlan?.kind === 'send') {
+        const base = item.type === 'CREATE'
+          ? (typeof createdContent === 'string' ? await sha256hex(createdContent) : undefined)
+          : vaultPlan.hash;
+        if (base) await db.notes.update(item.entityId, { vaultBaseHash: base });
+      }
+
       // S4: read before clearFailure() drops it
       const refreshedAt = item.id ? createRefreshedAt.get(item.id) : undefined;
       // If successful, remove from queue and clear backoff
@@ -1098,7 +1191,12 @@ const pushQueueOnce = async (): Promise<boolean> => {
             // If currentNote.updatedAt > item.createdAt, the user has typed more, so we keep 'updated' status.
             const updatedAtMs = currentNote ? new Date(currentNote.updatedAt).getTime() : 0;
 
-            if (currentNote && updatedAtMs <= Math.max(item.createdAt, refreshedAt ?? 0)) {
+            // Vault v3 (5.7.5): the pushed content is Dexie's newest, not the item's snapshot, so item.createdAt says
+            // nothing: synced only if the row did not move since it was read before the request.
+            const settled = vaultPlan
+              ? currentNote?.updatedAt === vaultRowUpdatedAt
+              : updatedAtMs <= Math.max(item.createdAt, refreshedAt ?? 0);
+            if (currentNote && settled) {
               await db.notes.update(item.entityId, { syncStatus: 'synced' });
             }
           } else if (item.entity === 'NOTEBOOK') {
@@ -1204,8 +1302,12 @@ const pushQueueOnce = async (): Promise<boolean> => {
         // the backend's 500-char cap). Mark it 'failed' immediately so
         // SyncStatusIndicator surfaces it instead of looping silently.
         console.error('Sync Push: validation rejected by server, marking failed:', item.entity, item.entityId, error);
+        // Vault v3 (5.7.6, whatever the local keyring cache says: 5.0): a NOTE 422 `errors.vault.<x>` is kept as
+        // 'vault:<x>' for vaultReconcile, and holds the later items of the note in this same run.
+        const vaultKey = status === 422 && item.entity === 'NOTE' ? vaultErrorOf(error) : undefined;
+        if (vaultKey) vaultHeld.add(entityKey);
         if (item.id) {
-          await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: 'validation' });
+          await db.syncQueue.update(item.id, { status: 'failed' as const, lastError: vaultKey ? `vault:${vaultKey}` : 'validation' });
         }
         clearFailure(item.id);
       } else if (status === 403) {
@@ -1285,6 +1387,14 @@ export const retryFailedSyncItems = async (): Promise<void> => {
       for (const id of await dropOrphanedEntityItems(item)) dropped.add(id);
       continue;
     }
+    // Vault v3 (5.7.8): vaultReconcile resolves these, a plain retry would only fail again. 'vault:*' items always;
+    // legacy items (plaintext content or a title on a vault row) only with an active keyring: without one the old
+    // payload is still what the server accepts, so those keep their retry.
+    if (item.lastError?.startsWith('vault:')) continue;
+    if (item.entity === 'NOTE' && item.type !== 'DELETE' && isV3Active(currentUserId)) {
+      const row = await db.notes.get(item.entityId);
+      if (row?.isVault && (!ENVELOPE_RE.test(row.content ?? '') || !!row.title)) continue;
+    }
     // clearFailure(), not a bare failureCounts.delete(): it also drops any
     // stale transportFailureSince entry, so a fresh transport failure right
     // after this retry gets its own 10-minute window instead of inheriting
@@ -1306,6 +1416,10 @@ export const retryFailedSyncItems = async (): Promise<void> => {
           if (n && !n.isVault && !n.isEncrypted && !p?.isVault && !p?.isEncrypted) {
             fields = { title: n.title, content: n.content };
             createRefreshedAt.set(item.id, Date.now());
+          } else if (n?.isVault && isV3Active(currentUserId) && ENVELOPE_RE.test(n.content ?? '')
+            && Number(n.content.split('.')[1]) === useVaultStore.getState().byUser[currentUserId]?.epoch) {
+            // Vault v3 (5.7.8): an envelope of the cached epoch replaces the stale payload; the title is never sent.
+            fields = { title: '', content: n.content, isEncrypted: true };
           }
         } else if (item.entity === 'NOTEBOOK') {
           const nb = await db.notebooks.get(item.entityId);

@@ -965,3 +965,37 @@ Commit: T5 `ef2b841`, T7 `1e7ad11` (più un follow-up), T8 `4cccc2a`, T10 `64c09
 - **Residui accettati (NIT).**
   - `removeItem('vault-storage')` in un'altra scheda non blocca: nessun codice lo fa, e `clear()` è già coperto.
   - Durante il rollout una scheda col bundle pre-v3 riscrive `vault-storage` senza `byUser`. Al reload successivo lo sblocco offline richiede di nuovo la rete.
+
+## Addendum dopo T13, T21a e T14 (22/10)
+
+Commit: T13 `4a0ae78`, T21a `c2a1ee9`; T14 e la CAS idempotente sono nei commit seguenti.
+
+**T13 (`lib/vaultSession.ts`, `lib/deviceKeyStore.ts`)**
+- `setup` e `regenerateKit` ricevono `rootKey: {id, ecdhSpki}`: la UI (T16/T22) lo passerà quando esiste `utils/vaultRootKeys.ts` (T25).
+- `shares[userId]` contiene anche `wrappedVkSigKey`, cifrato sotto VK, necessario allo sblocco offline.
+- `changePin` e `regenerateKit` chiedono il PIN attuale: servono i byte grezzi di VK.
+- Marker `pending` in due slot separati, `userId:kit` e `userId:pin`: il cambio PIN non cancella il promemoria del Kit.
+- Cambio utente, nella stessa scheda (subscribe ad `authStore`) o in un'altra (listener `storage`): `lockVault` se l'utente sbloccato è diverso.
+- `removeFromDevice` copre solo la sessione. Il rifiuto con item pending/failed e la cancellazione delle righe Dexie restano a T22.
+
+**T21a.** Transitorio voluto: finché non arrivano T17/T18/T19/T21, le guardie di `noteService` rifiutano i vecchi percorsi vault (`NoteEditor` su riga vault, `CredentialForm`, creazione da `VaultPage`). In questo intervallo gli E2E del vault sul branch possono fallire. Il branch non è rilasciabile prima di P2 completo (T25).
+
+**T14 (`syncService.ts` e `db.ts`, TIER 1, diff approvati)**
+- In `db.ts` solo i tipi `vaultBaseHash?` e `vaultSentHash?`; nessuna versione Dexie (`version(` = 15).
+- `vaultSentHash` è l'hash dell'envelope inviato. Viene scritto sulla riga **prima** della PUT, senza toccare `updatedAt` né `syncStatus`, e la pull lo preserva.
+- **CAS idempotente sul server** (`assertVaultContent`): un contenuto identico a quello corrente è un replay, quindi successo anche con `baseHash` vecchio. I controlli `notReady`/`plaintextRejected`/`stale` restano prima.
+
+**Obblighi per T15 (nati dalla review di T14)**
+- **`vault:conflict` dopo una risposta persa** (PUT v1 applicata, risposta persa, l'utente scrive v2, retry con la base di v0).
+  - Prima di creare la copia, leggere il contenuto del server. Se `sha256(server) === row.vaultSentHash`, non è un conflitto: `vaultBaseHash = sha256(server)`, item di nuovo pending, nessuna copia.
+  - Test: nessuna copia nel caso risposta persa più modifiche; copia nel caso di vero conflitto.
+- **Item bloccati per sempre su `vault:stale`/`vault:notReady`** (reset da un altro dispositivo, `RESET_PENDING`).
+  - Il push blocca gli item successivi e il retry li salta, ma 5.8 risolve solo conflict e forma legacy. Il reconcile deve togliere o riattivare gli item `vault:stale`/`vault:notReady` di una nota quando la riga è cifrata con l'epoch corrente del keyring.
+  - Con keyring non READY li lascia.
+  - Test: `vault:stale` fallito più riga ricifrata, poi la push parte.
+
+**Residui accettati (T14)**
+- **CREATE con P2002 e risposta del server diversa dall'inviato** (un altro dispositivo ha modificato la nota fra il primo POST e il retry): `vaultBaseHash = sha256(server)` e la riga resta con il contenuto locale. È la scelta del piano: l'alternativa romperebbe il caso comune «risposta persa + modifica locale».
+- **Titolo in chiaro inviato da un item legacy senza `content`** (UPDATE `{title, isPinned}` di un bundle pre-P2) con keyring READY. Il server lo rifiuta e non lo salva. Il passo 0 della migrazione svuota la coda prima del keyring, quindi può capitare solo con una scheda col bundle vecchio dopo la migrazione.
+
+**Chiavi i18n nuove per T24:** `errors.vault.kitNotUpdated`, `errors.vault.offlineUnavailable`, `errors.vault.notReady`, `errors.vault.invalidPin`.
