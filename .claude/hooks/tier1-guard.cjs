@@ -15,6 +15,8 @@ const TIER1 = [
   'frontend/src/lib/db.ts',
   'frontend/src/utils/crypto.ts',
   'frontend/src/store/vaultStore.ts',
+  'frontend/src/utils/vaultCrypto.ts',
+  'frontend/src/lib/vaultReconcile.ts',
   'backend/src/hocuspocus.ts',
   'backend/src/utils/ydoc.ts',
   'backend/prisma/schema.prisma',

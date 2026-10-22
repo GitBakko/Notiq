@@ -543,6 +543,11 @@ Il hotfix P0 non chiude questi casi; restano aperti fino a P2 (i primi due, fino
   - e2e: `vault-kit.spec.ts` (cerimonia + rigenerazione);
   - e2e: `vault-multidevice.spec.ts`, `vault-offline.spec.ts` (`context.setOffline`), `vault-migration.spec.ts` (dati legacy seed + verifica sul DB), `vault-conflict.spec.ts`;
   - da rilanciare: `offline-first`, `dexie`, `encryption`, `notes`, `collaboration` (`:249` è instabile: confermarlo con `git stash`).
+- **Stato P2 (22/10), dove il codice si discosta da questo design:**
+  - Sul branch `feat/vault-p2` sono fatti T0-T24b; il resto e le decisioni stanno in `docs/superpowers/plans/2026-10-22-HANDOFF.md`.
+  - Prevale il piano `2026-10-02-vault-p2-plan.md` (revisione 4): la tabella delle deviazioni è nel suo §1, le decisioni D1-D13 nel §13, il runbook nel §11, gli addendum in fondo.
+  - Cambiano rispetto a questo design, in particolare: la rotazione di VK è fuori da P2 (D1, il "cambio PIN (+ rotazione VK facoltativa)" qui sopra non c'è); `vaultApi` e `vaultSession` stanno in `lib/`, non in `features/vault/` (§7.3); l'editor del vault è un componente dedicato (`VaultNoteEditor`) e non una prop `vaultCodec` di `NoteEditor`; lo spostamento dentro e fuori dal vault è solo online; il kill switch `VAULT_SETUP_USERS` e la rotta di benchmark Argon2id (solo SUPERADMIN) non erano previsti.
+  - Il riconciliatore (§6.2, §6.3 di questo design e §5.6/§5.8 del piano) è sostituito dalla spec `2026-10-22-vault-t15-reconcile-spec.md`: tabella dei casi T1-T15 e Web Lock per nota al posto del registro `openVaultNoteIds`.
 
 ### P3: reset reale
 

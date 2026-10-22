@@ -89,3 +89,59 @@ Piano: `docs/superpowers/plans/2026-09-30-vault-p1-plan.md` §6 + addendum. P1 a
 9. **Chiavi pubbliche.** **Non** committarle ora: vanno nel branch P2 (`backend/src/utils/vaultRootKeys.ts` + `frontend/src/utils/vaultRootKeys.ts`, test di parità).
 
 **Rollback.** Ripristinare `dist` da `_backup_<ts>`; il DB resta com'è (migration additiva). Il `.env` live non viene toccato dal deploy: se lo si ripristina dal backup, reinserire il pepper.
+
+## Rilascio vault P2 (client E2EE, un solo rilascio)
+Piano: `docs/superpowers/plans/2026-10-02-vault-p2-plan.md` §11 + addendum. Reconcile: `docs/superpowers/plans/2026-10-22-vault-t15-reconcile-spec.md`. **Nessuna migration**: `migrate deploy` deve dire "No pending migrations". Il bundle nuovo non ha più lo sblocco legacy: dal deploy all'apertura del canary l'account con vault legacy (oggi uno solo, l'utente, lo stesso SUPERADMIN del canary) NON apre il vault, né online né offline. Stima 2-4 h, al massimo 1 giorno lavorativo.
+
+**Punto di non ritorno: il primo keyring READY in prod.** Prima si torna al `dist` precedente. Dopo si va solo avanti (forward-fix), con un `pg_dump` fresco (vedi passo 8) o con SQL per utente.
+
+**Prerequisiti.** Branch `feat/vault-p2` completo: T25 (chiavi pubbliche reali `rk_68a265761e7e37c7`, ricevute dall'utente) e T26 (e2e) fatti. T25 toglie il lock P1: da quel commit un keyring READY è possibile, quindi il branch si unisce a `main` solo con tutto P2. Prima del passo 4 lanciare `/notiq-release` (bump versione + changelog + whatsNew): `Build-Package.ps1` legge la versione da `frontend/package.json` e i due zip hanno la stessa versione. Il tag git va solo sul pacchetto finale: quello del passo 4 se t = 3, quello del passo 7 se t > 3. Le chiavi si fissano in `backend/src/utils/vaultRootKeys.ts` e `frontend/src/utils/vaultRootKeys.ts`, con il test di parità.
+
+1. **Locale.**
+   - BE: `cd backend; npm test; npx tsc --noEmit; npm run lint`. FE: `cd frontend; npx vitest run; npx tsc -p tsconfig.app.json --noEmit; npm run lint; npm run build`.
+   - Dopo la build: `grep -c "api/vault/" frontend/dist/sw.js` deve dare almeno 1 (il predicato Workbox serializzato esclude `/api/vault/`). `grep -rn "rk_e434f78b8f179ab3" backend/src frontend/src` deve essere vuoto.
+   - E2E con `VAULT_SETUP_USERS=*` nel `backend/.env` di dev: i 5 nuovi `vault-{kit,multidevice,offline,migration,conflict}`, `vault-overwrite` adattato, più `offline-first`, `dexie`, `encryption`, `notes`, `collaboration`, `sharing`. Instabili noti: `collaboration.spec.ts:249` e `:288`, `auth.spec.ts:41`; un FAIL si conferma su `main` pulito con `git stash`.
+   - T6 (bench) verde. D4 (il valore di `t`) si chiude al passo 6, con la misura in prod.
+2. **Pre-deploy, su Postgres di prod** (annotare i risultati):
+   - `SELECT count(*) FROM "VaultKeyring";` → 0.
+   - `SELECT "userId", count(*) FROM "Note" WHERE "isVault" AND content NOT LIKE 'nv3.%' GROUP BY 1;` → utenti con vault legacy.
+   - `SELECT n.id FROM "Note" n WHERE n."isVault" AND EXISTS (SELECT 1 FROM "Attachment" a WHERE a."noteId" = n.id);` → note vault con allegati (il corpo si migra, gli allegati si segnalano: D3).
+   - `SELECT "userId", count(*) FROM "Note" GROUP BY 1 HAVING count(*) > 50;` → utenti toccati da `GET /notes?all=1` (il 21/10 era vuoto).
+   - `SELECT count(*) FROM "Note" WHERE "noteType" = 'CREDENTIAL' AND "searchText" IS NOT NULL;` → credenziali vecchie con testo in chiaro nell'indice di ricerca. Il codice nuovo non lo rigenera, ma le righe esistenti si ripuliscono solo con una scrittura in prod: farla (`UPDATE "Note" SET "searchText" = NULL WHERE "noteType" = 'CREDENTIAL' AND "searchText" IS NOT NULL;`, il conteggio deve coincidere con quello della query sopra) solo dopo `pg_dump` e con conferma esplicita dell'utente.
+   - Lock su `"User"`: `SELECT l.pid, l.mode, a.query FROM pg_locks l JOIN pg_stat_activity a USING (pid) WHERE l.relation = '"User"'::regclass;` (P2 non ha migration: serve solo se un'altra sessione tiene lock).
+   - Id del SUPERADMIN: `SELECT id, email FROM "User" WHERE role = 'SUPERADMIN';`. Annotarlo: è il `<id SUPERADMIN>` / `<admin>` del passo 8.
+3. **`.env` di prod.** In `E:\www\Notiq\backend\.env` lasciare `VAULT_SETUP_USERS=` vuoto (o assente): `createKeyring` risponde 503 `errors.vault.setupDisabled` a tutti. Il deploy non tocca il `.env`, quindi il valore resta. Così nessun keyring READY può nascere prima del passo 8. Il kill switch chiude solo la creazione del keyring (`POST /keyring`, e `GET /keyring` dà `setupAllowed:false`): `/migrate`, `/items` e `/finalize` controllano solo `guard.ready`, quindi chi ha già un keyring READY continua a migrare anche con la variabile svuotata.
+4. **Pacchetto (primo deploy, senza tag).**
+   - `git log --oneline v1.13.3..HEAD` (la build legge il working tree), `Build-Package.ps1`, `Deploy-Server.ps1 -DryRun`, `Deploy-Server.ps1`. Il `pg_dump` deve completarsi; health check ok.
+   - **Annotare il timestamp `ts1` di `_backup_<ts1>`.** Il rollback pre-P2 è sempre `_backup_<ts1>`, non quello dell'eventuale secondo deploy (che contiene già il primo `dist` P2).
+   - Annotare SHA256 ed entry `index-*.js` del pacchetto nell'addendum D4 del piano (i due zip possono avere la stessa versione in `frontend/package.json`).
+5. **Bundle.** Provare che sia servito l'entry nuovo (hash `index-*.js` uguale a `frontend/dist/index.html`), poi hard reload. Su questo IIS un asset mancante risponde 200 con `index.html`, non 404.
+   - Con un JWT di test: `GET /api/vault/keyring` → 200 `NONE` con `setupAllowed:false`. Non provare `POST /api/vault/keyring` con un body finto: la validazione Zod risponde 400 prima del kill switch.
+6. **Misura (D4, D13), con `VAULT_SETUP_USERS` ancora vuoto.** Account SUPERADMIN, rotta `/admin/vault-bench`, sull'iPhone di riferimento (iPhone 12 o più recente, A14+; se ce n'è più d'uno, il più vecchio). Prima in Safari, poi nella PWA installata; schermo sempre acceso, nessun'altra app in primo piano. t da 3 a 10 in ordine crescente, a 64 MiB, con screenshot dopo ogni t (un OOM vero ricarica la pagina). Incollare il JSON nell'addendum D4.
+   - **t scelto = il massimo che rispetta ENTRAMBI i vincoli in Safari E nella PWA:** p95 a caldo al massimo 1,5 s (20 campioni) e sblocco a freddo al massimo 2 s (3 campioni, il peggiore). Minimo 3.
+   - Poi `SELECT count(*) FROM "VaultKeyring";` → 0.
+7. **Correzione di `t`.**
+   - t = 3: niente.
+   - t maggiore di 3: UN commit con `DEFAULT_KDF.t` (`frontend/src/utils/argon2.ts:4`) e il solo valore di `KDF_T_MIN` (`backend/src/services/vault.service.ts:199`, usata da `routes/vault.ts:16` e `vault.service.ts:302`). Verde `vault.keyring.test.ts` e `vault.service.test.ts` (i test con `t = KDF_T_MIN - 1` → 400 su POST e PUT devono passare col nuovo valore; nessuna chiamata contro prod). Poi `Build-Package.ps1` e `Deploy-Server.ps1` di nuovo (secondo deploy, **senza** `-SkipDbBackup`). Verificare il nuovo `index-*.js` con hard reload e il bench: `DEFAULT_KDF.t` uguale al t scelto. Annotare SHA256 ed entry anche di questo pacchetto. Il tag va solo qui.
+   - **STOP** se t = 3 già viola un vincolo o c'è OOM: rollback del `dist` da `_backup_<ts1>` (ammesso, perché non esiste nessun keyring) e si torna dall'utente. Ridurre `m` sotto 64 MiB è vietato dal controllo dei `kdfParams` e richiede una decisione nuova.
+8. **Canary SUPERADMIN.**
+   - **Prima di tutto** (rollback): `pg_dump` esplicito del DB, annotare il percorso (`<dump8>`), e salvare lo stato d'origine: `SELECT id, "isEncrypted", title, "noteType" FROM "Note" WHERE "userId" = '<admin>' AND "isVault";` (la colonna `isEncrypted` d'origine non sta in `NoteVersion`: `migrateItems` la forza a true).
+   - `VAULT_SETUP_USERS=<id SUPERADMIN>` in `.env`, poi `pm2 restart notiq-backend` (dotenv si legge al boot).
+   - Prima del setup, sul dispositivo del canary (browser del PC): hard reload, aprire il bench e controllare che `DEFAULT_KDF.t` e l'entry siano quelli del pacchetto deployato. Il pavimento server `KDF_T_MIN` è solo la rete di sicurezza.
+   - Migrazione nel browser (wizard). Prima di rigenerare il Kit annotare `SELECT md5("escrowBlob") FROM "VaultKeyring" WHERE "userId" = '<admin>';`.
+   - `SELECT content ~ '^nv3\.' AS env, title = '' AS t, "searchText" IS NULL AS s, "ydocState" IS NULL AS y, count(*) FROM "Note" WHERE "userId" = '<admin>' AND "isVault" GROUP BY 1,2,3,4;` → solo `true`, tranne le credenziali "bloccate con un PIN precedente" e gli item oltre 2 MiB (elencati dal wizard).
+   - `SELECT count(*) FROM "NoteVersion" v JOIN "Note" n ON n.id = v."noteId" WHERE n."userId" = '<admin>' AND n."isVault" AND v.content NOT LIKE 'nv3.%';` → 0 per gli id finalizzati.
+   - `SELECT "userId", status, epoch, "migrationState" FROM "VaultKeyring" WHERE "userId" = '<admin>';` → `READY`; `migrationState` è `DONE` solo se `legacyCount` è 0 (il cestino, le credenziali bloccate e gli item oltre 2 MiB lo tengono in `IN_PROGRESS`: atteso).
+   - I titoli si vedono decifrati nella lista vault. Telefono: sblocco con il PIN, poi offline. Rigenerazione del Kit → `md5("escrowBlob")` diverso da quello annotato.
+   - Cache Storage (build di prod): DevTools, `api-cache` senza `/api/vault/` né `/api/notes/...`; dopo il logout `api-cache` non c'è.
+9. **Apertura.** `VAULT_SETUP_USERS=*`, `pm2 restart notiq-backend`. Fra i passi 4 e 9 gli altri utenti con vault legacy non accedono al vault: tenere la finestra corta.
+10. **Dopo l'apertura.**
+    - Query legacy settimanale (quella del passo 2, seconda voce); contattare chi non ha migrato.
+    - Retention dei dump che contengono ancora plaintext vault (design:335).
+    - Bundle 1.13.x ancora in cache dopo il keyring: i 422 compaiono come banner generico fino all'aggiornamento del SW; il reconcile assorbe gli item rimasti.
+11. **E2E dopo eventuali hotfix:** rieseguire quelli del passo 1.
+
+**Rollback P2.**
+- Prima del passo 8: ripristinare `dist` da `_backup_<ts1>`. `GET /notes?all=1` è opt-in e retrocompatibile.
+- Dopo il passo 8: la finestra per il rollback via SQL non esiste. Il wizard chiama `finalizeItems` subito dopo ogni batch verificato (`vaultMigration.ts`, in `sendBatch`) e `finalize` cancella le `NoteVersion` non `nv3.` (`vault.service.ts`, `finalize`). Finito il wizard l'unica via indietro è il ripristino dal dump.
+- Ripristino DB: usare `<dump8>` (preso subito prima del passo 8, senza keyring), non `_backup_<ts1>` (quest'ultimo vale per `dist`; un eventuale `_backup_<ts2>` ha un dump più recente ma ancora senza keyring). **Un ripristino completo perde le scritture di TUTTI gli utenti dopo il dump** (ore di misura e canary). Comandi: `pm2 stop notiq-backend`, `pg_restore` del dump in un DB temporaneo, poi o `--clean` sul DB di prod, o copia per utente delle righe del canary (`Note`, `NoteVersion`, `VaultKeyring` da cancellare) dal DB temporaneo; `UPDATE` completo = `content`, `title`, `searchText`, `ydocState`, `isEncrypted`, `noteType` dai valori d'origine. La procedura va concordata con l'utente prima di eseguirla.
