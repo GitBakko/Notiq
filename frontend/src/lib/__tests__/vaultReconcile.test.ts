@@ -963,6 +963,43 @@ describe('T6-T9 righe e item legacy', () => {
     expect(st.queue.filter(i => i.entityId === 'n1')).toHaveLength(0);
   });
 
+  it('T6 riga legacy synced con title "" (la pull lo azzera), server con t non vuoto e stesso c -> ADOPT, nessuna copia', async () => {
+    const srv = await enc('n1', 'Titolo server', doc('uguale'));
+    h.server.put('n1', srv);
+    putRow({ id: 'n1', content: doc('uguale'), title: '', syncStatus: 'synced', isEncrypted: false });
+
+    const r = await vaultReconcile();
+
+    expect(r.copies).toBe(0);
+    expect(copies(['n1'])).toHaveLength(0);
+    expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced' });
+  });
+
+  it('T6 riga legacy synced con titolo locale non vuoto e senza item -> 1 copia con il titolo locale', async () => {
+    const srv = await enc('n1', 'Titolo server', doc('uguale'));
+    h.server.put('n1', srv);
+    putRow({ id: 'n1', content: doc('uguale'), title: 'Titolo locale', syncStatus: 'synced', isEncrypted: false });
+
+    const r = await vaultReconcile();
+
+    expect(r.copies).toBe(1);
+    const [copy] = copies(['n1']);
+    expect(await decryptItem(copy.id, 'NOTE', copy.content, ctx)).toEqual({ t: 'Titolo locale (conflict)', c: doc('uguale') });
+  });
+
+  it('T6 riga legacy con titolo locale diverso dal server, stesso c -> copia come prima', async () => {
+    const srv = await enc('n1', 'Titolo server', doc('uguale'));
+    h.server.put('n1', srv);
+    putRow({ id: 'n1', content: doc('uguale'), title: 'Titolo locale', syncStatus: 'updated', isEncrypted: false });
+    item('UPDATE', 'n1', { title: 'Titolo locale', content: doc('uguale') }, failed('vault:plaintextRejected'));
+
+    const r = await vaultReconcile();
+
+    expect(r.copies).toBe(1);
+    const [copy] = copies(['n1']);
+    expect(await decryptItem(copy.id, 'NOTE', copy.content, ctx)).toEqual({ t: 'Titolo locale (conflict)', c: doc('uguale') });
+  });
+
   it('T6 item con content in chiaro stantio su riga gia envelope: il content torna all envelope della riga, niente copia', async () => {
     const content = await enc('n1', 'T', doc('corpo'));
     h.server.put('n1', await enc('n1', 'T', doc('altro')));

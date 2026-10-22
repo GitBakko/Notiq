@@ -302,7 +302,8 @@ const listSig = (row: LocalNote | undefined, items: SyncQueueItem[]) =>
   ]);
 
 async function localPayload(ctx: VaultCodecCtx, row: LocalNote, items: SyncQueueItem[], sp: Payload | Fail | undefined, opts: ReconcileOptions): Promise<Payload | Fail | undefined> {
-  const t0 = lastTitle(items) || row.title;
+  // Riga non envelope senza titolo: la pull azzera il title delle righe vault, quindi non porta informazione -> titolo del server.
+  const t0 = lastTitle(items) || row.title || (!isEnv(row.content) && row.syncStatus === 'synced' && sp && typeof sp === 'object' ? sp.t : '');
   let c: string | undefined;
   let dt = '';
   if (isEnv(row.content)) {
