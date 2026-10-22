@@ -1,117 +1,111 @@
-import { test, expect, request as pwRequest, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { registerAndLogin } from './helpers';
-import { decryptCredential } from '../src/features/vault/credentialTypes';
+import {
+  apiFor, createCredentialUi, expectUnlocked, loginInBrowser, newDevice, PIN, serverNote, setupVaultUi, unlockUi,
+} from './vault-helpers';
 
-// Vault P0: a device whose IndexedDB never received the content of a vault item (row content '')
-// must never mount an editable form, or the form would save its default (empty) state over the
-// server's real, encrypted content.
+// Vault P0 (adattato al vault v3): a device whose IndexedDB never received the content of a vault item (row content '')
+// must never mount an editable form, or the form would save its default (empty) state over the server's real, encrypted content.
 //
-// Context A creates a real credential with the app's own flow (vault PIN, encrypted values).
-// Context B is a clean browser (empty IndexedDB) for the same user with the same PIN.
+// Device A: setup v3 (PIN + Kit) and a real credential. Device B is a clean browser context for the same user: it logs in
+// (the pull creates the row with content ''), unlocks with the SAME PIN (the vault already exists: unlock, never setup),
+// and the content download (POST /api/vault/items) is held back so the row stays clean.
 
-const API = 'http://localhost:3001';
-const PIN = '1234';
 const TITLE = 'Server Credential';
 const USERNAME = 'alice@example.com';
 const PASSWORD = 'S3cret-Pass-42';
 const NOTES = 'do not lose this';
 const NOT_LOADED = /has not been loaded on this device yet/;
 
-async function tokenOf(page: Page): Promise<string> {
-  return page.evaluate(() => JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token as string);
-}
+test('clean device never overwrites the server credential (placeholder, typing, hydration after the content arrives)', async ({ page, browser }) => {
+  test.setTimeout(240000);
 
-async function setupVault(page: Page) {
-  await page.goto('/vault');
-  await page.getByPlaceholder('Enter PIN').fill(PIN);
-  await page.getByPlaceholder('Confirm PIN').fill(PIN);
-  await page.locator('input[type="checkbox"]').check();
-  await page.getByRole('button', { name: 'Create Vault' }).click();
-  await expect(page.getByRole('button', { name: 'New Credential' })).toBeVisible({ timeout: 15000 });
-}
-
-test('clean device never overwrites the server credential (offline placeholder, typing, reconnect)', async ({ page, browser }) => {
-  test.setTimeout(180000);
-
-  // ---- Context A: create a real encrypted credential and let it sync ----
+  // ---- Device A: create a real encrypted credential and let it sync ----
   const user = await registerAndLogin(page, { name: 'Vault Overwrite User' });
-  const token = await tokenOf(page);
-  const seenVersion = await page.evaluate(() => localStorage.getItem('lastSeenVersion'));
-  const api = await pwRequest.newContext({ baseURL: API, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
-  const serverContent = async (id: string): Promise<string> => (await (await api.get(`/api/notes/${id}`)).json()).content;
-
-  await setupVault(page);
-  await page.getByRole('button', { name: 'New Credential' }).click();
-  await expect(page).toHaveURL(/noteId=/, { timeout: 15000 });
-  const noteId = new URL(page.url()).searchParams.get('noteId')!;
-
-  // Wait for the (empty) credential to reach the server, then fill it in
-  await expect.poll(() => serverContent(noteId), { timeout: 30000 }).toBeTruthy();
-  await page.getByPlaceholder('Untitled Credential').fill(TITLE);
-  await page.getByPlaceholder('Enter username or email').fill(USERNAME);
-  await page.getByPlaceholder('Enter password').fill(PASSWORD);
-  await page.getByPlaceholder('Additional notes...').fill(NOTES);
-  // The values reach the server through the debounced sync push: wait until they decrypt to what we typed
-  await expect
-    .poll(async () => decryptCredential(await serverContent(noteId), PIN)?.password, { timeout: 45000 })
-    .toBe(PASSWORD);
+  const api = await apiFor(page);
+  await setupVaultUi(page, user);
+  const noteId = await createCredentialUi(page, api, { title: TITLE, username: USERNAME, password: PASSWORD, notes: NOTES });
   await page.waitForTimeout(3000); // let the last debounced save settle
-  const before = await serverContent(noteId);
-  expect(decryptCredential(before, PIN)).toMatchObject({ username: USERNAME, password: PASSWORD, notes: NOTES });
+  const before = (await serverNote(api, noteId)).content as string;
+  expect(before).toMatch(/^nv3\./);
+  const serverContent = async () => ((await serverNote(api, noteId)).content as string);
 
-  // ---- Context B: clean IndexedDB, same account, same PIN ----
-  const ctxB = await browser.newContext({ locale: 'en' });
-  await ctxB.addInitScript((v) => { if (v) localStorage.setItem('lastSeenVersion', v); }, seenVersion);
-  const b = await ctxB.newPage();
-  await b.goto('/login');
-  await b.fill('input[type="email"]', user.email);
-  await b.fill('input[type="password"]', user.password);
-  await b.click('button[type="submit"]');
-  await expect(b).toHaveURL(/\/notes/, { timeout: 15000 });
-  await setupVault(b);
-  await expect(b.getByText(TITLE)).toBeVisible({ timeout: 30000 }); // pulled: title only, content still ''
+  // ---- Device B: clean IndexedDB, same account, same PIN ----
+  const b = await newDevice(browser);
+  await loginInBrowser(b.page, user);
+  // the pull created the row with an empty content (title only)
+  await expect
+    .poll(
+      () =>
+        b.page.evaluate(
+          () =>
+            new Promise<number>((resolve) => {
+              const open = indexedDB.open('NotiqDB');
+              open.onsuccess = () => {
+                const db = open.result;
+                const r = db.transaction('notes', 'readonly').objectStore('notes').getAll();
+                r.onsuccess = () => {
+                  db.close();
+                  const v = (r.result as { isVault?: boolean; content?: string }[]).filter((n) => n.isVault);
+                  resolve(v.length === 1 ? (v[0].content ?? '').length : -1);
+                };
+              };
+            }),
+        ),
+      { timeout: 30000 },
+    )
+    .toBe(0);
 
-  const fields = b.locator(
+  // hold the content download back: the row stays clean after the unlock
+  await b.ctx.route('**/api/vault/items', (route) => route.abort('failed'));
+  await b.page.goto('/vault');
+  await expect(b.page.getByRole('heading', { name: 'Vault Locked' })).toBeVisible({ timeout: 30000 }); // unlock, not setup
+  await unlockUi(b.page, PIN);
+  await expectUnlocked(b.page);
+
+  const fields = b.page.locator(
     'input[placeholder="Untitled Credential"], input[placeholder="Enter username or email"], input[placeholder="Enter password"], textarea',
   );
 
-  // The placeholder assertions below are SOFT on purpose: on pre-fix code the form is editable, the
-  // typing attempts below really change it, and the hard byte-identical check after the reconnect
-  // then fails with the actual overwrite instead of stopping earlier at the missing placeholder.
+  // The placeholder assertions below are SOFT on purpose: on pre-fix code the form is editable, the typing attempts
+  // below really change it, and the hard byte-identical check then fails with the actual overwrite instead of
+  // stopping earlier at the missing placeholder.
   const typeIntoAnyField = async () => {
     for (const f of await fields.all()) await f.fill('overwrite-attempt').catch(() => {});
-    await b.keyboard.type('overwrite-attempt');
+    await b.page.keyboard.type('overwrite-attempt');
   };
+  const card = () => b.page.getByText('Credential', { exact: true }).first(); // title is still empty: the card shows the type badge
 
-  // (ii) Offline on a clean row: the placeholder, strictly, and nothing editable
-  await ctxB.setOffline(true);
-  await b.getByText(TITLE).click();
-  await expect.soft(b.getByText(NOT_LOADED)).toBeVisible({ timeout: 10000 });
+  // (ii) clean row, content not available: the placeholder, strictly, and nothing editable
+  await card().click();
+  await expect.soft(b.page.getByText(NOT_LOADED)).toBeVisible({ timeout: 15000 });
   await expect.soft(fields).toHaveCount(0);
 
-  // (iii) Try to type wherever possible
+  // (iii) try to type wherever possible
   await typeIntoAnyField();
-  await b.locator('body').press('Tab');
+  await b.page.locator('body').press('Tab');
   await typeIntoAnyField();
   await expect.soft(fields).toHaveCount(0);
 
-  // Navigate away, wait past the 1s save debounce, come back to the item, still offline
-  await b.getByRole('button', { name: 'Back' }).click();
-  await b.waitForTimeout(2500);
-  await b.getByText(TITLE).click();
-  await expect.soft(b.getByText(NOT_LOADED)).toBeVisible();
-  expect(await serverContent(noteId)).toBe(before);
+  // Navigate away, wait past the 1s save debounce, come back to the item
+  await b.page.getByRole('button', { name: 'Back' }).first().click();
+  await b.page.waitForTimeout(2500);
+  await card().click();
+  await expect.soft(b.page.getByText(NOT_LOADED)).toBeVisible();
+  expect(await serverContent()).toBe(before);
 
-  // Back online + sync push time: the server content must be byte-identical (the real overwrite check)
-  await ctxB.setOffline(false);
-  await b.waitForTimeout(8000);
-  expect(await serverContent(noteId)).toBe(before);
+  // The content becomes reachable again + sync push time: the server content must be byte-identical (the real overwrite check)
+  await b.ctx.unroute('**/api/vault/items');
+  await b.page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await b.page.waitForTimeout(8000);
+  expect(await serverContent()).toBe(before);
 
-  // (i) Hydration re-ran by itself and shows the server's data (decrypted with the PIN)
-  await expect(b.getByPlaceholder('Enter username or email')).toHaveValue(USERNAME, { timeout: 20000 });
-  await expect(b.getByPlaceholder('Enter password')).toHaveValue(PASSWORD);
-  await expect(b.getByPlaceholder('Additional notes...')).toHaveValue(NOTES);
+  // (i) hydration re-ran by itself and shows the server's data (decrypted with the PIN)
+  await expect(b.page.getByPlaceholder('Enter username or email')).toHaveValue(USERNAME, { timeout: 30000 });
+  await expect(b.page.getByPlaceholder('Enter password')).toHaveValue(PASSWORD);
+  await expect(b.page.getByPlaceholder('Additional notes...')).toHaveValue(NOTES);
+  expect(await serverContent()).toBe(before);
 
-  await ctxB.close();
+  await b.ctx.close();
   await api.dispose();
 });
