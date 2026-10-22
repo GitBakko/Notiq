@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { CURRENT_VERSION } from '../../data/changelog';
 import { useImport } from '../../hooks/useImport';
+import VaultSettingsSection from '../../components/vault/VaultSettingsSection';
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -170,6 +171,8 @@ export default function SettingsPage() {
             </div>
           </Card>
         </section>
+
+        <VaultSettingsSection />
 
         {/* Account */}
         <section>

@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore, lazy, Suspense } from 'react';
 import { Share2, ArrowLeft, Star, Trash2, MessageSquare, Paperclip, Users, Lock, Sparkles, HardDrive, Bell, X, MoreVertical, History } from 'lucide-react';
 import Editor, { type EditorHandle } from '../../components/editor/Editor';
-import { revokeShare, updateNoteLocalOnly, updateSharedNoteNotebook, saveSharedNoteData, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
+import { revokeShare, updateNote, updateNoteLocalOnly, updateSharedNoteNotebook, saveSharedNoteData, deleteNote, permanentlyDeleteNote, type Note } from './noteService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { uploadAttachment, deleteAttachment } from '../attachments/attachmentService';
 import { uploadErrorText } from './uploadErrorText';
@@ -11,6 +11,10 @@ import TagSelector from '../../components/editor/TagSelector';
 import { useNotebooks } from '../../hooks/useNotebooks';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
+import { Navigate } from 'react-router-dom';
+import { beginMovingIn, isMovingIn, moveIn, subscribeMovingIn, vaultEntryState, VaultMoveError } from '../../lib/vaultMove';
+// lazy: porta con se' vaultSession (Argon2, WebCrypto), che serve solo al PIN
+const VaultUnlockDialog = lazy(() => import('../../components/vault/VaultUnlockDialog'));
 
 import SharingModal from '../../components/sharing/SharingModal';
 import AttachmentSidebar from './AttachmentSidebar';
@@ -47,7 +51,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const { notebooks } = useNotebooks();
 
     // -- Controller --
-    const { updateTitle, updateContent, saveNote } = useNoteController(note);
+    const { updateTitle, updateContent, saveNote: saveNoteRaw } = useNoteController(note);
 
     // -- Shared note detection --
     // Must check both: ownership (from Dexie/syncPull) AND userId mismatch (from server GET /notes/:id
@@ -86,6 +90,32 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const [attachmentToDelete, setAttachmentToDelete] = useState<{ id: string; url: string } | null>(null);
     const [showMobileMore, setShowMobileMore] = useState(false);
     const mobileMoreRef = useRef<HTMLDivElement>(null);
+
+    // Vault v3 (T21, plan 5.9): spostamento IN corso -> i due effetti di salvataggio non scrivono piu' (niente plaintext in Dexie/coda).
+    // Lo stato vive anche in lib/vaultMove (isMovingIn): una nuova istanza (cambio nota e ritorno durante lo spostamento) nasce gia' congelata.
+    const movingRef = useRef(false);
+    // onCommitted puo' girare su un'istanza gia' smontata: onBack chiuderebbe la nota attualmente aperta (NotesPage: setSelectedNoteId(null)).
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+    const movingIn = useSyncExternalStore(subscribeMovingIn, () => isMovingIn(note.id));
+    const [movedIn, setMovedIn] = useState(false); // spostamento riuscito: l'editor resta congelato finche' non si chiude
+    const frozen = movingIn || movedIn;
+    const isMoving = () => movingRef.current || isMovingIn(note.id);
+    // Durante lo spostamento nessun salvataggio di metadati (pin, promemoria, notebook, cestino): moveIn svuota la coda della nota.
+    const saveNote = (updates: Partial<Note>) => (isMoving() ? Promise.resolve() : saveNoteRaw(updates));
+    const [isUnlockOpen, setIsUnlockOpen] = useState(false);
+    const [goToVault, setGoToVault] = useState(false);
+    const [online, setOnline] = useState(() => navigator.onLine);
+    useEffect(() => {
+        const on = () => setOnline(true);
+        const off = () => setOnline(false);
+        window.addEventListener('online', on);
+        window.addEventListener('offline', off);
+        return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+    }, []);
 
     const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
     const providerRef = useRef<HocuspocusProvider | null>(null);
@@ -151,6 +181,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     const archiveBusyStoppedRef = useRef(false);
     const latestContentRef = useRef(contentInput);
     latestContentRef.current = contentInput;
+    const latestTitleRef = useRef(titleInput);
+    latestTitleRef.current = titleInput;
     useEffect(() => {
         archiveBusyStoppedRef.current = false;
         return () => {
@@ -189,7 +221,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
     // -- Save Effects --
     useEffect(() => {
-        if (note.isTrashed || isReadOnly) return;
+        if (note.isTrashed || isReadOnly || movingRef.current || isMovingIn(note.id)) return;
         if (debouncedTitle !== note.title) {
             if (isSharedNote) {
                 updateNoteLocalOnly(note.id, { title: debouncedTitle });
@@ -210,7 +242,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
     }, [debouncedTitle, note.id, note.isTrashed, isSharedNote, sharedPermission, isReadOnly, provider, notifySharedSaveFailure]);
 
     useEffect(() => {
-        if (note.isTrashed) return; // Don't save if trashed
+        if (note.isTrashed || movingRef.current || isMovingIn(note.id)) return; // Don't save if trashed or moving into the vault (T21)
 
         if (debouncedContent !== note.content) {
             // v1.13.3: collab editor starts EMPTY until the provider's first sync; never persist
@@ -344,33 +376,94 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
         toast.success(!note.isPinned ? t('notes.pinned') : t('notes.unpinned'));
     };
 
-    const handleVaultToggle = () => {
-        saveNote({ isVault: !note.isVault });
-        toast.success(!note.isVault ? t('notes.addedToVault') : t('notes.removedFromVault'));
+    // [BACKUP] 2026-10-22 — T21: l'ingresso nel vault passava da saveNote({ isVault: true }) e dalla syncQueue (PUT in chiaro,
+    // senza keyring ne' CAS). Ora: chiamata API diretta con envelope (lib/vaultMove.moveIn), solo online (plan 5.9, D7).
+    // L'uscita dal vault e' di VaultNoteEditor: il ramo `saveNote({ isVault: false })` e' rimosso (le guardie di noteService lo rifiutano), il comando e' spento su una riga vault.
+    // Chiusura pulita dell'editor sorgente: scrive su Dexie quanto digitato e non ancora salvato dal debounce (stessi rami degli effetti di salvataggio).
+    // Campo per campo gli stessi rami degli effetti: titolo -> condivisa ? solo Dexie : saveNote; contenuto -> (provider || condivisa) ? solo Dexie : saveNote.
+    // Legge i valori correnti dai ref (non dalla closure del click: startMoveIn attende vaultEntryState, che puo' fare una GET) e usa
+    // updateNote direttamente, cosi' un flush fallito si propaga e ferma lo spostamento (saveNote ingoia gli errori).
+    // `forServer`: con un provider non ancora sincronizzato/autenticato il testo andrebbe solo in Dexie e la GET prenderebbe il content vecchio -> 'pending'.
+    const flushPendingEdits = async (forServer = true) => {
+        if (note.isTrashed || isReadOnly) return;
+        const title = latestTitleRef.current;
+        const content = latestContentRef.current;
+        if (title !== note.title) {
+            if (isSharedNote) await updateNoteLocalOnly(note.id, { title });
+            else await updateNote(note.id, { title });
+        }
+        if (content !== note.content && canPersistEditorContent({
+            hasProvider: !!provider,
+            hasSyncedOnce: providerSyncedOnceRef.current || provider?.isSynced === true,
+        })) {
+            if (forServer && provider && !(provider.isSynced && provider.isAuthenticated)) throw new VaultMoveError('pending');
+            if (provider || isSharedNote) await updateNoteLocalOnly(note.id, { content });
+            else await updateNote(note.id, { content });
+        }
     };
 
-    const handleVaultConfirm = async () => {
+    const runMoveIn = async () => {
+        if (isMoving()) return;
+        movingRef.current = true; // PRIMA di tutto: i due effetti di salvataggio non scrivono piu'
+        const end = beginMovingIn(note.id); // stato di modulo: copre anche le istanze rimontate durante lo spostamento
         try {
-            // Logic moved inline, but ideally controller would handle this. 
-            // For now, manual update is fine.
-            const updates: Partial<Note> = { isVault: true };
-            if (note.isPublic) updates.isPublic = false;
-
-            // Revoke shares (side effect)
-            if (note.sharedWith?.length) {
-                for (const share of note.sharedWith) {
-                    await revokeShare(note.id, share.userId);
-                }
-            }
-
-            await saveNote(updates);
-
+            await flushPendingEdits(); // prima della GET: il testo digitato meno di 1 s fa deve essere sul server
+            // import dinamico: syncService trascina il QueryClient dell'app, che serve solo quando si sposta una nota
+            await (await import('../sync/syncService')).syncPush();
+            await moveIn(note.id, {
+                // revoca delle condivisioni come prima, una volta sola e subito prima della PUT
+                beforePut: async () => {
+                    for (const share of note.sharedWith ?? []) await revokeShare(note.id, share.userId);
+                },
+                // su 200, PRIMA della scrittura Dexie: l'editor si chiude (setSelectedNoteId(null)) e la query della nota si invalida
+                onCommitted: () => {
+                    if (mountedRef.current) onBack?.();
+                    queryClient.invalidateQueries({ queryKey: queryKeys.notes.detail(note.id) });
+                },
+            });
             toast.success(t('notes.addedToVault'));
-            setIsVaultConfirmOpen(false);
+            // successo: movingRef e movedIn restano veri (editor congelato, mai plaintext su Dexie) finche' l'editor non si chiude
+            setMovedIn(true);
         } catch (error) {
-            console.error(error);
-            toast.error(t('notes.saveFailed'));
+            // Nessun nuovo flush qui: durante lo spostamento editor e titolo non sono modificabili, quindi non c'e' testo non salvato,
+            // e riaccodare un UPDATE in chiaro dopo un 200 sarebbe un errore (moveIn non lancia piu' dopo il commit).
+            movingRef.current = false;
+            const code = error instanceof VaultMoveError ? error.code : 'failed';
+            if (!(error instanceof VaultMoveError)) console.error(error);
+            toast.error(t(code === 'attachmentsBlocked' ? 'errors.vault.attachmentsBlocked' : `vault.moveIn.${code}`));
+        } finally {
+            end();
         }
+    };
+
+    const startMoveIn = async () => {
+        if (isMoving()) return;
+        if (!navigator.onLine) { toast.error(t('vault.moveIn.offline')); return; }
+        if (note.attachments?.length) { toast.error(t('errors.vault.attachmentsBlocked')); return; }
+        if (!user?.id) return;
+        const state = await vaultEntryState(user.id);
+        if (state === 'setup') {
+            // NONE / UNKNOWN / setupDisabled: setup o wizard in /vault, nessuna PUT. La Navigate smonta l'editor: prima il testo non ancora salvato dal debounce.
+            try { await flushPendingEdits(false); } catch { toast.error(t('vault.moveIn.failed')); return; }
+            setGoToVault(true);
+            return;
+        }
+        if (state === 'locked') { setIsUnlockOpen(true); return; }
+        await runMoveIn();
+    };
+
+    // Offline il comando e' disabilitato (D7); durante lo spostamento anche.
+    // Una riga vault qui non si gestisce: l'uscita e' di VaultNoteEditor (moveOut), quindi il comando e' spento.
+    const vaultMoveDisabled = note.isVault || !online || frozen;
+    const vaultMoveTitle = note.isVault ? t('notes.removeFromVault') : !online ? t('vault.moveIn.offline') : t('notes.addToVault');
+
+    const handleVaultToggle = () => {
+        if (!note.isVault) void startMoveIn();
+    };
+
+    const handleVaultConfirm = () => {
+        setIsVaultConfirmOpen(false);
+        void startMoveIn();
     };
 
     // Attachments
@@ -519,9 +612,9 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         ref={titleRef}
                         type="text"
                         value={titleInput}
-                        onChange={(e) => !isReadOnly && setTitleInput(e.target.value)}
+                        onChange={(e) => !isReadOnly && !frozen && setTitleInput(e.target.value)}
                         onKeyDown={handleTitleKeyDown}
-                        readOnly={isReadOnly}
+                        readOnly={isReadOnly || frozen}
                         placeholder={t('notes.titlePlaceholder')}
                         className={clsx("text-xl font-semibold bg-transparent border-none focus:outline-none text-neutral-900 dark:text-white flex-1 min-w-0", isReadOnly && "cursor-default")}
                     />
@@ -553,7 +646,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     </div>
 
                     {/* Notebook + Tag selectors: always show for shared notes (per-user metadata) and owned notes */}
-                    <div className="flex items-center gap-2">
+                    <div className={clsx("flex items-center gap-2", frozen && "opacity-50 pointer-events-none")} inert={frozen} data-testid="meta-controls">
                         {isSharedNote ? (
                             <NotebookSelector
                                 notebooks={notebooks || []}
@@ -652,8 +745,9 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             <button
                                 onClick={() => reminderInputRef.current?.showPicker()}
                                 title={note.reminderDate ? t('notes.editReminder') : t('notes.addReminder')}
+                                disabled={frozen}
                                 className={clsx(
-                                    "p-2 rounded-full transition-colors",
+                                    "p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                     note.reminderDate
                                         ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20"
                                         : "text-neutral-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
@@ -664,6 +758,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             {note.reminderDate && (
                                 <button
                                     onClick={() => saveNote({ reminderDate: null, isReminderDone: false })}
+                                    disabled={frozen}
                                     className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
                                     title={t('notes.removeReminder')}
                                 >
@@ -673,6 +768,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             <input
                                 ref={reminderInputRef}
                                 type="datetime-local"
+                                disabled={frozen}
                                 value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
                                 onChange={(e) => {
                                     if (e.target.value) {
@@ -686,11 +782,11 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
                     {!isSharedNote && (
                         <>
-                            <button onClick={handlePinToggle} title={note.isPinned ? t('notes.unpin') : t('notes.pin')} className={clsx("p-2 rounded-full transition-colors", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-neutral-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
+                            <button onClick={handlePinToggle} disabled={frozen} title={note.isPinned ? t('notes.unpin') : t('notes.pin')} className={clsx("p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-neutral-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
 
-                            <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} title={note.isVault ? t('notes.removeFromVault') : t('notes.addToVault')} className={clsx("p-2 rounded-full transition-colors", note.isVault ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
+                            <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} disabled={vaultMoveDisabled} title={vaultMoveTitle} aria-label={vaultMoveTitle} className={clsx("p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isVault ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
 
-                            <button onClick={() => setIsDeleteConfirmOpen(true)} title={t('common.delete')} className="p-2 hover:bg-red-50 text-neutral-400 hover:text-red-500 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
+                            <button onClick={() => setIsDeleteConfirmOpen(true)} disabled={frozen} title={t('common.delete')} className="p-2 hover:bg-red-50 text-neutral-400 hover:text-red-500 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-5 h-5" /></button>
                         </>
                     )}
                 </div>
@@ -740,19 +836,19 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                     </button>
                                 )}
                                 {!isSharedNote && (
-                                    <button onClick={() => { handlePinToggle(); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", note.isPinned ? "text-amber-500" : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800")}>
+                                    <button onClick={() => { handlePinToggle(); setShowMobileMore(false); }} disabled={frozen} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors disabled:opacity-50", note.isPinned ? "text-amber-500" : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800")}>
                                         <Star className={clsx("w-4 h-4 flex-shrink-0", note.isPinned && "fill-current")} />
                                         <span>{note.isPinned ? t('notes.unpin') : t('notes.pin')}</span>
                                     </button>
                                 )}
                                 {!isSharedNote && (
-                                    <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", note.isVault ? "text-emerald-500" : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800")}>
+                                    <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); setShowMobileMore(false); }} disabled={vaultMoveDisabled} title={vaultMoveTitle} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isVault ? "text-emerald-500" : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800")}>
                                         <Lock className={clsx("w-4 h-4 flex-shrink-0", note.isVault && "fill-current")} />
                                         <span>{note.isVault ? t('notes.removeFromVault') : t('notes.addToVault')}</span>
                                     </button>
                                 )}
                                 {!isSharedNote && !note.isTrashed && (
-                                    <button onClick={() => { reminderInputRef.current?.showPicker(); setShowMobileMore(false); }} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors", note.reminderDate ? "text-amber-500" : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800")}>
+                                    <button onClick={() => { reminderInputRef.current?.showPicker(); setShowMobileMore(false); }} disabled={frozen} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors disabled:opacity-50",note.reminderDate ? "text-amber-500" : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800")}>
                                         <Bell className={clsx("w-4 h-4 flex-shrink-0", note.reminderDate && "fill-current")} />
                                         <span>{note.reminderDate ? t('notes.editReminder') : t('notes.addReminder')}</span>
                                     </button>
@@ -770,7 +866,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                 {!isSharedNote && (
                                     <>
                                         <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
-                                        <button onClick={() => { setIsDeleteConfirmOpen(true); setShowMobileMore(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                        <button onClick={() => { setIsDeleteConfirmOpen(true); setShowMobileMore(false); }} disabled={frozen} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50">
                                             <Trash2 className="w-4 h-4 flex-shrink-0" />
                                             <span>{t('common.delete')}</span>
                                         </button>
@@ -785,6 +881,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         <input
                             ref={reminderInputRef}
                             type="datetime-local"
+                            disabled={frozen}
                             value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
                             onChange={(e) => {
                                 if (e.target.value) {
@@ -805,6 +902,14 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                 </div>
             )}
 
+            {/* Vault v3 (T21): attesa visibile durante lo spostamento, editor e titolo non modificabili */}
+            {frozen && (
+                <div role="status" className="px-4 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                    <Lock size={12} className="animate-pulse" aria-hidden="true" />
+                    {t('vault.moveIn.moving')}
+                </div>
+            )}
+
             {/* Kanban board quick-link (if note is linked to a kanban card) */}
             {!note.isVault && <KanbanBoardLink noteId={note.id} />}
 
@@ -815,7 +920,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         ref={editorRef}
                         content={contentInput}
                         onChange={setContentInput}
-                        editable={!isReadOnly}
+                        editable={!isReadOnly && !frozen}
                         noteId={note.id}
                         onImageUploaded={handleImageUploaded}
                         onImageRemoved={handleImageRemoved}
@@ -884,6 +989,12 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
             <SharingModal isOpen={isSharingModalOpen} onClose={() => setIsSharingModalOpen(false)} noteId={note.id} sharedWith={note.sharedWith?.filter(s => s.status === 'ACCEPTED' || s.status === 'PENDING').map(s => ({ id: s.userId, name: s.user.name, email: s.user.email, avatarUrl: s.user.avatarUrl, permission: s.permission, status: s.status }))} />
 
             <ConfirmDialog isOpen={isVaultConfirmOpen} onClose={() => setIsVaultConfirmOpen(false)} onConfirm={handleVaultConfirm} title={t('vault.warningTitle')} message={t('notes.vaultWarningMessage')} confirmText={t('common.confirm')} variant="danger" />
+            {isUnlockOpen && (
+                <Suspense fallback={null}>
+                    <VaultUnlockDialog isOpen onClose={() => setIsUnlockOpen(false)} onUnlocked={() => { setIsUnlockOpen(false); void runMoveIn(); }} />
+                </Suspense>
+            )}
+            {goToVault && <Navigate to="/vault" />}
 
             <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={async () => { await saveNote(canPersistEditorContent({ hasProvider: !!provider, hasSyncedOnce: providerSyncedOnceRef.current || provider?.isSynced === true }) ? { title: titleInput, content: contentInput } : { title: titleInput }); if (note.isVault) { await permanentlyDeleteNote(note.id); } else { await deleteNote(note.id); } toast.success(t(note.isVault ? 'vault.deletedPermanently' : 'notes.deleted')); if (onBack) { onBack(); } else { window.history.back(); } }} title={t(note.isVault ? 'vault.deletePermanently' : 'notes.moveToTrash')} message={t(note.isVault ? 'vault.deletePermanentlyConfirm' : 'notes.moveToTrashConfirm')} confirmText={t(note.isVault ? 'common.deleteForever' : 'notes.moveToTrashAction')} variant="danger" />
 

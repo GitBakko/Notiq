@@ -4,19 +4,24 @@ import { ArrowLeft, Eye, EyeOff, ExternalLink, Zap, Globe, Loader2, Camera, Refr
 import { Button } from '../../components/ui/Button';
 import CopyButton from './CopyButton';
 import PasswordGenerator from './PasswordGenerator';
-import { decryptCredential, encryptCredential, EMPTY_CREDENTIAL, extractDomain, isValidAbsoluteUrl, type CredentialData } from './credentialTypes';
+import { EMPTY_CREDENTIAL, extractDomain, isValidAbsoluteUrl, parseCredential, type CredentialData } from './credentialTypes';
 import { useVaultStore } from '../../store/vaultStore';
+import { decryptItem, encryptItem, type VaultCodecCtx } from '../../lib/vaultCodec';
 import { updateNote, permanentlyDeleteNote } from '../notes/noteService';
 import toast from 'react-hot-toast';
 import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import VaultNotLoaded from './VaultNotLoaded';
+import { withNoteLock } from '../../lib/vaultNoteLock';
 
 interface CredentialFormProps {
   note: Note;
   onBack: () => void;
   onDelete?: () => void;
 }
+
+/** Oltre questo il server rifiuta l'envelope (P2 5.6): nessuna scrittura. */
+const MAX_ENVELOPE_LEN = 2 * 1024 * 1024;
 
 function getFaviconUrl(siteUrl: string): string | null {
   try {
@@ -29,12 +34,22 @@ function getFaviconUrl(siteUrl: string): string | null {
 
 export default function CredentialForm({ note, onBack, onDelete }: CredentialFormProps) {
   const { t } = useTranslation();
-  const { pin } = useVaultStore();
+  const keys = useVaultStore((s) => s.keys);
   const [data, setData] = useState<CredentialData>(EMPTY_CREDENTIAL);
   const [title, setTitle] = useState(note.title);
   const [showPassword, setShowPassword] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   const [decryptFailed, setDecryptFailed] = useState(false);
+  // false finche' l'envelope non e' decifrato: senza, un salvataggio scriverebbe la scheda vuota
+  const [loaded, setLoaded] = useState(false);
+  // Salvataggi in coda: l'ordine di cifratura + updateNote resta quello delle modifiche
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Modifica non ancora scritta in locale: true da scheduleSave/saveNow, azzerato solo dopo updateNote (resta true se fallisce)
+  const dirtyRef = useRef(false);
+  // Contatore delle modifiche: un salvataggio azzera dirtyRef solo se nessuna modifica e' arrivata nel frattempo
+  const editSeqRef = useRef(0);
+  // true durante/dopo la cancellazione: nessun salvataggio sulla riga che sparisce
+  const deletingRef = useRef(false);
   const [fetchingMeta, setFetchingMeta] = useState(false);
   const [fetchingScreenshot, setFetchingScreenshot] = useState(false);
   const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
@@ -42,14 +57,21 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const generatorRef = useRef<HTMLDivElement>(null);
-  const lastDecryptedId = useRef<string | null>(null);
+  // Ultimo envelope decifrato (per nota): primo caricamento e ridecifrature da cambio esterno
+  const decryptedRef = useRef<{ id: string; content: string } | null>(null);
+  // Ultimi envelope scritti da questo form: il loro ritorno dalla riga non va ridecifrato (sarebbe un salto indietro)
+  const ownEnvelopesRef = useRef<Set<string>>(new Set());
+  // true a lock shared concesso: solo da qui si decifra e si abilita l'editing
+  const [lockGranted, setLockGranted] = useState(false);
+  const tRef = useRef(t);
+  tRef.current = t;
   const lastFetchedUrl = useRef<string>('');
   const committedUrlRef = useRef<string>('');
   // Refs for current state — async callbacks always read the latest values
   const dataRef = useRef<CredentialData>(EMPTY_CREDENTIAL);
   const titleRef = useRef(note.title);
   // Ref for saveNow so cleanup always has the latest version
-  const saveNowRef = useRef<(d: CredentialData, t: string) => void>(() => {});
+  const saveNowRef = useRef<(d: CredentialData, t: string, ctx?: VaultCodecCtx) => Promise<void>>(() => Promise.resolve());
   // Abort controller for in-flight metadata/screenshot fetches
   const metaAbortRef = useRef<AbortController | null>(null);
   const screenshotAbortRef = useRef<AbortController | null>(null);
@@ -58,52 +80,106 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   dataRef.current = data;
   titleRef.current = title;
 
-  // Decrypt only when note changes (not on every content update from React Query)
+  // Decifra solo a lock shared concesso (un reconcile/pull esclusivo in corso non lascia un envelope vecchio da modificare).
+  // Dopo il primo caricamento ridecifra un cambio esterno di note.content, ma mai la propria scrittura e mai sopra modifiche non scritte.
   useEffect(() => {
-    if (lastDecryptedId.current === note.id) return;
-    if (!pin || !note.content) {
-      dataRef.current = EMPTY_CREDENTIAL;
-      setData(EMPTY_CREDENTIAL);
-      return;
+    if (!lockGranted || !keys || !note.content) return;
+    const content = note.content;
+    const last = decryptedRef.current;
+    if (last?.id === note.id) {
+      if (last.content === content || ownEnvelopesRef.current.has(content) || dirtyRef.current || saveTimerRef.current) return;
     }
-    const decrypted = decryptCredential(note.content, pin);
-    if (decrypted) {
-      dataRef.current = decrypted;
-      setData(decrypted);
-      setDecryptFailed(false);
-      lastDecryptedId.current = note.id;
-      setTitle(note.title);
-      titleRef.current = note.title;
-      setFaviconError(false);
-      // Track the committed URL from decrypted data
-      committedUrlRef.current = decrypted.siteUrl || '';
-      lastFetchedUrl.current = decrypted.siteUrl || '';
-    } else {
-      setDecryptFailed(true);
-      toast.error(t('vault.credential.decryptFailed'));
-    }
-  }, [note.id, note.content, pin, t]);
+    let cancelled = false;
+    const seq = editSeqRef.current;
+    decryptItem(note.id, 'CREDENTIAL', content)
+      .then(({ t: envTitle, c }) => {
+        const decrypted = parseCredential(c);
+        if (!decrypted) throw new Error('vault.credential.shape');
+        // modifica arrivata durante la decifratura: vince l'utente
+        if (cancelled || editSeqRef.current !== seq) return;
+        decryptedRef.current = { id: note.id, content };
+        dataRef.current = decrypted;
+        setData(decrypted);
+        setDecryptFailed(false);
+        setTitle(envTitle);
+        titleRef.current = envTitle;
+        setFaviconError(false);
+        // Track the committed URL from decrypted data
+        committedUrlRef.current = decrypted.siteUrl || '';
+        lastFetchedUrl.current = decrypted.siteUrl || '';
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDecryptFailed(true);
+        toast.error(tRef.current('vault.credential.decryptFailed'));
+      });
+    return () => { cancelled = true; };
+  }, [note.id, note.content, keys, lockGranted]);
 
-  // Save using refs so async code always gets the latest state
+  // Save using refs so async code always gets the latest state. `ctx` = chiavi catturate dal lock.
   const saveNow = useCallback(
-    (newData: CredentialData, newTitle: string) => {
+    (newData: CredentialData, newTitle: string, ctx?: VaultCodecCtx): Promise<void> => {
       // Never persist a form built from a row that was never loaded (content '' -> EMPTY_CREDENTIAL)
-      if (!pin || decryptFailed || !note.content) return;
-      const encrypted = encryptCredential(newData, pin);
-      updateNote(note.id, { title: newTitle, content: encrypted });
+      if (!loaded || decryptFailed || !note.content || deletingRef.current) return saveChainRef.current;
+      dirtyRef.current = true;
+      const seq = ++editSeqRef.current;
+      const next = saveChainRef.current.then(async () => {
+        try {
+          const envelope = await encryptItem(note.id, 'CREDENTIAL', { t: newTitle, c: JSON.stringify(newData) }, ctx);
+          if (envelope.length > MAX_ENVELOPE_LEN) {
+            if (seq === editSeqRef.current) dirtyRef.current = false; // non si risolve riprovando
+            toast.error(t('vault.tooLarge'));
+            return;
+          }
+          ownEnvelopesRef.current.add(envelope);
+          if (ownEnvelopesRef.current.size > 16) ownEnvelopesRef.current.delete(ownEnvelopesRef.current.values().next().value as string);
+          // Con ctx (flusher pre-lock) lo store e' gia' azzerato: la scrittura locale usa l'utente catturato
+          if (ctx) await updateNote(note.id, { content: envelope }, { userId: ctx.userId });
+          else await updateNote(note.id, { content: envelope });
+          if (seq === editSeqRef.current) dirtyRef.current = false;
+        } catch (e) {
+          // dirtyRef resta true: il prossimo cambio, l'unmount o il flusher pre-lock ritentano
+          if ((e as Error)?.name !== 'VaultLockedError') {
+            console.error('[vault] save failed', e);
+            toast.error(t('notes.saveFailed'));
+          }
+        }
+      });
+      saveChainRef.current = next;
+      return next;
     },
-    [note.id, note.content, pin, decryptFailed]
+    [note.id, note.content, loaded, decryptFailed, t]
   );
   saveNowRef.current = saveNow;
 
   // Debounced save — reads from refs at fire time to always get the latest state
   const scheduleSave = useCallback(() => {
-    if (!pin || decryptFailed || !note.content) return;
+    if (!loaded || decryptFailed || !note.content || deletingRef.current) return;
+    dirtyRef.current = true;
+    editSeqRef.current++;
+    useVaultStore.getState().touchVault();
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveNowRef.current(dataRef.current, titleRef.current);
+      saveTimerRef.current = undefined;
+      void saveNowRef.current(dataRef.current, titleRef.current);
     }, 1000);
-  }, [pin, decryptFailed, note.content]);
+  }, [loaded, decryptFailed, note.content]);
+
+  // Prima dell'azzeramento delle chiavi: salva la modifica pendente con le chiavi catturate
+  useEffect(
+    () =>
+      useVaultStore.getState().registerPreLock(async (ctx) => {
+        if (saveTimerRef.current || dirtyRef.current) {
+          clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = undefined;
+          await saveNowRef.current(dataRef.current, titleRef.current, ctx);
+        } else {
+          await saveChainRef.current;
+        }
+      }),
+    []
+  );
 
   const updateField = (field: keyof CredentialData, value: string) => {
     const newData = { ...dataRef.current, [field]: value };
@@ -139,7 +215,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
           const updated = { ...dataRef.current, screenshotBase64: result.screenshotBase64 };
           dataRef.current = updated;
           setData(updated);
-          saveNowRef.current(updated, titleRef.current);
+          void saveNowRef.current(updated, titleRef.current);
         }
       } catch {
         // Screenshot is optional — silently fail
@@ -184,7 +260,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
           const updated = { ...dataRef.current, faviconUrl: meta.faviconUrl };
           dataRef.current = updated;
           setData(updated);
-          saveNowRef.current(updated, titleRef.current);
+          void saveNowRef.current(updated, titleRef.current);
         }
 
         // Suggest title if current title is empty or default
@@ -216,7 +292,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   const autoFetchTriggered = useRef(false);
   useEffect(() => {
     if (autoFetchTriggered.current) return;
-    if (!data.siteUrl || !lastDecryptedId.current) return;
+    if (!data.siteUrl || !decryptedRef.current) return;
     const hasValidFavicon = isValidAbsoluteUrl(data.faviconUrl);
     const hasScreenshot = !!data.screenshotBase64;
     if (!hasScreenshot || !hasValidFavicon) {
@@ -248,7 +324,8 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
       // Flush any pending save before fetching
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
-        saveNowRef.current(dataRef.current, titleRef.current);
+        saveTimerRef.current = undefined;
+        void saveNowRef.current(dataRef.current, titleRef.current);
       }
       fetchMetadata(currentUrl);
     }
@@ -268,7 +345,19 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   };
 
   const handleDelete = async () => {
-    await permanentlyDeleteNote(note.id);
+    // nessun salvataggio dopo la cancellazione: debounce annullato, catena svuotata, flag per saveNow
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = undefined;
+    deletingRef.current = true;
+    await saveChainRef.current;
+    try {
+      await permanentlyDeleteNote(note.id);
+    } catch (e) {
+      console.error('[vault] delete failed', e);
+      deletingRef.current = false;
+      toast.error(t('notes.saveFailed'));
+      return;
+    }
     toast.success(t('vault.credential.deleted'));
     if (onDelete) { onDelete(); } else { onBack(); }
   };
@@ -276,15 +365,40 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   // Flush pending save and abort fetches on unmount
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        // Flush the pending save instead of discarding it
-        saveNowRef.current(dataRef.current, titleRef.current);
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+      // Flush the pending (or failed) save instead of discarding it. Vault gia' bloccato: lo ha coperto il flusher pre-lock.
+      if (dirtyRef.current && useVaultStore.getState().keys) {
+        void saveNowRef.current(dataRef.current, titleRef.current);
       }
       metaAbortRef.current?.abort();
       screenshotAbortRef.current?.abort();
     };
   }, []);
+
+  // Lock shared sulla nota per tutta la vita del form (come VaultNoteEditor): reconcile/pull esclusivi restano fuori.
+  // Decifratura ed editing partono alla concessione; senza Web Locks si apre comunque.
+  // Dichiarato dopo l'effetto di unmount: il suo cleanup accoda il flush finale, il rilascio lo attende.
+  useEffect(() => {
+    let cancelled = false;
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => { release = r; });
+    setLockGranted(false);
+    setLoaded(false);
+    void (async () => {
+      const r = await withNoteLock(note.id, () => { if (!cancelled) setLockGranted(true); return held; }, { mode: 'shared' });
+      if (r.status === 'nolocks' && !cancelled) setLockGranted(true);
+    })().catch((e) => {
+      console.error('[vault] note lock failed', e);
+      // InvalidStateError (bfcache/prerender) o AbortError (unload): come nolocks, altrimenti il form resta in caricamento
+      if (!cancelled) setLockGranted(true);
+    });
+    return () => {
+      cancelled = true;
+      // lockVault() lancia i flusher in un microtask accodato prima di questo cleanup: un salto in piu' e saveChainRef li include
+      void Promise.resolve().then(() => saveChainRef.current).finally(release);
+    };
+  }, [note.id]);
 
   // Close generator on click outside
   useEffect(() => {
@@ -319,6 +433,10 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
         </Button>
       </div>
     );
+  }
+
+  if (!loaded) {
+    return <VaultNotLoaded loading onBack={onBack} />;
   }
 
   return (

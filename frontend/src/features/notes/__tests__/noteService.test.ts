@@ -275,6 +275,18 @@ describe('vault safety net (T21a)', () => {
     expect(dbMock.transaction.mock.invocationCallOrder[0]).toBeLessThan(order[0]);
   });
 
+  it('opts.userId overrides the authStore user on the queue item (logout flusher: store user already null)', async () => {
+    dbMock.notes.get.mockResolvedValue(vaultRow);
+    await updateNote('v1', { content: ENV }, { userId: 'ctx-user' });
+    expect(dbMock.syncQueue.add).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'v1', userId: 'ctx-user' }));
+  });
+
+  it('without opts the userId comes from authStore', async () => {
+    dbMock.notes.get.mockResolvedValue(vaultRow);
+    await updateNote('v1', { content: ENV });
+    expect(dbMock.syncQueue.add).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1' }));
+  });
+
   it('createNote vault rejects non-empty title, non-envelope, isEncrypted:false; nothing written', async () => {
     await expect(createNote({ isVault: true, title: 'x', notebookId: 'nb', content: ENV })).rejects.toBeInstanceOf(VaultPlaintextGuardError);
     await expect(createNote({ isVault: true, title: '', notebookId: 'nb', content: 'plain' })).rejects.toThrow(/plaintextGuard/);

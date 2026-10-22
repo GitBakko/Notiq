@@ -22,6 +22,7 @@ interface UnifiedReminder {
   isDone: boolean;
   type: 'note' | 'kanban' | 'task';
   noteId?: string;
+  isVault?: boolean;
   cardId?: string;
   boardId?: string;
   boardTitle?: string;
@@ -61,11 +62,13 @@ export default function RemindersPage() {
       if (note.reminderDate) {
         unified.push({
           id: note.id,
-          title: note.title || t('notes.untitled'),
+          // D8: vault titles are never decrypted outside the vault -> generic label.
+          title: note.isVault ? t('vault.reminderGeneric') : note.title || t('notes.untitled'),
           dueDate: note.reminderDate,
           isDone: !!note.isReminderDone,
           type: 'note',
           noteId: note.id,
+          isVault: !!note.isVault,
         });
       }
     }
@@ -126,7 +129,7 @@ export default function RemindersPage() {
 
   function handleClick(item: UnifiedReminder) {
     if (item.type === 'note' && item.noteId) {
-      navigate(`/notes?noteId=${item.noteId}`);
+      navigate(`${item.isVault ? '/vault' : '/notes'}?noteId=${item.noteId}`);
     } else if (item.type === 'kanban' && item.boardId) {
       navigate(`/kanban/${item.boardId}`);
     } else if (item.type === 'task') {

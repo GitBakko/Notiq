@@ -1,10 +1,12 @@
-import { useState, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyRound, Globe } from 'lucide-react';
 import clsx from 'clsx';
 import type { LocalNote } from '../../lib/db';
-import { decryptCredential, extractDomain, isValidAbsoluteUrl } from './credentialTypes';
+import { extractDomain, isValidAbsoluteUrl, parseCredential, type CredentialData } from './credentialTypes';
 import { useVaultStore } from '../../store/vaultStore';
+import { decryptItem } from '../../lib/vaultCodec';
+import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 
 interface CredentialCardProps {
   note: LocalNote;
@@ -14,26 +16,39 @@ interface CredentialCardProps {
 
 export default memo(function CredentialCard({ note, isSelected, onClick }: CredentialCardProps) {
   const { t } = useTranslation();
-  const { pin } = useVaultStore();
+  const keys = useVaultStore((s) => s.keys);
   const [imgError, setImgError] = useState(false);
+  // Titolo e dati vivono solo in memoria (D8): in Dexie il title e' ''.
+  const [view, setView] = useState<{ title: string; data: CredentialData | null } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const done = (v: { title: string; data: CredentialData | null } | null) => { if (!cancelled) setView(v); };
+    if (!keys || !ENVELOPE_RE.test(note.content ?? '')) {
+      queueMicrotask(() => done(null));
+    } else {
+      decryptItem(note.id, 'CREDENTIAL', note.content)
+        .then(({ t: title, c }) => done({ title, data: parseCredential(c) }))
+        .catch(() => done(null));
+    }
+    return () => { cancelled = true; };
+  }, [note.id, note.content, keys]);
 
   // Try to extract domain and favicon
   let domain = '';
   let faviconUrl: string | null = null;
-  if (pin && note.content) {
-    const data = decryptCredential(note.content, pin);
-    if (data?.siteUrl) {
-      domain = extractDomain(data.siteUrl);
-      // Use stored favicon (if valid absolute URL) or fall back to DuckDuckGo's service
-      if (isValidAbsoluteUrl(data.faviconUrl)) {
-        faviconUrl = data.faviconUrl!;
-      } else {
-        try {
-          const hostname = new URL(data.siteUrl).hostname;
-          faviconUrl = `https://icons.duckduckgo.com/ip3/${hostname}.ico`;
-        } catch {
-          faviconUrl = null;
-        }
+  const data = view?.data;
+  if (data?.siteUrl) {
+    domain = extractDomain(data.siteUrl);
+    // Use stored favicon (if valid absolute URL) or fall back to DuckDuckGo's service
+    if (isValidAbsoluteUrl(data.faviconUrl)) {
+      faviconUrl = data.faviconUrl!;
+    } else {
+      try {
+        const hostname = new URL(data.siteUrl).hostname;
+        faviconUrl = `https://icons.duckduckgo.com/ip3/${hostname}.ico`;
+      } catch {
+        faviconUrl = null;
       }
     }
   }
@@ -82,7 +97,7 @@ export default memo(function CredentialCard({ note, isSelected, onClick }: Crede
                 isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-neutral-900 dark:text-white'
               )}
             >
-              {note.title || t('vault.credential.untitled')}
+              {view?.title || t('vault.credential.untitled')}
             </h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex-shrink-0">
               {t('vault.credential.badge')}

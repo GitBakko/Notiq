@@ -26,6 +26,18 @@ function plainPreview(content: string): string {
   }
 }
 
+// Vault envelopes (nv3.) are never shown or restorable from the history UI (D8).
+const isVaultEnvelope = (content: string) => content.startsWith('nv3.');
+
+const RESTORE_ERROR_KEYS = new Set([
+  'errors.notes.restoreConflict',
+  'errors.notes.restoreUnsupportedLive',
+  'errors.vault.plaintextRejected',
+  'errors.vault.plaintextRequired',
+  'errors.vault.stale',
+  'errors.vault.notReady',
+]);
+
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString();
 }
@@ -52,7 +64,7 @@ export default function VersionHistoryModal({ noteId, onClose, onRestored }: Ver
   useEffect(() => {
     let cancelled = false;
     getNoteVersions(noteId)
-      .then((v) => { if (!cancelled) setVersions(v); })
+      .then((v) => { if (!cancelled) setVersions(v.filter((x) => !isVaultEnvelope(x.content))); })
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
   }, [noteId]);
@@ -67,11 +79,8 @@ export default function VersionHistoryModal({ noteId, onClose, onRestored }: Ver
       onRestored();
     } catch (err) {
       const res = (err as { response?: { status?: number; data?: { message?: string } } })?.response;
-      toast.error(
-        res?.status === 422 && res.data?.message === 'errors.notes.restoreUnsupportedLive'
-          ? t('errors.notes.restoreUnsupportedLive')
-          : t('notes.versions.restoreFailed'),
-      );
+      const key = res?.data?.message;
+      toast.error(key && RESTORE_ERROR_KEYS.has(key) ? t(key) : t('notes.versions.restoreFailed'));
     } finally {
       setRestoring(false);
     }

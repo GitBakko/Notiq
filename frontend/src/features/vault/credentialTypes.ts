@@ -1,5 +1,4 @@
 import { encryptContent, decryptContent } from '../../utils/crypto';
-import { useVaultStore } from '../../store/vaultStore';
 
 export interface CredentialData {
   siteUrl: string;
@@ -19,45 +18,25 @@ export const EMPTY_CREDENTIAL: CredentialData = {
   screenshotBase64: undefined,
 };
 
-// Decrypt cache (pin + ciphertext -> plaintext): avoids repeated slow decrypts while the vault
-// is unlocked. Cleared on lock. Values are cloned in/out so callers can't mutate cached entries.
-const decryptCache = new Map<string, CredentialData>();
-const cacheKey = (ciphertext: string, pin: string) => pin + '\0' + ciphertext;
-
-// optional call: some tests mock the store without subscribe()
-useVaultStore.subscribe?.((s) => {
-  if (!s.isUnlocked) decryptCache.clear();
-});
-
-const MAX_CACHE = 200;
-
-// Cache only while the vault is unlocked with this very pin (the lock handler clears the map).
-function cachePut(ciphertext: string, pin: string, data: CredentialData) {
-  const s = useVaultStore.getState?.();
-  if (!s?.isUnlocked || s.pin !== pin) return;
-  if (decryptCache.size >= MAX_CACHE) decryptCache.delete(decryptCache.keys().next().value as string);
-  decryptCache.set(cacheKey(ciphertext, pin), structuredClone(data));
-}
-
-/** test-only */
-export const __decryptCacheSize = () => decryptCache.size;
-
+/** @deprecated legacy pre-v3 (usato solo da VaultPage fino a T21). Le credenziali v3 sono envelope: vedi `vaultCodec`. */
 export function encryptCredential(data: CredentialData, pin: string): string {
-  const ciphertext = encryptContent(JSON.stringify(data), pin);
-  cachePut(ciphertext, pin, data);
-  return ciphertext;
+  return encryptContent(JSON.stringify(data), pin);
 }
 
+/**
+ * Legacy pre-v3 (CryptoJS/v2 con PIN): serve alla migrazione (wizard T20), non dipende dallo store.
+ * Nessuna cache: il plaintext non resta in memoria oltre la chiamata.
+ */
 export function decryptCredential(ciphertext: string, pin: string): CredentialData | null {
-  const key = cacheKey(ciphertext, pin);
-  const hit = decryptCache.get(key);
-  if (hit) return structuredClone(hit);
   const json = decryptContent(ciphertext, pin);
-  if (!json) return null;
+  return json ? parseCredential(json) : null;
+}
+
+/** `c` di un envelope CREDENTIAL: oggetto JSON, altrimenti null. */
+export function parseCredential(c: string): CredentialData | null {
   try {
-    const data = JSON.parse(json) as CredentialData;
-    cachePut(ciphertext, pin, data);
-    return data;
+    const data: unknown = JSON.parse(c);
+    return data && typeof data === 'object' && !Array.isArray(data) ? (data as CredentialData) : null;
   } catch {
     return null;
   }

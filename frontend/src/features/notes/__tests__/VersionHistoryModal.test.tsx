@@ -6,7 +6,10 @@ import VersionHistoryModal from '../VersionHistoryModal';
 const restoreNoteVersion = vi.fn();
 
 vi.mock('../noteService', () => ({
-  getNoteVersions: () => Promise.resolve([{ id: 'v1', content: '{}', createdAt: '2026-01-01T00:00:00Z' }]),
+  getNoteVersions: () => Promise.resolve([
+    { id: 'v1', content: '{}', createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'v2', content: 'nv3.1.aaa.bbb', createdAt: '2026-01-02T00:00:00Z' },
+  ]),
   restoreNoteVersion: (...a: unknown[]) => restoreNoteVersion(...a),
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -31,6 +34,21 @@ describe('VersionHistoryModal restore errors', () => {
     restoreNoteVersion.mockRejectedValue({ response: { status: 422, data: { message: 'errors.notes.restoreUnsupportedLive' } } });
     await triggerRestore();
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.notes.restoreUnsupportedLive'));
+  });
+
+  it('hides nv3. versions', async () => {
+    render(<VersionHistoryModal noteId="n1" onClose={vi.fn()} onRestored={vi.fn()} />);
+    expect(await screen.findAllByText('notes.versions.restore')).toHaveLength(1);
+  });
+
+  it.each([
+    [409, 'errors.notes.restoreConflict'],
+    [422, 'errors.vault.plaintextRequired'],
+    [422, 'errors.vault.stale'],
+  ])('%i %s -> translated toast', async (status, message) => {
+    restoreNoteVersion.mockRejectedValue({ response: { status, data: { message } } });
+    await triggerRestore();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message));
   });
 
   it('other error -> generic toast', async () => {

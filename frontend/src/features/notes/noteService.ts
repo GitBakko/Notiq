@@ -163,11 +163,12 @@ export const createNote = async (data: { title: string; notebookId: string; cont
   return newNote;
 };
 
-export const updateNote = async (id: string, data: Partial<Note>) => {
+// `opts.userId`: il flusher del vault al logout scrive dopo che authStore ha gia' azzerato l'utente (usa quello del contesto catturato).
+export const updateNote = async (id: string, data: Partial<Note>, opts?: { userId?: string }) => {
   // Solo vaultMove cambia isVault (scrive Dexie direttamente)
   if ('isVault' in data) rejectVaultWrite('updateNote non puo cambiare isVault');
   const updatedAt = new Date().toISOString();
-  const userId = useAuthStore.getState().user?.id || 'current-user';
+  const userId = opts?.userId ?? (useAuthStore.getState().user?.id || 'current-user');
   // Lettura, guardia, update e coda nella stessa transazione: guardia e scrittura vedono la stessa riga.
   const shared = await db.transaction('rw', db.notes, db.syncQueue, async () => {
     const existing = await db.notes.get(id);
