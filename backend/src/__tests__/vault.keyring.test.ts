@@ -287,6 +287,26 @@ describe('getKeyring', () => {
   it('userId vuoto -> lancia', async () => {
     await expect(getKeyring('')).rejects.toThrow();
   });
+
+  it('setupAllowed segue il kill switch di createKeyring, letto a ogni chiamata (NONE e con riga)', async () => {
+    const row = {
+      status: 'READY', epoch: 0, rev: 1, kdf: 'argon2id', kdfParams: { m: 1 }, pinSalt: null,
+      wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: null, migrationState: 'NONE',
+      lockedUntil: null, resetScheduledAt: null, escrowBlob: null,
+    };
+    for (const found of [null, row]) {
+      mp.vaultKeyring.findUnique.mockResolvedValue(found);
+      process.env.VAULT_SETUP_USERS = '*';
+      expect(((await getKeyring('u1')) as any).setupAllowed).toBe(true);
+      process.env.VAULT_SETUP_USERS = 'x, u1 ,y';
+      expect(((await getKeyring('u1')) as any).setupAllowed).toBe(true);
+      expect(((await getKeyring('u2')) as any).setupAllowed).toBe(false);
+      process.env.VAULT_SETUP_USERS = '';
+      expect(((await getKeyring('u1')) as any).setupAllowed).toBe(false);
+      delete process.env.VAULT_SETUP_USERS;
+      expect(((await getKeyring('u1')) as any).setupAllowed).toBe(false);
+    }
+  });
 });
 
 describe('updateKeyring', () => {

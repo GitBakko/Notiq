@@ -154,6 +154,12 @@ export async function countLegacyVaultNotes(
 
 const toB64 = (v: Uint8Array | null | undefined) => (v ? Buffer.from(v).toString('base64url') : null);
 
+// kill switch (D2): letto a ogni chiamata, assente = chiuso. Lo usano createKeyring e GET /keyring (setupAllowed).
+function isSetupAllowed(userId: string): boolean {
+  const allow = process.env.VAULT_SETUP_USERS ?? '';
+  return allow === '*' || allow.split(',').some((u) => u.trim() === userId);
+}
+
 export async function getKeyring(userId: string) {
   if (!userId) throw new Error('getKeyring: userId required');
   const row = await prisma.vaultKeyring.findUnique({
@@ -169,7 +175,7 @@ export async function getKeyring(userId: string) {
     return {
       status: 'NONE', epoch: 0, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null,
       wrappedVkSigKey: null, rootKeyId: null, migrationState: 'NONE', lockedUntil: null,
-      resetScheduledAt: null, escrowHash: null, legacyCount,
+      resetScheduledAt: null, escrowHash: null, legacyCount, setupAllowed: isSetupAllowed(userId),
     };
   }
   const { escrowBlob, ...rest } = row;
@@ -184,6 +190,7 @@ export async function getKeyring(userId: string) {
     wrappedVkPin: toB64(row.wrappedVkPin),
     wrappedVkSigKey: toB64(row.wrappedVkSigKey),
     legacyCount,
+    setupAllowed: isSetupAllowed(userId),
   };
 }
 
@@ -216,9 +223,8 @@ export async function createKeyring(userId: string, dto: CreateKeyringDto) {
   if (Object.keys(VAULT_ROOT_KEYS).length === 0) throw new AppError(503, 'errors.vault.unavailable');
   if (!isRootKey(dto.rootKeyId)) throw new AppError(400, 'errors.vault.invalidRootKey');
 
-  // kill switch: letto a ogni chiamata, assente = chiuso
-  const allow = process.env.VAULT_SETUP_USERS ?? '';
-  if (allow !== '*' && !allow.split(',').some((u) => u.trim() === userId)) {
+  // kill switch (D2)
+  if (!isSetupAllowed(userId)) {
     throw new AppError(503, 'errors.vault.setupDisabled');
   }
 
