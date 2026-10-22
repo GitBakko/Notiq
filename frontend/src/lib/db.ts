@@ -43,8 +43,8 @@ export interface LocalNote {
   _localMetaUpdatedAt?: number;
   /** Vault v3: sha256 hex of the envelope the server holds (CAS base of the next push). Not indexed: no Dexie version bump. */
   vaultBaseHash?: string;
-  /** Vault v3: sha256 hex of the last envelope this device sent (reconcile uses it to recognise a lost response). Not indexed. */
-  vaultSentHash?: string;
+  /** Vault v3: sha256 hex of the envelopes sent by this device and not yet confirmed by a 2xx, max 5 (reconcile uses them to recognise a lost response). Not indexed. */
+  vaultSentHashes?: string[];
   syncStatus: 'synced' | 'created' | 'updated';
 }
 

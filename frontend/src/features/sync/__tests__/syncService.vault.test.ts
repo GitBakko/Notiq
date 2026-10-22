@@ -1,6 +1,6 @@
 // Vault v3 (plan P2, T14, 5.7): push/pull/retry rules for vault rows. Stateful in-memory Dexie so that the effects of one
 // item on the next (vaultBaseHash, queue contents, syncStatus) are real, not asserted on call counts alone.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- Vitest mocks: Dexie rows and queue items are loose records */
 const { st, mockDb, mockApi, mockToast } = vi.hoisted(() => {
@@ -45,6 +45,7 @@ const { st, mockDb, mockApi, mockToast } = vi.hoisted(() => {
       get: vi.fn(async (id: string) => st.notes.get(id)),
       bulkGet: vi.fn(async (ids: string[]) => ids.map(id => st.notes.get(id))),
       bulkPut: vi.fn(async (rows: any[]) => { for (const r of rows) st.notes.set(r.id, r); }),
+      put: vi.fn(async (r: any) => { st.notes.set(r.id, r); }),
       bulkDelete: vi.fn(async (ids: string[]) => { for (const id of ids) st.notes.delete(id); }),
       update: vi.fn(async (id: string, patch: any) => {
         const r = st.notes.get(id);
@@ -55,6 +56,7 @@ const { st, mockDb, mockApi, mockToast } = vi.hoisted(() => {
     },
     syncQueue: {
       ...live(() => st.queue),
+      get: vi.fn(async (id: number) => st.queue.find(i => i.id === id)),
       delete: vi.fn(async (id: number) => { st.queue = st.queue.filter(i => i.id !== id); }),
       update: vi.fn(async (id: number, patch: any) => {
         st.queue = st.queue.map(i => (i.id === id ? { ...i, ...patch } : i));
@@ -142,16 +144,16 @@ describe('T14 (a) pull keeps vaultBaseHash', () => {
     expect(row.syncStatus).toBe('synced');
   });
 
-  it('carries vaultSentHash over, and adds no key when absent', async () => {
-    vaultRow(env('local'), { syncStatus: 'synced', vaultSentHash: 'h-sent' });
+  it('carries vaultSentHashes over, and adds no key when absent', async () => {
+    vaultRow(env('local'), { syncStatus: 'synced', vaultSentHashes: ['h-sent', 'h-sent2'] });
     putRow({ id: 'n1', content: '<p>x</p>', syncStatus: 'synced' });
     mockApi.get.mockImplementation(async (url: string) =>
       ({ data: url === '/notes?includeTrashed=true&all=1' ? [{ ...serverRow('v1'), isVault: true }, serverRow('n1')] : [] }));
 
     await syncPull();
 
-    expect(st.notes.get('v1').vaultSentHash).toBe('h-sent');
-    expect('vaultSentHash' in st.notes.get('n1')).toBe(false);
+    expect(st.notes.get('v1').vaultSentHashes).toEqual(['h-sent', 'h-sent2']);
+    expect('vaultSentHashes' in st.notes.get('n1')).toBe(false);
   });
 
   it('adds no vaultBaseHash key to rows that never had one (non-vault payloads unchanged)', async () => {
@@ -264,7 +266,7 @@ describe('T14 push with an active keyring (5.7.3-5.7.5)', () => {
     expect(st.notes.get('v1').vaultBaseHash).toBe(await sha256hex(env('server')));
   });
 
-  it('vaultSentHash is written before the PUT and survives a network failure (lost response)', async () => {
+  it('vaultSentHashes is written before the PUT and survives a network failure (lost response)', async () => {
     vaultRow(env('sent'));
     seq = 5000; // unique queue ids: a network failure leaves a module-level backoff keyed by item id
     item('UPDATE', 'NOTE', 'v1', { content: env('sent') });
@@ -276,12 +278,56 @@ describe('T14 push with an active keyring (5.7.3-5.7.5)', () => {
 
     await syncPush();
 
-    expect(during.vaultSentHash).toBe(await sha256hex(env('sent')));
-    expect(st.notes.get('v1').vaultSentHash).toBe(await sha256hex(env('sent')));
+    expect(during.vaultSentHashes).toEqual([await sha256hex(env('sent'))]);
+    expect(st.notes.get('v1').vaultSentHashes).toEqual([await sha256hex(env('sent'))]);
     expect(st.notes.get('v1').vaultBaseHash).toBe('oldhash');
   });
 
-  it('writing vaultSentHash leaves updatedAt and syncStatus alone and the row still ends synced', async () => {
+  // Fails the PUT by network for each envelope in turn, the row moving to the next one: v1 may have been applied
+  // server side with the response lost, so its hash must survive the retry with v2.
+  const failPuts = async (tags: string[], firstSeq: number) => {
+    mockApi.put.mockRejectedValue(new Error('Network Error'));
+    let s = firstSeq;
+    for (const tag of tags) {
+      seq = s; s += 100; // unique queue ids: a network failure leaves a module-level backoff keyed by item id
+      st.queue = [];
+      st.notes.set('v1', { ...st.notes.get('v1'), content: env(tag) });
+      item('UPDATE', 'NOTE', 'v1', { content: env(tag) });
+      await syncPush();
+    }
+  };
+
+  it('a retry with v2 after a failed v1 keeps both hashes and the old base', async () => {
+    vaultRow(env('v1'));
+    await failPuts(['v1', 'v2'], 7000);
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual([await sha256hex(env('v1')), await sha256hex(env('v2'))]);
+    expect(st.notes.get('v1').vaultBaseHash).toBe('oldhash');
+  });
+
+  it('keeps only the 5 most recent sent hashes', async () => {
+    vaultRow(env('a1'));
+    const tags = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'];
+    await failPuts(tags, 8000);
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual(await Promise.all(tags.slice(-5).map(t => sha256hex(env(t)))));
+  });
+
+  it('a 2xx empties the list', async () => {
+    vaultRow(env('v1'));
+    await failPuts(['v1'], 9000);
+    expect(st.notes.get('v1').vaultSentHashes).toHaveLength(1);
+
+    st.queue = [];
+    item('UPDATE', 'NOTE', 'v1', { content: env('v1') });
+    mockApi.put.mockResolvedValue({ data: {} });
+    await syncPush();
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual([]);
+    expect(st.notes.get('v1').vaultBaseHash).toBe(await sha256hex(env('v1')));
+  });
+
+  it('writing vaultSentHashes leaves updatedAt and syncStatus alone and the row still ends synced', async () => {
     vaultRow(env('sent'));
     item('UPDATE', 'NOTE', 'v1', { content: env('sent') });
     let during: any;
@@ -295,7 +341,7 @@ describe('T14 push with an active keyring (5.7.3-5.7.5)', () => {
     expect(st.notes.get('v1').syncStatus).toBe('synced');
   });
 
-  it('CREATE also stores vaultSentHash = sha256 of the envelope sent', async () => {
+  it('CREATE also stores vaultSentHashes = [sha256 of the envelope sent]', async () => {
     vaultRow(env('dexie'), { syncStatus: 'created', vaultBaseHash: undefined });
     seq = 6000; // see above: unique ids against the leaked backoff
     item('CREATE', 'NOTE', 'v1', { id: 'v1', title: '', content: env('dexie'), notebookId: 'nb-1', isVault: true });
@@ -303,16 +349,16 @@ describe('T14 push with an active keyring (5.7.3-5.7.5)', () => {
 
     await syncPush();
 
-    expect(st.notes.get('v1').vaultSentHash).toBe(await sha256hex(env('dexie')));
+    expect(st.notes.get('v1').vaultSentHashes).toEqual([await sha256hex(env('dexie'))]);
   });
 
-  it('non vault rows never get vaultSentHash', async () => {
+  it('non vault rows never get vaultSentHashes', async () => {
     putRow({ id: 'n1', content: '<p>x</p>' });
     item('UPDATE', 'NOTE', 'n1', { content: '<p>x</p>' });
 
     await syncPush();
 
-    expect('vaultSentHash' in st.notes.get('n1')).toBe(false);
+    expect('vaultSentHashes' in st.notes.get('n1')).toBe(false);
   });
 
   it('CREATE whose answer carries no content leaves vaultBaseHash unset', async () => {
@@ -553,5 +599,308 @@ describe('T14 (i) no READY keyring in cache: legacy payloads leave unchanged', (
     expect(mockApi.post).toHaveBeenCalledWith('/notes', {
       title: 'Another secret', content: '<p>s2</p>', notebookId: 'nb-1', isVault: true, id: 'v2',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('T15 sent hashes: atomic add, prefix removal (CREATE and UPDATE)', () => {
+  const NOTES_URL = '/notes?includeTrashed=true&all=1';
+
+  it('adding a hash keeps the ones already there, no duplicates, max 5', async () => {
+    vaultRow(env('mine'), { vaultSentHashes: ['h1', 'h2', 'h3', 'h4', 'h5'] });
+    item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+    let during: any;
+    mockApi.put.mockImplementation(async () => { during = [...st.notes.get('v1').vaultSentHashes]; return { data: {} }; });
+
+    await syncPush();
+
+    expect(during).toEqual(['h2', 'h3', 'h4', 'h5', await sha256hex(env('mine'))]);
+  });
+
+  it('adding does not touch updatedAt nor syncStatus and runs inside a Dexie transaction', async () => {
+    vaultRow(env('mine'));
+    item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+    let during: any;
+    mockApi.put.mockImplementation(async () => { during = { ...st.notes.get('v1') }; return { data: {} }; });
+
+    await syncPush();
+
+    expect(during.updatedAt).toBe(T0);
+    expect(during.syncStatus).toBe('updated');
+    expect(mockDb.transaction).toHaveBeenCalled();
+  });
+
+  it('UPDATE 2xx removes the prefix up to its own hash; the hash another tab added after stays', async () => {
+    vaultRow(env('a'), { vaultSentHashes: ['old'] });
+    item('UPDATE', 'NOTE', 'v1', { content: env('a') });
+    const ha = await sha256hex(env('a'));
+    mockApi.put.mockImplementation(async () => {
+      // tab B sends its own envelope while A's PUT is in flight
+      const r = st.notes.get('v1');
+      st.notes.set('v1', { ...r, vaultSentHashes: [...r.vaultSentHashes, 'hash-of-B'] });
+      return { data: {} };
+    });
+
+    await syncPush();
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual(['hash-of-B']);
+    expect(st.notes.get('v1').vaultBaseHash).toBe(ha);
+    expect(st.notes.get('v1').syncStatus).toBe('synced');
+  });
+
+  it('CREATE 2xx: same prefix rule, and vaultBaseHash from the answer', async () => {
+    vaultRow(env('c'), { syncStatus: 'created', vaultBaseHash: undefined });
+    item('CREATE', 'NOTE', 'v1', { id: 'v1', title: '', content: env('c'), notebookId: 'nb-1', isVault: true });
+    mockApi.post.mockImplementation(async () => {
+      const r = st.notes.get('v1');
+      st.notes.set('v1', { ...r, vaultSentHashes: [...r.vaultSentHashes, 'hash-of-B'] });
+      return { data: { content: env('server') } };
+    });
+
+    await syncPush();
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual(['hash-of-B']);
+    expect(st.notes.get('v1').vaultBaseHash).toBe(await sha256hex(env('server')));
+  });
+
+  it('CREATE 2xx with a single own hash leaves an empty list', async () => {
+    vaultRow(env('c'), { syncStatus: 'created', vaultBaseHash: undefined });
+    item('CREATE', 'NOTE', 'v1', { id: 'v1', title: '', content: env('c'), notebookId: 'nb-1', isVault: true });
+    mockApi.post.mockResolvedValue({ data: { content: env('c') } });
+
+    await syncPush();
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual([]);
+  });
+
+  it('own hash not in the list (-1): the list stays intact, never emptied', async () => {
+    vaultRow(env('a'), { vaultSentHashes: [] });
+    item('UPDATE', 'NOTE', 'v1', { content: env('a') });
+    mockApi.put.mockImplementation(async () => {
+      st.notes.set('v1', { ...st.notes.get('v1'), vaultSentHashes: ['x1', 'x2'] });
+      return { data: {} };
+    });
+
+    await syncPush();
+
+    expect(st.notes.get('v1').vaultSentHashes).toEqual(['x1', 'x2']);
+  });
+
+  describe('(c) pull: vault flag flip under the note lock', () => {
+    const serverRow = (extra: Record<string, unknown>) => ({
+      id: 'v1', title: 'T', notebookId: 'nb-1', userId: 'user-1', isTrashed: false, createdAt: T0, updatedAt: T0, tags: [], attachments: [], ...extra,
+    });
+    const pullWith = async (row: any) => {
+      mockApi.get.mockImplementation(async (url: string) => ({ data: url === NOTES_URL ? [row] : [] }));
+      await syncPull();
+    };
+    const held = new Set<string>();
+    const installLocks = () => Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: async (name: string, opts: any, cb: (l: unknown) => Promise<unknown>) => {
+          if (held.has(name)) return opts.ifAvailable ? cb(null) : undefined;
+          held.add(name);
+          try { return await cb({ name }); } finally { held.delete(name); }
+        },
+      },
+    });
+    beforeEach(() => { held.clear(); installLocks(); });
+    afterEach(() => { Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined }); });
+
+    const flipSetup = () => vaultRow(env('local'), {
+      syncStatus: 'synced', vaultBaseHash: 'h-local', vaultSentHashes: ['s1'], title: '',
+    });
+
+    it('lock held: the row is untouched; applied by the next pull after the release', async () => {
+      flipSetup();
+      const before = { ...st.notes.get('v1') };
+      held.add('notiq-vault-note:v1');
+
+      await pullWith(serverRow({ isVault: false, isEncrypted: false, content: '<p>plain</p>' }));
+      expect(st.notes.get('v1')).toEqual(before);
+
+      held.clear();
+      await pullWith(serverRow({ isVault: false, isEncrypted: false, content: '<p>plain</p>' }));
+      const row = st.notes.get('v1');
+      expect(row.isVault).toBe(false);
+      expect(row.content).toBe('<p>plain</p>');
+      expect(row.title).toBe('T');
+      expect('vaultBaseHash' in row).toBe(false);
+      expect('vaultSentHashes' in row).toBe(false);
+      expect(row.syncStatus).toBe('synced');
+    });
+
+    it('server content missing: the flipped row gets an empty content, not the old envelope', async () => {
+      flipSetup();
+      await pullWith(serverRow({ isVault: false, isEncrypted: false }));
+      expect(st.notes.get('v1').content).toBe('');
+    });
+
+    it('the flip is not written if the row became dirty meanwhile', async () => {
+      flipSetup();
+      const realGet = mockDb.notes.get.getMockImplementation()!;
+      let calls = 0;
+      // the editor grabs the row between the pull transaction and the flip (the 2nd get of v1 is the re-read)
+      mockDb.notes.get.mockImplementation(async (id: string) => {
+        if (++calls === 1) st.notes.set(id, { ...st.notes.get(id), syncStatus: 'updated', content: env('edited') });
+        return realGet(id);
+      });
+      await pullWith(serverRow({ isVault: false, isEncrypted: false, content: '<p>plain</p>' }));
+      const row = st.notes.get('v1');
+      expect(row.isVault).toBe(true);
+      expect(row.content).toBe(env('edited'));
+    });
+
+    it('without navigator.locks the flip is written directly', async () => {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+      flipSetup();
+      await pullWith(serverRow({ isVault: false, isEncrypted: false, content: '<p>plain</p>' }));
+      expect(st.notes.get('v1').isVault).toBe(false);
+      expect(st.notes.get('v1').content).toBe('<p>plain</p>');
+    });
+
+    it('rows with the same vault flag still go through bulkPut and keep base / sent hashes', async () => {
+      flipSetup();
+      await pullWith(serverRow({ isVault: true, isEncrypted: true }));
+      const row = st.notes.get('v1');
+      expect(row.vaultBaseHash).toBe('h-local');
+      expect(row.vaultSentHashes).toEqual(['s1']);
+      expect(mockDb.notes.put).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('T15 push of a vault note: shared note lock with ifAvailable', () => {
+  const NAME = 'notiq-vault-note:v1';
+  const excl = new Set<string>();
+  const shared = new Map<string, number>();
+  const duringPut: string[] = [];
+  const installLocks = () => Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async (name: string, opts: any, cb: (l: unknown) => Promise<unknown>) => {
+        const mode = opts.mode ?? 'exclusive';
+        const ok = !excl.has(name) && (mode === 'shared' || !(shared.get(name) ?? 0));
+        if (!ok) return opts.ifAvailable ? cb(null) : undefined;
+        if (mode === 'shared') shared.set(name, (shared.get(name) ?? 0) + 1); else excl.add(name);
+        try { return await cb({ name, mode }); } finally {
+          if (mode === 'shared') shared.set(name, (shared.get(name) ?? 1) - 1); else excl.delete(name);
+        }
+      },
+    },
+  });
+  beforeEach(() => { excl.clear(); shared.clear(); duringPut.length = 0; installLocks(); });
+  afterEach(() => { Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined }); });
+
+  it('exclusive holder: the item is not sent and nothing changes; sent after the release', async () => {
+    vaultRow(env('mine'));
+    const it = item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+    const rowBefore = { ...st.notes.get('v1') };
+    excl.add(NAME);
+
+    await syncPush();
+
+    expect(mockApi.put).not.toHaveBeenCalled();
+    expect(st.queue).toEqual([it]);
+    expect(mockDb.syncQueue.update).not.toHaveBeenCalled();
+    expect(st.notes.get('v1')).toEqual(rowBefore);
+
+    excl.delete(NAME);
+    await syncPush();
+
+    expect(mockApi.put).toHaveBeenCalledTimes(1);
+    expect(st.queue).toEqual([]);
+    expect(st.notes.get('v1').syncStatus).toBe('synced');
+  });
+
+  it('a shared holder (open editor): the item is sent; the lock is shared during the PUT and released after', async () => {
+    vaultRow(env('mine'));
+    item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+    shared.set(NAME, 1); // the editor
+    mockApi.put.mockImplementation(async () => { duringPut.push(`shared:${shared.get(NAME)}`, `excl:${excl.has(NAME)}`); return { data: {} }; });
+
+    await syncPush();
+
+    expect(mockApi.put).toHaveBeenCalledTimes(1);
+    expect(duringPut).toEqual(['shared:2', 'excl:false']);
+    expect(shared.get(NAME)).toBe(1);
+    expect(st.notes.get('v1').syncStatus).toBe('synced');
+  });
+
+  // the reconcile commits while the push waits for the lock: it rewrites (strips isEncrypted:false) or deletes the queue item
+  const mutateWhileWaiting = (fn: () => void) => {
+    const real = (navigator as any).locks.request;
+    (navigator as any).locks.request = async (...a: any[]) => { fn(); return real(...a); };
+  };
+
+  it('queue item rewritten by the reconcile while waiting for the lock: the old version is not sent', async () => {
+    vaultRow(env('mine'));
+    const it = item('UPDATE', 'NOTE', 'v1', { content: env('mine'), isEncrypted: false });
+    mutateWhileWaiting(() => { st.queue = st.queue.map(i => (i.id === it.id ? { ...i, data: { content: env('mine') } } : i)); });
+
+    await syncPush();
+
+    expect(mockApi.put).not.toHaveBeenCalled();
+    expect(st.queue).toHaveLength(1);
+    expect(shared.get(NAME) ?? 0).toBe(0);
+  });
+
+  it('queue item deleted by the reconcile while waiting for the lock: nothing is sent', async () => {
+    vaultRow(env('mine'));
+    const it = item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+    mutateWhileWaiting(() => { st.queue = st.queue.filter(i => i.id !== it.id); });
+
+    await syncPush();
+
+    expect(mockApi.put).not.toHaveBeenCalled();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(shared.get(NAME) ?? 0).toBe(0);
+  });
+
+  it('CREATE is under the same lock: busy with an exclusive holder, sent without', async () => {
+    vaultRow(env('c'), { syncStatus: 'created', vaultBaseHash: undefined });
+    item('CREATE', 'NOTE', 'v1', { id: 'v1', title: '', content: env('c'), notebookId: 'nb-1', isVault: true });
+    excl.add(NAME);
+    await syncPush();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(st.queue).toHaveLength(1);
+
+    excl.delete(NAME);
+    await syncPush();
+    expect(mockApi.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('a non-vault note is pushed without taking the lock', async () => {
+    putRow({ id: 'n9', content: '<p>x</p>' });
+    item('UPDATE', 'NOTE', 'n9', { content: '<p>x</p>' });
+    excl.add('notiq-vault-note:n9');
+
+    await syncPush();
+
+    expect(mockApi.put).toHaveBeenCalledTimes(1);
+  });
+
+  it('without navigator.locks the push runs as before', async () => {
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+    vaultRow(env('mine'));
+    item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+
+    await syncPush();
+
+    expect(mockApi.put).toHaveBeenCalledTimes(1);
+    expect(st.notes.get('v1').syncStatus).toBe('synced');
+  });
+
+  // last: a 500 puts item id 1 in the module's in-memory backoff, and ids restart at 1 in every test
+  it('the lock is released also when the PUT fails', async () => {
+    vaultRow(env('mine'));
+    item('UPDATE', 'NOTE', 'v1', { content: env('mine') });
+    mockApi.put.mockRejectedValue(reject(500));
+
+    await syncPush();
+
+    expect(shared.get(NAME) ?? 0).toBe(0);
   });
 });

@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import i18n from 'i18next';
 import queryClient from '../../lib/queryClient';
 import { queryKeys } from '../../lib/queryKeys';
+import { withNoteLock } from '../../lib/vaultNoteLock';
 
 // Kanban 5.2: the list's contentVersion of each board as of its last successful detail
 // pull, keyed by user and board. syncPull runs every 30 s and used to GET every board's
@@ -116,6 +117,7 @@ export const syncPull = async () => {
     try {
       // Pull Notes
       const notesRes = await api.get<Note[]>('/notes?includeTrashed=true&all=1');
+      const vaultFlips: LocalNote[] = [];
       await db.transaction('rw', db.notes, db.syncQueue, async () => {
         // We need to be careful not to overwrite dirty notes
         // For MVP, let's just overwrite everything that is 'synced'
@@ -179,10 +181,10 @@ export const syncPull = async () => {
         // Vault v3: the server never sends vaultBaseHash (it is the local CAS base of the next push); bulkPut replaces
         // the whole row, so carry it over like the content.
         const localVaultBaseHashMap = new Map<string, string>();
-        const localVaultSentHashMap = new Map<string, string>();
+        const localVaultSentHashesMap = new Map<string, string[]>();
         for (const existing of existingNotes) {
-          if (existing?.vaultSentHash) {
-            localVaultSentHashMap.set(existing.id, existing.vaultSentHash);
+          if (existing?.vaultSentHashes?.length) {
+            localVaultSentHashesMap.set(existing.id, existing.vaultSentHashes);
           }
           if (existing?.content) {
             localContentMap.set(existing.id, existing.content);
@@ -192,20 +194,42 @@ export const syncPull = async () => {
           }
         }
 
-        const notesWithPreservedContent = filteredNotesToPut.map(n => {
+        // T15 (I2): a row whose vault flag differs from the server's leaves the bulkPut; it is applied after the
+        // transaction under the note's Web Lock (an open editor holds it).
+        const flipIds = new Set<string>();
+        filteredNotesToPut.forEach((n, i) => {
+          const existing = existingNotes[i];
+          if (existing && !!existing.isVault !== !!n.isVault) {
+            flipIds.add(n.id);
+            vaultFlips.push({ ...n, content: n.content ?? '' });
+          }
+        });
+
+        const notesWithPreservedContent = filteredNotesToPut.filter(n => !flipIds.has(n.id)).map(n => {
           const vaultBaseHash = localVaultBaseHashMap.get(n.id);
-          const vaultSentHash = localVaultSentHashMap.get(n.id);
+          const vaultSentHashes = localVaultSentHashesMap.get(n.id);
           return {
             ...n,
             content: n.content ?? localContentMap.get(n.id) ?? '',
             ...(vaultBaseHash ? { vaultBaseHash } : {}),
-            ...(vaultSentHash ? { vaultSentHash } : {}),
+            ...(vaultSentHashes ? { vaultSentHashes } : {}),
           };
         });
 
         // Update local DB with server notes (wins over synced)
         await db.notes.bulkPut(notesWithPreservedContent);
       });
+
+      // T15: vault flag flips, one by one under the note lock. Held (open editor) -> skipped, the next pull retries.
+      // Server content wins (n.content ?? ''), with no vaultBaseHash / vaultSentHashes: the row changes nature.
+      for (const n of vaultFlips) {
+        const apply = () => db.transaction('rw', db.notes, async () => {
+          const row = await db.notes.get(n.id);
+          if (row && row.syncStatus === 'synced' && !!row.isVault !== !!n.isVault) await db.notes.put(n);
+        });
+        const r = await withNoteLock(n.id, apply, { ifAvailable: true, mode: 'exclusive' });
+        if (r.status === 'nolocks') await apply();
+      }
     } catch (e) {
       console.error('Sync Pull Notes Failed:', e);
     }
@@ -595,6 +619,17 @@ async function planVaultNotePush(item: SyncQueueItem, local: LocalNote | undefin
   void _title; // the title of a vault note is never sent (it lives inside the envelope)
   if (hash === local?.vaultBaseHash && Object.keys(rest).every(k => k === 'content')) return { kind: 'skip' };
   return { kind: 'send', body: { ...rest, content, baseHash: local?.vaultBaseHash }, hash };
+}
+
+/**
+ * Takes the note lock SHARED with ifAvailable (coexists with the open editor, kept out only by an exclusive holder:
+ * reconcile commit, pull flip) and holds it until `release` is called. The push body is too long to live in a callback.
+ */
+function holdSharedNoteLock(id: string): Promise<{ status: 'held'; release: () => void } | { status: 'busy' | 'nolocks' }> {
+  return new Promise(resolve => {
+    withNoteLock(id, () => new Promise<void>(release => resolve({ status: 'held', release })), { mode: 'shared', ifAvailable: true })
+      .then(r => { if (r.status !== 'ran') resolve({ status: r.status }); }, () => resolve({ status: 'nolocks' }));
+  });
 }
 
 // [BACKUP] 2026-09-29 — kanban 3.4: was `let isSyncing = false;`. A call made while a
@@ -987,10 +1022,12 @@ const pushQueueOnce = async (): Promise<boolean> => {
     let vaultPlan: VaultPlan | null = null;
     let vaultRowUpdatedAt: string | undefined;
     let createdContent: unknown;
+    let sentHash: string | undefined; // hash of the envelope this push sent (CREATE and UPDATE), for the prefix removal below
+    let releaseNoteLock: (() => void) | undefined; // T15: shared note lock of a vault 'send' push, released in finally
     try {
       if (item.entity === 'NOTE') {
         // Safety: never push shared notes to REST API
-        const localNote = await db.notes.get(item.entityId);
+        let localNote = await db.notes.get(item.entityId);
         if (localNote?.ownership === 'shared') {
           if (item.id) await db.syncQueue.delete(item.id);
           clearFailure(item.id);
@@ -999,6 +1036,21 @@ const pushQueueOnce = async (): Promise<boolean> => {
         // read BEFORE the request: 5.7.5 marks the row synced only if it did not move during the PUT
         vaultRowUpdatedAt = localNote?.updatedAt;
         vaultPlan = await planVaultNotePush(item, localNote);
+        if (vaultPlan?.kind === 'send') {
+          // T15: shared with ifAvailable. Busy (exclusive holder): skip this run, attempts and status untouched.
+          const lk = await holdSharedNoteLock(item.entityId);
+          if (lk.status === 'busy') { blocked.add(entityKey); continue; }
+          if (lk.status === 'held') {
+            releaseNoteLock = lk.release;
+            // a reconcile commit may have run between the plan and the lock: plan again on the fresh row
+            localNote = await db.notes.get(item.entityId);
+            vaultRowUpdatedAt = localNote?.updatedAt;
+            // the reconcile may also have rewritten or deleted the queue item while we waited for the lock
+            const fresh = item.id ? await db.syncQueue.get(item.id) : undefined;
+            if (!fresh || fresh.status !== item.status || JSON.stringify(fresh.data) !== JSON.stringify(item.data) || fresh.lastError !== item.lastError) continue;
+            vaultPlan = await planVaultNotePush(fresh, localNote);
+          }
+        }
         if (vaultPlan?.kind === 'hold') {
           // Not an envelope (yet): stay pending, attempts untouched. vaultReconcile / the editor resolves it.
           if (item.id && item.lastError !== 'vault:notEnvelope') await db.syncQueue.update(item.id, { lastError: 'vault:notEnvelope' });
@@ -1008,7 +1060,15 @@ const pushQueueOnce = async (): Promise<boolean> => {
         // Lost-response marker, written BEFORE the request. Touches neither updatedAt nor syncStatus: the synced rule
         // below compares updatedAt before/after the PUT, and this write must not look like an edit.
         if (vaultPlan?.kind === 'send' && typeof vaultPlan.body.content === 'string') {
-          await db.notes.update(item.entityId, { vaultSentHash: await sha256hex(vaultPlan.body.content) });
+          // A list, not one hash: v1 applied but response lost, then the retry with v2 must not erase v1. Max 5, oldest dropped.
+          sentHash = await sha256hex(vaultPlan.body.content);
+          const h = sentHash;
+          // T15: read and write in ONE transaction, so a second tab adding its own hash is not overwritten.
+          await db.transaction('rw', db.notes, async () => {
+            const cur = await db.notes.get(item.entityId);
+            const prevSent = cur?.vaultSentHashes ?? [];
+            if (cur && !prevSent.includes(h)) await db.notes.update(item.entityId, { vaultSentHashes: [...prevSent, h].slice(-5) });
+          });
         }
         if (item.type === 'CREATE') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1160,7 +1220,16 @@ const pushQueueOnce = async (): Promise<boolean> => {
         const base = item.type === 'CREATE'
           ? (typeof createdContent === 'string' ? await sha256hex(createdContent) : undefined)
           : vaultPlan.hash;
-        if (base) await db.notes.update(item.entityId, { vaultBaseHash: base });
+        // 2xx: what this push sent is confirmed, and everything added before it. Hashes another tab added after stay
+        // (never empty the whole list). Not found (-1): slice(0), the list stays intact.
+        const confirmed = sentHash;
+        await db.transaction('rw', db.notes, async () => {
+          const cur = await db.notes.get(item.entityId);
+          if (!cur) return;
+          const list = cur.vaultSentHashes ?? [];
+          const idx = confirmed ? list.indexOf(confirmed) : -1;
+          await db.notes.update(item.entityId, { vaultSentHashes: list.slice(idx + 1), ...(base ? { vaultBaseHash: base } : {}) });
+        });
       }
 
       // S4: read before clearFailure() drops it
@@ -1351,6 +1420,8 @@ const pushQueueOnce = async (): Promise<boolean> => {
         if (item.id && failureCounts.has(item.id)) blocked.add(entityKey);
         console.error('Sync Push Failed for item:', item, error);
       }
+    } finally {
+      releaseNoteLock?.();
     }
   }
 
