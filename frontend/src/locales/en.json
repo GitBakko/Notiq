@@ -324,6 +324,7 @@
   },
   "vault": {
     "title": "Secure Vault",
+    "conflictCopySuffix": "(conflict copy)",
     "setupTitle": "Set up your Vault",
     "setupDescription": "Create a PIN to protect your most private notes. This PIN will be required to access the Vault.",
     "enterPin": "Enter PIN",
@@ -1587,7 +1588,8 @@
   "errors": {
     "vault": {
       "attachmentsBlocked": "attachments are not allowed in encrypted vault notes",
-      "importBlocked": "importing directly into the encrypted vault is not allowed"
+      "importBlocked": "importing directly into the encrypted vault is not allowed",
+      "plaintextRequired": "This item must be in plain text outside the vault."
     },
     "common": {
       "accessDenied": "Access denied",

@@ -423,6 +423,7 @@
   },
   "vault": {
     "title": "Vault Sicuro",
+    "conflictCopySuffix": "(copia in conflitto)",
     "setupTitle": "Configura il tuo Vault",
     "setupDescription": "Crea un PIN per proteggere le tue note più private. Questo PIN sarà richiesto per accedere al Vault.",
     "enterPin": "Inserisci PIN",
@@ -1587,7 +1588,8 @@
   "errors": {
     "vault": {
       "attachmentsBlocked": "gli allegati non sono consentiti nelle note del vault cifrato",
-      "importBlocked": "l'importazione diretta nel vault cifrato non è consentita"
+      "importBlocked": "l'importazione diretta nel vault cifrato non è consentita",
+      "plaintextRequired": "Questo elemento deve essere in chiaro fuori dal vault."
     },
     "common": {
       "accessDenied": "Accesso negato",

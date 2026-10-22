@@ -116,6 +116,13 @@ export interface VaultItemsBody {
   after?: string;
 }
 
+/** Extra of the `ids` answer. Not being in `items` does not mean absent (getItems filters isVault:true):
+ *  `absent` = not a note of this user (an id of someone else is absent too), `notVault` = a note of the user that is not vault. */
+export interface VaultIdsExtra {
+  absent?: string[];
+  notVault?: string[];
+}
+
 export interface MigrateItem {
   id: string;
   baseHash: string;
