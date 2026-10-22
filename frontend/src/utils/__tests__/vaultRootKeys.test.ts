@@ -3,11 +3,15 @@ import { ACTIVE_VAULT_ROOT_KEY_ID, VAULT_ROOT_KEYS, getActiveRootKey } from '../
 import { b64uEncode } from '../vaultCrypto';
 
 describe('vaultRootKeys', () => {
-  it('lista vuota e congelata, nessuna chiave attiva finche T25 non la riempie', () => {
-    expect(Object.keys(VAULT_ROOT_KEYS)).toHaveLength(0);
+  it('lista congelata con la chiave di produzione attiva', () => {
+    expect(Object.keys(VAULT_ROOT_KEYS)).toEqual(['rk_68a265761e7e37c7']);
     expect(Object.isFrozen(VAULT_ROOT_KEYS)).toBe(true);
-    expect(ACTIVE_VAULT_ROOT_KEY_ID).toBeNull();
-    expect(getActiveRootKey()).toBeNull();
+    expect(Object.isFrozen(VAULT_ROOT_KEYS.rk_68a265761e7e37c7)).toBe(true);
+    expect(ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_68a265761e7e37c7');
+    const k = getActiveRootKey();
+    expect(k?.id).toBe('rk_68a265761e7e37c7');
+    expect(k?.ecdhSpki).toBeInstanceOf(Uint8Array);
+    expect(k?.ecdhSpki.length).toBe(120);
   });
 
   it('id attivo assente dalla lista -> null; presente -> id e SPKI decodificato', () => {

@@ -280,31 +280,50 @@ describe('verifyVkProof', () => {
     ));
 });
 
-describe('createKeyring: P1 lock', () => {
-  // P1 lock: rimuovere in P2 quando VAULT_ROOT_KEYS viene popolato
-  it('mappa root vuota -> 503, nessuna lettura, nessun bcrypt', async () => {
-    const bcrypt = (await import('bcrypt')).default;
-    const spy = vi.spyOn(bcrypt, 'compare');
-    vi.clearAllMocks();
+describe('createKeyring: root key di produzione', () => {
+  const run = async (rootKeyId: string) => {
     const { createKeyring, KDF_T_MIN } = await import('../services/vault.service');
     const b = Buffer.alloc(4);
-    await expect(
-      createKeyring('u1', {
-        expectedEpoch: 0, password: 'pw', kdf: 'argon2id', kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 },
-        pinSalt: b, wrappedVkPin: b, authKey: b, serverShare: b, vkSigPub: b, wrappedVkSigKey: b,
-        escrowBlob: b, sealedRootShare: b, rootKeyId: 'rk_x', userShareUnderVk: b,
-      }),
-    ).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.unavailable' });
+    return createKeyring('u1', {
+      expectedEpoch: 0, password: 'pw', kdf: 'argon2id', kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 },
+      pinSalt: b, wrappedVkPin: b, authKey: b, serverShare: b, vkSigPub: b, wrappedVkSigKey: b,
+      escrowBlob: b, sealedRootShare: b, rootKeyId, userShareUnderVk: b,
+    });
+  };
+  // Lo spy va creato PRIMA di run(), altrimenti l'asserzione non vede le chiamate.
+  const spyCompare = async () => vi.spyOn((await import('bcrypt')).default, 'compare');
+  const noReads = (compare: { mock: unknown }) => {
+    expect(compare).not.toHaveBeenCalled();
     expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.vaultKeyring.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.vaultKeyring.create).not.toHaveBeenCalled();
     expect(mockPrisma.vaultKeyring.updateMany).not.toHaveBeenCalled();
     expect(mockPrisma.note.count).not.toHaveBeenCalled();
-    expect(spy).not.toHaveBeenCalled();
+  };
+
+  it('root key sconosciuta -> 400 invalidRootKey, nessuna lettura', async () => {
+    vi.clearAllMocks();
+    const compare = await spyCompare();
+    await expect(run('rk_x')).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidRootKey' });
+    noReads(compare);
   });
 
-  it('VAULT_ROOT_KEYS is frozen', async () => {
+  it('root key nota ma VAULT_SETUP_USERS assente -> 503 setupDisabled, nessuna lettura', async () => {
+    vi.clearAllMocks();
+    const prev = process.env.VAULT_SETUP_USERS;
+    delete process.env.VAULT_SETUP_USERS;
+    const compare = await spyCompare();
+    try {
+      await expect(run('rk_68a265761e7e37c7')).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.setupDisabled' });
+      noReads(compare);
+    } finally {
+      if (prev !== undefined) process.env.VAULT_SETUP_USERS = prev;
+    }
+  });
+
+  it('VAULT_ROOT_KEYS is frozen (anche in profondita)', async () => {
     const { VAULT_ROOT_KEYS } = await import('../utils/vaultRootKeys');
     expect(Object.isFrozen(VAULT_ROOT_KEYS)).toBe(true);
+    for (const k of Object.values(VAULT_ROOT_KEYS)) expect(Object.isFrozen(k)).toBe(true);
   });
 });
