@@ -303,7 +303,7 @@ describe('migrateLegacy: decrypt che rifiuta e invio a flusso', () => {
     expect(r.migrated).toBe(250);
     expect(atFirstMigrate).toBe(201); // batch da 200 chiuso dal 201esimo item, non dopo 250
     expect(srv.calls.migrate.map((b) => b.length)).toEqual([200, 50]);
-  });
+  }, 30_000); // 250 item: sotto carico supera il timeout default di 5 s
 });
 
 describe('flushPending', () => {

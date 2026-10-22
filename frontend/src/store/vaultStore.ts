@@ -54,13 +54,11 @@ export type VaultPreLockFlusher = (ctx: VaultPreLockContext) => Promise<void> | 
 const preLockFlushers = new Set<VaultPreLockFlusher>();
 
 interface VaultState {
-  /** @deprecated legacy (pre-v3): lo rimuove T24b */
+  /** Legacy (pre-v3), solo residuo persistito: lo azzera `clearLegacy`. Nessuna azione lo scrive piu'. */
   isSetup: boolean;
-  /** @deprecated legacy (pre-v3): lo rimuove T24b */
+  /** Legacy (pre-v3), solo residuo persistito (SHA-256 non salato): lo azzera `clearLegacy`. */
   pinHash: string | null;
   isUnlocked: boolean;
-  /** @deprecated legacy (pre-v3): lo rimuove T24b */
-  pin: string | null; // Store PIN in memory when unlocked
 
   /** Persistito. Cache del keyring per userId. */
   byUser: Record<string, VaultUserCache>;
@@ -69,14 +67,8 @@ interface VaultState {
   keys: VaultKeys | null;
   epoch: number | null;
 
-  /** @deprecated legacy (pre-v3): lo rimuove T24b */
-  setupVault: (pinHash: string, pin: string) => void;
-  /** @deprecated legacy (pre-v3): lo rimuove T24b */
-  unlockVault: (pin: string) => void;
   /** Stato azzerato subito (sincrono); la Promise si risolve dopo i flusher pre-lock. */
   lockVault: () => Promise<void>;
-  /** @deprecated legacy (pre-v3): lo rimuove T24b. Non tocca byUser. */
-  resetVault: () => void;
   /** Reset the auto-lock timer (call on vault-related user activity) */
   touchVault: () => void;
 
@@ -97,25 +89,16 @@ export const useVaultStore = create<VaultState>()(
       isSetup: false,
       pinHash: null,
       isUnlocked: false,
-      pin: null,
       byUser: {},
       unlockedUserId: null,
       keys: null,
       epoch: null,
 
-      setupVault: (pinHash, pin) => {
-        set({ isSetup: true, pinHash, isUnlocked: true, pin });
-        startAutoLockTimer(() => get().lockVault());
-      },
-      unlockVault: (pin) => {
-        set({ isUnlocked: true, pin });
-        startAutoLockTimer(() => get().lockVault());
-      },
       lockVault: () => {
         clearAutoLockTimer();
         // Cattura PRIMA di azzerare: i flusher cifrano ancora l'ultimo salvataggio.
         const { keys, unlockedUserId, epoch } = get();
-        set({ isUnlocked: false, pin: null, keys: null, unlockedUserId: null, epoch: null });
+        set({ isUnlocked: false, keys: null, unlockedUserId: null, epoch: null });
         if (!keys || !unlockedUserId || epoch == null) return Promise.resolve();
         const ctx: VaultPreLockContext = { keys, userId: unlockedUserId, epoch };
         // Promise.resolve().then: un flusher che lancia sincrono non blocca il lock ne' gli altri.
@@ -126,10 +109,6 @@ export const useVaultStore = create<VaultState>()(
             if (r.status === 'rejected') console.error('[vault] pre-lock flush failed', r.reason);
           }
         });
-      },
-      resetVault: () => {
-        get().lockVault();
-        set({ isSetup: false, pinHash: null });
       },
       touchVault: () => {
         if (get().isUnlocked) {
@@ -158,7 +137,7 @@ export const useVaultStore = create<VaultState>()(
         set({ isUnlocked: true, unlockedUserId: userId, keys, epoch });
         startAutoLockTimer(() => get().lockVault());
       },
-      clearLegacy: () => set({ isSetup: false, pinHash: null, pin: null }),
+      clearLegacy: () => set({ isSetup: false, pinHash: null }),
       setOfflineUnlock: (userId, enabled) =>
         set((s) => {
           const cur = s.byUser[userId];

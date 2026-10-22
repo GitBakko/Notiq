@@ -9,7 +9,7 @@ import RecoveryKitSheet from '../RecoveryKitSheet';
 import { confirmKit } from '../../../lib/vaultSession';
 import toast from 'react-hot-toast';
 import { formatKit } from '../../../utils/vaultKit';
-import { useVaultStore } from '../../../store/vaultStore';
+import { useVaultStore, type VaultKeys } from '../../../store/vaultStore';
 
 const mkKit = () => Uint8Array.from({ length: 20 }, (_, i) => (i * 13 + 7) & 255);
 const groupsOf = (kit: Uint8Array) => formatKit(kit).split('  ')[0].split('-');
@@ -123,7 +123,7 @@ describe('RecoveryKitSheet', () => {
       const unlocked = useVaultStore((s) => s.isUnlocked);
       return unlocked ? <RecoveryKitSheet kit={kit} userId="u1" onDone={() => {}} /> : null;
     }
-    act(() => { useVaultStore.getState().unlockVault('pin'); });
+    act(() => { useVaultStore.getState().unlock('u1', {} as VaultKeys, 1); });
     render(<Parent />);
     act(() => { vi.advanceTimersByTime(11 * 60_000); });
     expect(useVaultStore.getState().isUnlocked).toBe(true);

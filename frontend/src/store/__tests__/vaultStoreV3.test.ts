@@ -26,7 +26,6 @@ describe('vaultStore v3', () => {
       isSetup: false,
       pinHash: null,
       isUnlocked: false,
-      pin: null,
       byUser: {},
       unlockedUserId: null,
       keys: null,
@@ -42,7 +41,7 @@ describe('vaultStore v3', () => {
       expect(useVaultStore.persist.getOptions().name).toBe('vault-storage');
     });
 
-    it('partialize: solo isSetup, pinHash, byUser (mai keys, isUnlocked, pin, epoch, unlockedUserId)', () => {
+    it('partialize: solo isSetup, pinHash, byUser (mai keys, isUnlocked, epoch, unlockedUserId)', () => {
       useVaultStore.getState().setKeyringCache('u1', cache());
       useVaultStore.getState().unlock('u1', fakeKeys(), 1);
       const persisted = useVaultStore.persist.getOptions().partialize!(useVaultStore.getState()) as Record<string, unknown>;
@@ -342,22 +341,31 @@ describe('vaultStore v3', () => {
     });
 
     it('clearLegacy azzera i campi legacy e lascia byUser', () => {
-      useVaultStore.getState().setupVault('h', '1234');
+      useVaultStore.setState({ isSetup: true, pinHash: 'h' });
       useVaultStore.getState().setKeyringCache('u1', cache());
       useVaultStore.getState().clearLegacy();
       const s = useVaultStore.getState();
       expect(s.isSetup).toBe(false);
       expect(s.pinHash).toBeNull();
-      expect(s.pin).toBeNull();
       expect(s.byUser.u1).toBeDefined();
     });
 
-    it('resetVault legacy blocca ma non tocca byUser', () => {
-      useVaultStore.getState().setKeyringCache('u1', cache());
-      useVaultStore.getState().unlock('u1', fakeKeys(), 1);
-      useVaultStore.getState().resetVault();
-      expect(useVaultStore.getState().keys).toBeNull();
-      expect(useVaultStore.getState().byUser.u1).toBeDefined();
+    it('i campi legacy rimossi (pin, setupVault, unlockVault, resetVault) non esistono piu', () => {
+      const s = useVaultStore.getState() as unknown as Record<string, unknown>;
+      for (const k of ['pin', 'setupVault', 'unlockVault', 'resetVault']) expect(k in s).toBe(false);
+    });
+
+    it('storage con un campo ignoto (es. pin di una versione intermedia) si carica senza errori e byUser resta', async () => {
+      localStorage.setItem('vault-storage', JSON.stringify({ state: { isSetup: true, pinHash: 'h', byUser: { u1: cache() } }, version: 0 }));
+      try {
+        await useVaultStore.persist.rehydrate();
+        expect(useVaultStore.getState().byUser.u1).toBeDefined();
+        const persisted = useVaultStore.persist.getOptions().partialize!(useVaultStore.getState()) as Record<string, unknown>;
+        expect('pin' in persisted).toBe(false);
+      } finally {
+        localStorage.removeItem('vault-storage');
+        useVaultStore.setState({ isSetup: false, pinHash: null, byUser: {} });
+      }
     });
   });
 });

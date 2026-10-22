@@ -73,8 +73,7 @@ export const useAuthStore = create<AuthState>()(
         await userService.changePassword(token, { oldPassword, newPassword });
       },
       logout: () => {
-        // [BACKUP] 2026-10-21 — resetVault() cancellava anche la cache del keyring; v3 la mantiene (byUser intatto)
-        // useVaultStore.getState().resetVault();
+        // [BACKUP] 2026-10-21 — il vecchio reset del vault cancellava anche la cache del keyring; v3 la mantiene (byUser intatto)
         const vault = useVaultStore.getState();
         void vault.lockVault();
         set({ user: null, token: null });
