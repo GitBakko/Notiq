@@ -67,6 +67,9 @@ export const createNote = async (
     }
   }
 
+  // T15: an envelope on a non-vault note would silently publish ciphertext as the note body.
+  if (!isVault && parseEnvelope(content) !== null) throw new AppError(422, 'errors.vault.plaintextRequired');
+
   try {
     const searchText = (isEncrypted || noteType === 'CREDENTIAL') ? null : extractTextFromTipTapJson(content);
     return await prisma.note.create({
@@ -88,6 +91,8 @@ export const createNote = async (
       // Prisma drops undefined where-values: without id the lookup would match any note of the caller
       if (id) {
         const existing = await prisma.note.findFirst({ where: { id, userId } });
+        // T15: replay of a vault CREATE on a note that exists as non-vault must not look like success.
+        if (existing && isVault && !existing.isVault) throw new AppError(422, 'errors.vault.plaintextRequired');
         if (existing) return existing;
       }
       throw new ConflictError('errors.notes.idConflict');
@@ -300,6 +305,11 @@ export const updateNote = async (userId: string, id: string, data: {
         rest.isEncrypted = true;
       }
     }
+  }
+
+  // T15: an envelope body on a note that stays non-vault would overwrite plaintext with ciphertext (any keyring state).
+  if (!note.isVault && rest.isVault !== true && rest.content !== undefined && parseEnvelope(rest.content) !== null) {
+    throw new AppError(422, 'errors.vault.plaintextRequired');
   }
 
   // 1.13.3: a live collab doc wins. Writing content (and nulling ydocState) under a live doc would either be

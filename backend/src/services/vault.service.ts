@@ -461,7 +461,16 @@ export async function getItems(userId: string, opts: { ids?: string[]; after?: s
       where: { userId, isVault: true, id: { in: opts.ids } },
       select: itemSelect,
     });
-    return { items: rows.map(toItem), next: null as string | null };
+    // Fuori dal risultato non vuol dire "assente": absent = non e' una nota di questo utente (un id altrui e' absent,
+    // nessun oracolo fra utenti), notVault = nota dell'utente non vault. Nessun content di note non vault.
+    const known = await prisma.note.findMany({ where: { userId, id: { in: opts.ids } }, select: { id: true, isVault: true } });
+    const knownIds = new Set(known.map((k) => k.id));
+    return {
+      items: rows.map(toItem),
+      next: null as string | null,
+      absent: opts.ids.filter((i) => !knownIds.has(i)),
+      notVault: known.filter((k) => !k.isVault).map((k) => k.id),
+    };
   }
 
   const rows = await prisma.note.findMany({

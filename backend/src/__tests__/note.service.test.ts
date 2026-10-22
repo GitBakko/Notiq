@@ -138,6 +138,35 @@ describe('note.service — createNote', () => {
       expect.objectContaining({ where: { id: 'note-dup', userId: 'user-1' } }),
     );
   });
+
+  const ENV = 'nv3.0.AAAAAAAAAAAAAAAA.' + 'B'.repeat(60);
+
+  it('T15: envelope on a non-vault CREATE -> 422 plaintextRequired, nothing written', async () => {
+    prismaMock.notebook.findFirst.mockResolvedValueOnce({ id: 'nb-1' } as any);
+    await expect(createNote('user-1', 'T', ENV, 'nb-1', false, false, 'n-x')).rejects.toMatchObject({ statusCode: 422, message: 'errors.vault.plaintextRequired' });
+    expect(prismaMock.note.create).not.toHaveBeenCalled();
+  });
+
+  it('T15: P2002 replay of a vault CREATE on an existing non-vault note -> 422', async () => {
+    prismaMock.notebook.findFirst.mockResolvedValueOnce({ id: 'nb-1' } as any);
+    prismaMock.vaultKeyring.findUnique.mockResolvedValueOnce(null as any);
+    const e = new Error('dup') as Error & { code: string };
+    e.code = 'P2002';
+    prismaMock.note.create.mockRejectedValueOnce(e);
+    prismaMock.note.findFirst.mockResolvedValueOnce({ id: 'n-x', isVault: false } as any);
+    await expect(createNote('user-1', '', ENV, 'nb-1', true, true, 'n-x')).rejects.toMatchObject({ statusCode: 422, message: 'errors.vault.plaintextRequired' });
+  });
+
+  it('T15: P2002 replay of a vault CREATE on an existing vault note stays idempotent', async () => {
+    prismaMock.notebook.findFirst.mockResolvedValueOnce({ id: 'nb-1' } as any);
+    prismaMock.vaultKeyring.findUnique.mockResolvedValueOnce(null as any);
+    const e = new Error('dup') as Error & { code: string };
+    e.code = 'P2002';
+    prismaMock.note.create.mockRejectedValueOnce(e);
+    const existing = { id: 'n-x', isVault: true };
+    prismaMock.note.findFirst.mockResolvedValueOnce(existing as any);
+    await expect(createNote('user-1', '', ENV, 'nb-1', true, true, 'n-x')).resolves.toBe(existing);
+  });
 });
 
 describe('note.service — getNote', () => {
@@ -268,6 +297,26 @@ describe('vault P1 enforcement (T10)', () => {
     noteMock.findUniqueOrThrow = vi.fn();
     prismaMock.notebook.findFirst.mockReset();
     (prismaMock.attachment as any).count = vi.fn().mockResolvedValue(0);
+  });
+
+  describe('T15 envelope on a non-vault note', () => {
+    it.each([['no keyring', null], ['READY keyring', READY]])('plain note + envelope content -> plaintextRequired (%s)', async (_n, k) => {
+      keyring.mockResolvedValue(k);
+      noteMock.findFirst.mockResolvedValue(plainNote('A'.repeat(300)));
+      await fail(updateNote('u1', 'n1', { content: env(0, 130) }), 'errors.vault.plaintextRequired');
+      await fail(updateNote('u1', 'n1', { isVault: false, content: env(0, 130) }), 'errors.vault.plaintextRequired');
+      expect(noteMock.update).not.toHaveBeenCalled();
+    });
+
+    it('plain note + plain content and entering the vault without keyring stay allowed', async () => {
+      keyring.mockResolvedValue(null);
+      noteMock.findFirst.mockResolvedValue(plainNote('A'.repeat(300)));
+      noteMock.update.mockResolvedValue({ id: 'n1' });
+      prismaMock.sharedNote.deleteMany.mockResolvedValue({ count: 0 } as any);
+      await updateNote('u1', 'n1', { content: 'P'.repeat(300) });
+      await updateNote('u1', 'n1', { isVault: true, content: env(0, 130) });
+      expect(noteMock.update).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('without keyring', () => {

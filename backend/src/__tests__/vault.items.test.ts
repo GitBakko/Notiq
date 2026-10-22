@@ -73,6 +73,24 @@ describe('getItems', () => {
     expect(mp.note.findMany.mock.calls[0][0].where).toEqual({ userId: U, isVault: true, id: { gt: 'abc' } });
   });
 
+  it('con ids: absent e notVault dalla findMany { userId, id in }; id altrui = absent, nessun content non vault', async () => {
+    mp.note.findMany
+      .mockResolvedValueOnce([row('a', 'hello')])
+      .mockResolvedValueOnce([{ id: 'a', isVault: true }, { id: 'n', isVault: false }]);
+    const r = await getItems(U, { ids: ['a', 'n', 'zz', 'foreign'] });
+    expect(mp.note.findMany.mock.calls[1][0]).toEqual({ where: { userId: U, id: { in: ['a', 'n', 'zz', 'foreign'] } }, select: { id: true, isVault: true } });
+    expect(r.absent).toEqual(['zz', 'foreign']);
+    expect(r.notVault).toEqual(['n']);
+    expect(r.items.map((i: any) => i.id)).toEqual(['a']);
+  });
+
+  it('senza ids niente absent/notVault e una sola query', async () => {
+    mp.note.findMany.mockResolvedValue([row('z')]);
+    const r: any = await getItems(U, {});
+    expect(mp.note.findMany).toHaveBeenCalledTimes(1);
+    expect(r).not.toHaveProperty('absent');
+  });
+
   it('userId vuoto -> throw', async () => {
     await expect(getItems('', {})).rejects.toThrow();
     expect(mp.note.findMany).not.toHaveBeenCalled();
