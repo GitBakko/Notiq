@@ -167,6 +167,8 @@ describe('getVaultGuard', () => {
 describe('assertVaultContent', () => {
   const env = (epoch: number) => `nv3.${epoch}.${'A'.repeat(16)}.${'B'.repeat(30)}`;
 
+  const other = `nv3.1.${'C'.repeat(16)}.${'D'.repeat(30)}`;
+
   function expectErr(fn: () => void, message: string) {
     try {
       fn();
@@ -191,18 +193,23 @@ describe('assertVaultContent', () => {
 
   it('update con baseHash sbagliato -> conflict', () => {
     expectErr(
-      () => assertVaultContent(env(1), { epoch: 1, ready: true }, 'f'.repeat(64), env(1)),
+      () => assertVaultContent(env(1), { epoch: 1, ready: true }, 'f'.repeat(64), other),
       'errors.vault.conflict',
     );
   });
 
   it('update senza baseHash -> conflict', () => {
-    expectErr(() => assertVaultContent(env(1), { epoch: 1, ready: true }, undefined, env(1)), 'errors.vault.conflict');
+    expectErr(() => assertVaultContent(env(1), { epoch: 1, ready: true }, undefined, other), 'errors.vault.conflict');
   });
 
   it('update con baseHash corretto -> ok', () => {
     const current = env(1);
     expect(() => assertVaultContent(env(1), { epoch: 1, ready: true }, sha256hex(current), current)).not.toThrow();
+  });
+
+  it('replay idempotente: contenuto uguale al corrente con baseHash vecchio -> ok', () => {
+    expect(() => assertVaultContent(env(1), { epoch: 1, ready: true }, 'f'.repeat(64), env(1))).not.toThrow();
+    expect(() => assertVaultContent(env(1), { epoch: 1, ready: true }, undefined, env(1))).not.toThrow();
   });
 
   it('ordine fisso: notReady vince su plaintext/baseHash', () => {

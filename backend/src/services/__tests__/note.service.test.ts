@@ -523,6 +523,14 @@ describe('updateNote', () => {
       expect(archived()).toEqual([['n1', newContent, 'T', 'user-1', undefined]]);
     });
 
+    it('vault note + live doc + guard on: content update -> no contentDeferred, archiveRestWriteWhileLive NOT called', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE', isVault: true });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE', isVault: true, content: newContent });
+      const res = await updateNote('user-1', 'n1', { content: newContent });
+      expect(res).not.toHaveProperty('contentDeferred');
+      expect(archived()).toEqual([]);
+    });
+
     it('G3: the sessionKey is forwarded to the archive', async () => {
       prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
       prismaMock.note.update.mockResolvedValue({ ...existingNote, title: 'T', noteType: 'NOTE' });

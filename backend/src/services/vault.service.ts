@@ -77,7 +77,8 @@ export function assertVaultContent(
   const env = parseEnvelope(content);
   if (!env) throw new AppError(422, 'errors.vault.plaintextRejected');
   if (env.epoch !== guard.epoch) throw new AppError(422, 'errors.vault.stale');
-  if (current !== undefined && (!baseHash || baseHash !== sha256hex(current))) {
+  // Idempotent replay: the server already applied this exact content (lost response), so a stale baseHash is not a conflict.
+  if (current !== undefined && content !== current && (!baseHash || baseHash !== sha256hex(current))) {
     throw new AppError(422, 'errors.vault.conflict');
   }
 }
