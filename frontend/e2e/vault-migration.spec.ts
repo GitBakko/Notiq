@@ -1,4 +1,4 @@
-import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
+import { test, expect, request as pwRequest } from '@playwright/test';
 import CryptoJS from 'crypto-js';
 import { v4 as uuidv4 } from 'uuid';
 import { encryptContent } from '../src/utils/crypto';
