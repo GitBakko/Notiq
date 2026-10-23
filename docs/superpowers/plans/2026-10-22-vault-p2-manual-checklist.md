@@ -1554,8 +1554,8 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     3. SQL: ricerca dell'ago `%VOCE-SEGRETA%`.
   - Atteso:
     - Per l'invariante, le trasformazioni NON devono essere disponibili.
-    - Dal codice risultano disponibili: `EditorContextMenu` e i modali sono montati senza condizioni su `isVault` (`Editor.tsx:616-639,665-690`). Se vanno a buon fine, VOCE-SEGRETA finisce in KanbanCard o TaskItem.
-    - Decidi prima del rilascio: nasconderle, oppure accettare il rischio con un avviso.
+    - **Corretto in `41df578` (23/10).** Nel vault il menu contestuale mostra solo taglia, copia e incolla. Ctrl+Shift+K/L non fa nulla. Il pannello scorciatoie non mostra le righe Kanban e Task list.
+    - Controprova su una nota NORMALE: le due voci e le scorciatoie ci sono ancora.
   - Non deve: testo del vault in altre tabelle.
   - Base: `Editor.tsx:615-639`; `EditorContextMenu.tsx:180-211`; `EditorToolbarSecondary.tsx:351-355`; `TransformToKanbanModal.tsx:111-120,152-162`.
 
