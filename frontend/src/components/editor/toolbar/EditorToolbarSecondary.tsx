@@ -63,6 +63,7 @@ interface EditorToolbarSecondaryProps {
   listening: boolean;
   toggleListening: () => void;
   browserSupportsSpeechRecognition: boolean;
+  isVault?: boolean;
 }
 
 export default function EditorToolbarSecondary({
@@ -80,7 +81,8 @@ export default function EditorToolbarSecondary({
   onVoiceMemo,
   listening,
   toggleListening,
-  browserSupportsSpeechRecognition
+  browserSupportsSpeechRecognition,
+  isVault
 }: EditorToolbarSecondaryProps) {
   const { t } = useTranslation();
 
@@ -347,16 +349,22 @@ export default function EditorToolbarSecondary({
                       <span className="text-neutral-600 dark:text-neutral-400">{t('editor.pasteAsPlainText')}</span>
                       <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+V</kbd>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-600 dark:text-neutral-400">{t('editor.transform.toKanban')}</span>
-                      <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-600 dark:text-neutral-400">{t('editor.transform.toTaskList')}</span>
-                      <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
-                    </div>
+                    {!isVault && (
+                      <>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-neutral-600 dark:text-neutral-400">{t('editor.transform.toKanban')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+K</kbd>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-neutral-600 dark:text-neutral-400">{t('editor.transform.toTaskList')}</span>
+                          <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 dark:text-neutral-400 font-mono text-[10px]">Ctrl+Shift+L</kbd>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <p className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+                  {!isVault && (
+                    <p className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2 italic">{t('editor.shortcuts.transformHint')}</p>
+                  )}
                 </div>
               </>
             )}

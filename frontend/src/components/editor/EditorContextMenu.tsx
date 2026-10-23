@@ -177,7 +177,7 @@ export default function EditorContextMenu({ editor, position, onClose, onTransfo
         <span className="text-xs text-neutral-400 dark:text-neutral-500">Ctrl+Shift+V</span>
       </button>
 
-      {listItems.length > 0 && (
+      {listItems.length > 0 && onTransformToKanban && onTransformToTaskList && (
         <>
           <div className={separatorClass} />
           <div className="px-3 py-1">

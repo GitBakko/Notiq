@@ -560,7 +560,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
 
   // Keyboard shortcuts: Ctrl+Shift+K → Kanban, Ctrl+Shift+L → Task List
   useEffect(() => {
-    if (!editor || !editable) return;
+    if (!editor || !editable || isVault) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!e.ctrlKey || !e.shiftKey) return;
       if (e.key === 'K' || e.key === 'k') {
@@ -575,7 +575,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editor, editable]);
+  }, [editor, editable, isVault]);
 
   const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
     if (editor?.isActive('table')) {
@@ -594,7 +594,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   if (!scrollable) {
     return (
       <div className="w-full">
-        {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
+        {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} isVault={isVault} />}
         <div onContextMenu={handleEditorContextMenu}>
           <EditorContent editor={editor} />
         </div>
@@ -617,11 +617,11 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             editor={editor}
             position={editorContextMenu}
             onClose={() => setEditorContextMenu(null)}
-            onTransformToKanban={(items) => setKanbanTransformItems(items)}
-            onTransformToTaskList={(items) => setTaskListTransformItems(items)}
+            onTransformToKanban={isVault ? undefined : (items) => setKanbanTransformItems(items)}
+            onTransformToTaskList={isVault ? undefined : (items) => setTaskListTransformItems(items)}
           />
         )}
-        {editor && kanbanTransformItems && (
+        {!isVault && editor && kanbanTransformItems && (
           <TransformToKanbanModal
             isOpen={true}
             onClose={() => setKanbanTransformItems(null)}
@@ -629,7 +629,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
             editor={editor}
           />
         )}
-        {editor && taskListTransformItems && (
+        {!isVault && editor && taskListTransformItems && (
           <TransformToTaskListModal
             isOpen={true}
             onClose={() => setTaskListTransformItems(null)}
@@ -643,7 +643,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-      {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} />}
+      {editable && <EditorToolbar editor={editor} onVoiceMemo={onVoiceMemo} provider={provider} isVault={isVault} />}
       <div className="flex-1 overflow-auto min-w-0 min-h-0" onContextMenu={handleEditorContextMenu}>
         <EditorContent editor={editor} />
       </div>
@@ -666,11 +666,11 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           editor={editor}
           position={editorContextMenu}
           onClose={() => setEditorContextMenu(null)}
-          onTransformToKanban={(items) => setKanbanTransformItems(items)}
-          onTransformToTaskList={(items) => setTaskListTransformItems(items)}
+          onTransformToKanban={isVault ? undefined : (items) => setKanbanTransformItems(items)}
+          onTransformToTaskList={isVault ? undefined : (items) => setTaskListTransformItems(items)}
         />
       )}
-      {editor && kanbanTransformItems && (
+      {!isVault && editor && kanbanTransformItems && (
         <TransformToKanbanModal
           isOpen={true}
           onClose={() => setKanbanTransformItems(null)}
@@ -678,7 +678,7 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
           editor={editor}
         />
       )}
-      {editor && taskListTransformItems && (
+      {!isVault && editor && taskListTransformItems && (
         <TransformToTaskListModal
           isOpen={true}
           onClose={() => setTaskListTransformItems(null)}

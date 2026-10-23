@@ -16,9 +16,10 @@ interface EditorToolbarProps {
   editor: Editor | null;
   onVoiceMemo?: () => void;
   provider?: HocuspocusProvider | null;
+  isVault?: boolean;
 }
 
-export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onVoiceMemo, provider, isVault }: EditorToolbarProps) {
   const { user } = useAuthStore();
   const isMobile = useIsMobile();
   const { isKeyboardOpen, keyboardHeight } = useVisualViewport();
@@ -179,6 +180,7 @@ export default function EditorToolbar({ editor, onVoiceMemo, provider }: EditorT
           listening={listening}
           toggleListening={toggleListening}
           browserSupportsSpeechRecognition={browserSupportsSpeechRecognition}
+          isVault={isVault}
         />
       )}
     </div>
