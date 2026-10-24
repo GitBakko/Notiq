@@ -12,6 +12,7 @@ vi.mock('../../../store/vaultStore', () => ({
   useVaultStore: Object.assign((sel: (s: unknown) => unknown) => sel({ unlockedUserId: h.unlockedUserId }), { getState: () => ({ touchVault: h.touch }) }),
 }));
 vi.mock('../../../lib/vaultReconcile', () => ({ vaultReconcile: vi.fn() }));
+vi.mock('../../sync/syncService', () => ({ syncPush: vi.fn(async () => true) }));
 vi.mock('../RecoveryKitSheet', () => ({ default: ({ onDone }: { onDone: () => void }) => <button onClick={onDone}>vault.kit.title</button> }));
 vi.mock('../../../lib/vaultSession', () => ({ changePin: vi.fn(), regenerateKit: vi.fn(), confirmKit: vi.fn(async () => {}) }));
 vi.mock('../../../utils/vaultRootKeys', () => ({ getActiveRootKey: vi.fn() }));
@@ -20,6 +21,7 @@ vi.mock('../PinPolicy', () => ({ checkPin: vi.fn(async () => ({ ok: true })) }))
 import VaultSettingsSheet from '../VaultSettingsSheet';
 import { changePin, regenerateKit } from '../../../lib/vaultSession';
 import { vaultReconcile } from '../../../lib/vaultReconcile';
+import { syncPush } from '../../sync/syncService';
 import toast from 'react-hot-toast';
 import { getActiveRootKey } from '../../../utils/vaultRootKeys';
 import { checkPin } from '../PinPolicy';
@@ -242,6 +244,21 @@ describe('VaultSettingsSheet', () => {
       await waitFor(() => expect(screen.getByText('vault.settings.later')).toBeTruthy());
       expect(screen.getByText('vault.settings.unresolved')).toBeTruthy();
       expect(screen.getByText('vault.settings.reason.epoch')).toBeTruthy();
+    });
+
+    it('F.21: reactivated > 0 avvia la push (T-g), come VaultPage', async () => {
+      vi.mocked(vaultReconcile).mockResolvedValue(result({ reactivated: 1 }));
+      render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+      run();
+      await waitFor(() => expect(syncPush).toHaveBeenCalledTimes(1));
+    });
+
+    it('F.21: reactivated e conflictsResolved a 0: nessuna push', async () => {
+      vi.mocked(vaultReconcile).mockResolvedValue(result({ unresolved: 1 }));
+      render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+      run();
+      await waitFor(() => expect(screen.getByText('vault.settings.unresolved')).toBeTruthy());
+      expect(syncPush).not.toHaveBeenCalled();
     });
 
     it('tutto a posto, skipped ed errore', async () => {

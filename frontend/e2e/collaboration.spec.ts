@@ -160,13 +160,13 @@ test.describe('Collaboration', () => {
       await pageB.waitForLoadState('networkidle');
 
       // The shared note should appear under "Pending Invitations" in the Notes tab
-      await expect(pageB.getByText('Shared Collab Note')).toBeVisible({ timeout: 15000 });
+      await expect(pageB.getByRole('heading', { name: 'Shared Collab Note', exact: true })).toBeVisible({ timeout: 15000 });
 
       // Verify the "INVITATION" badge is visible (pending state)
       await expect(pageB.getByText('INVITATION', { exact: true })).toBeVisible({ timeout: 5000 });
 
       // Verify the sharer's name is shown
-      await expect(pageB.getByText('Collab User A')).toBeVisible({ timeout: 5000 });
+      await expect(pageB.getByText('Collab User A', { exact: true })).toBeVisible({ timeout: 5000 });
     } finally {
       await contextA.close();
       await contextB.close();
@@ -192,13 +192,13 @@ test.describe('Collaboration', () => {
       // User B goes to Sharing Center and accepts the invitation
       await pageB.goto('/shared');
       await pageB.waitForLoadState('networkidle');
-      await expect(pageB.getByText('Accept Test Note')).toBeVisible({ timeout: 15000 });
+      await expect(pageB.getByRole('heading', { name: 'Accept Test Note', exact: true })).toBeVisible({ timeout: 15000 });
 
       // Click the Accept button
       await pageB.getByRole('button', { name: 'Accept' }).click();
 
       // After accepting, the note should remain visible (now in accepted section)
-      await expect(pageB.getByText('Accept Test Note')).toBeVisible({ timeout: 10000 });
+      await expect(pageB.getByRole('heading', { name: 'Accept Test Note', exact: true })).toBeVisible({ timeout: 10000 });
 
       // The "INVITATION" badge should disappear as the note moves to accepted section
       await expect(pageB.getByText('INVITATION', { exact: true })).not.toBeVisible({ timeout: 10000 });
@@ -236,7 +236,7 @@ test.describe('Collaboration', () => {
       // User B checks the Sharing Center
       await pageB.goto('/shared');
       await pageB.waitForLoadState('networkidle');
-      await expect(pageB.getByText('Permission Test Note')).toBeVisible({ timeout: 15000 });
+      await expect(pageB.getByRole('heading', { name: 'Permission Test Note', exact: true })).toBeVisible({ timeout: 15000 });
 
       // The pending card should show the READ permission badge
       await expect(pageB.getByText('READ')).toBeVisible({ timeout: 5000 });
@@ -315,7 +315,7 @@ test.describe('Collaboration', () => {
 
       await pageB.goto('/shared');
       await pageB.waitForLoadState('networkidle');
-      await expect(pageB.getByText('Restore Live Note')).toBeVisible({ timeout: 15000 });
+      await expect(pageB.getByRole('heading', { name: 'Restore Live Note', exact: true })).toBeVisible({ timeout: 15000 });
       await pageB.getByRole('button', { name: 'Accept' }).click();
       await expect(pageB.getByText('INVITATION', { exact: true })).not.toBeVisible({ timeout: 10000 });
 

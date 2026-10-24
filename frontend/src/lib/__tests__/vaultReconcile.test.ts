@@ -346,7 +346,14 @@ describe('decide: tabella T1-T15', () => {
     expect(dec({ row: dirty(), items: [dItem('UPDATE', { content: E1 }, fl('vault:stale'))], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:STRIP_REQUEUE');
     // stesso content che ha fallito e payload gia' canonico: niente ciclo push/reconcile
     expect(dec({ row: dirty(), items: [dItem('UPDATE', { content: E2 }, fl('vault:stale'))], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:LEAVE(unchanged)');
-    expect(dec({ row: dirty(), items: [dItem('UPDATE', { content: E2 }, fl('vault:notReady'))], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:LEAVE(unchanged)');
+    // F.21 (Addendum 3): notReady dipende dal keyring, non dal payload: a content uguale si riattiva, salvo che l'id sia nel memo della sessione
+    expect(dec({ row: dirty(), items: [dItem('UPDATE', { content: E2 }, fl('vault:notReady'))], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:STRIP_REQUEUE');
+    const nr = dItem('UPDATE', { content: E2 }, fl('vault:notReady'));
+    expect(dec({ row: dirty(), items: [nr], srv: srvItem(), hs: 'x', hl: 'y', nrTried: new Set([nr.id]) })).toBe('T5:LEAVE(unchanged)');
+    expect(dec({ row: dirty(), items: [nr], srv: srvItem(), hs: 'x', hl: 'y', nrTried: new Set([nr.id + 1]) })).toBe('T5:STRIP_REQUEUE');
+    // F.21: id nel memo ma content diverso dalla riga (modifica nuova dell'utente): si riattiva comunque
+    const nr2 = dItem('UPDATE', { content: E1 }, fl('vault:notReady'));
+    expect(dec({ row: dirty(), items: [nr2], srv: srvItem(), hs: 'x', hl: 'y', nrTried: new Set([nr2.id]) })).toBe('T5:STRIP_REQUEUE');
     expect(dec({ row: dirty(), items: [dItem('UPDATE', { isPinned: true, isEncrypted: false })], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:STRIP_REQUEUE');
     expect(dec({ row: dirty(), items: [dItem('UPDATE', { isVault: false })], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:STRIP_REQUEUE');
     expect(dec({ row: dirty({ content: E1 }), items: [dItem('UPDATE', {}, fl('vault:stale'))], srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:LEAVE(epoch)');
@@ -861,6 +868,93 @@ describe('T5 item bloccati su errori vault', () => {
     expect(r.reactivated).toBe(0);
     expect(r.unresolved).toBe(1);
     expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady' });
+  });
+
+  it('F.21: notReady a content uguale si riattiva dopo READY e la push parte', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const a = item('UPDATE', 'n1', { content }, failed('vault:notReady')); // content gia' quello della riga: prima restava fermo per sempre
+    item('UPDATE', 'n1', { content }); // item successivo della nota, trattenuto da vaultHeld finche' a non riparte
+
+    const r = await vaultReconcile();
+    expect(r.reactivated).toBe(1);
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'pending', attempts: 0 });
+
+    await syncPush();
+    expect(mockApi.put).toHaveBeenCalledWith('/notes/n1', expect.objectContaining({ content }));
+  });
+
+  it('F.21: un secondo notReady uguale nella stessa sessione non riattiva (1 sola PUT); con chiavi nuove si', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const a = item('UPDATE', 'n1', { content }, failed('vault:notReady'));
+    mockApi.put.mockRejectedValue(Object.assign(new Error('notReady'), { response: { status: 422, data: { message: 'errors.vault.notReady' } } }));
+
+    expect((await vaultReconcile()).reactivated).toBe(1);
+    await syncPush(); // il server e' ancora RESET_PENDING: 422, l'item torna failed notReady con lo stesso content
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady', data: { content } });
+
+    for (let k = 0; k < 2; k++) {
+      const r = await vaultReconcile();
+      expect(r.reactivated).toBe(0);
+      expect(r.unresolved).toBe(1);
+    }
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady' });
+    expect(mockApi.put).toHaveBeenCalledTimes(1);
+
+    useVaultStore.setState({ keys: { ...ctx.keys } }); // nuovo sblocco: il memo della sessione si azzera
+    expect((await vaultReconcile()).reactivated).toBe(1);
+  });
+
+  it('F.21: CREATE failed notReady gia canonica, server con la nota: si riattiva una volta, un secondo notReady uguale no', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'created', vaultBaseHash: await sha256hex('v0') });
+    const data = { id: 'n1', title: '', content, isEncrypted: true, isVault: true, noteType: 'NOTE' };
+    const a = item('CREATE', 'n1', data, failed('vault:notReady'));
+
+    expect((await vaultReconcile()).reactivated).toBe(1);
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'pending' });
+
+    st.queue = st.queue.map(i => (i.id === a.id ? { ...i, ...failed('vault:notReady'), data } : i)); // la push ha fallito uguale
+    const r = await vaultReconcile();
+    expect(r.reactivated).toBe(0);
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady' });
+  });
+
+  it('F.21: senza navigator.locks il notReady a content uguale da LATER e il memo non si aggiorna; coi lock ripristinati si riattiva', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const a = item('UPDATE', 'n1', { content }, failed('vault:notReady'));
+
+    removeLocks();
+    const r1 = await vaultReconcile();
+    expect(r1).toMatchObject({ later: 1, reactivated: 0 });
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady' });
+
+    installLocks();
+    expect((await vaultReconcile()).reactivated).toBe(1);
+  });
+
+  it('F.21: commit non riuscito (stato cambiato fra decide e commit): il memo non si aggiorna e al giro dopo si riattiva', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const a = item('UPDATE', 'n1', { content }, failed('vault:notReady'));
+
+    mockDb.transaction.mockImplementation(async (...args: unknown[]) => {
+      st.notes.set('n1', { ...st.notes.get('n1'), updatedAt: '2099-01-01T00:00:00.000Z' }); // un'altra scheda ha toccato la riga
+      return passthrough(...args);
+    });
+    const r1 = await vaultReconcile();
+    mockDb.transaction.mockImplementation(passthrough);
+    expect(r1).toMatchObject({ later: 1, reactivated: 0 });
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady' });
+
+    expect((await vaultReconcile()).reactivated).toBe(1);
   });
 
   it('T5 stale (Addendum 2 §5): il giro allinea data.content alla riga; un secondo fallimento uguale non riattiva (LEAVE unchanged)', async () => {

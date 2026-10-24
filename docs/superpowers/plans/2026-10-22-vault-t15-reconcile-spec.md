@@ -222,3 +222,27 @@ Garanzia: una nota in LATER riceve un nuovo giro entro 25 s se nella scheda non 
 - Giro: B.12; B.13 senza e con `decryptLegacy`; titolo della copia; T15 legacy non contata; T5 stale ripetuto.
 - VaultPage: T-c, T-d (memo), T-f, T-g, banner.
 - Rilancio di H.2 (5 varianti), B.12 e B.13 del report.
+
+## Addendum 3 (24/10): T5 e vault:notReady (F.21)
+
+Nasce da F.21 del retest del 24/10. Prevale su Addendum 2 §5 solo per `vault:notReady`. Nessuna op nuova, `syncService.ts` e Dexie invariati.
+
+**1. Riattivazione.** Un item `failed` con `lastError === 'vault:notReady'` si riattiva con STRIP_REQUEUE anche con content uguale a quello della riga, se il suo id non è nel memo della sessione. Il rifiuto dipende dal keyring e non dal payload, e il giro gira solo con la cache READY sull'epoch corrente (precondizione di run). `vault:stale` resta come in Addendum 2 §5: dipende dall'epoch del payload, e lo stesso payload fallirebbe uguale. Riga con epoch vecchio: LEAVE(epoch) come prima. T2/T3, REQUEUE e REFRESH_CREATE invariati.
+
+**2. Memo.** Id degli item `vault:notReady` riattivati, solo in memoria, per scheda e per sessione sbloccata. Si azzera quando cambiano le chiavi, come il memo di T-d. Entra nello Snapshot come `nrTried` (una copia, quindi `decide()` resta pura) e si aggiorna solo dopo un commit STRIP_REQUEUE riuscito.
+
+**3. Server ancora RESET_PENDING.** `syncKeyringCache` (`vaultSession.ts`) aggiorna la cache solo con status READY, quindi una cache READY non scende a RESET_PENDING. Lo sblocco online con il server RESET_PENDING fallisce con `notReady` (il server risponde 409) e il Gate mostra `resetPending`. Lo sblocco offline riesce. Il caso "cache READY stantia" nasce quindi da uno sblocco offline seguito dal ritorno online, oppure da una sessione già sbloccata il cui keyring passa a RESET_PENDING altrove (la cache non scende, perché `syncKeyringCache` ignora gli stati non READY). In quel caso la PUT riprende 422, l'item torna `failed` `vault:notReady` con content uguale e id nel memo, e il giro dà LEAVE(unchanged) fino al prossimo sblocco o a una modifica nuova. Il limite è 1 PUT 422 per item, per scheda e per sessione sbloccata, più 1 per ogni modifica nuova dell'utente (content diverso).
+
+**4. Senza `navigator.locks`.** STRIP_REQUEUE non è tra le op sicure (`SAFE_WITHOUT_LOCKS`), quindi questi item danno P5 LATER invece di LEAVE e T-f fa al più 2 ritentativi per trigger (5 s e 20 s). Il memo non si aggiorna perché il commit non avviene.
+
+**5. Trigger.** T-g invariato: dopo un giro con `conflictsResolved + reactivated > 0`, `syncPush()`. "Controlla ora" (`VaultSettingsSheet`) fa lo stesso: una push se il giro ha `conflictsResolved + reactivated > 0`. LEAVE non è `later`, quindi T-f non scatta; T-d scatta solo su conflict.
+
+**6. Accettazione.**
+- decide(): notReady a content uguale dà STRIP_REQUEUE senza `nrTried` e LEAVE(unchanged) con l'id in `nrTried`.
+- Giro: riattiva notReady a content uguale e la push manda la PUT; un secondo notReady uguale nella stessa sessione non riattiva (1 sola PUT in tutto); con chiavi nuove riattiva.
+- "Controlla ora": push con `reactivated > 0`, nessuna push con 0.
+
+**7. Limiti noti, non corretti.**
+- Un UPDATE `failed` `notReady` senza chiave `content` (solo metadati) ha `i.data?.content !== rowContent` sempre vero (`reactivates`), quindi il memo non lo frena: con il server RESET_PENDING si riattiva a ogni trigger del giro (T-a, T-b, T-c, "Controlla ora"), con 1 PUT 422 per trigger. Preesistente, uguale per stale. Produttori reali: `updateNote` con soli metadati su una riga vault (`noteService.ts:184`) e `deleteNote`/`restoreNote` (`{isTrashed}`, `noteService.ts:240,253`). Non si frena col solo memo: `vaultHeld` (`syncService.ts:1008`) tratterrebbe le modifiche nuove fino al prossimo sblocco.
+- Una CREATE `failed` `notReady` con il server senza la nota (S0) passa da T9 REFRESH_CREATE, non gated: `canonicalCreate` è falso su un item `failed` e il commit rimette in coda la CREATE a ogni giro. 1 POST 422 per trigger. Preesistente, limitato dai trigger.
+- Con il server RESET_PENDING e versioni in chiaro, `finalizeItems` risponde 409 (`vault.service.ts:549`) e il giro si interrompe dopo le riattivazioni: T-g non parte e gli item restano pending fino alla push successiva (tick di `useSync`). Nessuna perdita.

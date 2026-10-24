@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
 import { changePin, regenerateKit } from '../../lib/vaultSession';
 import { vaultReconcile, type ReconcileResult } from '../../lib/vaultReconcile';
+import { syncPush } from '../sync/syncService';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
 import { checkPin } from './PinPolicy';
 import PinInput from './PinInput';
@@ -151,6 +152,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
     setChecking(true);
     try {
       const r = await vaultReconcile();
+      if (r.conflictsResolved + r.reactivated > 0) void syncPush().catch(() => false); // T-g, come VaultPage: ACK e REQUEUE non svegliano la push reattiva
       if (gen === closeGen.current) setResult(r);
     } catch { toast.error(t('errors.common.unknownError')); } finally { setChecking(false); }
   };

@@ -98,6 +98,8 @@ export interface Snapshot {
   sig?: string;
   /** listSig di riga e coda al momento del listing del server (precondizione 7, controllata anche dal commit). */
   listed?: string;
+  /** Addendum 3: id degli item vault:notReady gia' riattivati in questa sessione sbloccata (copia del memo del giro, decide() resta pura). */
+  nrTried?: ReadonlySet<number>;
 }
 
 export type Op =
@@ -138,12 +140,21 @@ const stripChanges = (i: SyncQueueItem, rowContent: string) => {
   if (i.type === 'CREATE') return d.title !== '' || d.content !== rowContent || d.isEncrypted !== true || d.isVault !== true;
   return 'title' in d || 'isVault' in d || d.isEncrypted === false;
 };
-/** T5: un item vault:* o non pulito si riattiva solo se lo strip cambia il payload o, per stale/notReady, se il content dell'item non e' quello
- *  che ha fallito (la riga e' stata ricifrata dopo): altrimenti ripartirebbe lo stesso payload, fallirebbe uguale e il giro lo riattiverebbe all'infinito. */
-const reactivates = (i: SyncQueueItem, rowContent: string) => {
+// [BACKUP] 2026-10-24 — F.21: notReady trattato come stale, mai riattivato a content uguale (dopo RESET_PENDING -> READY l'item restava fermo)
+// const reactivates = (i: SyncQueueItem, rowContent: string) => {
+//   if (i.type === 'DELETE' || !(vaultFailed(i) || uncleanKeys(i))) return false;
+//   if (stripChanges(i, rowContent)) return true;
+//   return i.lastError === 'vault:stale' || i.lastError === 'vault:notReady' ? i.data?.content !== rowContent : true;
+// };
+/** T5: un item vault:* o non pulito si riattiva solo se lo strip cambia il payload o, per stale, se il content dell'item non e' quello
+ *  che ha fallito (la riga e' stata ricifrata dopo): altrimenti ripartirebbe lo stesso payload, fallirebbe uguale e il giro lo riattiverebbe all'infinito.
+ *  Addendum 3: notReady dipende dal keyring e non dal payload (il giro gira solo col keyring READY): si riattiva anche a content uguale,
+ *  una volta per sessione sbloccata (`nrTried`). */
+const reactivates = (i: SyncQueueItem, rowContent: string, nrTried?: ReadonlySet<number>) => {
   if (i.type === 'DELETE' || !(vaultFailed(i) || uncleanKeys(i))) return false;
   if (stripChanges(i, rowContent)) return true;
-  return i.lastError === 'vault:stale' || i.lastError === 'vault:notReady' ? i.data?.content !== rowContent : true;
+  if (i.lastError === 'vault:notReady') return i.data?.content !== rowContent || !nrTried?.has(i.id as number);
+  return i.lastError === 'vault:stale' ? i.data?.content !== rowContent : true;
 };
 const noteTypeOf = (n: { noteType?: string } | undefined): VaultNoteType => (n?.noteType === 'CREDENTIAL' ? 'CREDENTIAL' : 'NOTE');
 
@@ -272,7 +283,7 @@ function seRow(s: Snapshot, row: LocalNote): Decision {
   }
   if ((vfail.length || unclean) && row.content !== '') {
     if (!isCurrentEnvelope(row.content, s.epoch)) return leave('T5', 'epoch');
-    return items.some((i) => reactivates(i, row.content)) ? R('T5', 'STRIP_REQUEUE') : leave('T5', 'unchanged');
+    return items.some((i) => reactivates(i, row.content, s.nrTried)) ? R('T5', 'STRIP_REQUEUE') : leave('T5', 'unchanged');
   }
   if (!vfail.length && !unclean && failed.length) return R('Qf', 'NONE'); // validation/not_found/forbidden/network: retryFailedSyncItems
   if (row.content === '' || row.syncStatus === 'synced') return hs !== base ? R('T1', 'HYDRATE') : R('T1', 'NONE');
@@ -455,11 +466,11 @@ const canonicalCreateData = (data: Record<string, unknown> | undefined, content:
 
 /** T5: gli item con errore vault:* o con payload non pulito tornano pending; title/isVault/isEncrypted:false si tolgono, la CREATE si ricostruisce
  *  dalla riga (id, notebookId, noteType restano). Un item che resta vuoto si cancella. Ritorna quanti item falliti si sono riattivati. */
-async function requeueVault(userId: string, id: string, rowContent: string, gated = false): Promise<number> {
+async function requeueVault(userId: string, id: string, rowContent: string, gated = false, nrTried?: ReadonlySet<number>): Promise<number> {
   let n = 0;
   for (const it of await noteItems(userId, id)) {
     if (it.type === 'DELETE' || !(vaultFailed(it) || uncleanKeys(it))) continue;
-    if (gated && !reactivates(it, rowContent)) continue;
+    if (gated && !reactivates(it, rowContent, nrTried)) continue;
     if (vaultFailed(it)) n++;
     if (it.type === 'CREATE') {
       await requeue(it.id, canonicalCreateData(it.data, rowContent));
@@ -528,7 +539,7 @@ async function commit(s: Snapshot, d: Decision, plan: Plan): Promise<{ ok: boole
         await requeueVault(userId, id, row!.content);
         break;
       case 'STRIP_REQUEUE':
-        reactivated = await requeueVault(userId, id, row!.content, true);
+        reactivated = await requeueVault(userId, id, row!.content, true, s.nrTried);
         break;
       case 'SYNC':
         await db.notes.update(id, {
@@ -653,6 +664,9 @@ export async function hydrateVaultNote(id: string): Promise<boolean> {
 // Giro
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** Addendum 3: id degli item vault:notReady gia' riattivati, per sessione sbloccata (si azzera quando cambia `keys`, come T-d). Solo in memoria. */
+let nrMemo: { keys: unknown; ids: Set<number> } = { keys: null, ids: new Set() };
+const nrTriedFor = (keys: unknown) => (nrMemo.keys === keys ? nrMemo.ids : (nrMemo = { keys, ids: new Set() }).ids);
 let inflight: Promise<ReconcileResult> | null = null;
 /** Il giro in coda: uno solo, condiviso da tutte le chiamate arrivate mentre ne girava un altro. */
 let queued: { p: Promise<ReconcileResult>; opts: ReconcileOptions; go: (r: Promise<ReconcileResult>) => void } | null = null;
@@ -833,7 +847,7 @@ async function processNote(c: Candidate, srv: Srv, ctx: VaultCodecCtx, opts: Rec
   const attempt = async (lock: 'held' | 'none') => {
     const row = await db.notes.get(id);
     const items = await noteItems(ctx.userId, id);
-    let snap: Snapshot = { id, userId: ctx.userId, epoch: ctx.epoch, k: true, lock, row, items, srv, sig: sigOf(row, items), listed: c.listed };
+    let snap: Snapshot = { id, userId: ctx.userId, epoch: ctx.epoch, k: true, lock, row, items, srv, sig: sigOf(row, items), listed: c.listed, nrTried: new Set(nrTriedFor(ctx.keys)) };
     let d = decide(snap);
     // Il server in mano e' del listing: se da allora la nota e' cambiata (push 2xx, altra scheda) ogni op che scrive userebbe un envelope vecchio.
     if (d.op !== 'NONE' && d.op !== 'SKIP' && listSig(row, items) !== c.listed) return later();
@@ -860,6 +874,8 @@ async function processNote(c: Candidate, srv: Srv, ctx: VaultCodecCtx, opts: Rec
     else if (['T6', 'T7', 'T9'].includes(d.rule)) r.legacyResolved++;
     else r.conflictsResolved++;
     if (d.copy) r.copies++;
+    // Addendum 3: solo dopo un commit STRIP_REQUEUE riuscito gli item notReady entrano nel memo (un nuovo notReady uguale non li riattiva)
+    if (d.op === 'STRIP_REQUEUE') for (const i of snap.items) if (i.lastError === 'vault:notReady') nrTriedFor(ctx.keys).add(i.id as number);
   };
   if (!hasLocks()) return attempt('none');
   // Exclusive + ifAvailable: escluso sia dall'editor aperto (lock shared) sia da una push in corso (shared); il commit non aspetta mai.

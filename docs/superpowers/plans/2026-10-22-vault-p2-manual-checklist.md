@@ -349,7 +349,7 @@ Prima di partire, con `'*'`, crea R0 READY dalla UI: un setup rapido, una nota s
     4. Torna online e attendi la push.
     5. Ricarica e riconta.
   - Atteso:
-    - Una sola richiesta `GET /api/notes?includeTrashed=true&all=1`.
+    - Una sola richiesta `GET /api/notes?includeTrashed=true&all=1`. Vale sul bundle prod (confermato in L18); in dev StrictMode ne fa 2 a pochi ms (`main.tsx:97`).
     - 62 righe in Dexie, nessuna riga `synced` cancellata.
     - PULL-00 resta in lista e la modifica arriva al server.
   - Non deve: lista ferma a 50; note sparite dopo la pull o dopo il reload.
@@ -376,6 +376,7 @@ Prima di partire, con `'*'`, crea R0 READY dalla UI: un setup rapido, una nota s
     - Passo 5: compare il setup o il wizard senza ricaricare.
     - Passo 6, da decidere: il testo attuale è più corto e non dice all'utente legacy che il suo vault non è accessibile.
   - Non deve: setup o wizard con `setupAllowed:false`; keyring creato; marker rimasto dopo il 503; schermata offline al posto del messaggio.
+  - MINOR noto, ancora aperto (non in scaletta): il testo `setupDisabled` del passo 6 è più corto di quello del piano e non dice al legacy che il suo vault non è accessibile. Da decidere (chiave dedicata con `legacyCount > 0`, oppure accettare il testo corto).
   - Base: `vault.service.ts:157-161,178,193,226-229`; `VaultPage.tsx:125-128,150-157,402`; `vaultSession.ts:69,238`; `it.json:1790`; piano `:292,668,684`.
   - Nota: il 503 setupDisabled non scrive un audit (residuo accettato).
 
@@ -453,6 +454,7 @@ Prima di partire, con `'*'`, crea R0 READY dalla UI: un setup rapido, una nota s
     4. Da una nota normale prova "Aggiungi al Vault" in due casi: (a) con la cache `byUser` READY presente, (b) dopo aver tolto `byUser[uid]` da `vault-storage` e ricaricato.
     5. Rimetti `status='READY'` e ricarica.
   - Atteso:
+    - Passo 1: aprire la nota sicura senza digitare non genera UPDATE né PUT (2.1, `setEditable` senza update). L'unica PUT è quella del passo 2.
     - Passo 2: PUT 422 `errors.vault.notReady`, toast "Il vault non è pronto. Sbloccalo e riprova." (`vault.moveOut.notReady`). L'editor torna modificabile e `isVault` resta true.
     - Passo 3: solo "Il vault non è disponibile al momento." (`vault.resetPending`), senza moduli né pulsanti.
     - Passo 4a: con la cache READY, `vaultEntryState` restituisce `locked` e si apre il sheet del PIN. Lo sblocco vede `RESET_PENDING` e il sheet mostra "Il vault non è ancora pronto. Riprova tra poco." (`errors.vault.notReady`). La nota resta normale.
@@ -517,6 +519,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - **Keyring**: `READY`, `migrationState IN_PROGRESS`. Non arriva a DONE perché `legacyCount` è maggiore di 0 (§12.7).
     - **Q5**: `vault.keyring.created`, poi `vault.migrate` con ok 7, poi `vault.finalize`.
     - Titoli decifrati in lista e valori identici. La credenziale vuota si apre con i campi vuoti.
+    - Il titolo legacy (`note.title`) è visibile solo su righe NON envelope: la credenziale bloccata `credLock` appare come MK-TITLE-LOCK, non come "Credenziale senza titolo". Sulle righe envelope il titolo viene solo dall'envelope decifrato.
     - Ricerca globale: nessun risultato dal vault.
   - Non deve: NoteVersion in chiaro su id finalizzati; `searchText` o `searchVector` valorizzati; la credenziale bloccata modificata (nemmeno il title); il Kit prima del 201; titoli "Senza titolo" dopo il reconcile.
   - Ispeziona: in Network 1 POST `/keyring` 201, `/vault/items` paginato, `/vault/migrate`, `/vault/items {ids}`, `/vault/finalize`. Tutte con `no-store`.
@@ -534,10 +537,10 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - Dopo il reload e la pull restano solo MK-TITLE-LOCK, MK-TITLE-BIG e MK-BODY-BIG, cioè gli item rimasti legacy per scelta.
     - Le righe migrate hanno `nv3.` e title `''`.
     - Niente `pinHash` (clearLegacy). Coda vuota.
+    - `searchText` = `''` sulle righe vault in Dexie già dopo "Fine", nel primo dump (la migrazione lo azzera, B.2).
   - Non deve: MK-BODY-* o MK-PW-* rimasti dopo la pull.
-    - Da osservare: il reconcile non tocca `searchText`. Se MK-BODY compare solo nel primo dump, annotalo come residuo temporaneo.
-    - Se resta anche dopo il reload online, è un difetto.
-  - Base: `vaultMigration.ts:363-380`; `syncService.ts:176-220`; `vaultReconcile.ts:304-334`.
+    - Se MK-BODY compare in `searchText` di una riga migrata, nel primo dump o dopo il reload, è un difetto.
+  - Base: `vaultMigration.ts:363-380`; `syncService.ts:176-220`; `vaultReconcile.ts:315-345`.
   - Limite: `api-cache` si verifica solo nella build di prod (K.1).
 
 - [ ] **B.3 (ex MIG-03) — Credenziale bloccata: si sblocca dopo, aggiungendo il PIN mancante** (ALTA)
@@ -545,7 +548,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
   - Passi:
     1. Nei "PIN precedenti" del riepilogo aggiungi `unknown77` e clicca "Riprova". Poi Q1 e Q2.
     2. Variante: chiudi il riepilogo senza `unknown77` e apri MK-TITLE-LOCK.
-    3. Nella lista c'è il banner "1 elementi da aggiornare." con "Apri il vault per aggiornarli": cliccalo. Si apre il wizard in modalità resume, solo con i PIN precedenti.
+    3. Nella lista c'è il banner "2 elementi da aggiornare." (credLock più MK-TITLE-BIG, troppo grande; togliendo prima il big, "1 elementi") con "Apri il vault per aggiornarli": cliccalo. Si apre il wizard in modalità resume, solo con i PIN precedenti.
     4. Inserisci `K7rQ2X`, poi `unknown77`.
   - Atteso:
     - Con `unknown77`: `credLock` diventa `nv3`, con title `''`, e Q2 = 1. Valori decifrati: user-lock, MK-PW-LOCK.
@@ -555,7 +558,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
   - Base: `VaultMigrate.tsx:245,343-350`; `vaultMigration.ts:268-269`; `CredentialForm.tsx:112-116,124,426-429`; `VaultPage.tsx:421-425,632-651`.
   - UX da annotare: "Apri il vault per aggiornarli" compare anche quando sei già nel vault; la forma "1 elementi".
 
-- [ ] **B.4 (ex MIG-04) — Migrazione da 2 dispositivi in parallelo: 201 + 409, un solo keyring, nessuna perdita (accettazione 14-15)** (BLOCCANTE)
+- [ ] **B.4 (ex MIG-04) — Migrazione da 2 dispositivi in parallelo: 201 + GET di pre-controllo (il 409 solo in una gara al millisecondo), un solo keyring, nessuna perdita (accettazione 14-15)** (BLOCCANTE)
   - Prec.: L2 con la Ricetta A, oppure circa 30 note legacy con il seed di L.2 in ciclo. A e B loggati e fermi sul wizard.
   - Passi:
     1. Compila su entrambi: PIN1 su A, un PIN diverso su B (`q4Wm7Z`), vecchi PIN uguali, casella spuntata.
@@ -565,6 +568,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     5. Esegui Q1, Q3, la query del keyring e Q5. Conta le righe vault.
     6. Variante con un utente nuovo: "Avvia" su A e su B a meno di 1 s di distanza.
   - Atteso:
+    - B non fa POST `/keyring`: la GET di pre-controllo vede il keyring e passa allo sblocco. Il 409 si vede solo in una gara al millisecondo (variante del passo 6, coperta dagli unit test del backend).
     - Una sola riga keyring (`READY`, `epoch 0`). B non vede mai il Kit.
     - Un solo `vault.keyring.created`.
     - Ogni lato conta nel proprio riepilogo gli item che ha inviato e verificato, compresi gli `already`. Quindi ogni lato ne conta al massimo 7, la somma A+B può superare 7, e insieme coprono tutti i 7 migrabili.
@@ -611,6 +615,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - Al secondo avvio, la PUT in chiaro risponde 200 prima del POST `/keyring`. La nota migrata ha MK-TITLE-A2 e MK-BODY-A3.
     - Con l'item `failed`, il passo 0 passa subito.
   - Non deve: POST `/keyring` prima del flush; modifica persa; PUT in chiaro dopo il 201.
+  - Per chi ripete: nei seed usa corpi di almeno 150 caratteri (`guardEmptyContentOverwrite`).
   - Base: `vaultMigration.ts:141-170`; `VaultMigrate.tsx:189-193,329`; piano §6, passo 0.
 
 - [ ] **B.7 (ex MIG-07) — Validazione del modulo del wizard e doppio submit (Avvia, Fine del Kit, Riprova)** (ALTA)
@@ -647,8 +652,9 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - Il banner mostra un `legacyLeft` uguale a residui + lock + big. Il resume completa.
     - Valori identici al seed.
   - Non deve: versioni in chiaro rimaste su note `nv3` dopo uno sblocco online; envelope riscritti.
-  - Base: `vaultReconcile.ts:749-762,798-818`; `vault.service.ts:458,559-563`; design §6.2.8.
-  - Limite: il reconcile non finalizza una NOTE il cui content non è un documento TipTap (`body.type` diverso da `'doc'`, `vaultReconcile.ts:805-806`). Lo scenario è B.16, variante F. In prod, prima: `SELECT count(*) FROM "Note" WHERE "isVault" AND "noteType"='NOTE' AND content NOT LIKE '{%';`.
+  - Per chi ripete: `page.close()` rilascia le route trattenute; serve `tokenVersion+1`.
+  - Base: `vaultReconcile.ts:763-776,812-832`; `vault.service.ts:458,559-563`; design §6.2.8.
+  - Limite: il reconcile non finalizza una NOTE il cui content non è un documento TipTap (`body.type` diverso da `'doc'`, `vaultReconcile.ts:819-820`). Lo scenario è B.16, variante F. In prod, prima: `SELECT count(*) FROM "Note" WHERE "isVault" AND "noteType"='NOTE' AND content NOT LIKE '{%';`.
 
 - [ ] **B.9 (ex MIG-09) — Abbandono a metà: durante il Kit, durante la ricifratura, subito dopo "Avvia"** (ALTA)
   - Prec.: un utente L* nuovo per ogni variante.
@@ -663,6 +669,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - **S**: se il 201 è arrivato, si vede lo sblocco con il banner del Kit; altrimenti il wizard.
     - Il Kit non si ri-mostra mai.
   - Non deve: un item a metà (per ogni id: o il legacy originale, o un `nv3` uguale all'originale); ritorno al setup con il keyring presente.
+  - Per chi ripete: `page.close()` rilascia le route trattenute; serve `tokenVersion+1`.
   - Base: `VaultPage.tsx:184-197,350-355`; `VaultMigrate.tsx:103-111,197-201`; piano §12.17.
 
 - [ ] **B.10 (ex MIG-10) — Chiusura con il lock occupato da un'altra scheda: Annulla, timeout di 30 s, Riprova** (MEDIA)
@@ -687,7 +694,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     3. Osserva la scheda 1.
     4. Login, sblocco, poi Q1-Q3.
   - Atteso:
-    - "Il vault si è bloccato. Sbloccalo e riprova." (`vault.migrate.errors.locked`), oppure il redirect al login.
+    - "Il vault si è bloccato. Sbloccalo e riprova." (`vault.migrate.errors.locked`), oppure il redirect al login, oppure la schermata "Vault bloccato" (il Gate smonta il wizard; osservato nell'autotest).
     - Dopo lo sblocco: i finalizzati sono a posto, i non finalizzati li riprende il reconcile, il resto è nel banner.
   - Non deve: `/vault/migrate` dopo l'errore; envelope non decifrabili.
   - Base: `vaultMigration.ts:257-260`; `VaultMigrate.tsx:115-120`.
@@ -706,13 +713,14 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     6. Su B: Impostazioni vault, "Controlla ora".
   - Atteso:
     - Titoli originali decifrati, nessuna "Nota senza titolo". Righe `nv3` con title `''`.
+    - Credenziale legacy senza lavoro locale (riga synced, nessun item) con envelope del server decifrabile: ADOPT, nessuna copia, titolo originale (Addendum 2 §2).
     - Note aggiornate: nessuna copia.
     - N1: esattamente 1 "(copia in conflitto)" con il contenuto VECCHIO di B. L'originale ha il contenuto di A.
     - Righe sul server = item originali + 1.
-    - Le credenziali v2 non decifrabili su B restano invariate (LEAVE legacyPin).
-    - Passo 6: "N elementi lasciati invariati. Cause possibili:" (`vault.settings.unresolved`) con tutte e 4 le righe `vault.settings.reason.*` (legacyPin, epoch, tooLarge, unchanged). L'elenco è sempre completo, non indica la causa del singolo item.
+    - Solo le credenziali v2 con modifiche locali o senza envelope del server decifrabile restano invariate (LEAVE legacyPin, contate in `unresolved`). Con `legacyPin > 0` e nessun elemento legacy da migrare compare il banner del PIN precedente.
+    - Passo 6: "Tutto aggiornato." se non resta nulla; altrimenti "N elementi lasciati invariati. Cause possibili:" (`vault.settings.unresolved`) con tutte e 4 le righe `vault.settings.reason.*` (legacyPin, epoch, tooLarge, unchanged). L'elenco è sempre completo, non indica la causa del singolo item.
   - Non deve: copie con titolo vuoto su note invariate; originale sovrascritto dal contenuto vecchio; plaintext rimasto in Dexie (tranne gli item lasciati legacy).
-  - Base: `syncService.ts:176-220`; `vaultReconcile.ts:232-250,304-334,838-846`; `VaultSettingsSheet.tsx:153,267-278`; spec T15 T6/T7.
+  - Base: `syncService.ts:176-220`; `vaultReconcile.ts:243-261,315-345,852-860`; `VaultSettingsSheet.tsx:153,267-278`; spec T15 T6/T7.
 
 - [ ] **B.13 (ex MIG-13) — Bundle vecchio dopo il keyring: 422, poi copia in conflitto (accettazione 16, Ricetta B)** (ALTA)
   - Prec.: dopo B.12, profilo B.
@@ -723,7 +731,8 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     4. Torna al branch. Ricarica, sblocca col PIN nuovo e apri l'originale e la copia. Esegui Q1.
   - Atteso:
     - Su `main`: PUT 422 `errors.vault.plaintextRejected`, item `failed`, md5 sul server invariato.
-    - Sul branch: 1 "(copia in conflitto)" con `MK-PW-OLDBUNDLE`, l'originale con il valore del server, coda vuota.
+    - Sul branch, prima del PIN precedente: la riga e l'item restano intatti (LEAVE legacyPin). In /vault compare il banner del PIN precedente; aprendo la credenziale compare la schermata `legacyUnreadable` con il pulsante verso il wizard di ripresa (anche senza chiave root).
+    - Con il PIN precedente nel wizard di ripresa: 1 "(copia in conflitto)" con `MK-PW-OLDBUNDLE` e il titolo del server, l'originale con il valore del server, coda vuota (Addendum 2 §2-3).
   - Non deve: un 200 su quella PUT; modifica persa; più di una copia.
   - Base: design §6.3; spec T15 T6/T9/T15.
   - E2E: `vault-conflict.spec.ts` lo copre in forma sintetica (IndexedDB scritta a mano).
@@ -740,7 +749,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - Q6: `isVault false`, `isEncrypted false`, `searchText` ricalcolato. Q2 scende di 1.
   - Non deve: salvataggi dalla fase legacy; 413 o 422 silenziosi (un errore deve dare un toast `vault.moveOut.*`).
     - Da osservare: se la riga ha content `''`, la fase è "unavailable" e il pulsante non c'è. Annotalo.
-  - Base: `vaultMigration.ts:276`; `VaultMigrate.tsx:339`; `VaultNoteEditor.tsx:128-131,212-216,244,340-344`; `vaultReconcile.ts:237`.
+  - Base: `vaultMigration.ts:276`; `VaultMigrate.tsx:339`; `VaultNoteEditor.tsx:128-131,212-216,244,340-344`; `vaultReconcile.ts:248`.
 
 - [ ] **B.15 (ex MIG-15) — Nota legacy nel cestino, nota legacy con allegato, item cancellato durante la migrazione** (MEDIA)
   - Prec.: L8 con la Ricetta A. Per l'allegato: caricalo su noteA prima del wizard, via REST o con la Ricetta B.
@@ -755,6 +764,7 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     - L'allegato resta collegato. Se il riepilogo non lo segnala, annota lo scostamento dal piano §6 (D3, "si segnala").
     - notFound: l'item esce dal conteggio senza errore.
   - Non deve: errori bloccanti.
+  - MINOR noto, ancora aperto (non in scaletta): il riepilogo della migrazione non segnala la nota con allegato (piano P2 D3, "si segnala").
   - Base: `vault.service.ts:148-153,449-490`; `vaultMigration.ts:334`; piano §6 e §12.7.
 
 - [ ] **B.16 (nuova) — NOTE legacy con content non JSON: migrata byte per byte, oppure illeggibile e bloccata se troppo grande** (MEDIA)
@@ -772,11 +782,11 @@ Ogni giro usa un utente L* nuovo con la Ricetta A, salvo dove è indicata la Ric
     4. Variante F (con un utente nuovo e la stessa ricetta): breakpoint su `/vault/finalize`, chiudi la scheda in pausa, riapri, sblocca, attendi 15 s, poi Q3.
   - Atteso:
     - RAW: classificata `ready` (content byte per byte), quindi `nv3`, verificata e finalizzata dal wizard. Q3 `plain_v` = 0, title `''`.
-    - Apertura di RAW: da osservare come l'editor mostra un body non JSON. Requisito: nessuna PUT automatica e nessun testo perso se non scrivi nulla.
+    - Apertura di RAW: da osservare come l'editor mostra un body non JSON. Atteso ora (2.1): aprire senza digitare non genera UPDATE né PUT; nessun testo perso.
     - RAWBIG: compare nel riepilogo come troppo grande e resta in chiaro. All'apertura c'è il banner "Questo elemento è salvato in un vecchio formato e non si può mostrare qui. Aggiorna gli elementi del vault per aprirlo." (`vault.legacyUnreadable`), senza editor e senza "Rimuovi dal Vault" (serve `docOk`). L'item resta bloccato nel vault: annotalo come limite.
     - Variante F: il reconcile NON finalizza RAW (`body.type !== 'doc'`), quindi `plain_v` resta maggiore di 0, e Q2 non la conta (è `nv3`). Annotalo come limite noto.
   - Non deve: PUT di un documento vuoto su RAW; crash dell'editor; RAWBIG modificabile.
-  - Base: `vaultMigration.ts:57-58,276,288-314`; `VaultNoteEditor.tsx:130-131,214,244,340-347`; `vaultReconcile.ts:805-806`; `it.json:516`.
+  - Base: `vaultMigration.ts:57-58,276,288-314`; `VaultNoteEditor.tsx:130-131,214,244,340-347`; `vaultReconcile.ts:819-820`; `it.json:516`.
 
 ---
 
@@ -844,7 +854,7 @@ Usa gli utenti N* (Mario Rossi), con il backend su `'*'`.
     2. Completa il setup e blocca.
     3. Incolla `k7Rq2xZ` nel campo di sblocco.
   - Atteso:
-    - Al setup il valore viene troncato in silenzio.
+    - Al setup (e in "Nuovo PIN" delle Impostazioni) un PIN più lungo di 6 caratteri (paste, autofill, password suggerita) viene troncato a 6 con l'avviso visibile `vault.pinTruncated`. Un carattere digitato oltre i 6 viene ignorato. Policy invariata.
     - Allo sblocco: "PIN errato" e `failedAttempts` +1. È un rischio di UX da giudicare.
   - Non deve: sblocco riuscito con 7 caratteri; lockout dopo un solo tentativo.
   - Base: `VaultSetup.tsx:147,160`; `VaultUnlock.tsx:113-125`; `vault.service.ts:393-403`.
@@ -852,13 +862,14 @@ Usa gli utenti N* (Mario Rossi), con il backend su `'*'`.
 - [ ] **C.4 (ex SK-04) — Gestore password del browser e tastiere sui campi PIN** (ALTA)
   - Prec.: Chrome con la password di login salvata per localhost:5173. Un utente nuovo. Poi il telefono.
   - Passi:
-    1. Nel campo PIN Chrome propone "Usa password suggerita"? Se sì, accettala in un giro di prova: la policy deve rifiutarla con `format`. Una password forte più lunga di 6 caratteri viene troncata da maxLength.
+    1. Nel campo PIN Chrome propone "Usa password suggerita"? Se sì, accettala in un giro di prova: la policy deve rifiutarla con `format`. Una password più lunga di 6 caratteri viene troncata a 6 con avviso (vedi Atteso).
     2. Il campo "Password dell'account" (autocomplete off) viene riempito?
     3. Completa il setup. Compare "Salvare la password?" o "Aggiornare la password?", e con quale valore? Non accettare. In un secondo giro, con un altro utente, accetta.
     4. Logout: quale password propone l'autofill nel login?
     5. Allo sblocco (`current-password`) il campo PIN viene riempito con la password dell'account?
     6. Telefono: la prima lettera non deve diventare maiuscola (`autoCapitalize` off). Ripeti per "PIN attuale", "Nuovo PIN" e "PIN per confermare".
   - Atteso:
+    - Passo 1: password suggerita o autofill oltre i 6 caratteri: troncata a 6 con l'avviso `vault.pinTruncated`. È rifiutata (`format`) se i primi 6 caratteri violano la policy; altrimenti diventa il PIN (rischio UX da decidere).
     - Nessuna credenziale di login sostituita dal PIN. Se succede, annotalo come difetto UX (proposta: un `autocomplete` diverso).
     - Autofill nel campo di sblocco: annotalo, perché un clic diventa un tentativo errato.
   - Non deve: password di login sovrascritta dal PIN senza che l'utente se ne accorga; tentativi errati causati dall'autofill.
@@ -932,7 +943,7 @@ Usa gli utenti N* (Mario Rossi), con il backend su `'*'`.
   - Atteso:
     - Con la casella spuntata lo sblocco offline funziona. Nessun toast "Non è stato possibile attivare lo sblocco offline su questo dispositivo.".
     - Su B prima del primo sblocco: solo "Come funziona" e il link. Dopo lo sblocco: switch OFF e `shares` vuoto.
-    - Da decidere: il design dice "attivo di default" (`design:19,243`), il codice parte da OFF.
+    - Decisione utente (24/10): sblocco offline NON spuntato di default ACCETTATO. Il design dice "attivo di default" (`design:19,243`), il codice parte da OFF; non è un difetto.
   - Non deve: uno share salvato senza consenso.
   - Base: `VaultSetup.tsx:50,78,173-181`; `vaultSession.ts:94-104,243-254,276`; `vaultStore.ts:119-133`; `VaultSettingsSection.tsx:84`.
   - E2E: `vault-offline` copre il setup con offline ON.
@@ -985,6 +996,7 @@ Usa gli utenti N* (Mario Rossi), con il backend su `'*'`.
     7. Sidebar, header, menu, notifiche e scorciatoie da tastiera non devono essere raggiungibili sotto l'overlay.
     8. Ripeti in tema scuro.
     9. Opzionale: screen reader. Deve leggere "Kit di recupero" e "Codice del Kit di recupero".
+  - Atteso: il codice del Kit è in un `role=group` con nome ("Codice del Kit di recupero"), letto dallo screen reader (passo 9).
   - Non deve: chiusura con Esc o con lo sfondo; gruppo giusto respinto; "Fine" abilitato con un solo gruppo.
   - Base: `RecoveryKitSheet.tsx:21-30,44-48,106-175`; `vaultKit.ts:2,33-43`.
   - E2E: `vault-kit.spec.ts:48-77` copre Esc, clic, gruppo sbagliato e minuscole.
@@ -1058,6 +1070,7 @@ Usa gli utenti N* (Mario Rossi), con il backend su `'*'`.
     4. Android: foglio aperto e schermo spento per 12 minuti. Se il vault si è bloccato e il Kit è perso, al prossimo sblocco deve comparire il banner (D.4).
     5. Controllo inverso: dopo "Fine", 11 minuti fermi. Il vault si blocca.
   - Non deve: foglio smontato su PC; auto-lock disattivato per sempre.
+  - Per chi ripete: usa `clock.runFor`, non `fastForward`.
   - Base: `RecoveryKitSheet.tsx:56-60`; `vaultStore.ts:4,8-11,113-117,134-139`; `VaultPage.tsx:114,199-209,398-404`; `VaultSettingsSheet.tsx:91-104,132-135`.
 
 - [ ] **D.7 (ex SK-15) — Rigenerazione del Kit dallo sheet: PIN errato, lockout, offline, vecchio Kit invalidato** (ALTA)
@@ -1166,6 +1179,7 @@ Si usano R1 (offline ON) e R2 (lockout). Ogni PIN errato online conta: azzera il
     - Tentativi 1-6: "PIN errato", senza conto alla rovescia (il 6° è ancora un 403).
     - `failedAttempts=6`, `lockedUntil` = adesso + 15 min (UTC).
     - Il 7° non parte verso il server (c'è solo la GET). Compare in ambra "Troppi tentativi. Riprova tra 14:5x." (`vault.unlock.lockedFor`), con il campo disabilitato e i secondi che calano.
+    - Con `ceil`, un tentativo entro 1 s dal blocco mostra "15:00" invece di 14:5x.
     - Dopo F5 il campo è attivo fino all'invio; poi il conto riappare.
     - Email "Vault bloccato temporaneamente - Notiq" con 6 tentativi. L'orario è in ISO "(UTC)": annota se è leggibile. Nel log c'è `vault.unlock.locked`.
     - Allo zero il campo si riattiva. Il PIN sblocca e azzera il contatore.
@@ -1182,6 +1196,7 @@ Si usano R1 (offline ON) e R2 (lockout). Ogni PIN errato online conta: azzera il
     - Al 12°: +1 h, "Riprova tra 59:5x".
     - Al 18°: +24 h, "Riprova tra 1439:5x". Da segnalare come UX: `fmt()` mostra solo minuti e secondi.
     - Al 24°: resta +24 h (tetto `LEAST(...,3)`).
+    - Con `ceil`, un tentativo entro 1 s dal blocco mostra "60:00" (12°) o "1440:00" (18°) invece di 59:5x / 1439:5x.
     - Un'email a ogni soglia.
   - Base: `vault.service.ts:396-399`; `VaultUnlock.tsx:28-31`.
 
@@ -1194,8 +1209,8 @@ Si usano R1 (offline ON) e R2 (lockout). Ogni PIN errato online conta: azzera il
     4. SQL, poi azzera.
   - Atteso:
     - Online: "Troppi tentativi…" senza POST.
-    - Offline: sblocco riuscito, anche col server in lockout (rischio dichiarato, `design:243`).
-    - Gli errori offline non hanno limite e il contatore del DB non cambia.
+    - Lockout visto online, poi offline con sblocco offline disponibile (offlineUnlock e wrappedVkPin): il campo PIN è abilitato senza remount, l'alert "locked" è nascosto e lo sblocco offline riesce, anche col server in lockout (rischio dichiarato, `design:243`).
+    - Gli errori offline non hanno limite (rischio dichiarato) e il contatore del DB non cambia.
   - Base: `vaultSession.ts:117-119,295-335`; `VaultUnlock.tsx:69`.
 
 - [ ] **E.7 (ex SU-06) — VaultUnlockDialog da "Aggiungi al vault" nell'editor normale** (ALTA)
@@ -1212,7 +1227,8 @@ Si usano R1 (offline ON) e R2 (lockout). Ogni PIN errato online conta: azzera il
   - Atteso:
     - PIN errato: "PIN errato" nel sheet, che resta aperto.
     - PIN giusto: una sola POST, il sheet si chiude, la nota va nel vault (`notes.addedToVault`) e l'editor si chiude.
-    - /vault è già sbloccato. Il secondo spostamento non chiede il PIN.
+    - Senza passare da /vault il secondo spostamento non chiede il PIN; dopo una visita a /vault lo chiede, perché VaultPage blocca all'unmount (`VaultPage.tsx:351-355`, piano `:97,294`). Il passo 4 va fatto sul bundle prod (in dev StrictMode smonta e rimonta).
+    - Decisione utente (24/10): il blocco all'uscita da /vault RESTA, il PIN richiesto dopo una visita a /vault è per design. Non è un FAIL.
     - Lockout: "Troppi tentativi. Riprova tra mm:ss" fisso, campo abilitato.
     - Offline: comando disabilitato (`vault.moveIn.offline`).
     - 10 minuti dopo lo sblocco il vault si blocca, anche se lavori su /notes.
@@ -1284,6 +1300,7 @@ Si usano R1 (offline ON) e R2 (lockout). Ogni PIN errato online conta: azzera il
     - Passo 3: il vault si blocca. È l'atteso dal codice: valuta l'UX di chi legge senza cliccare.
     - Passo 4: `ultimo` presente, solo envelope, nessun lock orfano.
   - Non deve: testo in chiaro a schermo dopo il blocco; `[vault] pre-lock flush failed`.
+  - Per chi ripete: usa `clock.runFor`, non `fastForward`.
   - Base: `vaultStore.ts:4,8-18,100-117,134-139`; `VaultPage.tsx:144-148,199-209`; `VaultNoteEditor.tsx:110-115,159-165`.
 
 - [ ] **E.13 (ex SU-15) — Auto-lock con la scheda in background o l'app sospesa (PC e Android; iOS in N.8)** (ALTA)
@@ -1398,7 +1415,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     - PUT con solo content e baseHash.
     - B mostra il titolo nuovo, ordinato sul testo decifrato, con title `''` in Dexie.
   - Non deve: chiave title nella PUT; titolo vecchio fisso; "Senza titolo" su B.
-  - Base: `VaultNoteEditor.tsx:254-262`; `syncService.ts:618-621`; `VaultPage.tsx:270-320`; `vaultReconcile.ts:624-642`.
+  - Base: `VaultNoteEditor.tsx:254-262`; `syncService.ts:618-621`; `VaultPage.tsx:270-320`; `vaultReconcile.ts:643-661`.
 
 - [ ] **F.3 (ex VQ-05) — Lock shared per tutto il mount e decifratura solo dopo il grant** (ALTA)
   - Passi:
@@ -1427,7 +1444,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     - Online: POST `/api/vault/items {ids:[id]}` (`no-store`), poi il contenuto decifrato.
     - La credenziale non mostra il form finché il contenuto non arriva.
   - Non deve: editor vuoto modificabile; PUT di un documento vuoto o di `EMPTY_CREDENTIAL`; `length(content)` cambiato sul server.
-  - Base: `VaultNoteEditor.tsx:122-129,236-240`; `vaultReconcile.ts:624-642`; `VaultPage.tsx:340-348`; `CredentialForm.tsx:122-124,422-424`.
+  - Base: `VaultNoteEditor.tsx:122-129,236-240`; `vaultReconcile.ts:643-661`; `VaultPage.tsx:340-348`; `CredentialForm.tsx:122-124,422-424`.
   - E2E: `vault-overwrite` copre la credenziale su un dispositivo pulito.
 
 - [ ] **F.5 (nuova) — Elemento eliminato sul server mentre B non l'ha mai caricato: "non esiste più"** (ALTA)
@@ -1437,7 +1454,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     2. B, prima che la pull lo rimuova, apre N.
     3. B apre C.
   - Atteso:
-    - N: `hydrateVaultNote` vede `absent` e rimuove la riga. Compare "Questo elemento non esiste più sul server." (`vault.itemNotFound`) con solo "Indietro", senza "Riprova". In alternativa l'editor si chiude da solo.
+    - N: compare "Questo elemento non esiste più sul server." (`vault.itemNotFound`) con solo "Indietro", senza "Riprova". Oppure l'editor si chiude da solo alla pull successiva. `hydrateVaultNote` non rimuove la riga.
     - C: il percorso passa da `VaultPage.hydrateId` e `CredentialForm` mostra `vault.notLoaded`. Annota l'incoerenza con N.
   - Non deve: PUT o CREATE che ricreano l'item; caricamento infinito.
   - Base: `VaultNoteEditor.tsx:125-128,237`; `VaultNotLoaded.tsx:18,26`; `CredentialForm.tsx:422-424`; `VaultPage.tsx:329-348`; `it.json:457`.
@@ -1450,9 +1467,10 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     4. Ripeti con una credenziale.
   - Atteso:
     - Offline: stato "unavailable" e `[vault] load failed` in Console. Per la credenziale: "Decrittazione credenziale fallita" (`vault.credential.decryptFailed`).
-    - Online: `hydrateVaultNote` sostituisce la riga (synced, hash diverso) e la nota si apre.
+    - Online: `hydrateVaultNote` esce se l'hash del server è uguale alla base (`vaultReconcile.ts:657` confronta l'hash del server con la base, non quello locale). La riga manomessa NON si auto-ripara e resta illeggibile; "Controlla ora" dice "Tutto aggiornato" (T1 NONE).
+    - MINOR noto, NON corretto (decisione utente 24/10): l'auto-riparazione richiede di cambiare prima la spec T1.
   - Non deve: PUT dell'envelope manomesso; editor modificabile; crash.
-  - Base: `VaultNoteEditor.tsx:141-145`; `CredentialForm.tsx:112-116,426-436`; `vaultReconcile.ts:637-639`.
+  - Base: `VaultNoteEditor.tsx:141-145`; `CredentialForm.tsx:112-116,426-436`; `vaultReconcile.ts:657`.
 
 - [ ] **F.7 (nuova) — Riga locale con epoch diversa (T8, reason.epoch)** (MEDIA)
   - Prec.: N synced. Offline.
@@ -1463,10 +1481,10 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     4. Apri N. Esegui `nq('N')` e `sq(['N'])`.
   - Atteso:
     - Offline: stato "unavailable" con "Riprova".
-    - "Controlla ora": LEAVE(epoch), quindi `vault.settings.unresolved` con le 4 righe `reason.*`.
-    - Riapertura online: da osservare se `hydrateVaultNote` ripara la riga, dato che l'hash è diverso da quello del server.
+    - "Controlla ora": nessun unresolved (T1 NONE), perché T8 guarda l'epoch del server.
+    - Riapertura online: la riga resta illeggibile finché non si corregge F.6. MINOR noto, NON corretto (decisione utente 24/10).
   - Non deve: PUT dell'envelope `nv3.1.` (il server lo rifiuterebbe come `stale`); DROP della riga; copia in conflitto.
-  - Base: spec T15 T8; `vaultReconcile.ts:838-840`; `VaultNoteEditor.tsx:125,141-145`; `VaultSettingsSheet.tsx:267-278`.
+  - Base: spec T15 T8; `vaultReconcile.ts:852-854`; `VaultNoteEditor.tsx:125,141-145`; `VaultSettingsSheet.tsx:267-278`.
 
 - [ ] **F.8 (ex VQ-09) — Eliminazione definitiva di note e credenziali (online, offline, subito dopo una modifica)** (ALTA)
   - Passi:
@@ -1480,6 +1498,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     - Credenziale: "Sei sicuro di voler eliminare definitivamente questa credenziale?..." e toast "Credenziale eliminata".
     - La riga sparisce, il DELETE entra in coda e poi la coda si svuota. 0 righe in Note e in NoteVersion (cascade).
     - N2 non riappare. Su B l'editor si chiude da solo.
+    - Su B l'apertura di N1 non genera UPDATE né PUT per il solo fatto di essere aperta (2.1).
   - Non deve: PUT o CREATE dopo il DELETE; versioni orfane; nota finita nel Cestino normale.
   - Base: `VaultNoteEditor.tsx:189-204`; `CredentialForm.tsx:347-363`; `noteService.ts:262-278`; `schema.prisma:167-170`; `VaultPage.tsx:328-338`.
 
@@ -1491,7 +1510,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     4. Unpin.
   - Atteso:
     - PUT `{isPinned:true}` 200. Toast `notes.pinned`, poi `notes.unpinned`.
-    - Da decidere: la nota vault compare in sidebar come "Senza titolo" (`usePinnedNotes` non filtra `isVault`). Il clic porta a `/notes?noteId=`, e NotesPage la chiude subito. La lista del vault non ordina per pin.
+    - Le note vault NON compaiono fra le fissate della sidebar (`usePinnedNotes` filtra `isVault`, F.9), quindi nessuna voce "Senza titolo" e nessun clic verso `/notes?noteId=`. La lista del vault non ordina per pin (invariato).
   - Non deve: envelope mostrato come testo; scritture; `[noteService] scrittura vault rifiutata`; WS `/ws` aperta.
   - Base: `VaultNoteEditor.tsx:172-187`; `usePinnedNotes.ts:5-9`; `Sidebar.tsx:519-532`; `NotesPage.tsx:82-87`; `VaultPage.tsx:311-319`.
 
@@ -1508,6 +1527,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     - Il clic apre `/vault?noteId=` e, dopo lo sblocco, la nota.
     - Da annotare: l'ora mostrata è UTC (`toISOString().slice(0,16)`). Il difetto c'è già in `NoteEditor.tsx:772`, non è una regressione.
   - Non deve: titolo in chiaro in RemindersPage, in rete o in una notifica; selettore che non si apre sul telefono.
+  - MINOR noto, ancora aperto (non in scaletta): il selettore del promemoria mostra l'ora in UTC (13:55 per le 15:55 Europe/Rome; riconfermato, slitta di 2 h). Preesistente, copia di `NoteEditor.tsx:772`.
   - Base: `VaultNoteEditor.tsx:273-305`; `RemindersPage.tsx:60-75,130-133`.
 
 - [ ] **F.11 (ex VQ-12) — Tag vault** (MEDIA)
@@ -1540,9 +1560,11 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     4. Incolla testo con un'immagine copiato da un sito.
     5. Network: filtri `attachments`, `ai`, `uploads`, domini esterni.
   - Atteso:
-    - Screenshot e PNG non vengono inseriti.
-    - La scheda NON naviga verso il file. Se apre il PNG a tutta pagina è un bug: perdi lo sblocco e l'ultimo secondo di modifiche.
-    - Da decidere: se l'immagine remota viene inserita (nodo img con src http), il browser la scarica a ogni apertura e rivela l'IP e l'apertura.
+    - Nessuna immagine remota (src fuori da `/uploads/`) viene inserita o caricata in una nota vault. Paste e drop di HTML e "Incolla" dal menu contestuale la tolgono, con il toast `vault.remoteImagesRemoved`. Il markdown digitato (`![x](url)`) non inserisce alcuna immagine e non mostra alcun toast, perché nel vault la regola di input non esiste.
+    - Drop e paste di soli file (screenshot, PNG) sono bloccati senza navigazione, con il toast `vault.imagesBlocked`. Paste con anche testo: il testo passa, nessun toast.
+    - Immagini remote già presenti nella nota: nascoste al caricamento, con il toast `vault.remoteImagesHidden`.
+    - Drop di un file fuori dall'editor su /vault: nessuna navigazione. Se la scheda apre il PNG a tutta pagina è un bug: perdi lo sblocco e l'ultimo secondo di modifiche.
+    - Controprova: note normali e pagina pubblica invariate.
     - Mai POST `/api/attachments` né `/api/ai`.
   - Base: `Editor.tsx:241-250`; `ImageDrop.ts:47-48,77-78`; `VaultNoteEditor.tsx:22-24,347-358`; `routes/attachments.ts:41`.
 
@@ -1563,7 +1585,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
   - Passi: cerca "Avvia dettatura" (`editor.startDictation`) e "Inserisci blocco cifrato" (`editor.insertEncryptedBlock`). Opzionale: detta del testo.
   - Atteso:
     - Annota la presenza dei due comandi. La Web Speech API di Chrome invia l'audio a Google.
-    - **Decisione utente (23/10): la dettatura vocale resta ABILITATA nel vault.**
+    - **Decisione utente (23/10, confermata 24/10): la dettatura vocale resta ABILITATA nel vault.**
     - Il testo viaggia solo nell'envelope.
   - Base: `EditorToolbar.tsx:36-58`; `EditorToolbarSecondary.tsx:230-231,265-269`.
 
@@ -1578,7 +1600,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     - POST e PUT solo con `nv3`, title `''`, `noteType 'CREDENTIAL'`.
     - S-DUMP: false. La card mostra titolo, dominio e il badge "Credenziale".
     - SQL: `searchText` NULL.
-    - Accettato, da confermare soltanto: l'URL in chiaro nelle GET `/api/url-metadata?url=` e `/screenshot` (e nei log del backend se il fetch fallisce), più la richiesta a `icons.duckduckgo.com`.
+    - Decisione utente (design §9.11): RESTANO, scelta del design e non un FAIL: l'URL in chiaro nelle GET `/api/url-metadata?url=` e `/screenshot` (e nei log del backend se il fetch fallisce), più la richiesta a `icons.duckduckgo.com`.
     - Annota l'eventuale "Salvare la password?" di Chrome.
   - Non deve: username, password o note in un URL, in un payload o in uno storage.
   - Base: `CredentialForm.tsx:120-153,207-211,251-275`; `CredentialCard.tsx:24-35,100`; `url-metadata.ts:116-150`; `note.service.ts:74,392-394`; `design:604`.
@@ -1633,6 +1655,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
   - Atteso:
     - DB invariato. `no-store` sulle risposte vault.
     - Testi in it.json: "Il vault è stato aggiornato su un altro dispositivo. Sbloccalo di nuovo e riprova."; "Questo contenuto non può essere salvato in chiaro nel vault.".
+    - Passo 4: usa un content DIVERSO da quello del server; con content identico la PUT è un replay idempotente (200, voluto).
   - Non deve: 200; NoteVersion nuove.
   - Base: `vault.service.ts:49,70-84`; `note.service.ts:298-308,416-421`; `routes/vault.ts:83-84`; `it.json:1787,1791`.
 
@@ -1642,18 +1665,19 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     1. In SQL imposta `status='RESET_PENDING'`. Scrivi ` NR1`: PUT 422 `errors.vault.notReady`, item `failed` con `lastError 'vault:notReady'`.
     2. Scrivi ` NR2`: nessuna PUT nuova (gli item sono trattenuti).
     3. Blocca: "Il vault non è disponibile al momento.".
-    4. Rimetti `READY`, ricarica, sblocca, riapri e attendi il reconcile.
+    4. Rimetti `READY`, ricarica e sblocca, senza aprire N e senza scrivere.
     5. Seed con S-SEED-CODA `('ID','vault:stale',true)`, poi "Controlla ora".
     6. Seed con `withTitle=false` e "Controlla ora" 3 volte.
     7. Scrivi `z`, chiudi, poi "Controlla ora".
     8. Ripeti i passi 5-7 con `vault:notReady`.
   - Atteso:
-    - Passo 4: l'item si riattiva, PUT 200 con ` NR1 NR2`, coda vuota.
-    - Passo 5: l'item torna pending SENZA title e viene chiuso come "skip" senza PUT. Coda vuota.
-    - Passo 6: l'item resta `failed`. Compare "N elementi lasciati invariati. Cause possibili:" (`vault.settings.unresolved`) con tutte e 4 le righe `vault.settings.reason.*`, compresa "Nessuna modifica necessaria o già aggiornato.". Nessuna PUT.
+    - Passo 4: il giro dello sblocco (T-a) riattiva l'item notReady a content uguale (Addendum 3) e T-g avvia la push: 1 PUT 200 con ` NR1 NR2`, coda vuota. Ai passi 1-3 la chiusura dell'editor con il server ancora RESET_PENDING dà al più 2 PUT 422 per item (quella originale della push e quella dopo la riattivazione del giro), più 1 per ogni modifica nuova, poi nessun'altra.
+    - Passo 5 (seed con `withTitle=true`): T6 REENCRYPT_TITLE. Il titolo diventa "x", PUT 200 col solo content e `baseHash`, coda vuota.
+    - Passo 6 (seed con `withTitle=false`): lo "skip" senza PUT di un item pending senza title si osserva solo su questo seed. L'item resta `failed`. Compare "N elementi lasciati invariati. Cause possibili:" (`vault.settings.unresolved`) con tutte e 4 le righe `vault.settings.reason.*`, compresa "Nessuna modifica necessaria o già aggiornato.". Nessuna PUT in 3 "Controlla ora".
     - Passo 7: PUT 200 e coda vuota.
+    - Passo 8 (`vault:notReady`): il primo "Controlla ora" riattiva l'item e, come T-g, avvia la push: 1 PUT 200 e coda vuota. Il secondo e il terzo non fanno PUT.
   - Non deve: perdita di NR1 o NR2; item failed per sempre; loop di PUT; title in chiaro nel body; INVARIANTE diverso da 0.
-  - Base: `syncService.ts:608-622,1000-1008,1375-1379,1461-1464`; `vaultReconcile.ts:127-143,268-271,452-470,838-846`; `VaultSettingsSheet.tsx:267-278`; piano `:992-995`.
+  - Base: `syncService.ts:608-622,1000-1008,1375-1379,1461-1464`; `vaultReconcile.ts` (`reactivates`/T5 Addendum 3, `processNote`, `round`); `VaultSettingsSheet.tsx:267-278`; piano `:992-995`.
 
 - [ ] **F.22 (ex VQ-23) — Rete di sicurezza client: noteService rifiuta le scritture in chiaro su righe vault** (MEDIA)
   - Passi:
@@ -1667,8 +1691,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     1. Doppio clic su "Nuova Nota Sicura" nel pannello destro.
     2. Ripeti dal menu "+" e con "Nuova Credenziale".
   - Atteso:
-    - Ideale: un solo item.
-    - Probabile: due item "Senza titolo", validi e cifrati. È un difetto UX: `mutate` non ha la guardia `isPending`.
+    - Doppio clic su "Nuova Nota Sicura" o "Nuova Credenziale" (anche dal menu "+"): 1 sola creazione, un solo item "Senza titolo".
   - Non deve: item con title non vuoto o content non `nv3`.
   - Base: `VaultPage.tsx:222-250,619-626`.
 
@@ -1752,7 +1775,7 @@ Usa aghi univoci: TITOLO-SEGRETO-0n, CORPO-SEGRETO-0n, PW-SEGRETA-0n.
     - Nessuna copia. S04 = `e3`. S04-nuova presente una volta sola. Coda vuota.
     - Gli UPDATE successivi vengono chiusi come "skip", senza chiamata.
   - Non deve: PUT 422; duplicati.
-  - Base: `syncService.ts:608-622,1392-1416`; `vaultReconcile.ts:219-230`.
+  - Base: `syncService.ts:608-622,1392-1416`; `vaultReconcile.ts:230-241`.
   - E2E: il caso su PC è coperto (`vault-conflict`, test 2).
 
 ---
@@ -1785,7 +1808,7 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     - In inglese il suffisso è "(conflict copy)".
   - Non deve: server con il contenuto di A; più copie; `A-offline` perso; title in chiaro.
   - Ispeziona: se vedi una PUT 422 senza copia, la push ha battuto il reconcile e la nota è in LATER per `listSig` (backlog di HANDOFF §4.2). Si sblocca aprendo e chiudendo la nota o con "Controlla ora". Annotalo.
-  - Base: `vaultReconcile.ts:273-281,401-404,422,482-495,537-543,831`; `VaultPage.tsx:170-175`; `useSync.ts:97-101`.
+  - Base: `vaultReconcile.ts:284-292,412-415,433,493-506,548-554,845`; `VaultPage.tsx:170-175`; `useSync.ts:97-101`.
   - E2E: `vault-conflict`, test 3 (credenziale).
 
 - [ ] **H.2 (ex S02) — Variante con editor aperto (flake noto del test 1): A scrive di nuovo durante il conflitto** (BLOCCANTE)
@@ -1796,20 +1819,22 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     3. A online, fino a 40 s: PUT 422 e banner "1 modifiche non sincronizzate" (`sync.failed`).
     4. A, sempre col form aperto: `pw-A-2`, 5 s. `sq` è ancora sull'hash di B.
     5. Prima di chiudere: `nq` e `navigator.locks.query()`. Salva l'output.
-    6. Indietro, 10 s. Poi `nq` e `sq`.
+    6. Indietro, fino a 25 s. Poi `nq` e `sq`.
     7. Apri la copia (`pw-A-2`) e poi l'originale (`pw-B-1`).
     8. Ripeti 5 volte, variando i tempi:
        - Indietro meno di 1 s dopo `pw-A-2`;
        - PUT in volo con latenza di 3000 ms;
        - `pw-A-2` prima che arrivi il 422.
   - Atteso:
-    - Originale (server e Dexie) = `pw-B-1`.
-    - 1 copia CREDENTIAL con `pw-A-2`. Coda vuota, banner sparito.
+    - Entro circa 10-25 s da Indietro: originale (server e Dexie) = `pw-B-1`.
+    - 1 copia CREDENTIAL in conflitto con `pw-A-2` (versione di A). Coda vuota, banner sparito.
+    - Il reconcile non si rischedula da solo (Addendum 2 della spec). Riparte: alla chiusura dell'editor, dopo push e rilascio del lock (T-c); su un nuovo `vault:conflict` (T-d, una volta per item per sessione, debounce 1 s); con 2 tentativi a 5 s e 20 s dopo un LATER (T-f); dopo un giro che ha risolto qualcosa fa una push (T-g).
+    - Vale per tutte e 5 le varianti del passo 8.
   - Non deve: `pw-A-2` mostrato anche sull'originale; PUT 2xx con il contenuto di A; una seconda copia; una copia con `pw-A-1`.
   - Ispeziona:
     - Se l'hash di riga dell'originale è uguale a quello del server, il difetto è di UI (ri-decifratura del form o liveQuery vecchia).
     - Se è diverso, cerca una PUT o POST tardiva sull'originale, `[vaultReconcile] nota lasciata invariata`, e un UPDATE ricomparso dal cleanup del form.
-  - Base: HANDOFF §4.2; `CredentialForm.tsx:85-118,157-167,366-401`; `VaultNoteEditor.tsx:117-157`; `vaultReconcile.ts:263-267,855-858`; `syncService.ts:1006-1012`.
+  - Base: HANDOFF §4.2; `CredentialForm.tsx:85-118,157-167,366-401`; `VaultNoteEditor.tsx:117-157`; `vaultReconcile.ts:274-278,869-872`; `syncService.ts:1006-1012`.
   - E2E: test 1 (instabile 1 volta su 6).
 
 - [ ] **H.3 (ex S03) — Concorrenza con tutti e due online: vault:conflict, banner e Riprova, edit trattenuti** (ALTA)
@@ -1822,9 +1847,10 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     6. Variante: A va su Note (il vault si blocca), torna e sblocca.
   - Atteso:
     - "Riprova" non cambia nulla (`syncService.ts:1464`): l'item resta `failed`, i successivi restano pending, il server resta su `B1`.
-    - Dopo il trigger: 1 copia con `A3`, originale `B1`, coda vuota.
+    - Aprire S03 (passo 1) non genera UPDATE né PUT (2.1).
+    - Dopo il trigger (chiusura dell'editor T-c, nuovo `vault:conflict` T-d, evento online, o i tentativi a 5 s e 20 s): 1 copia con `A3`, originale `B1`, coda vuota.
     - Annota quanto restano fermi gli edit, e se il Riprova inefficace confonde.
-    - Da decidere: `sync.failedToast` dice "Alcune modifiche non sono state sincronizzate. Usa Riprova nella barra di sincronizzazione." (`it.json:976`), ma per gli item `vault:*` Riprova non fa nulla. Il piano §12.11 (`:738`) chiede che il testo lo dica.
+    - MINOR noto, ancora aperto (testo del toast, non in scaletta): `sync.failedToast` dice "Alcune modifiche non sono state sincronizzate. Usa Riprova nella barra di sincronizzazione." (`it.json:976`), ma per gli item `vault:*` Riprova non fa nulla. Il piano §12.11 (`:738`) chiede che il testo lo dica.
   - Non deve: server sovrascritto; A2 o A3 persi; loop di PUT.
   - Base: `syncService.ts:1006-1012,1374-1380,1461-1464`; `SyncStatusIndicator.tsx:27-84`; `VaultPage.tsx:177-182,351-355`.
 
@@ -1844,7 +1870,7 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     - B2: 422, poi T2 ACK alla chiusura, poi PUT 200.
     - In ogni caso: server = ultimo valore, nessuna copia, `sent` ridotta per prefisso.
   - Non deve: copia; ritorno a `v0`; edit persi.
-  - Base: `syncService.ts:1060-1072,1217-1233,1392-1416`; `vault.service.ts:80-83`; `vaultReconcile.ts:264,276-280`.
+  - Base: `syncService.ts:1060-1072,1217-1233,1392-1416`; `vault.service.ts:80-83`; `vaultReconcile.ts:275,287-291`.
 
 - [ ] **H.5 (ex S06) — Rete che cade a metà reconcile e scheda chiusa subito dopo la copia** (BLOCCANTE)
   - Prec.: conflitto pronto come in H.1 passi 1-3, editor di A chiuso, A offline. Profilo di throttling "Notiq lenta".
@@ -1857,18 +1883,19 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     - Passo 2: nessuna modifica locale (il giro si interrompe).
     - Alla fine: 2 item, una sola copia, coda vuota. La CREATE della copia arriva al server una volta sola, con lo stesso id salvato in Dexie.
   - Non deve: due copie; copia solo locale; originale adottato senza copia; errori visibili.
-  - Base: `vaultReconcile.ts:482-516,717-737,753-762`; `VaultPage.tsx:164-168`.
+  - Base: `vaultReconcile.ts:493-527,731-751,767-776`; `VaultPage.tsx:164-168`.
 
 - [ ] **H.6 (ex S07) — Backend ucciso a metà invece della rete assente: niente evento online, backoff, Riprova** (ALTA)
   - Passi:
     1. `k1` arriva al server. Ctrl+C sul backend.
     2. Scrivi `k2`, Indietro. Annota il codice della PUT (status 0 se diretto, 500 se dal proxy: vedi P0.1).
     3. "Controlla ora": `errors.common.unknownError`.
-    4. `nq` ogni minuto per 5 minuti.
+    4. `nq` ogni minuto per 10+ minuti.
     5. Riavvia con `'*'`. Attendi 30 s e, se l'item è `failed`, clicca "Riprova".
     6. Variante: prima del Riprova, B cambia S07 in `B7`.
   - Atteso:
-    - Backoff 5/15/45/135 s, poi `failed` con il banner. Se invece il proxy chiude il socket, `attempts` resta fermo.
+    - Diretto (status 0): `attempts` fermo, retry ogni ~30 s, `failed`/`network` dopo ~10 min con il banner.
+    - Proxy (500): backoff 5/15/45/135 s, poi `failed`.
     - Dopo il Riprova: PUT 200, coda vuota.
     - Variante: 422, poi la copia al trigger successivo (il riavvio non fa scattare l'evento online).
   - Non deve: `k2` perso; copia senza conflitto.
@@ -1880,15 +1907,17 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     1. T1 apre S08. In T2 il lock shared è tenuto.
     2. B: `B8`. T2: "Controlla ora".
     3. T1: Indietro. T2: "Controlla ora", poi apri.
-    4. **Giro sospeso**: in T1 metti un breakpoint a `vaultReconcile.ts:857` e fai "Controlla ora". In T2 "Controlla ora" deve restare in attesa su `notiq-vault-reconcile`.
+    4. **Giro sospeso**: in T1 metti un breakpoint a `vaultReconcile.ts:871` e fai "Controlla ora". In T2 "Controlla ora" deve restare in attesa su `notiq-vault-reconcile`.
     5. F8 in T1. Ripeti chiudendo T1 mentre è in pausa.
   - Atteso:
+    - Passo 1: aprire S08 in T1 senza digitare non genera UPDATE né PUT (2.1).
     - Passo 2: "N elementi verranno aggiornati più tardi." (`vault.settings.later`) e riga invariata.
+    - Alla chiusura di T1 parte da sola un giro nella scheda che teneva il lock (T-c, dopo push e rilascio).
     - Passo 3: "Tutto aggiornato." e `B8`.
     - Passo 5: T2 attende senza errori e completa al rilascio. Nessuna copia.
     - Annota che "Controlla ora" non ha timeout.
   - Non deve: riga riscritta sotto l'editor aperto; lock rimasto dopo la chiusura.
-  - Base: `vaultNoteLock.ts:25-66`; `vaultReconcile.ts:699-711,855-859`; `VaultSettingsSheet.tsx:145-153`.
+  - Base: `vaultNoteLock.ts:25-66`; `vaultReconcile.ts:713-725,869-873`; `VaultSettingsSheet.tsx:145-153`.
 
 - [ ] **H.8 (ex S09, include VQ-06) — Stessa nota in due schede dello stesso profilo: nessuna copia spuria, vince l'ultimo che scrive** (ALTA)
   - Passi:
@@ -1898,9 +1927,9 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     4. Chiudi entrambe e attendi 30 s. `nq`, `sq`, "Controlla ora". Query delle versioni.
   - Atteso:
     - Nessuna copia, nessun 422 ripetuto. Vince l'ultima scrittura locale (T1, quindi `t2` sparisce), come prima di P2.
-    - Da decidere: è una perdita silenziosa fra schede. Accettarla, oppure aggiungere un avviso.
+    - Decisione utente (24/10): ACCETTATO. È una perdita silenziosa fra schede (vince l'ultima scrittura locale), senza avviso.
   - Non deve: "(copia in conflitto)"; loop di 422; riga illeggibile.
-  - Base: spec T15 (c) e T3; `vaultReconcile.ts:265`; `syncService.ts:614-621,1062-1072,1219-1233`; `VaultNoteEditor.tsx:117-157`.
+  - Base: spec T15 (c) e T3; `vaultReconcile.ts:276`; `syncService.ts:614-621,1062-1072,1219-1233`; `VaultNoteEditor.tsx:117-157`.
 
 - [ ] **H.9 (ex S10) — Flip della pull sotto lock: B toglie la nota dal vault mentre A la tiene aperta** (ALTA)
   - Passi:
@@ -1913,9 +1942,9 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
   - Atteso:
     - Il flip viene rimandato finché A tiene aperta la nota.
     - Poi S10 esce dal vault di A. Nel vault compare "S10 (copia in conflitto)" con `A10`. S10 è fra le note normali con `base`.
-    - Server: in chiaro e invariato. Variante: nessuna copia.
+    - Server: in chiaro e invariato. Variante: nessuna copia. Aprire S10 senza digitare non genera UPDATE né PUT (2.1).
   - Non deve: envelope sul server; "nv3." mostrato in una nota normale; `A10` perso; editor smontato mentre scrivi.
-  - Base: `syncService.ts:197-232`; `note.service.ts:310-313`; `vaultReconcile.ts:205`; `VaultPage.tsx:330-338`.
+  - Base: `syncService.ts:197-232`; `note.service.ts:310-313`; `vaultReconcile.ts:216`; `VaultPage.tsx:330-338`.
 
 - [ ] **H.10 (ex S11) — B elimina definitivamente la nota mentre A ha edit offline (T10)** (ALTA)
   - Passi:
@@ -1928,7 +1957,7 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     - Se il reconcile arriva prima: `absent`, COPY + DROP.
     - Se la push arriva prima: la PUT 404 scarta l'UPDATE (`syncService.ts:1334`), poi la copia arriva al trigger.
   - Non deve: `A11` perso; S11 ricreata col vecchio id.
-  - Base: `vaultReconcile.ts:219-222,717-737`; `syncService.ts:1334-1345`.
+  - Base: `vaultReconcile.ts:230-233,731-751`; `syncService.ts:1334-1345`.
 
 - [ ] **H.11 (ex S13) — Browser senza navigator.locks: solo operazioni sicure** (MEDIA)
   - Prec.: A ricaricato e non sbloccato. In Console: `Object.defineProperty(navigator,'locks',{configurable:true,value:undefined})`.
@@ -1943,7 +1972,7 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     - Conflitto: nessuna copia, item `failed` `vault:conflict`, edit di A conservati in Dexie.
     - Col lock: 1 copia e tutto allineato.
   - Non deve: copia o DROP senza lock; editor fermi.
-  - Base: `vaultReconcile.ts:160-169,855,859`; `vaultNoteLock.ts:15-18`; `syncService.ts:231`; `CredentialForm.tsx:390`; `VaultNoteEditor.tsx:150`.
+  - Base: `vaultReconcile.ts:171-180,869,873`; `vaultNoteLock.ts:15-18`; `syncService.ts:231`; `CredentialForm.tsx:390`; `VaultNoteEditor.tsx:150`.
 
 - [ ] **H.12 (ex S16) — Trigger, single-flight e rate limit** (MEDIA)
   - Passi:
@@ -1954,10 +1983,10 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     5. Con un conflitto pendente: online, subito doppio "Controlla ora", apri e chiudi.
     6. Offline: chiudi una nota, poi torna online.
   - Atteso:
-    - Un giro; al massimo 2 sequenze sovrapposte.
+    - Un giro; al massimo 2 sequenze sovrapposte. Il limite del passo 3 riguarda la concorrenza (al massimo 2 giri sovrapposti), non il numero totale di POST.
     - Prima o poi arriva un 429 su `/vault/items`, ma le note si aprono con la copia locale, senza toast, e dopo un minuto tutto riprende.
     - 1 sola copia. Nessuna richiesta da offline.
-  - Base: `vaultReconcile.ts:648-694,753-762`; `VaultPage.tsx:164-182`; `routes/vault.ts:130`; `VaultNoteEditor.tsx:125`.
+  - Base: `vaultReconcile.ts:659-708,767-776`; `VaultPage.tsx:164-182`; `routes/vault.ts:130`; `VaultNoteEditor.tsx:125`.
 
 - [ ] **H.13 (ex S17) — Credenziale aperta su A dopo un edit di B, senza trigger in mezzo** (ALTA)
   - Passi:
@@ -1966,10 +1995,12 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     3. Ripeti con la nota S17n (`nB`).
     4. Se A vede `pw-0`, cambialo in `pw-A`, attendi 40 s e chiudi.
   - Atteso:
-    - Dal codice: la credenziale mostra `pw-0` (il vecchio valore: all'apertura non parte nessuna POST `/vault/items`). La nota mostra `nB`.
+    - Dal codice: la credenziale già caricata su A mostra `pw-0` (il vecchio valore: all'apertura di una credenziale con content non vuoto non parte nessuna POST `/vault/items`). La nota mostra `nB`: all'apertura l'editor chiama `hydrateVaultNote`, che fa una POST `/vault/items` con `ids:[id]` (T1, solo lettura).
     - Se A modifica: 422, poi 1 copia con `pw-A` e l'originale con `pw-B`.
     - Nessuna perdita, ma è un conflitto evitabile: segnalalo come UX.
-  - Base: `VaultPage.tsx:340-348`; `CredentialForm.tsx:85-118`; `VaultNoteEditor.tsx:122-126`; `vaultReconcile.ts:624-642`.
+  - Nota: la POST `/api/vault/items` è una lettura del server (`routes/vault.ts` ~130, `vaultApi.ts` ~149) e non viola la 2.1. All'apertura parte solo per le note (`VaultNoteEditor.tsx:134`) e per una credenziale mai caricata su questo dispositivo, con content `''` (`VaultPage.tsx:407-411`); per la credenziale S17 già caricata non parte.
+  - MINOR noto, ancora aperto (non in scaletta): la credenziale aperta mostra il valore vecchio perché non viene idratata all'apertura come le note (`VaultPage.tsx:340-348`). Nessuna perdita.
+  - Base: `VaultPage.tsx:340-348`; `CredentialForm.tsx:85-118`; `VaultNoteEditor.tsx:122-126`; `vaultReconcile.ts:643-661`.
 
 - [ ] **H.14 (ex SU-21, include SEC-03) — Più schede: chiavi per scheda, blocco, logout, rimozione, clear e removeItem in un'altra scheda** (ALTA)
   - Passi:
@@ -2001,7 +2032,8 @@ La push parte quando cambia la coda e con il tick di 30 s. La CAS fallita appare
     - S1 non si blocca (merge superficiale).
     - Al primo set di S1 `byUser` torna.
     - Se tutte le schede si chiudono prima: "Sei offline" (UNKNOWN).
-    - Dopo lo sblocco online: `offlineUnlock:false` e share cancellato. L'handoff non lo dice: decidi se metterlo nel runbook.
+    - Dopo lo sblocco online: `offlineUnlock:false` e share cancellato.
+    - Da riportare nel runbook P2 di /notiq-deploy: dopo uno sblocco online con il bundle vecchio, lo switch offline torna OFF e lo share viene cancellato.
   - Non deve: setup; purge; note perse.
   - Base: `vaultStore.ts:187-193`; `vaultSession.ts:276,284`; piano `:967`; HANDOFF §5.
   - Limite: è una simulazione. Il caso reale si vede solo durante il deploy.
@@ -2042,6 +2074,7 @@ Nessun E2E copre moveIn e moveOut.
     - C'è `MK-FROM-C` (flush del doc live). Non c'è `MK-AFTER-C`: è un residuo accettato.
     - Il link pubblico non mostra più la nota. C perde la nota e la sua WS si chiude.
     - Q6: `SharedNote` 0, `isPublic false`, `shareId` NULL, `ydocState` e `searchText` NULL, nessuna versione in chiaro.
+    - All'ingresso della nota nel vault spariscono le Notification che ne portano il titolo (`data.noteId` o `data.itemId`).
     - Se il flush fallisce: "La nota è cambiata sul server. Riprova." e nessuno spostamento.
   - Non deve: `MK-FROM-C` perso; salvataggi di C dopo lo spostamento.
   - Base: `note.service.ts:234-245,343-345,396-401`; `NoteEditor.tsx:399,415-417,787`; HANDOFF §5.
@@ -2119,10 +2152,11 @@ Nessun E2E copre moveIn e moveOut.
     4. Online, riapri.
     5. Variante: offline su S vuota, scrivi `MK-B-OFFLINE`, torna online. Q6 e cronologia.
   - Atteso:
-    - "Rimosso dal Vault". S è in /notes e la ricerca la trova. Nessuna versione `nv3` nella cronologia.
+    - "Rimosso dal Vault". S è in /notes e la ricerca la trova. Nessuna versione `nv3` nella cronologia (vale per la UI; nel DB ne resta una, nascosta e non ripristinabile, D8 e §5.10).
     - Q6: in chiaro, `searchText` presente.
     - B offline: corpo vuoto (backlog noto). Online: completo.
     - Variante: `MK-OUT-B` non deve sparire dal server. O si fonde, o si recupera dalla cronologia (da osservare).
+    - MINOR noto, ancora aperto (non in scaletta): nella variante il testo breve scritto offline su una nota appena uscita dal vault viene scartato in silenzio (`contentGuard.ts:15-17`; PUT 200 senza scrittura).
   - Non deve: item envelope in coda dopo il 200; `nv3` su una nota normale.
   - Base: `vaultMove.ts:64-121`; `VaultNoteEditor.tsx:206-234,316-326`; `note.service.ts:289-297,403-405`; `syncService.ts:223-232`.
 
@@ -2133,7 +2167,7 @@ Nessun E2E copre moveIn e moveOut.
     3. Riapri dopo 5-10 s e riprova.
   - Atteso:
     - 422 e "La nota è cambiata su un altro dispositivo. È stata aggiornata: riprova.". L'editor si chiude.
-    - La riapertura mostra `MK-B-EDIT`. Il secondo tentativo riesce.
+    - La riapertura mostra `MK-B-EDIT`, senza UPDATE né PUT finché non digiti (2.1). Il secondo tentativo riesce.
   - Non deve: sovrascrittura; copia senza modifiche; retry automatico.
   - Base: `vaultMove.ts:93,96-100`; `VaultNoteEditor.tsx:225-230`; `note.service.ts:294-296`.
 
@@ -2210,8 +2244,7 @@ Nessun E2E copre moveIn e moveOut.
   - Prec.: pagina appena ricaricata (blocklist non ancora caricata).
   - Passi: doppio clic su "Cambia PIN" o doppio Invio. Conta le POST `/unlock` e le PUT.
   - Atteso:
-    - Risultato corretto e al massimo un errore visibile.
-    - Se partono 2 PUT, la seconda prende 409 `staleRev` e ritenta. L'esito è lo stesso, ma è un difetto minore: `pinBusy` viene impostato dopo `await checkPin`.
+    - Doppio invio del cambio PIN = 1 sola chiamata: 1 POST `/unlock` e 1 PUT. Nessun errore visibile.
   - Base: `VaultSettingsSheet.tsx:108-116`; `PinPolicy.ts:72`; `vaultSession.ts:389-411`.
 
 - [ ] **J.5 (ex CROSS-01, include SU-23) — Cambio PIN sul PC: B offline accetta il vecchio PIN, online il nuovo (manuale 2)** (BLOCCANTE)
@@ -2235,14 +2268,14 @@ Nessun E2E copre moveIn e moveOut.
   - Non deve: edit perso o duplicato; copia per il solo cambio PIN; lockout dai tentativi offline; share cancellato.
   - Base: `vaultSession.ts:275-292,295-335,359-415`; piano §5.4 e §10; HANDOFF `:95`.
 
-- [ ] **J.6 (ex CROSS-02) — Il vecchio PIN resta valido offline fino al prossimo sblocco ONLINE** (MEDIA)
+- [ ] **J.6 (ex CROSS-02) — Dopo un contatto online la cache del keyring si allinea: il vecchio PIN non sblocca più offline** (MEDIA)
   - Passi:
     1. Riparti da J.5 dopo il passo 4: B resta online e sbloccato per 1 minuto.
     2. Blocca e vai SUBITO offline.
     3. PIN1.
   - Atteso:
-    - Dal codice B sblocca: la cache non si aggiorna al ritorno online, perché VaultPage non chiama `cacheKeyring`.
-    - Da decidere: correggere il testo "finché non torna online" (`it.json:647`) oppure il codice.
+    - Dopo un contatto online (mount, evento `online`, ogni 30 s con sblocco offline attivo, apertura di /vault) la cache del keyring si allinea: il PIN vecchio NON sblocca più offline ("PIN errato"), il nuovo sì.
+    - Il testo "finché non torna online" (`it.json:647`) è coerente col codice.
   - Base: `vaultSession.ts:74-89`; `VaultPage.tsx:119-139`; `en.json:548`.
 
 - [ ] **J.7 (ex SEC-02) — "Rimuovi vault da questo dispositivo": guardia su righe e coda, poi rimozione completa** (BLOCCANTE)
@@ -2267,6 +2300,7 @@ Nessun E2E copre moveIn e moveOut.
     - Offline: VaultOfflineNotice, mai il setup. Online lo sblocco funziona.
     - Il PC ha tutte le modifiche.
   - Non deve: rimozione con item in coda; dati persi; rimozione di note di un altro utente dello stesso browser.
+  - MINOR noto, ancora aperto (non in scaletta): dopo "Rimuovi da questo dispositivo" e un nuovo sblocco la lista resta "Untitled" fino a un reconcile.
   - Base: `VaultSettingsSection.tsx:21-38,58-78,110-116,133-142`; `vaultSession.ts:344-347`; `deviceKeyStore.ts:121-126`; `vaultStore.ts:149-156`; `VaultPage.tsx:129-135,350-355,400`.
   - Limite: un item `failed` `vault:*` blocca la rimozione. È coperto dagli unit test.
 
@@ -2332,7 +2366,7 @@ Si lavora su :4173, con la build di P0.11.
   - Atteso:
     - La SPA si carica (navigateFallback).
     - Lo sblocco offline riesce. `argon2.worker-*.js` viene servito dal "(ServiceWorker)".
-    - In coda c'è `nv3` con title `''`.
+    - In coda c'è `nv3`; per un item UPDATE il title è assente o vuoto (non necessariamente `''`).
     - Online la coda si svuota e il server ha l'envelope nuovo.
   - Non deve: "Failed to fetch dynamically imported module"; errori MIME; plaintext in coda; setup offline.
   - Base: `vite.config.ts:59-63`; `argon2.ts:36`; `argon2Core.ts:1`; `vaultSession.ts:295-335`; `VaultUnlock.tsx:68-75`.
@@ -2432,6 +2466,7 @@ Si lavora su :4173, con la build di P0.11.
     5. Modalità aereo e modifica, poi rete.
     6. Dark mode su VaultNotLoaded, banner e dialog.
   - Non deve: pulsanti coperti; perdita col back; testo inglese hard-coded.
+  - MINOR noto, ancora aperto (non in scaletta): alcuni target del vault sono sotto i 44 px (chip 25 px, ordinamento 30x22, Indietro credenziale 66x20, copia 28x28).
   - Base: `VaultNoteEditor.tsx:245-338`; `VaultPage.tsx:655-663`.
 
 - [ ] **M.4 (ex MIG-16) — Wizard di migrazione su Android: tempi PBKDF2, auto-lock, schermo spento, layout** (ALTA)
@@ -2446,6 +2481,7 @@ Si lavora su :4173, con la build di P0.11.
     - Gli item dopo il primo sono più veloci (`lastGood`).
     - Schermo spento: il giro riprende, oppure compare un errore con "Riprova", recuperabile come in B.8 e B.9.
   - Non deve: "Il vault si è bloccato" per inattività; UI congelata; item persi.
+  - Per chi ripete: uno stallo di `/migrate` oltre i 120 s del client si chiude con `drop()`, non con `release()`.
   - Base: `vaultMigration.ts:72-131`; `VaultMigrate.tsx:136-137`; `vaultStore.ts:4`; `legacyDecrypt.worker.ts`.
 
 - [ ] **M.5 (ex MOB-01) — VaultSettingsSheet e VaultSettingsSection su telefono** (ALTA)
@@ -2458,6 +2494,7 @@ Si lavora su :4173, con la build di P0.11.
     6. Sezione Vault di Impostazioni e ConfirmDialog.
     7. Screen reader: dialog "Impostazioni vault", focus intrappolato, switch annunciato con lo stato.
   - Non deve: scroll orizzontale; funzioni solo con hover; contenuti che richiedono lo zoom (`user-scalable=no`, `index.html:7`).
+  - MINOR noto, ancora aperto (non in scaletta): ConfirmDialog con pulsanti da 40 px e X da 20 px (componente condiviso, `Button.tsx:21`).
   - Base: `VaultSettingsSheet.tsx:22-25,76,174-195`; `VaultSettingsSection.tsx:14,92-103,113,122`.
   - Nota: la maniglia è decorativa, non c'è il drag per chiudere.
 
@@ -2476,6 +2513,7 @@ Si lavora su :4173, con la build di P0.11.
     - toast.
   - Atteso: testo leggibile su ambra, rosso e smeraldo. Input scuri. Pulsanti disabilitati riconoscibili.
   - Non deve: bianco su bianco; bordi invisibili; icone nere su fondo scuro.
+  - MINOR noto, ancora aperto (non in scaletta): toast di successo bianco su smeraldo a 2,54:1, testi `neutral-400` su bianco a 2,56:1; il tema "sistema" non segue il cambio dell'OS a pagina aperta (NIT).
   - Base: `VaultSettingsSheet.tsx:23-25,174-185`; `VaultSettingsSection.tsx:83-111`; `VaultPage.tsx:369-381,416-417`; `VaultUnlock.tsx:143-158`.
   - Nota: resetPending si raggiunge solo via SQL (A.8).
 
@@ -2505,7 +2543,7 @@ Si lavora su :4173, con la build di P0.11.
     3. Le righe con `plain_v` maggiore di 0 sono ammesse solo su note ancora legacy, e sulla RAW della variante F di B.16 (limite noto).
     4. Se una nota `nv3` ha ancora versioni in chiaro: sblocca online, attendi e rifai Q3.
   - Atteso: Q7 = 0, salvo le eccezioni del passo 3. Dopo lo sblocco ogni nota `nv3` con un documento valido ha `plain_v` = 0.
-  - Base: `vault.service.ts:546-563`; `vaultMove.ts:252-260`; `vaultReconcile.ts:798-818`; design P2, accettazione 2.
+  - Base: `vault.service.ts:546-563`; `vaultMove.ts:252-260`; `vaultReconcile.ts:812-832`; design P2, accettazione 2.
   - E2E: in parte (`vault-migration`).
 
 - [ ] **N.2 — Pulizia dev** — Lascia il backend su `'*'`, col pepper originale, per gli E2E. Fai Unregister del SW e Clear site data su :4173. Rimuovi il worktree `main`, se l'hai creato.
@@ -2522,6 +2560,7 @@ Si lavora su :4173, con la build di P0.11.
        - controllo dei lock su `"User"`.
     3. `.env` di prod: `VAULT_SETUP_USERS=` vuoto o assente.
     4. Al primo deploy annota il timestamp `ts1` di `_backup_<ts1>`. La regola è: il rollback pre-P2 si fa sempre da `_backup_<ts1>`, mai dal backup del secondo deploy.
+  - Atteso: lint frontend e backend a 0 errori (`a6cf29e`), oltre a test, `tsc` e build verdi.
   - Non deve: deploy con test rossi; `VAULT_SETUP_USERS` valorizzato prima del passo 8; rollback da un backup che contiene già un `dist` P2.
   - Base: piano `:677-684,689,718-722`.
 
