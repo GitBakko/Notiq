@@ -145,3 +145,49 @@ describe('Editor vault: niente risorse remote, niente file', () => {
     await waitFor(() => expect(pm.querySelector('img')).not.toBeNull());
   });
 });
+
+// P-A1: editor.setEditable(editable, false) non emette 'update': niente onChange (e quindi niente salvataggio) senza una modifica vera.
+describe('Editor: setEditable non emette onChange', () => {
+  const pmOf = (container: HTMLElement) => waitFor(() => {
+    const el = container.querySelector('.ProseMirror');
+    if (!el) throw new Error('editor not ready');
+    return el;
+  });
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it('onChange non viene chiamato dopo il mount ne dopo editable false -> true', async () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(<Editor content={CONTENT} onChange={onChange} isVault />);
+    await pmOf(container);
+    await wait(50);
+    expect(onChange).not.toHaveBeenCalled();
+    rerender(<Editor content={CONTENT} onChange={onChange} isVault editable={false} />);
+    await wait(50);
+    rerender(<Editor content={CONTENT} onChange={onChange} isVault editable />);
+    await wait(50);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('nota normale (noteId + uploadFn di ImageDrop): onChange non viene chiamato dopo il mount ne dopo editable false -> true', async () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(<Editor content={CONTENT} onChange={onChange} noteId="n1" />);
+    await pmOf(container);
+    await wait(50);
+    expect(onChange).not.toHaveBeenCalled();
+    rerender(<Editor content={CONTENT} onChange={onChange} noteId="n1" editable={false} />);
+    await wait(50);
+    rerender(<Editor content={CONTENT} onChange={onChange} noteId="n1" editable />);
+    await wait(50);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('nota vault nuova con il contenuto vuoto di VaultPage (EMPTY_DOC): dopo SAVE_DEBOUNCE_MS nessun onChange, quindi nessun salvataggio', async () => {
+    const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}'; // come VaultPage.createVaultItem
+    const onChange = vi.fn();
+    const { container, rerender } = render(<Editor content={EMPTY_DOC} onChange={onChange} isVault editable={false} />);
+    await pmOf(container);
+    rerender(<Editor content={EMPTY_DOC} onChange={onChange} isVault editable />); // la fase passa da loading a ready
+    await wait(1100); // SAVE_DEBOUNCE_MS di VaultNoteEditor = 1000
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

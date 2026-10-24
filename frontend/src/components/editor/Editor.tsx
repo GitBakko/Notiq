@@ -340,7 +340,8 @@ export default forwardRef<EditorHandle, EditorProps>(function Editor({ content, 
   // Sync editable state
   useEffect(() => {
     if (editor) {
-      editor.setEditable(editable);
+      // [BACKUP] 2026-10-24 — editor.setEditable(editable); emetteva 'update' al mount e a ogni cambio (2.1: PUT all'apertura)
+      editor.setEditable(editable, false);
     }
   }, [editable, editor]);
 
