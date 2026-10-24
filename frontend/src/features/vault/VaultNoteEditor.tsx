@@ -45,15 +45,19 @@ const isDoc = (s: string) => {
 interface Props {
   note: Note;
   onBack?: () => void;
+  /** Chiamata una volta alla chiusura, dopo l'ultimo salvataggio locale e il rilascio del lock (trigger T-c del reconcile). */
+  onReleased?: () => void;
 }
 
-export default function VaultNoteEditor({ note, onBack }: Props) {
+export default function VaultNoteEditor({ note, onBack, onReleased }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const id = note.id;
   // `t` fuori dalle dipendenze: un cambio di lingua non deve rilanciare il lock e il caricamento.
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
+  const onReleasedRef = useRef(onReleased);
+  useEffect(() => { onReleasedRef.current = onReleased; }, [onReleased]);
 
   const [phase, setPhase] = useState<Phase>({ k: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -115,6 +119,10 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
     timer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
   }, [flush]);
 
+  // Dichiarato PRIMA dell'effetto del lock: il suo cleanup gira per primo e distingue smontaggio da re-run (attempt/flush).
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
   // Lock shared per tutto il tempo in cui l'editor e' montato; dentro: idratazione, lettura Dexie, decifratura.
   useEffect(() => {
     let cancelled = false;
@@ -152,14 +160,18 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
       }
       await held;
     };
-    void (async () => {
+    const lockDone = (async () => {
       const r = await withNoteLock(id, load, { mode: 'shared' });
       if (r.status === 'nolocks') await load(); // senza Web Locks si apre comunque (nessuna esclusione fra schede)
     })().catch((e) => console.error('[vault] editor load failed', e));
     return () => {
       cancelled = true;
       // l'ultimo salvataggio pendente parte mentre il lock e' ancora tenuto
-      void flush().finally(release);
+      const flushed = flush().finally(release);
+      // onReleased solo a salvataggio e lock finiti (anche se la richiesta del lock e' fallita)
+      // la chiusura e' lo smontaggio (key={id}): un re-run per Riprova/flush non e' una chiusura
+      const fire = () => { if (!mounted.current) onReleasedRef.current?.(); };
+      void Promise.all([flushed, lockDone]).then(fire, fire);
     };
   }, [id, attempt, flush]);
 
@@ -257,7 +269,9 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
       // un file lasciato fuori dall'editor (header, sola lettura) farebbe navigare il browser verso il file
       onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
       onDrop={(e) => {
-        if (!e.dataTransfer?.files?.length || e.defaultPrevented) return;
+        if (!e.dataTransfer?.files?.length) return;
+        // editor modificabile: se ImageDrop ha gia' bloccato il drop ha gia' avvisato. Non modificabile (moveOut, legacy): blocca in silenzio, qui l'avviso
+        if (editable && e.defaultPrevented) return;
         e.preventDefault();
         toast.error(t('vault.imagesBlocked'), { id: 'vault.imagesBlocked' });
       }}

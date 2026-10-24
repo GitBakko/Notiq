@@ -4,6 +4,14 @@ import { useTranslation } from 'react-i18next';
 /** Lunghezza del PIN (vedi PinPolicy). Oltre, il valore viene troncato: l'utente deve saperlo (C.3/C.4). */
 const PIN_LENGTH = 6;
 
+// next = prev con un solo carattere inserito (digitazione). Select-all + incolla di 7 caratteri non lo e'.
+const isOneCharInsert = (prev: string, next: string) => {
+  if (next.length !== prev.length + 1) return false;
+  let i = 0;
+  while (i < prev.length && prev[i] === next[i]) i++;
+  return next.slice(i + 1) === prev.slice(i);
+};
+
 interface Props {
   value: string;
   onChange: (v: string) => void;
@@ -31,7 +39,7 @@ export default function PinInput({ value, onChange, label, autoComplete, classNa
         onChange={(e) => {
           const v = e.target.value;
           // un solo carattere digitato su un PIN gia' pieno: si ignora (come maxLength), senza scartare l'ultimo
-          if (value.length >= PIN_LENGTH && v.length === value.length + 1) return;
+          if (value.length >= PIN_LENGTH && isOneCharInsert(value, v)) return;
           setCut(v.length > PIN_LENGTH ? v.length : 0);
           onChange(v.slice(0, PIN_LENGTH));
         }}

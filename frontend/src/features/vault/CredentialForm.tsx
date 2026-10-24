@@ -13,11 +13,16 @@ import api from '../../lib/api';
 import type { Note } from '../notes/noteService';
 import VaultNotLoaded from './VaultNotLoaded';
 import { withNoteLock } from '../../lib/vaultNoteLock';
+import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 
 interface CredentialFormProps {
   note: Note;
   onBack: () => void;
   onDelete?: () => void;
+  /** Chiamata una volta alla chiusura, dopo l'ultimo salvataggio locale e il rilascio del lock (trigger T-c del reconcile). */
+  onReleased?: () => void;
+  /** Credenziale non envelope (PIN precedente): apre il wizard di aggiornamento. */
+  onLegacyPin?: () => void;
 }
 
 /** Oltre questo il server rifiuta l'envelope (P2 5.6): nessuna scrittura. */
@@ -32,8 +37,10 @@ function getFaviconUrl(siteUrl: string): string | null {
   }
 }
 
-export default function CredentialForm({ note, onBack, onDelete }: CredentialFormProps) {
+export default function CredentialForm({ note, onBack, onDelete, onReleased, onLegacyPin }: CredentialFormProps) {
   const { t } = useTranslation();
+  const onReleasedRef = useRef(onReleased);
+  onReleasedRef.current = onReleased;
   const keys = useVaultStore((s) => s.keys);
   const [data, setData] = useState<CredentialData>(EMPTY_CREDENTIAL);
   const [title, setTitle] = useState(note.title);
@@ -83,7 +90,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
   // Decifra solo a lock shared concesso (un reconcile/pull esclusivo in corso non lascia un envelope vecchio da modificare).
   // Dopo il primo caricamento ridecifra un cambio esterno di note.content, ma mai la propria scrittura e mai sopra modifiche non scritte.
   useEffect(() => {
-    if (!lockGranted || !keys || !note.content) return;
+    if (!lockGranted || !keys || !note.content || !ENVELOPE_RE.test(note.content)) return; // non envelope: schermata legacy, niente decrypt
     const content = note.content;
     const last = decryptedRef.current;
     if (last?.id === note.id) {
@@ -385,7 +392,7 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
     const held = new Promise<void>((r) => { release = r; });
     setLockGranted(false);
     setLoaded(false);
-    void (async () => {
+    const lockDone = (async () => {
       const r = await withNoteLock(note.id, () => { if (!cancelled) setLockGranted(true); return held; }, { mode: 'shared' });
       if (r.status === 'nolocks' && !cancelled) setLockGranted(true);
     })().catch((e) => {
@@ -396,7 +403,10 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
     return () => {
       cancelled = true;
       // lockVault() lancia i flusher in un microtask accodato prima di questo cleanup: un salto in piu' e saveChainRef li include
-      void Promise.resolve().then(() => saveChainRef.current).finally(release);
+      const flushed = Promise.resolve().then(() => saveChainRef.current).finally(release);
+      // onReleased solo a salvataggio e lock finiti (anche se la richiesta del lock e' fallita)
+      const fire = () => onReleasedRef.current?.();
+      void Promise.all([flushed, lockDone]).then(fire, fire);
     };
   }, [note.id]);
 
@@ -421,6 +431,24 @@ export default function CredentialForm({ note, onBack, onDelete }: CredentialFor
 
   if (!note.content) {
     return <VaultNotLoaded onBack={onBack} />;
+  }
+
+  if (!ENVELOPE_RE.test(note.content)) {
+    // credenziale ancora nel vecchio formato (PIN precedente): niente decifratura qui, si manda l'utente al wizard
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center text-neutral-500 dark:text-neutral-400">
+        <p>{t('vault.legacyUnreadable')}</p>
+        {onLegacyPin && (
+          <Button variant="primary" onClick={onLegacyPin} className="min-h-[44px]">
+            {t('vault.legacyPinLeftAction')}
+          </Button>
+        )}
+        <Button variant="ghost" onClick={onBack} className="min-h-[44px]">
+          <ArrowLeft size={16} className="mr-2" />
+          {t('common.back')}
+        </Button>
+      </div>
+    );
   }
 
   if (decryptFailed) {

@@ -23,6 +23,7 @@ import { hydrateVaultNote, vaultReconcile } from '../../lib/vaultReconcile';
 import { checkPendingOnStart, refreshKeyringCache, syncKeyringCache, type KeyringDto } from '../../lib/vaultSession';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
+import { syncPush } from '../sync/syncService';
 import type { Note } from '../notes/noteService';
 import TagList from '../tags/TagList';
 import CredentialCard from './CredentialCard';
@@ -50,6 +51,7 @@ type Gate =
 
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const MAX_ENVELOPE_LEN = 2 * 1024 * 1024; // oltre non passa il limite del server
+const LATER_RETRY_MS = [5_000, 20_000]; // T-f: recupero delle note in LATER (spec, Addendum 2 §1)
 
 // Solo in memoria (D8): titolo decifrato e testo di ricerca. Mai in Dexie, coda o storage.
 interface Plain { title: string; hay: string }
@@ -98,6 +100,7 @@ export default function VaultPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [legacyLeft, setLegacyLeft] = useState(0);
+  const [legacyPinLeft, setLegacyPinLeft] = useState(0); // note con riga lasciate per un PIN precedente (B.13)
   const [kitBanner, setKitBanner] = useState(false);
   const [plain, setPlain] = useState<Map<string, Plain>>(() => new Map());
   // Solo in memoria, come `plain`: evita di ridecifrare le righe il cui envelope non e' cambiato (la live query scatta a ogni scrittura su db.notes).
@@ -109,6 +112,8 @@ export default function VaultPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectedNoteId = searchParams.get('noteId');
+  const openNoteRef = useRef(selectedNoteId); // T-f: con un editor aperto i giri di recupero aspettano T-c
+  useEffect(() => { openNoteRef.current = selectedNoteId; }, [selectedNoteId]);
   const rootKey = getActiveRootKey();
   // Il wizard (setup o migrazione) resta montato finche' non finisce: il setup sblocca prima della cerimonia del Kit.
   const showWizard = gate.k === 'none';
@@ -170,26 +175,75 @@ export default function VaultPage() {
 
   // --- reconcile: dopo lo sblocco, al ritorno online, alla chiusura di una nota ---------------------
   const aliveRef = useRef(true);
-  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
-  const runReconcile = useCallback(() => {
+  const laterTry = useRef(0);
+  const laterTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const needTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const runRef = useRef<(retry?: boolean) => void>(() => {});
+  const seenRef = useRef<{ keys: unknown; ids: Set<string> } | null>(null); // memo di T-d, per sessione sbloccata
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; clearTimeout(laterTimer.current); clearTimeout(needTimer.current); };
+  }, []);
+  // `retry` = giro di recupero T-f; ogni altro trigger azzera il contatore dei tentativi.
+  const runReconcile = useCallback((retry = false) => {
+    clearTimeout(laterTimer.current);
+    if (!retry) laterTry.current = 0;
     vaultReconcile()
-      .then((r) => { if (aliveRef.current && !r.skipped) setLegacyLeft(r.legacyLeft); })
+      .then((r) => {
+        if (!aliveRef.current || r.skipped) return;
+        setLegacyLeft(r.legacyLeft);
+        setLegacyPinLeft(r.legacyPin ?? 0);
+        if (r.conflictsResolved + r.reactivated > 0) void syncPush().catch(() => false); // T-g: ACK e REQUEUE non svegliano la push reattiva
+        if (!r.later) { laterTry.current = 0; return; }
+        if (r.aborted || openNoteRef.current || laterTry.current >= LATER_RETRY_MS.length) return; // T-f
+        clearTimeout(laterTimer.current); // single-flight: due .then possono arrivare qui, il primo timer non va perso
+        laterTimer.current = setTimeout(() => { if (aliveRef.current && !openNoteRef.current) runRef.current(true); }, LATER_RETRY_MS[laterTry.current++]);
+      })
       .catch(() => { /* il prossimo trigger riprova */ });
   }, []);
+  useEffect(() => { runRef.current = runReconcile; }, [runReconcile]);
 
   useEffect(() => {
     if (!reconcileEnabled) return;
-    if (navigator.onLine) runReconcile();
-    window.addEventListener('online', runReconcile);
-    return () => window.removeEventListener('online', runReconcile);
+    const onOnline = () => runReconcile(); // T-b: l'Event non deve finire in `retry`
+    if (navigator.onLine) runReconcile(); // T-a
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
   }, [reconcileEnabled, runReconcile]);
 
-  const prevNoteRef = useRef<string | null>(null);
+  // T-c: l'editor chiama onReleased dopo l'ultimo salvataggio locale e il rilascio del lock; la push porta fuori l'edit, poi il giro
+  const onEditorReleased = useCallback(() => {
+    if (!aliveRef.current || !navigator.onLine) return;
+    void syncPush().catch(() => false).then(() => { if (aliveRef.current) runReconcile(); });
+  }, [runReconcile]);
+
+  // T-d: un item `vault:conflict` nuovo (mai visto in questa sessione sbloccata) fa partire un giro. Il memo evita i cicli con T5.
+  const needIds = useLiveQuery(async () => {
+    if (!userId) return [] as string[];
+    const q = await db.syncQueue.filter((i) => i.userId === userId && i.entity === 'NOTE' && i.status === 'failed' && i.lastError === 'vault:conflict').toArray();
+    return q.map((i) => `q${i.id}`);
+  }, [userId]);
   useEffect(() => {
-    const prev = prevNoteRef.current;
-    prevNoteRef.current = selectedNoteId;
-    if (prev && prev !== selectedNoteId && reconcileEnabled && navigator.onLine) runReconcile();
-  }, [selectedNoteId, reconcileEnabled, runReconcile]);
+    if (!needIds || !reconcileEnabled) return;
+    if (seenRef.current?.keys !== keys) { seenRef.current = { keys, ids: new Set(needIds) }; return; } // primo valore: lo copre T-a
+    const seen = seenRef.current.ids;
+    const fresh = needIds.filter((id) => !seen.has(id));
+    fresh.forEach((id) => seen.add(id));
+    if (!fresh.length || !navigator.onLine) return;
+    clearTimeout(needTimer.current); // debounce 1 s; il cleanup dell'effetto non lo cancella (un nuovo valore lo perderebbe)
+    needTimer.current = setTimeout(() => { if (aliveRef.current) runReconcile(); }, 1_000);
+  }, [needIds, reconcileEnabled, keys, runReconcile]);
+
+  // Un file lasciato su /vault fuori dall'editor farebbe navigare la PWA al file (e gli edit nel debounce andrebbero persi)
+  useEffect(() => {
+    const stop = (e: DragEvent) => {
+      const dt = e.dataTransfer;
+      if (dt && (Array.from(dt.types ?? []).includes('Files') || dt.files?.length)) e.preventDefault();
+    };
+    window.addEventListener('dragover', stop);
+    window.addEventListener('drop', stop);
+    return () => { window.removeEventListener('dragover', stop); window.removeEventListener('drop', stop); };
+  }, []);
 
   // Marker pendenti di un riavvio (Kit non confermato, cambio PIN): confronto col server.
   useEffect(() => {
@@ -426,15 +480,23 @@ export default function VaultPage() {
     { key: 'credential', label: t('vault.filterCredential') },
   ];
 
+  const openLegacyPin = () => { setSelectedNoteId(null); setShowResume(true); };
+
   const BANNER = 'mx-2 mt-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300 text-sm flex items-center justify-between gap-2';
   const BANNER_ACTION = 'min-h-[44px] px-2 font-medium underline flex-shrink-0';
 
   const renderBanners = () => (
     <>
-      {legacyLeft > 0 && rootKey && (
+      {legacyLeft > 0 && (
         <div role="status" className={BANNER}>
           <span>{t('vault.settings.legacyLeft', { n: legacyLeft })}</span>
           <button type="button" onClick={() => setShowResume(true)} className={BANNER_ACTION}>{t('vault.settings.legacyLeftAction')}</button>
+        </div>
+      )}
+      {legacyPinLeft > 0 && legacyLeft === 0 && (
+        <div role="status" className={BANNER}>
+          <span>{t('vault.legacyPinLeft', { n: legacyPinLeft })}</span>
+          <button type="button" onClick={openLegacyPin} className={BANNER_ACTION}>{t('vault.legacyPinLeftAction')}</button>
         </div>
       )}
       {kitBanner && (
@@ -618,12 +680,15 @@ export default function VaultPage() {
             note={selectedNote as unknown as Note}
             onBack={() => setSelectedNoteId(null)}
             onDelete={() => setSelectedNoteId(null)}
+            onReleased={onEditorReleased}
+            onLegacyPin={openLegacyPin}
           />
         ) : (
           <VaultNoteEditor
             key={selectedNote.id}
             note={selectedNote as unknown as Note}
             onBack={() => setSelectedNoteId(null)}
+            onReleased={onEditorReleased}
           />
         )
       ) : (
@@ -645,7 +710,7 @@ export default function VaultPage() {
   );
 
   // Aggiornamento dei vecchi item (banner): il wizard in modalita' resume sostituisce la pagina finche' non finisce
-  const resume = showResume && rootKey ? (
+  const resume = showResume ? (
     <div className="flex flex-col h-full bg-white dark:bg-neutral-900 overflow-y-auto">
       <div className="p-2">
         <button
@@ -660,7 +725,7 @@ export default function VaultPage() {
       <VaultMigrate
         resume
         userId={userId}
-        rootKey={rootKey}
+        rootKey={rootKey ?? undefined}
         renderKit={renderKit}
         onDone={() => { setShowResume(false); runReconcile(); }}
       />

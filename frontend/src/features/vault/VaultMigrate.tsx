@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Lock, Plus, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { confirmKit, setup, unlockOnline, type RootKeyInfo } from '../../lib/vaultSession';
+import type { ReconcileResult } from '../../lib/vaultReconcile';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
 import { checkPin } from './PinPolicy';
@@ -23,7 +24,8 @@ interface Props {
   userId: string;
   /** true = keyring READY e vault sbloccato (banner "N elementi da aggiornare"): niente flush ne' setup, solo i vecchi PIN. */
   resume?: boolean;
-  rootKey: RootKeyInfo;
+  /** Serve solo al setup: il resume (keyring gia' READY) non lo usa. */
+  rootKey?: RootKeyInfo;
   /** Cerimonia del Kit (RecoveryKitSheet, T16). Il wizard chiama confirmKit() e azzera il Kit quando riceve onConfirmed. */
   renderKit: (kit: Uint8Array, onConfirmed: () => void) => ReactNode;
   onDone: () => void;
@@ -93,6 +95,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
   const [kit, setKit] = useState<Uint8Array | null>(null);
   const [result, setResult] = useState<MigrationResult | null>(null);
+  const [closeRes, setCloseRes] = useState<ReconcileResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const decRef = useRef<LegacyDecryptor | null>(null);
   const kitRef = useRef<Uint8Array | null>(null);
@@ -154,6 +157,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
     try {
       const r = await closeMigration({ pins: pinsList(), signal: ac.signal, decryptor: decryptor() });
       if (r.skipped || r.aborted) return fail('close', new MigrationError(r.skipped === 'busy' ? 'busy' : r.skipped === 'notReady' ? 'notReady' : 'locked'));
+      setCloseRes(r);
       setPhase('done');
     } catch (e) {
       // abort (Annulla o timeout) = chiusura non eseguita, non un annullamento silenzioso
@@ -170,6 +174,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
     try {
       setFormError(null);
       if (resume) return await runMigrate();
+      if (!rootKey) return setFormError(t('errors.vault.setupDisabled'));
       if (pin !== pin2) return setFormError(t('vault.pinMismatch'));
       setPhase('working'); // il modulo sparisce subito: niente secondo invio durante checkPin
       setStep('flush');
@@ -242,7 +247,8 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
   };
 
   // tooLarge non si risolve riprovando
-  const retryable = result ? result.locked.length + result.conflicts.length + result.unverified.length + result.failed.length : 0;
+  const legacyPin = closeRes?.legacyPin ?? 0; // note con riga lasciate dal reconcile perche' serve un PIN precedente (B.13)
+  const retryable = result ? result.locked.length + result.conflicts.length + result.unverified.length + result.failed.length + legacyPin : 0;
   const card = 'bg-white dark:bg-neutral-800 p-6 sm:p-8 rounded-xl shadow-lg max-w-md w-full border border-neutral-200/60 dark:border-neutral-700/40';
 
   return (
@@ -335,14 +341,20 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
 
         {phase === 'done' && result && (
           <div className="space-y-4 text-left">
-            <p role="status" className="text-neutral-700 dark:text-neutral-200 text-center">{t('vault.migrate.doneSummary', { n: result.migrated })}</p>
+            <p role="status" className="text-neutral-700 dark:text-neutral-200 text-center">
+              {result.migrated === 0 && (closeRes?.legacyResolved ?? 0) > 0
+                ? t('vault.migrate.localResolved', { n: closeRes?.legacyResolved })
+                : t('vault.migrate.doneSummary', { n: result.migrated })}
+            </p>
+            {(closeRes?.copies ?? 0) > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.copiesCreated', { n: closeRes?.copies })}</p>}
             {result.tooLarge.length > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrateTooLarge', { n: result.tooLarge.length })}</p>}
             {(result.conflicts.length > 0 || result.unverified.length > 0 || result.failed.length > 0) && (
               <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.notVerified', { n: result.conflicts.length + result.unverified.length + result.failed.length })}</p>
             )}
-            {result.locked.length > 0 && (
+            {(result.locked.length > 0 || legacyPin > 0) && (
               <>
-                <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.lockedSummary', { n: result.locked.length })}</p>
+                {result.locked.length > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.lockedSummary', { n: result.locked.length })}</p>}
+                {legacyPin > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.localLocked', { n: legacyPin })}</p>}
                 <OldPinsFields pins={oldPins} onChange={setOldPins} />
               </>
             )}

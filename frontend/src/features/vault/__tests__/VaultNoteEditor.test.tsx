@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   lockOpts: [] as any[],
   lockHeld: { v: false },
   lockStatus: { v: 'ran' as 'ran' | 'nolocks' },
+  lockThrows: { v: false }, // la richiesta del lock lancia (bfcache/prerender)
   user: { v: { id: 'u1' } as { id: string } | null },
   getFails: { v: false },
   toastSuccess: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('../../../lib/vaultReconcile', () => ({ hydrateVaultNote: (...a: unknown
 vi.mock('../../../lib/vaultNoteLock', () => ({
   withNoteLock: async (_id: string, fn: () => Promise<unknown>, opts: unknown) => {
     h.lockOpts.push(opts);
+    if (h.lockThrows.v) throw new Error('InvalidStateError');
     if (h.lockStatus.v === 'nolocks') return { status: 'nolocks' };
     h.lockHeld.v = true;
     h.events.push('lock');
@@ -92,6 +94,7 @@ beforeEach(() => {
   h.toastSuccess.mockReset();
   h.toastInfo.mockReset();
   h.lockStatus.v = 'ran';
+  h.lockThrows.v = false;
   h.user.v = { id: 'u1' };
   h.getFails.v = false;
   h.toastError.mockReset();
@@ -471,5 +474,108 @@ describe('VaultNoteEditor: immagini remote e file (F.13)', () => {
   it('dragover di un file viene accettato (altrimenti il drop non parte e il browser apre il file)', async () => {
     await open();
     expect(fireEvent.dragOver(screen.getByLabelText('notes.titlePlaceholder'), { dataTransfer: { types: ['Files'], files: [] } })).toBe(false);
+  });
+});
+
+describe('VaultNoteEditor: onReleased (T-c)', () => {
+  const openWith = async (onReleased: () => void) => {
+    const r = render(<VaultNoteEditor note={baseNote} onBack={vi.fn()} onReleased={onReleased} />);
+    await flushAsync();
+    return r;
+  };
+
+  it('una sola volta, a smontaggio, dopo l ultimo updateNote e dopo lo sblocco', async () => {
+    const onReleased = vi.fn(() => { h.events.push('released'); });
+    const { unmount } = await openWith(onReleased);
+    expect(onReleased).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId('editor'), { target: { value: 'nuovo' } });
+    unmount();
+    await flushAsync();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    expect(h.events.slice(-3)).toEqual(['updateNote', 'unlock', 'released']);
+  });
+
+  it('senza Web Locks (nolocks): una volta sola, dopo updateNote', async () => {
+    h.lockStatus.v = 'nolocks';
+    const onReleased = vi.fn(() => { h.events.push('released'); });
+    const { unmount } = await openWith(onReleased);
+    fireEvent.change(screen.getByTestId('editor'), { target: { value: 'nuovo' } });
+    unmount();
+    await flushAsync();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    expect(h.events.slice(-2)).toEqual(['updateNote', 'released']);
+  });
+
+  it('la richiesta del lock lancia: onReleased parte comunque, una volta sola', async () => {
+    h.lockThrows.v = true;
+    const onReleased = vi.fn();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = await openWith(onReleased);
+    expect(onReleased).not.toHaveBeenCalled();
+    unmount();
+    await flushAsync();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  it('Riprova dopo un load fallito: il re-run dell effetto non chiama onReleased, lo smontaggio si, una volta', async () => {
+    h.getFails.v = true;
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onReleased = vi.fn();
+    const { unmount } = await openWith(onReleased);
+    h.getFails.v = false;
+    fireEvent.click(screen.getByText('vault.notLoadedRetry'));
+    await flushAsync();
+    expect(screen.getByTestId('editor')).toBeTruthy();
+    expect(onReleased).not.toHaveBeenCalled();
+    unmount();
+    await flushAsync();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  it('senza la prop onReleased lo smontaggio non lancia', async () => {
+    const { unmount } = await open();
+    unmount();
+    await flushAsync();
+    expect(h.lockHeld.v).toBe(false);
+  });
+});
+
+describe('VaultNoteEditor: drop su editor non modificabile', () => {
+  const file = new File(['x'], 'a.png', { type: 'image/png' });
+  // come ImageDrop: il suo handler nativo blocca il drop (preventDefault) PRIMA che arrivi al wrapper React
+  const blockLikeImageDrop = () => screen.getByTestId('editor').addEventListener('drop', (e) => e.preventDefault());
+  const dropOnEditor = () => fireEvent.drop(screen.getByTestId('editor'), { dataTransfer: { types: ['Files'], files: [file] } });
+  const imagesBlocked = () => h.toastError.mock.calls.filter((c) => c[0] === 'vault.imagesBlocked');
+
+  it('editor non modificabile (legacy con docOk): il drop gia bloccato da ImageDrop in silenzio ora mostra l avviso', async () => {
+    h.row = { id: 'n1', title: 'Vecchia', content: '{"type":"doc","content":[]}' };
+    await open();
+    expect(h.editorProps.at(-1).editable).toBe(false);
+    blockLikeImageDrop();
+    expect(dropOnEditor()).toBe(false);
+    expect(imagesBlocked()).toHaveLength(1);
+    expect(imagesBlocked()[0][1]).toEqual({ id: 'vault.imagesBlocked' });
+  });
+
+  it('editor non modificabile (moveOut in volo): avviso al drop', async () => {
+    h.moveOut.mockReturnValue(new Promise(() => {}));
+    await open();
+    fireEvent.click(screen.getByLabelText('notes.removeFromVault'));
+    await act(async () => { fireEvent.click(screen.getByText('confirm:vault.exitTitle')); });
+    await flushAsync();
+    expect(h.editorProps.at(-1).editable).toBe(false);
+    blockLikeImageDrop();
+    dropOnEditor();
+    expect(imagesBlocked()).toHaveLength(1);
+  });
+
+  it('editor modificabile e drop gia bloccato da ImageDrop (che ha gia avvisato): il wrapper non duplica', async () => {
+    await open();
+    expect(h.editorProps.at(-1).editable).toBe(true);
+    blockLikeImageDrop();
+    dropOnEditor();
+    expect(imagesBlocked()).toHaveLength(0);
   });
 });

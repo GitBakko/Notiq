@@ -231,4 +231,81 @@ describe('VaultMigrate', () => {
     await waitFor(() => expect(m.migrate).toHaveBeenCalledTimes(2));
     expect(m.migrate.mock.calls[1][0].pins).toEqual(['old222']);
   });
+
+  // Esito della chiusura (reconcile): righe lasciate per un PIN precedente (B.13), risolte dal server (B.12), copie create
+  const closeWith = (o: object) => m.close.mockResolvedValueOnce({ legacyPin: 0, legacyResolved: 0, copies: 0, ...o });
+  const doneResume = async () => {
+    render(<VaultMigrate userId={U} resume rootKey={rootKey} renderKit={renderKit} onDone={onDone} />);
+    submit();
+    await screen.findByText('vault.migrate.finish');
+  };
+
+  it('legacyPin 1: riga localLocked, un solo campo vecchi PIN e "Riprova" che rilancia la migrazione', async () => {
+    closeWith({ legacyPin: 1 });
+    await doneResume();
+    expect(screen.getByText('vault.migrate.localLocked')).toBeTruthy();
+    expect(screen.queryByText('vault.migrate.lockedSummary')).toBeNull();
+    expect(screen.getAllByLabelText('vault.migrate.oldPinLabel')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('vault.migrate.oldPinLabel'), { target: { value: 'old333' } });
+    fireEvent.click(screen.getByText('vault.migrate.retry'));
+    await waitFor(() => expect(m.migrate).toHaveBeenCalledTimes(2));
+    expect(m.migrate.mock.calls[1][0].pins).toEqual(['old333']);
+    expect(m.close.mock.calls[1][0].pins).toEqual(['old333']);
+  });
+
+  it('credenziali bloccate e legacyPin insieme: entrambe le righe e i vecchi PIN una volta sola', async () => {
+    m.migrate.mockResolvedValueOnce(result({ locked: ['c1'] }));
+    closeWith({ legacyPin: 2 });
+    await doneResume();
+    expect(screen.getByText('vault.migrate.lockedSummary')).toBeTruthy();
+    expect(screen.getByText('vault.migrate.localLocked')).toBeTruthy();
+    expect(screen.getAllByLabelText('vault.migrate.oldPinLabel')).toHaveLength(1);
+  });
+
+  it('nessun legacyPin: niente localLocked e niente "Riprova"', async () => {
+    closeWith({});
+    await doneResume();
+    expect(screen.queryByText('vault.migrate.localLocked')).toBeNull();
+    expect(screen.queryByText('vault.migrate.retry')).toBeNull();
+    expect(screen.getByText('vault.migrate.doneSummary')).toBeTruthy();
+  });
+
+  it('0 migrati ma note risolte dal server (legacyResolved): testo localResolved al posto di doneSummary', async () => {
+    m.migrate.mockResolvedValueOnce(result({ migrated: 0 }));
+    closeWith({ legacyResolved: 2 });
+    await doneResume();
+    expect(screen.getByText('vault.migrate.localResolved')).toBeTruthy();
+    expect(screen.queryByText('vault.migrate.doneSummary')).toBeNull();
+  });
+
+  it('con elementi migrati resta doneSummary anche con legacyResolved', async () => {
+    closeWith({ legacyResolved: 2 });
+    await doneResume();
+    expect(screen.getByText('vault.migrate.doneSummary')).toBeTruthy();
+    expect(screen.queryByText('vault.migrate.localResolved')).toBeNull();
+  });
+
+  it('copie create dal reconcile: riga copiesCreated', async () => {
+    closeWith({ copies: 1 });
+    await doneResume();
+    expect(screen.getByText('vault.migrate.copiesCreated')).toBeTruthy();
+  });
+
+  it('resume senza chiave root: funziona (il resume non fa il setup)', async () => {
+    closeWith({});
+    render(<VaultMigrate userId={U} resume renderKit={renderKit} onDone={onDone} />);
+    submit();
+    await screen.findByText('vault.migrate.finish');
+    expect(m.migrate).toHaveBeenCalledTimes(1);
+    expect(m.setup).not.toHaveBeenCalled();
+  });
+
+  it('setup senza chiave root: errore setupDisabled nel modulo, niente flush ne setup', async () => {
+    render(<VaultMigrate userId={U} renderKit={renderKit} onDone={onDone} />);
+    fill();
+    submit();
+    expect(await screen.findByRole('alert')).toHaveTextContent('errors.vault.setupDisabled');
+    expect(m.flush).not.toHaveBeenCalled();
+    expect(m.setup).not.toHaveBeenCalled();
+  });
 });

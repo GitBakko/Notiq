@@ -36,6 +36,22 @@ describe('PinInput', () => {
     expect(screen.getByRole('status')).toBeTruthy();
   });
 
+  it('select-all + incolla di 7 caratteri su un PIN pieno non e una digitazione: tronca con avviso', () => {
+    render(<Harness initial="abcdef" />);
+    fireEvent.change(input(), { target: { value: 'ghijklm' } });
+    expect(input().value).toBe('ghijkl');
+    expect(screen.getByRole('status')).toBeTruthy();
+  });
+
+  it('un carattere digitato in testa o in coda a un PIN pieno si ignora', () => {
+    render(<Harness initial="abcdef" />);
+    fireEvent.change(input(), { target: { value: 'abcdefX' } });
+    expect(input().value).toBe('abcdef');
+    fireEvent.change(input(), { target: { value: 'Xabcdef' } });
+    expect(input().value).toBe('abcdef');
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('digitare sotto i 6 caratteri funziona', () => {
     render(<Harness initial="abc" />);
     fireEvent.change(input(), { target: { value: 'abcd' } });

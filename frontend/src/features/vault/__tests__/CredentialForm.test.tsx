@@ -333,3 +333,111 @@ describe('CredentialForm envelope save', () => {
     expect(updateNote).not.toHaveBeenCalled();
   });
 });
+
+describe('CredentialForm onReleased (T-c)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    updateNote.mockReset().mockResolvedValue(undefined);
+    toastError.mockClear();
+    state.keys = {};
+    lock.held = false; lock.gate = null; lock.nolocks = false; lock.reject = false;
+    decryptItem.mockReset().mockResolvedValue({ t: 'Mail', c: JSON.stringify({ siteUrl: '', username: 'bob', password: 'pw', notes: '' }) });
+    encryptItem.mockReset().mockResolvedValue(ENV);
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const mountWith = async (onReleased: () => void) => {
+    const r = render(<CredentialForm note={loadedNote} onBack={() => {}} onReleased={onReleased} />);
+    await flush();
+    return r;
+  };
+  const snap = () => ({ held: lock.held, writes: updateNote.mock.calls.length });
+
+  it('una sola volta, a smontaggio, dopo updateNote e dopo il rilascio del lock', async () => {
+    const seen: Array<{ held: boolean; writes: number }> = [];
+    const onReleased = vi.fn(() => { seen.push(snap()); });
+    const r = await mountWith(onReleased);
+    expect(onReleased).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByPlaceholderText('vault.credential.untitled'), { target: { value: 'x' } });
+    r.unmount();
+    await flush(); await flush(); await flush();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([{ held: false, writes: 1 }]);
+  });
+
+  it('senza Web Locks (nolocks): una volta sola, dopo updateNote', async () => {
+    lock.nolocks = true;
+    const seen: Array<{ writes: number }> = [];
+    const onReleased = vi.fn(() => { seen.push({ writes: updateNote.mock.calls.length }); });
+    const r = await mountWith(onReleased);
+    fireEvent.change(screen.getByPlaceholderText('vault.credential.untitled'), { target: { value: 'x' } });
+    r.unmount();
+    await flush(); await flush(); await flush();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([{ writes: 1 }]);
+  });
+
+  it('la richiesta del lock lancia: onReleased parte comunque, una volta sola', async () => {
+    lock.reject = true;
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onReleased = vi.fn();
+    const r = await mountWith(onReleased);
+    expect(onReleased).not.toHaveBeenCalled();
+    r.unmount();
+    await flush(); await flush();
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  it('senza la prop onReleased lo smontaggio non lancia', async () => {
+    const r = render(<CredentialForm note={loadedNote} onBack={() => {}} />);
+    await flush();
+    r.unmount();
+    await flush();
+    expect(lock.held).toBe(false);
+  });
+});
+
+describe('CredentialForm credenziale non envelope (PIN precedente)', () => {
+  const legacyNote = { id: 'n1', title: 'Vecchia', content: 'U2FsdGVkX1+legacy', noteType: 'CREDENTIAL', isVault: true } as never;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    updateNote.mockReset().mockResolvedValue(undefined);
+    toastError.mockClear();
+    state.keys = {};
+    lock.held = false; lock.gate = null; lock.nolocks = false; lock.reject = false;
+    decryptItem.mockReset();
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('nessun decrypt, nessun toast, nessun campo: testo legacyUnreadable e il pulsante chiama onLegacyPin', async () => {
+    const onLegacyPin = vi.fn();
+    const r = render(<CredentialForm note={legacyNote} onBack={() => {}} onLegacyPin={onLegacyPin} />);
+    await flush();
+    expect(decryptItem).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(r.container.querySelectorAll('input').length).toBe(0);
+    expect(screen.getByText('vault.legacyUnreadable')).toBeTruthy();
+    fireEvent.click(screen.getByText('vault.legacyPinLeftAction'));
+    expect(onLegacyPin).toHaveBeenCalledTimes(1);
+  });
+
+  it('senza onLegacyPin niente pulsante; Indietro chiama onBack', async () => {
+    const onBack = vi.fn();
+    render(<CredentialForm note={legacyNote} onBack={onBack} />);
+    await flush();
+    expect(screen.queryByText('vault.legacyPinLeftAction')).toBeNull();
+    fireEvent.click(screen.getByText('common.back'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('nessuna scrittura, neanche a smontaggio', async () => {
+    const r = render(<CredentialForm note={legacyNote} onBack={() => {}} />);
+    await flush();
+    act(() => { vi.advanceTimersByTime(5000); });
+    r.unmount();
+    await flush();
+    expect(updateNote).not.toHaveBeenCalled();
+    expect(encryptItem).not.toHaveBeenCalled();
+  });
+});
