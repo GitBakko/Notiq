@@ -263,13 +263,14 @@ const pmSchema = () => (pmSchemaCache ??= getSchema(extensions));
  * G5: legacy docs sometimes carry inline nodes (text, image...) directly under the root, which check() rejects.
  * Wrap each run of consecutive top-level inline nodes in one paragraph (in place). Anything else is left as is.
  */
-function wrapTopLevelInline(json: any): void {
-  if (!Array.isArray(json?.content)) return;
+function wrapTopLevelInline(json: TipTapDocJson | null): void {
+  const content = json?.content;
+  if (!json || !Array.isArray(content)) return;
   const nodes = pmSchema().nodes;
-  const out: any[] = [];
-  let run: any[] | null = null;
-  for (const n of json.content) {
-    if (n?.type === 'text' || nodes[n?.type]?.isInline) {
+  const out: unknown[] = [];
+  let run: unknown[] | null = null;
+  for (const n of content as ({ type?: string } | null | undefined)[]) {
+    if (n?.type === 'text' || (!!n?.type && nodes[n.type]?.isInline)) {
       if (!run) out.push({ type: 'paragraph', content: (run = []) });
       run.push(n);
     } else {
