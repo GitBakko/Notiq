@@ -51,6 +51,8 @@ export interface ReconcileResult {
   unresolved: number;
   /** Rinviate al prossimo giro: lock della nota tenuto altrove, snapshot cambiato fra decide e commit, server non raggiungibile. */
   later: number;
+  /** Note con riga lasciate per legacyPin (incluse in `unresolved`): banner del PIN precedente. */
+  legacyPin: number;
 }
 
 const FINALIZE_CHUNK = 500;
@@ -90,6 +92,8 @@ export interface Snapshot {
   P?: Payload | Fail;
   /** P coincide col payload del server. */
   same?: boolean;
+  /** Server SE il cui payload e' stato decifrato in withFacts: T6 puo' adottarlo anche senza P. */
+  srvOk?: boolean;
   /** Impronta di riga e coda al momento dello snapshot (precondizione 7, controllata dal commit). */
   sig?: string;
   /** listSig di riga e coda al momento del listing del server (precondizione 7, controllata anche dal commit). */
@@ -240,7 +244,8 @@ function t7(s: Snapshot, row: LocalNote, sv: ServerItem): Decision {
 
 function t6(s: Snapshot, row: LocalNote): Decision {
   if (s.same) return R('T6', 'ADOPT');
-  if (typeof s.P === 'string') return leave('T6', s.P);
+  // P non ottenibile: senza lavoro locale la riga e' una copia vecchia del server (B.12); con lavoro locale serve il PIN precedente (B.13)
+  if (typeof s.P === 'string') return !hasU(row, s.items) && s.srvOk ? R('T6', 'ADOPT') : leave('T6', s.P);
   const envRow = isEnv(row.content) && row.title === '';
   const titleItems = s.items.filter((i) => titleOf(i) !== '');
   const plainItems = s.items.filter(hasPlainContent);
@@ -302,8 +307,8 @@ const listSig = (row: LocalNote | undefined, items: SyncQueueItem[]) =>
   ]);
 
 async function localPayload(ctx: VaultCodecCtx, row: LocalNote, items: SyncQueueItem[], sp: Payload | Fail | undefined, opts: ReconcileOptions): Promise<Payload | Fail | undefined> {
-  // Riga non envelope senza titolo: la pull azzera il title delle righe vault, quindi non porta informazione -> titolo del server.
-  const t0 = lastTitle(items) || row.title || (!isEnv(row.content) && row.syncStatus === 'synced' && sp && typeof sp === 'object' ? sp.t : '');
+  // Riga non envelope senza titolo (ne' negli item): la pull azzera il title delle righe vault -> titolo del server anche su riga sporca
+  const t0 = lastTitle(items) || row.title || (!isEnv(row.content) && sp && typeof sp === 'object' ? sp.t : '');
   let c: string | undefined;
   let dt = '';
   if (isEnv(row.content)) {
@@ -382,6 +387,7 @@ async function withFacts(s: Snapshot, ctx: VaultCodecCtx, opts: ReconcileOptions
         }
       }
     }
+    out.srvOk = cls === 'SE' && typeof sp === 'object';
     out.P = await localPayload(ctx, row, items, sp, opts);
     if (typeof out.P === 'object' && sp && typeof sp === 'object' && out.P.t === sp.t && out.P.c === sp.c) out.same = true;
   } catch {
@@ -463,6 +469,8 @@ async function requeueVault(userId: string, id: string, rowContent: string, gate
     delete data.title;
     delete data.isVault;
     if (data.isEncrypted === false) delete data.isEncrypted;
+    // T5: la push manda comunque la riga (planVaultNotePush); col content allineato reactivates riconosce un payload gia' provato
+    if (gated && 'content' in data) data.content = rowContent;
     if (Object.keys(data).length === 0) await db.syncQueue.delete(it.id as number);
     else await requeue(it.id, data);
   }
@@ -694,7 +702,7 @@ function abortable(p: Promise<ReconcileResult>, signal?: AbortSignal): Promise<R
 }
 
 const emptyResult = (): ReconcileResult =>
-  ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0 });
+  ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0, legacyPin: 0 });
 
 async function run(opts: ReconcileOptions): Promise<ReconcileResult> {
   const r = emptyResult();
@@ -837,6 +845,7 @@ async function processNote(c: Candidate, srv: Srv, ctx: VaultCodecCtx, opts: Rec
     if (d.op === 'LATER') return later();
     if (d.op === 'LEAVE') {
       r.unresolved++;
+      if (d.why === 'legacyPin' && snap.row) r.legacyPin++; // T15 (senza riga) non conta: decryptLegacy lavora sulle righe
       return;
     }
     const prepared = await prepare(snap, d, ctx);

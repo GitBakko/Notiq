@@ -26,7 +26,7 @@ Prodotta da architect, attaccata da reviewer e red-team, rivista. Prevale sulle 
 5. locks assente: solo REQUEUE e finalize.
 6. S?: LATER.
 7. Snapshot cambiato: LATER. Lo snapshot contiene content, updatedAt, syncStatus, isVault, e id/data/**status** degli item.
-8. Decrypt o round-trip fallito, oppure copia oltre 2 MiB: LEAVE(motivo), riga e coda intatte.
+8. Decrypt o round-trip fallito, oppure copia oltre 2 MiB: LEAVE(motivo), riga e coda intatte. Eccezione: Addendum 2 §2 (T6).
 
 **Ordine di valutazione:** precondizioni, poi LN (T12-T14), poi SX/SL (T8/T7), poi LP (T6), poi Q (T2-T5, T9-T10), infine T1.
 Qf "altro" (validation/not_found/forbidden/network) su riga non LP: NONE, lo gestisce `retryFailedSyncItems`.
@@ -38,7 +38,7 @@ Qf "altro" (validation/not_found/forbidden/network) su riga non LP: NONE, lo ges
   - Hs==base: REQUEUE con 0 copie. La PUT era partita con una base vecchia da un'altra scheda.
   - Hs diverso: COPY(P)+ADOPT(SE).
 - **T4** SE, LD, Q0. Hs==sha(L): synced, base=Hs. Hs==base: accoda UPDATE{content}. Altrimenti COPY+ADOPT.
-- **T5** SE, riga envelope corrente, Qp o Qf vault:* non conflict: STRIP+REQUEUE.
+- **T5** SE, riga envelope corrente, Qp o Qf vault:* non conflict: STRIP+REQUEUE (UPDATE con content: Addendum 2 §5).
   - UPDATE: si tolgono title, `isEncrypted:false` e isVault.
   - CREATE = `{...item.data, title:'', content: riga, isEncrypted:true, isVault:true}`. È un override: id, notebookId e noteType restano (noteType è nell'AAD).
   - Item vuoto: delete. Epoch vecchio: LEAVE(epoch).
@@ -47,7 +47,7 @@ Qf "altro" (validation/not_found/forbidden/network) su riga non LP: NONE, lo ges
   - Riga envelope con soli item-titolo: REENCRYPT con il t nuovo. Nella stessa transazione: `syncStatus:'updated'` e UPDATE{content} accodato, base invariata.
   - Content in chiaro stantio su riga envelope: STRIP.
   - Altri casi: COPY(P)+ADOPT.
-  - P non decifrabile: LEAVE(legacyPin), va a T20.
+  - P non ottenibile: Addendum 2 §2.
 - **T7** SL. P==server: STRIP degli item, riga al wizard (legacyLeft). P≠server: COPY(P)+ADOPT_SL.
 - **T8** SX: LEAVE(epoch), va a P3.
 - **T9** S0, U, con CREATE.
@@ -185,3 +185,40 @@ Questo addendum prevale sulla sezione "Lock": durante la verifica dell'implement
   - **Motivo:** con un lock esclusivo tenuto dall'editor, la push di una nota aperta sarebbe stata saltata per tutto il tempo in cui la nota restava aperta.
 - **Stato al listing.** Al listing il giro registra, per ogni candidato, `vaultBaseHash`, `syncStatus` e `updatedAt` della riga, più id, `status` e `lastError` degli item. Al commit, se qualcosa è cambiato, la nota va in LATER. Chiude il caso di una push arrivata fra il listing e il commit, che avrebbe portato a una HYDRATE dell'envelope vecchio.
 - **Single-flight.** Con un giro in volo, ogni chiamata accoda al massimo un giro successivo. Più chiamate collassano in uno solo, che usa `decryptLegacy` se almeno una delle chiamate lo porta.
+
+## Addendum 2 (24/10): LATER, trigger del giro, credenziali legacy
+
+Nasce da H.2, B.12 e B.13 del report del 24/10. Prevale dove contraddice. Nessuna op nuova, nessun DROP nuovo, `syncService.ts` invariato.
+
+**1. LATER e trigger.** LATER non scrive nulla e il giro non si rischedula da solo. Con VaultPage sbloccata valgono questi trigger:
+- T-a sblocco e T-b evento `online`: come prima.
+- T-c chiusura di un editor. L'editor chiama `onReleased` quando sono finiti l'ultimo salvataggio locale e il rilascio del lock `shared` (anche se la richiesta del lock è fallita). VaultPage attende `syncPush()` e poi avvia il giro. Sostituisce il trigger su `selectedNoteId`.
+- T-d comparsa di un item `failed` dell'utente con `lastError === 'vault:conflict'`, l'unico che il giro risolve da solo (T2/T3). Debounce di 1 s.
+- T-f recupero. Un giro finito con `later > 0`, non skipped né aborted, e senza editor aperto nella scheda, ne programma un altro dopo 5 s e poi un altro dopo 20 s. Il contatore si azzera con un giro a `later = 0` e con ogni trigger diverso da T-f.
+- T-g dopo un giro con `conflictsResolved + reactivated > 0`: `syncPush()`. ACK e REQUEUE cambiano solo lo stato degli item, e la push reattiva guarda il numero di item.
+
+Memo di T-d: ogni id di item fa scattare al più un giro per sessione sbloccata. Gli id presenti al primo valore della sessione entrano nel memo senza scattare (li copre T-a). Il memo si azzera quando cambiano le chiavi del vault.
+
+Terminazione: T-a, T-b e T-c seguono eventi esterni. T-d scatta al più una volta per id e per sessione. T-f fa al più 2 giri per ogni trigger esterno. T-g non avvia giri. Un 409 persistente sullo stesso item dà al più un giro in più.
+
+Garanzia: una nota in LATER riceve un nuovo giro entro 25 s se nella scheda non c'è un editor aperto. Altrimenti lo riceve alla chiusura dell'editor (T-c, nella scheda che lo tiene) o al ritorno online. Restano fuori: vault bloccato, scheda sospesa che trattiene il lock, secondo conflitto sullo stesso item nella stessa sessione (aspetta T-c, T-b o "Controlla ora").
+
+**2. T6 con P non ottenibile (B.12, B.13).**
+- ¬U (riga synced, nessun item) e `srvOk`: ADOPT, 0 copie. La riga è al più una copia vecchia del server.
+- Altrimenti LEAVE(P), riga e coda intatte. Con `legacyPin` e riga presente il giro incrementa `ReconcileResult.legacyPin` (contato anche in `unresolved`). T15, senza riga, non si conta.
+- VaultPage mostra il banner del PIN precedente con `legacyPin > 0` e `legacyLeft = 0`; la credenziale legacy aperta mostra lo stesso invito. Entrambi aprono il wizard resume (vecchi PIN, poi `closeMigration` con `decryptLegacy`). Con P ottenuto la nota torna a T6 COPY(P)+ADOPT (accettazione 16). Nessuna condizione sulla chiave root.
+- PIN dimenticato: la riga resta in LEAVE. Lo scarto della modifica locale non è previsto.
+
+**3. Titolo di P.** In `localPayload` il titolo è, nell'ordine: l'ultimo titolo in chiaro degli item, poi `row.title`, poi, su riga non envelope, il `t` del server con qualunque `syncStatus`.
+
+**4. Snapshot e risultato.** `srvOk` = server SE il cui payload `withFacts` ha decifrato; un server SL non è mai `srvOk`. `ReconcileResult.legacyPin`: vedi §2.
+
+**5. T5, UPDATE con content.** Un UPDATE riattivato da T5 che contiene `content` prende il content della riga. La push manda comunque la riga (`planVaultNotePush`), quindi un secondo fallimento uguale dà LEAVE(unchanged) e non una riattivazione a ogni giro.
+
+**6. Completezza.** Cambiano solo SE×LP (T6) e il payload di T5. La precondizione 7 non cambia.
+
+**7. Accettazione aggiunta.**
+- decide(): la matrice T6 di §2 (ADOPT solo con ¬U e srvOk); T6 con server SL mai srvOk.
+- Giro: B.12; B.13 senza e con `decryptLegacy`; titolo della copia; T15 legacy non contata; T5 stale ripetuto.
+- VaultPage: T-c, T-d (memo), T-f, T-g, banner.
+- Rilancio di H.2 (5 varianti), B.12 e B.13 del report.

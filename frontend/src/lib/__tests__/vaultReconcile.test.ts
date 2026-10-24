@@ -362,6 +362,23 @@ describe('decide: tabella T1-T15', () => {
     expect(dec({ row: dirty(), items: [dItem('UPDATE', { content: PLAIN, isPinned: true }, fl('vault:plaintextRejected'))], srv: srvItem(), hs: 'x', hl: 'y', P })).toBe('T6:STRIP_CONTENT');
     expect(dec({ row: dirty({ title: 'Titolo' }), srv: srvItem(), hs: 'x', hl: 'y', P })).toBe('T6:ADOPT+vault');
   });
+  it('T6 con P non ottenibile (Addendum 2 §2): ADOPT solo con riga pulita senza item (¬U) e server SE decifrato (srvOk); altrimenti LEAVE(P)', () => {
+    const syncedRow = dRow({ content: PLAIN, isEncrypted: false }); // ¬U
+    const dirtyRow = dirty({ content: PLAIN, isEncrypted: false }); // U: riga sporca
+    const upd = [dItem('UPDATE', { isPinned: true })]; // U: item in coda
+    for (const why of ['legacyPin', 'decrypt', 'epoch'] as const) {
+      expect(dec({ row: syncedRow, srv: srvItem(), hs: 'x', P: why, srvOk: true })).toBe('T6:ADOPT');
+      expect(dec({ row: syncedRow, srv: srvItem(), hs: 'x', P: why })).toBe(`T6:LEAVE(${why})`);
+      expect(dec({ row: syncedRow, srv: srvItem(), hs: 'x', P: why, srvOk: false })).toBe(`T6:LEAVE(${why})`);
+      expect(dec({ row: dirtyRow, srv: srvItem(), hs: 'x', P: why, srvOk: true })).toBe(`T6:LEAVE(${why})`);
+      expect(dec({ row: syncedRow, items: upd, srv: srvItem(), hs: 'x', P: why, srvOk: true })).toBe(`T6:LEAVE(${why})`);
+      expect(dec({ row: dirtyRow, srv: srvItem(), hs: 'x', P: why })).toBe(`T6:LEAVE(${why})`);
+    }
+  });
+  it('T7 con server SL: srvOk non adotta mai (la riga legacy resta se P non e ottenibile)', () => {
+    const syncedRow = dRow({ content: PLAIN, isEncrypted: false });
+    expect(dec({ row: syncedRow, srv: srvItem(PLAIN), hs: 'x', P: 'legacyPin', srvOk: true })).toBe('T7:LEAVE(legacyPin)');
+  });
   it('T7 SL: P==server -> ADOPT (NONE se gia\' uguale e pulita); P diverso COPY+ADOPT; riga envelope: niente da adottare', () => {
     const upd = [dItem('UPDATE', { content: PLAIN }, fl('vault:plaintextRejected'))];
     const plainRow = dirty({ content: PLAIN, isEncrypted: false });
@@ -846,6 +863,24 @@ describe('T5 item bloccati su errori vault', () => {
     expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:notReady' });
   });
 
+  it('T5 stale (Addendum 2 §5): il giro allinea data.content alla riga; un secondo fallimento uguale non riattiva (LEAVE unchanged)', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const a = item('UPDATE', 'n1', { content: await enc('n1', 'T', doc('old')), isPinned: true }, failed('vault:stale'));
+
+    expect((await vaultReconcile()).reactivated).toBe(1);
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'pending', attempts: 0, data: { content, isPinned: true } });
+
+    // la push riparte e fallisce uguale: payload invariato, di nuovo failed
+    st.queue = st.queue.map(i => (i.id === a.id ? { ...i, ...failed('vault:stale') } : i));
+    const r = await vaultReconcile();
+
+    expect(r.reactivated).toBe(0);
+    expect(r.unresolved).toBe(1);
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'failed', lastError: 'vault:stale', data: { content, isPinned: true } });
+  });
+
   it('riga con envelope di un epoch vecchio, o keyring non READY: gli item restano', async () => {
     const oldEpoch = `nv3.${EPOCH - 1}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`;
     putRow({ id: 'n1', content: oldEpoch, syncStatus: 'updated' });
@@ -1093,6 +1128,94 @@ describe('T6-T9 righe e item legacy', () => {
     await vaultReconcile({ decryptLegacy });
 
     expect(decryptLegacy).toHaveBeenCalled();
+  });
+
+  const cred = (u: string) => JSON.stringify({ siteUrl: '', username: u, password: 'x', notes: '' });
+  const LEGACY = 'U2FsdGVkX1-legacy';
+
+  it('B.12 credenziale legacy sincronizzata senza lavoro locale, server SE: la riga prende il server, 0 copie, legacyPin 0, senza decryptLegacy', async () => {
+    const srv = await enc('c1', 'Titolo server', cred('bob'), 'CREDENTIAL');
+    h.server.put('c1', srv, { noteType: 'CREDENTIAL' });
+    putRow({ id: 'c1', noteType: 'CREDENTIAL', content: LEGACY, title: '', syncStatus: 'synced', isEncrypted: false });
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ copies: 0, legacyResolved: 1, legacyPin: 0, unresolved: 0 });
+    expect(copies(['c1'])).toHaveLength(0);
+    expect(st.notes.get('c1')).toMatchObject({ content: srv, syncStatus: 'synced' });
+    expect(st.queue.filter(i => i.entityId === 'c1')).toHaveLength(0);
+    expect(await vaultReconcile()).toMatchObject({ ...zero, legacyPin: 0 });
+  });
+
+  it('B.12 server SL (credenziale legacy diversa): non e mai srvOk, la riga resta e conta come legacyPin', async () => {
+    h.server.put('c1', 'U2FsdGVkX1-altra', { noteType: 'CREDENTIAL', title: 'S' });
+    putRow({ id: 'c1', noteType: 'CREDENTIAL', content: LEGACY, title: '', syncStatus: 'synced', isEncrypted: false });
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ copies: 0, legacyPin: 1, unresolved: 1 });
+    expect(st.notes.get('c1').content).toBe(LEGACY);
+  });
+
+  it('B.12 server SE non decifrabile: srvOk falso, la riga resta (legacyPin)', async () => {
+    h.server.put('c1', `nv3.${EPOCH}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`, { noteType: 'CREDENTIAL' });
+    putRow({ id: 'c1', noteType: 'CREDENTIAL', content: LEGACY, title: '', syncStatus: 'synced', isEncrypted: false });
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ legacyPin: 1, unresolved: 1, copies: 0 });
+    expect(st.notes.get('c1').content).toBe(LEGACY);
+  });
+
+  it('B.13 credenziale legacy con modifica locale, senza decryptLegacy: riga e coda intatte, legacyPin 1', async () => {
+    const srv = await enc('c1', 'Titolo server', cred('server'), 'CREDENTIAL');
+    h.server.put('c1', srv, { noteType: 'CREDENTIAL' });
+    putRow({ id: 'c1', noteType: 'CREDENTIAL', content: LEGACY, title: '', syncStatus: 'updated', isEncrypted: false });
+    const it = item('UPDATE', 'c1', { content: LEGACY }, failed('vault:plaintextRejected'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ legacyPin: 1, unresolved: 1, copies: 0 });
+    expect(st.notes.get('c1')).toMatchObject({ content: LEGACY, syncStatus: 'updated' });
+    expect(st.queue.find(i => i.id === it.id)).toMatchObject({ status: 'failed', lastError: 'vault:plaintextRejected', data: { content: LEGACY } });
+    expect(copies(['c1'])).toHaveLength(0);
+  });
+
+  it('B.13 con decryptLegacy: 1 copia col titolo del server, la riga prende il server, coda di c1 vuota, legacyPin 0', async () => {
+    const srv = await enc('c1', 'Titolo server', cred('server'), 'CREDENTIAL');
+    h.server.put('c1', srv, { noteType: 'CREDENTIAL' });
+    putRow({ id: 'c1', noteType: 'CREDENTIAL', content: LEGACY, title: '', syncStatus: 'updated', isEncrypted: false });
+    item('UPDATE', 'c1', { content: LEGACY }, failed('vault:plaintextRejected'));
+
+    const r = await vaultReconcile({ decryptLegacy: async () => cred('locale') });
+
+    expect(r).toMatchObject({ copies: 1, legacyPin: 0, unresolved: 0 });
+    const [copy, ...more] = copies(['c1']);
+    expect(more).toHaveLength(0);
+    expect(await decryptItem(copy.id, 'CREDENTIAL', copy.content, ctx)).toEqual({ t: 'Titolo server (conflict)', c: cred('locale') });
+    expect(st.notes.get('c1')).toMatchObject({ content: srv, syncStatus: 'synced' });
+    expect(st.queue.filter(i => i.entityId === 'c1')).toHaveLength(0);
+  });
+
+  it('titolo di P (Addendum 2 §3): riga legacy sporca senza titolo ne item-titolo, il titolo della copia e quello del server', async () => {
+    const srv = await enc('n1', 'Titolo server', doc('server'));
+    h.server.put('n1', srv);
+    putRow({ id: 'n1', content: doc('SEGRETO-LOCALE'), title: '', syncStatus: 'updated', isEncrypted: false });
+    item('UPDATE', 'n1', { content: doc('SEGRETO-LOCALE') }, failed('vault:plaintextRejected'));
+
+    await vaultReconcile();
+
+    const [copy] = copies(['n1']);
+    expect(await decryptItem(copy.id, 'NOTE', copy.content, ctx)).toEqual({ t: 'Titolo server (conflict)', c: doc('SEGRETO-LOCALE') });
+  });
+
+  it('T15 credenziale legacy senza riga (item orfano): LEAVE legacyPin ma non conta in ReconcileResult.legacyPin', async () => {
+    item('CREATE', 'gone', { id: 'gone', title: '', content: LEGACY, notebookId: 'nb-1', isVault: true, noteType: 'CREDENTIAL' }, failed('vault:plaintextRejected'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ unresolved: 1, legacyPin: 0 });
+    expect(st.queue.filter(i => i.entityId === 'gone')).toHaveLength(1);
   });
 
   it('T8 envelope del server di un altro epoch: la riga resta com\'e\' (unresolved)', async () => {

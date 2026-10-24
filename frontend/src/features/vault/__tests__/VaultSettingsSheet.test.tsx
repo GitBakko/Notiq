@@ -25,7 +25,7 @@ import { getActiveRootKey } from '../../../utils/vaultRootKeys';
 import { checkPin } from '../PinPolicy';
 
 const ROOT = { id: 'rk_x', ecdhSpki: new Uint8Array([1]) };
-const result = (o: object) => ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0, ...o });
+const result = (o: object) => ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0, legacyPin: 0, ...o });
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 beforeEach(() => {
