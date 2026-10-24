@@ -66,6 +66,8 @@ test('edit concorrente reale (A offline, B online): 1 copia in conflitto e nessu
   const seen: string[] = [];
   for (const title of ['Shared Cred (conflict copy)', 'Shared Cred']) {
     await page.getByText(title, { exact: true }).click();
+    // la form deve essere quella cliccata (la liveQuery puo' mostrare un istante la nota precedente)
+    await expect(page.getByPlaceholder('Untitled Credential')).toHaveValue(title, { timeout: 30000 });
     const pw = page.getByPlaceholder('Enter password');
     await expect(pw).not.toHaveValue('', { timeout: 30000 });
     seen.push(await pw.inputValue());
@@ -150,6 +152,8 @@ test('edit concorrente con l editor di A gia chiuso: al ritorno online il reconc
   const seen: string[] = [];
   for (const title of ['Closed Cred (conflict copy)', 'Closed Cred']) {
     await page.getByText(title, { exact: true }).click();
+    // la form deve essere quella cliccata (la liveQuery puo' mostrare un istante la nota precedente)
+    await expect(page.getByPlaceholder('Untitled Credential')).toHaveValue(title, { timeout: 30000 });
     const pw = page.getByPlaceholder('Enter password');
     await expect(pw).not.toHaveValue('', { timeout: 30000 });
     seen.push(await pw.inputValue());

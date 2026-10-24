@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   liveSubs: new Set<() => void>(), // le live query si rilanciano su richiesta (notifyLive)
   editorProps: [] as any[],
   credProps: [] as any[],
+  getHold: null as null | { id: string; p: Promise<void> }, // db.notes.get(id) resta pendente finche' p non si risolve
 }));
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -55,7 +56,7 @@ vi.mock('../../../lib/db', () => ({
   db: {
     notes: {
       toArray: async () => [...h.rows],
-      get: async (id: string) => h.rows.find((r) => r.id === id),
+      get: async (id: string) => { if (h.getHold?.id === id) await h.getHold.p; return h.rows.find((r) => r.id === id); },
       add: async (r: any) => { h.rows.push(r); },
     },
     syncQueue: {
@@ -155,6 +156,7 @@ beforeEach(() => {
   h.migrateProps.length = 0;
   h.editorProps.length = 0;
   h.credProps.length = 0;
+  h.getHold = null;
   h.syncPush.mockResolvedValue(true);
   h.rootKey.v = { id: 'rk', ecdhSpki: new Uint8Array([1]) };
   h.notebooks = [{ id: 'nb1' }];
@@ -647,6 +649,25 @@ describe('VaultPage: sbloccato', () => {
     mount();
     fireEvent.click(await screen.findByLabelText('vault.settings.title'));
     await screen.findByTestId('settings');
+  });
+
+  it('cambio di nota con la lettura ancora pendente: la form della vecchia nota non resta montata', async () => {
+    unlock();
+    const cred = (id: string) => ({ id, userId: 'u1', title: '', content: ENV(id), isVault: true, noteType: 'CREDENTIAL', updatedAt: '2026-01-01T00:00:00Z', createdAt: '2026-01-01T00:00:00Z' });
+    h.rows.push(cred('c1'), cred('c2'));
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/?noteId=c1']}><VaultPage /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect((await screen.findByTestId('cred-form')).textContent).toContain('c1');
+    let release!: () => void;
+    h.getHold = { id: 'c2', p: new Promise<void>((r) => { release = r; }) };
+    fireEvent.click(await screen.findByText('card:c2'));
+    // c2 e' nell'URL ma la sua riga non e' ancora arrivata: mai la form di c1
+    expect(screen.queryByTestId('cred-form')).toBeNull();
+    await act(async () => { release(); });
+    await waitFor(() => expect(screen.getByTestId('cred-form').textContent).toContain('c2'));
   });
 
   it('credenziale con content vuoto: si idrata prima di aprirla', async () => {

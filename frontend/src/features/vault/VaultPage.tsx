@@ -387,10 +387,12 @@ export default function VaultPage() {
   }, [rows, plain, searchQuery, notesSortField, notesSortOrder, titleOf]);
 
   // La nota aperta si legge a parte: un filtro o la ricerca non devono smontare l'editor. null = non esiste (undefined = in lettura).
-  const selectedNote = useLiveQuery(
-    async () => (selectedNoteId ? ((await db.notes.get(selectedNoteId)) ?? null) : undefined),
+  const sel = useLiveQuery(
+    async () => (selectedNoteId ? { id: selectedNoteId, row: (await db.notes.get(selectedNoteId)) ?? null } : undefined),
     [selectedNoteId],
   );
+  // useLiveQuery restituisce il risultato delle deps precedenti finche' la nuova query non emette: si usa solo se e' della nota nell'URL
+  const selectedNote = sel && sel.id === selectedNoteId ? sel.row : undefined;
 
   // Auto-close se la nota non esiste piu', e' nel cestino o e' uscita dal vault
   useEffect(() => {

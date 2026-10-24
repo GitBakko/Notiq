@@ -13,6 +13,11 @@ Branch `feat/vault-p2`, HEAD `a6cf29e`. Rilancio delle voci toccate dalle correz
 >   - Primo giro: 54/56. Falliscono `vault-conflict.spec.ts:74` e `:158`, che passano al rilancio. In entrambi l'originale, aperto su A, mostra il valore di A mentre il server ha quello di B.
 >   - Dopo: 10/10 ripetizioni isolate e un giro completo 58/58.
 >   - La patch non tocca quel percorso. Il fallimento intermittente è comunque in indagine come possibile difetto preesistente, non come test instabile.
+> - **Causa del fallimento di `vault-conflict` trovata e corretta** (commit successivo a `28007f3`). Riprodotto con la CPU rallentata (rate 20): 19 fallimenti su 20. In tutti l'URL è quello dell'originale, ma la form mostra titolo e password della copia. Le cause sono due:
+>   1. **Difetto della UI (preesistente).** In `VaultPage.tsx` `useLiveQuery` restituisce la riga della nota precedente finché la lettura della nota nuova non arriva. Per un istante la pagina mostra la nota sbagliata con l'URL di quella nuova. Le scritture vanno comunque sulla nota mostrata (`note.id`), quindi i dati non si perdono. Correzione: la riga si usa solo se il suo id è quello dell'URL, altrimenti vale "in lettura". Il test unitario nuovo fallisce col codice vecchio e passa con quello nuovo. Senza la correzione, con l'attesa nel test, 1 esecuzione su 10 fallisce ancora.
+>   2. **Gara nel test.** L'URL cambia prima che la transition del router faccia commit, e il test leggeva la password della form precedente. Ora l'E2E attende che il titolo della form sia quello cliccato. Gli assert non sono allentati.
+>   - Dopo le due correzioni: 20 esecuzioni su 20 con la CPU rallentata, suite E2E 58/58, vitest 1160/1160, tsc pulito.
+>   - Lo stesso schema c'è in `TransformToKanbanModal.tsx:47-59` (fuori dal vault, non corretto). `NotesPage.tsx` non ha il problema.
 > - **Checklist:** applicate le modifiche della sezione 6 ("Modifiche ancora da fare"). Fa eccezione B.16 variante F, che resta un limite noto.
 
 ---
