@@ -123,6 +123,7 @@ export default function RecoveryKitSheet({ kit, userId, onDone }: Props) {
 
         <div
           className="rounded-lg border border-neutral-300 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-900 p-3 mb-3 text-center font-mono font-bold text-base sm:text-lg tracking-wider break-words select-all text-neutral-900 dark:text-neutral-100"
+          role="group"
           aria-label={t('vault.kit.codeLabel')}
         >
           {formatted}

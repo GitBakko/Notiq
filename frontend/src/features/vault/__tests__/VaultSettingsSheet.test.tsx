@@ -65,6 +65,30 @@ describe('VaultSettingsSheet', () => {
     await waitFor(() => expect(changePin).toHaveBeenCalledWith({ userId: 'u1', currentPin: 'old111', newPin: 'k7Rq2x' }));
   });
 
+  it('J.4: doppio invio del cambio PIN nello stesso tick (checkPin lento): changePin una volta sola', async () => {
+    let release!: (v: { ok: true }) => void;
+    vi.mocked(checkPin).mockReturnValue(new Promise((r) => { release = r; }));
+    vi.mocked(changePin).mockResolvedValue();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+    type('vault.settings.currentPin', 'old111');
+    type('vault.settings.newPin', 'k7Rq2x');
+    type('vault.confirmPin', 'k7Rq2x');
+    const form = screen.getByLabelText('vault.settings.newPin').closest('form')!;
+    act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+    await act(async () => { release({ ok: true }); });
+    await waitFor(() => expect(changePin).toHaveBeenCalledTimes(1));
+    expect(checkPin).toHaveBeenCalledTimes(1);
+  });
+
+  it('C.3/C.4: PIN di 16 caratteri incollato nel nuovo PIN: tenuti i primi 6 e avviso vault.pinTruncated', () => {
+    render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+    type('vault.settings.newPin', 'Xk9mP2abcdefghij');
+    expect((screen.getByLabelText('vault.settings.newPin') as HTMLInputElement).value).toBe('Xk9mP2');
+    expect(screen.getByText('vault.pinTruncated')).toBeTruthy();
+    type('vault.settings.newPin', 'Xk9mP');
+    expect(screen.queryByText('vault.pinTruncated')).toBeNull();
+  });
+
   it('cambio PIN: PIN debole rifiutato dalla policy', async () => {
     vi.mocked(checkPin).mockResolvedValue({ ok: false, reason: 'sequence' });
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);

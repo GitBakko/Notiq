@@ -42,8 +42,22 @@ export default function VaultUnlock({ onUnlocked, notice }: Props = {}) {
   const [showForgot, setShowForgot] = useState(false);
   const submitting = useRef(false); // doppio submit nello stesso tick: `busy` (stato) non fa in tempo
 
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+
+  const canOffline = !!(cache?.offlineUnlock && cache.wrappedVkPin);
   const remaining = lockedUntil ? lockedUntil - now : 0;
-  const locked = remaining > 0;
+  // Il lockout e' del server: offline non lo si puo' applicare e lo sblocco passa da unlockOffline (E.6).
+  const locked = remaining > 0 && !(!online && canOffline);
 
   useEffect(() => {
     if (!lockedUntil) return;
@@ -65,7 +79,6 @@ export default function VaultUnlock({ onUnlocked, notice }: Props = {}) {
     setBusy(true);
     setError(null);
     try {
-      const canOffline = !!(cache?.offlineUnlock && cache.wrappedVkPin);
       if (!navigator.onLine) await unlockOffline(userId, pin);
       else {
         try {
@@ -129,7 +142,7 @@ export default function VaultUnlock({ onUnlocked, notice }: Props = {}) {
               {t('vault.unlock.lockedFor', { time: fmt(remaining) })}
             </p>
           )}
-          {error && !locked && (
+          {error && !locked && !(error === 'errors.vault.locked' && !online && canOffline) && (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
           )}
 

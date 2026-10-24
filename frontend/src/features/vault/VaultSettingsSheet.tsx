@@ -10,6 +10,7 @@ import { changePin, regenerateKit } from '../../lib/vaultSession';
 import { vaultReconcile, type ReconcileResult } from '../../lib/vaultReconcile';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
 import { checkPin } from './PinPolicy';
+import PinInput from './PinInput';
 import RecoveryKitSheet from './RecoveryKitSheet';
 
 interface Props {
@@ -62,6 +63,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
   const [newPin2, setNewPin2] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
+  const pinSubmitting = useRef(false); // doppio invio nello stesso tick: `pinBusy` (stato) non fa in tempo, e checkPin e' asincrona (J.4)
 
   const [kitPin, setKitPin] = useState('');
   const [kitError, setKitError] = useState<string | null>(null);
@@ -107,19 +109,21 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
 
   const submitPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinBusy || !unlocked || !online) return;
-    setPinError(null);
-    const check = await checkPin(newPin, { name: user.name, surname: user.surname, email: user.email });
-    if (!check.ok) return setPinError(`vault.pinPolicy.${check.reason}`);
-    if (newPin !== newPin2) return setPinError('vault.pinMismatch');
+    if (pinSubmitting.current || pinBusy || !unlocked || !online) return;
+    pinSubmitting.current = true;
     setPinBusy(true);
+    setPinError(null);
     try {
+      const check = await checkPin(newPin, { name: user.name, surname: user.surname, email: user.email });
+      if (!check.ok) return setPinError(`vault.pinPolicy.${check.reason}`);
+      if (newPin !== newPin2) return setPinError('vault.pinMismatch');
       await changePin({ userId: user.id, currentPin: curPin, newPin });
       toast.success(t('vault.settings.pinChanged'));
       setCurPin(''); setNewPin(''); setNewPin2('');
     } catch (err) {
       setPinError(errKey(err));
     } finally {
+      pinSubmitting.current = false;
       setPinBusy(false);
     }
   };
@@ -153,20 +157,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
   const hardUnresolved = result ? Math.max(0, result.unresolved - result.later) : 0; // `unresolved` include le rinviate (`later`)
 
   const field = (id: string, value: string, set: (v: string) => void, label: string, autoComplete: string, autoFocus = false) => (
-    <input
-      id={id}
-      type="password"
-      value={value}
-      onChange={(e) => set(e.target.value)}
-      placeholder={label}
-      aria-label={label}
-      autoComplete={autoComplete}
-      autoCapitalize="off"
-      spellCheck={false}
-      maxLength={6}
-      className={INPUT}
-      autoFocus={autoFocus}
-    />
+    <PinInput id={id} value={value} onChange={set} label={label} autoComplete={autoComplete} className={INPUT} autoFocus={autoFocus} />
   );
   const err = (k: string | null) => k && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{t(k)}</p>;
 

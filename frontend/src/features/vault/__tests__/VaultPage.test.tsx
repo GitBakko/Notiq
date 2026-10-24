@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   reconcile: vi.fn(),
   hydrate: vi.fn(),
   checkPending: vi.fn(),
+  syncCache: vi.fn(),
+  refreshCache: vi.fn(),
   encrypt: vi.fn(),
   decrypt: vi.fn(),
   rootKey: { v: { id: 'rk', ecdhSpki: new Uint8Array([1]) } as any },
@@ -55,7 +57,11 @@ vi.mock('../../../lib/vaultReconcile', () => ({
   vaultReconcile: (...a: unknown[]) => h.reconcile(...a),
   hydrateVaultNote: (...a: unknown[]) => h.hydrate(...a),
 }));
-vi.mock('../../../lib/vaultSession', () => ({ checkPendingOnStart: (...a: unknown[]) => h.checkPending(...a) }));
+vi.mock('../../../lib/vaultSession', () => ({
+  checkPendingOnStart: (...a: unknown[]) => h.checkPending(...a),
+  syncKeyringCache: (...a: unknown[]) => h.syncCache(...a),
+  refreshKeyringCache: (...a: unknown[]) => h.refreshCache(...a),
+}));
 vi.mock('../../../lib/vaultCodec', () => ({
   encryptItem: (...a: unknown[]) => h.encrypt(...a),
   decryptItem: (...a: unknown[]) => h.decrypt(...a),
@@ -122,6 +128,7 @@ beforeEach(() => {
   h.notebooks = [{ id: 'nb1' }];
   h.reconcile.mockResolvedValue({ legacyLeft: 0 });
   h.checkPending.mockResolvedValue('none');
+  h.refreshCache.mockResolvedValue(undefined);
   h.hydrate.mockResolvedValue(false);
   h.encrypt.mockImplementation(async (id: string) => ENV(id.replace(/-/g, '')));
   h.decrypt.mockImplementation(async (_id: string, _t: string, env: string) => ({ t: `T:${env.slice(-8)}`, c: '{}' }));
@@ -358,6 +365,56 @@ describe('VaultPage: sbloccato', () => {
     expect(h.queue[0]).toMatchObject({ type: 'CREATE', entityId: row.id });
     expect(h.queue[0].data).toMatchObject({ id: row.id, title: '', content: row.content, isVault: true, isEncrypted: true });
     await screen.findByTestId('note-editor');
+  });
+
+  it('F.23: doppio clic nello stesso tick su "nuova nota": una sola creazione', async () => {
+    unlock();
+    mount();
+    const btn = await screen.findByText('vault.createSecureNote');
+    act(() => { fireEvent.click(btn); fireEvent.click(btn); });
+    await waitFor(() => expect(h.rows).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.encrypt).toHaveBeenCalledTimes(1);
+    expect(h.rows).toHaveLength(1);
+  });
+
+  it('F.23: doppio clic sulla voce del menu "+": una sola creazione e menu chiuso', async () => {
+    unlock();
+    mount();
+    await screen.findByText('vault.createSecureNote');
+    const plus = screen.getByLabelText('vault.createSecureNote');
+    fireEvent.click(plus);
+    expect(plus.getAttribute('aria-expanded')).toBe('true');
+    const item = screen.getAllByText('vault.createSecureNote').find((el) => el.closest('[data-create-menu]'))!;
+    act(() => { fireEvent.click(item); fireEvent.click(item); });
+    expect(plus.getAttribute('aria-expanded')).toBe('false');
+    await waitFor(() => expect(h.rows).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.encrypt).toHaveBeenCalledTimes(1);
+  });
+
+  it('J.6: keyring READY dalla GET -> syncKeyringCache(userId, kr)', async () => {
+    const kr = { status: 'READY', rev: 3, epoch: 1 };
+    h.getKeyring.mockResolvedValue(kr);
+    mount();
+    await screen.findByTestId('unlock');
+    expect(h.syncCache).toHaveBeenCalledWith('u1', kr);
+  });
+
+  it('J.6: keyring NONE -> nessun syncKeyringCache', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'NONE', legacyCount: 0 });
+    mount();
+    await screen.findByTestId('setup');
+    expect(h.syncCache).not.toHaveBeenCalled();
+  });
+
+  it('J.6: da sbloccato, refreshKeyringCache subito e a ogni evento online', async () => {
+    unlock();
+    mount();
+    await waitFor(() => expect(h.refreshCache).toHaveBeenCalledTimes(1));
+    expect(h.refreshCache).toHaveBeenCalledWith('u1');
+    act(() => { window.dispatchEvent(new Event('online')); });
+    expect(h.refreshCache).toHaveBeenCalledTimes(2);
   });
 
   it('creazione credenziale: noteType CREDENTIAL e dati vuoti cifrati', async () => {

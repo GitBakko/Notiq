@@ -62,6 +62,16 @@ describe('VaultSetup', () => {
     await waitFor(() => expect(setup).toHaveBeenCalledWith({ userId: 'u1', pin: 'k7Rq2x', password: 'pw', rootKey: ROOT, offlineUnlock: true }));
   });
 
+  it('C.3/C.4: PIN di 16 caratteri: tenuti i primi 6 e avviso vault.pinTruncated; con 6 nessun avviso', () => {
+    render(<VaultSetup />);
+    const pin = screen.getByLabelText('vault.enterPin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: 'Xk9mP2abcdefghij' } });
+    expect(pin.value).toBe('Xk9mP2');
+    expect(screen.getByText('vault.pinTruncated')).toBeTruthy();
+    fireEvent.change(pin, { target: { value: 'Xk9mP' } });
+    expect(screen.queryByText('vault.pinTruncated')).toBeNull();
+  });
+
   it('PIN rifiutato dalla policy: messaggio vault.pinPolicy.*, nessuna chiamata a setup', async () => {
     vi.mocked(checkPin).mockResolvedValue({ ok: false, reason: 'common' });
     render(<VaultSetup />);

@@ -20,7 +20,7 @@ import { LOCAL_FIRST } from '../../lib/networkMode';
 import { getKeyring } from '../../lib/vaultApi';
 import { decryptItem, encryptItem, type VaultNoteType } from '../../lib/vaultCodec';
 import { hydrateVaultNote, vaultReconcile } from '../../lib/vaultReconcile';
-import { checkPendingOnStart, type KeyringDto } from '../../lib/vaultSession';
+import { checkPendingOnStart, refreshKeyringCache, syncKeyringCache, type KeyringDto } from '../../lib/vaultSession';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
 import type { Note } from '../notes/noteService';
@@ -123,6 +123,7 @@ export default function VaultPage() {
     try {
       // setupAllowed (kill switch D2) arriva dal server; assente (backend vecchio) = consentito
       const kr = await getKeyring<KeyringDto & { setupAllowed?: boolean }>();
+      if (kr.status === 'READY') syncKeyringCache(userId, kr); // J.6: la cache offline segue il keyring del server (mai indietro)
       next = kr.status === 'NONE' ? (kr.setupAllowed === false ? { k: 'setupDisabled' } : { k: 'none', legacyCount: kr.legacyCount ?? 0 })
         : kr.status === 'READY' ? { k: 'ready' }
         : { k: 'resetPending' };
@@ -153,6 +154,15 @@ export default function VaultPage() {
     window.addEventListener('online', on);
     return () => window.removeEventListener('online', on);
   }, [gate.k, loadKeyring]);
+
+  // J.6: da sbloccato loadKeyring non gira; la cache offline si riallinea comunque, subito e a ogni ritorno online.
+  useEffect(() => {
+    if (!unlocked || !userId) return;
+    const refresh = () => { void refreshKeyringCache(userId); };
+    if (navigator.onLine) refresh();
+    window.addEventListener('online', refresh);
+    return () => window.removeEventListener('online', refresh);
+  }, [unlocked, userId]);
 
   const retryKeyring = () => { setRetrying(true); void loadKeyring(); };
   const finishWizard = () => setGate({ k: 'ready' }); // setup/migrazione chiusi: il keyring e' READY per costruzione
@@ -219,6 +229,7 @@ export default function VaultPage() {
   };
 
   // --- creazione ------------------------------------------------------------------------------------
+  const creating = useRef(false); // doppio clic nello stesso tick: `isPending` (stato) non fa in tempo (F.23)
   const createMutation = useMutation({
     mutationFn: createVaultItem,
     onSuccess: (id) => {
@@ -239,14 +250,16 @@ export default function VaultPage() {
   const handleCreate = (noteType: VaultNoteType) => {
     const notebookId = getDefaultNotebookId();
     if (!notebookId) { toast.error(t('notes.noNotebooksFound')); return; }
-    setShowCreateMenu(false);
+    setShowCreateMenu(false); // prima della guardia: il menu si chiude anche quando il clic viene scartato
+    if (creating.current || createMutation.isPending) return;
+    creating.current = true;
     createMutation.mutate({
       noteType,
       notebookId,
       item: noteType === 'NOTE'
         ? { t: t('notes.untitled'), c: EMPTY_DOC }
         : { t: t('vault.credential.untitled'), c: JSON.stringify(EMPTY_CREDENTIAL) },
-    });
+    }, { onSettled: () => { creating.current = false; } });
   };
   const handleCreateSecureNote = () => handleCreate('NOTE');
   const handleCreateCredential = () => handleCreate('CREDENTIAL');
@@ -468,6 +481,7 @@ export default function VaultPage() {
               <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
                 <button
                   onClick={handleCreateSecureNote}
+                  disabled={createMutation.isPending}
                   className="w-full min-h-[44px] flex items-center gap-2 px-3 py-2.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700"
                 >
                   <Lock size={14} />
@@ -475,6 +489,7 @@ export default function VaultPage() {
                 </button>
                 <button
                   onClick={handleCreateCredential}
+                  disabled={createMutation.isPending}
                   className="w-full min-h-[44px] flex items-center gap-2 px-3 py-2.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700"
                 >
                   <KeyRound size={14} />
@@ -616,10 +631,10 @@ export default function VaultPage() {
           <Lock size={48} className="mb-4 opacity-20" />
           <p className="mb-4">{t('notes.selectToView')}</p>
           <div className="flex gap-2">
-            <Button onClick={handleCreateSecureNote} variant="primary" className="min-h-[44px]">
+            <Button onClick={handleCreateSecureNote} disabled={createMutation.isPending} variant="primary" className="min-h-[44px]">
               {t('vault.createSecureNote')}
             </Button>
-            <Button onClick={handleCreateCredential} variant="secondary" className="min-h-[44px]">
+            <Button onClick={handleCreateCredential} disabled={createMutation.isPending} variant="secondary" className="min-h-[44px]">
               <KeyRound size={16} className="mr-1" />
               {t('vault.createCredential')}
             </Button>

@@ -843,6 +843,29 @@ describe('updateNote', () => {
       expect(hocuspocus.hocuspocus.closeConnections).toHaveBeenCalledWith('n1');
     });
 
+    // I.2: le righe Notification delle condivisioni contengono il titolo in chiaro (title, message, data.noteTitle, itemName)
+    it('deletes the Notification rows that carry the note title when isVault goes false -> true', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false });
+      prismaMock.note.update.mockResolvedValue(existingNote);
+
+      await updateNote('user-1', 'n1', { isVault: true });
+
+      expect(prismaMock.notification.deleteMany).toHaveBeenCalledWith({
+        where: { OR: [{ data: { path: ['noteId'], equals: 'n1' } }, { data: { path: ['itemId'], equals: 'n1' } }] },
+      });
+    });
+
+    it('does not delete notifications when the note is not entering the vault', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false });
+      prismaMock.note.update.mockResolvedValue(existingNote);
+      await updateNote('user-1', 'n1', { isVault: false, title: 'x' });
+
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: true });
+      await updateNote('user-1', 'n1', { isVault: true });
+
+      expect(prismaMock.notification.deleteMany).not.toHaveBeenCalled();
+    });
+
     it('nulls searchText even when the same save carries plain content', async () => {
       prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isVault: false });
       prismaMock.note.update.mockResolvedValue(existingNote);

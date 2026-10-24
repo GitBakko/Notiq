@@ -342,6 +342,10 @@ export const updateNote = async (userId: string, id: string, data: {
   const updated = await prisma.$transaction(async (tx) => {
     if (movingToVault) {
       await tx.sharedNote.deleteMany({ where: { noteId: id } });
+      // I.2: gli inviti non valgono piu' e le righe portano il titolo in chiaro (title/message/data.noteTitle/itemName)
+      await tx.notification.deleteMany({
+        where: { OR: [{ data: { path: ['noteId'], equals: id } }, { data: { path: ['itemId'], equals: id } }] },
+      });
     }
     if (tagIds !== undefined) {
       // Replace tags FOR THIS USER ONLY (not other users' tag associations)

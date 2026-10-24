@@ -123,6 +123,39 @@ describe('VaultUnlock', () => {
     expect((screen.getByLabelText('vault.enterPin') as HTMLInputElement).disabled).toBe(false);
   });
 
+  it('E.6: blocco PIN attivo, offline con sblocco offline: campo abilitato e invio usa unlockOffline; online torna disabilitato', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const until = new Date(Date.now() + 60000).toISOString();
+    vi.mocked(unlockOnline).mockRejectedValue(new VaultSessionError('pinLocked', 'errors.vault.locked', until));
+    render(<VaultUnlock />);
+    type();
+    submit();
+    await screen.findByText(/vault\.unlock\.lockedFor/);
+    const input = () => screen.getByLabelText('vault.enterPin') as HTMLInputElement;
+    expect(input().disabled).toBe(true);
+    act(() => { setOnline(false); window.dispatchEvent(new Event('offline')); });
+    expect(input().disabled).toBe(false);
+    expect(screen.queryByText('errors.vault.locked')).toBeNull(); // l alert del blocco online non resta con il campo abilitato
+    type();
+    submit();
+    await waitFor(() => expect(unlockOffline).toHaveBeenCalledWith('u1', 'k7Rq2x'));
+    act(() => { setOnline(true); window.dispatchEvent(new Event('online')); });
+    expect(input().disabled).toBe(true);
+  });
+
+  it('E.6: blocco PIN attivo e offline SENZA sblocco offline: resta disabilitato', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    cache.value = { status: 'READY', offlineUnlock: false };
+    const until = new Date(Date.now() + 60000).toISOString();
+    vi.mocked(unlockOnline).mockRejectedValue(new VaultSessionError('pinLocked', 'errors.vault.locked', until));
+    render(<VaultUnlock />);
+    type();
+    submit();
+    await screen.findByText(/vault\.unlock\.lockedFor/);
+    act(() => { setOnline(false); window.dispatchEvent(new Event('offline')); });
+    expect((screen.getByLabelText('vault.enterPin') as HTMLInputElement).disabled).toBe(true);
+  });
+
   it('notice="alreadySetup": mostra vault.setup.alreadySetup sopra il form; assente senza prop', () => {
     const { unmount } = render(<VaultUnlock notice="alreadySetup" />);
     expect(screen.getByText('vault.setup.alreadySetup')).toBeTruthy();

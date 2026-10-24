@@ -30,6 +30,7 @@ describe('RecoveryKitSheet', () => {
     const dlg = screen.getByRole('dialog');
     expect(dlg.getAttribute('aria-modal')).toBe('true');
     expect(screen.getByLabelText('vault.kit.codeLabel').textContent).toBe(formatKit(kit));
+    expect(screen.getByRole('group', { name: 'vault.kit.codeLabel' }).textContent).toBe(formatKit(kit)); // D.1: aria-label valido solo con un ruolo
     const done = screen.getByText('vault.kit.done').closest('button')!;
     expect(done.disabled).toBe(true);
 

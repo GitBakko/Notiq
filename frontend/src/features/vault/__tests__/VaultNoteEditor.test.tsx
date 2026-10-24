@@ -1,5 +1,6 @@
 // Vault v3 (T18): VaultNoteEditor. Codec, lock, Dexie e rete finti; si verifica cosa viene scritto e quando.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useEffect } from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- mock Vitest */
@@ -18,14 +19,16 @@ const h = vi.hoisted(() => ({
   user: { v: { id: 'u1' } as { id: string } | null },
   getFails: { v: false },
   toastSuccess: vi.fn(),
+  toastInfo: vi.fn(),
   editorProps: [] as any[],
   tagProps: [] as any[],
   toastError: vi.fn(),
   events: [] as string[],
+  echo: { v: false }, // l'editor vero riemette onChange(content) al mount e a ogni setEditable (difetto 2.1)
 }));
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
-vi.mock('react-hot-toast', () => ({ default: { error: (...a: unknown[]) => h.toastError(...a), success: (...a: unknown[]) => h.toastSuccess(...a) } }));
+vi.mock('react-hot-toast', () => ({ default: Object.assign((...a: unknown[]) => h.toastInfo(...a), { error: (...a: unknown[]) => h.toastError(...a), success: (...a: unknown[]) => h.toastSuccess(...a) }) }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('../../notes/noteService', () => ({
   updateNote: (...a: unknown[]) => { h.events.push('updateNote'); return h.updateNote(...a); },
@@ -55,7 +58,12 @@ vi.mock('../../../store/vaultStore', () => ({
   useVaultStore: { getState: () => ({ touchVault: h.touch, registerPreLock: (fn: any) => { h.flushers.push(fn); return () => { h.flushers.splice(h.flushers.indexOf(fn), 1); }; } }) },
 }));
 vi.mock('../../../components/editor/Editor', () => ({
-  default: (p: any) => { h.editorProps.push(p); return <textarea data-testid="editor" value={p.content} readOnly={!p.editable} onChange={(e) => p.onChange(e.target.value)} />; },
+  default: (p: any) => {
+    h.editorProps.push(p);
+    // eslint-disable-next-line react-hooks/rules-of-hooks, react-hooks/exhaustive-deps -- il mock e' un componente
+    useEffect(() => { if (h.echo.v) p.onChange(p.content); }, [p.editable]);
+    return <textarea data-testid="editor" value={p.content} readOnly={!p.editable} onChange={(e) => p.onChange(e.target.value)} />;
+  },
 }));
 vi.mock('../../../components/editor/TagSelector', () => ({ default: (p: any) => { h.tagProps.push(p); return <div data-testid="tags" />; } }));
 vi.mock('../../../components/ui/ConfirmDialog', () => ({
@@ -82,6 +90,7 @@ beforeEach(() => {
   h.moveOut.mockReset().mockResolvedValue(undefined);
   h.touch.mockReset();
   h.toastSuccess.mockReset();
+  h.toastInfo.mockReset();
   h.lockStatus.v = 'ran';
   h.user.v = { id: 'u1' };
   h.getFails.v = false;
@@ -91,6 +100,7 @@ beforeEach(() => {
   h.editorProps.length = 0;
   h.tagProps.length = 0;
   h.events.length = 0;
+  h.echo.v = false;
 });
 afterEach(() => { vi.useRealTimers(); });
 
@@ -379,5 +389,87 @@ describe('VaultNoteEditor', () => {
     expect(btn.title).toBe('vault.moveOut.offline');
     await act(async () => { window.dispatchEvent(new Event('online')); });
     expect(btn.disabled).toBe(false);
+  });
+});
+
+describe('VaultNoteEditor: onChange di echo (difetto 2.1)', () => {
+  beforeEach(() => { h.echo.v = true; });
+
+  it('aprire la nota senza modificarla non scrive nulla e non tocca il timer di inattivita', async () => {
+    const { unmount } = await open();
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    await flushAsync();
+    unmount();
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+    expect(h.touch).not.toHaveBeenCalled();
+  });
+
+  it('moveOut fallisce (failed) con la riemissione dell editor: nessuna scrittura', async () => {
+    h.moveOut.mockRejectedValue(new VaultMoveError('failed'));
+    await open();
+    fireEvent.click(screen.getByLabelText('notes.removeFromVault'));
+    await act(async () => { fireEvent.click(screen.getByText('confirm:vault.exitTitle')); });
+    await flushAsync();
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    await flushAsync();
+    expect(h.toastError).toHaveBeenCalledWith('vault.moveOut.failed');
+    expect(h.updateNote).not.toHaveBeenCalled();
+  });
+
+  it('una modifica vera salva una volta sola', async () => {
+    await open();
+    fireEvent.change(screen.getByTestId('editor'), { target: { value: 'nuovo' } });
+    await act(async () => { vi.advanceTimersByTime(1100); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+    expect(h.updateNote.mock.calls[0][1].content).toBe(ENV('Titolo', 'nuovo'));
+  });
+
+  it('modifica e ritorno al testo originale entro il debounce: si salva l originale', async () => {
+    await open();
+    fireEvent.change(screen.getByTestId('editor'), { target: { value: 'nuovo' } });
+    fireEvent.change(screen.getByTestId('editor'), { target: { value: 'corpo' } });
+    await act(async () => { vi.advanceTimersByTime(1100); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+    expect(h.updateNote.mock.calls[0][1].content).toBe(ENV('Titolo', 'corpo'));
+  });
+});
+
+describe('VaultNoteEditor: immagini remote e file (F.13)', () => {
+  const img = (src: string) => ({ type: 'image', attrs: { src } });
+  const docWith = (...n: unknown[]) => JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }, ...n] }] });
+
+  it('envelope con immagine remota: l editor riceve il corpo senza, avviso, nessuna scrittura', async () => {
+    h.row = { id: 'n1', title: '', content: ENV('T', docWith(img('https://evil.example/p.png'), img('/uploads/ok.png'))) };
+    await open();
+    const body = (screen.getByTestId('editor') as HTMLTextAreaElement).value;
+    expect(body).not.toContain('evil.example');
+    expect(body).toContain('/uploads/ok.png');
+    expect(h.toastInfo).toHaveBeenCalledWith('vault.remoteImagesHidden');
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+  });
+
+  it('sola lettura (legacy doc): immagine remota tolta dal contenuto dell editor, avviso', async () => {
+    h.row = { id: 'n1', title: 'Vecchia', content: docWith(img('http://evil.example/p.png')) };
+    await open();
+    expect((screen.getByTestId('editor') as HTMLTextAreaElement).value).not.toContain('evil.example');
+    expect(h.toastInfo).toHaveBeenCalledWith('vault.remoteImagesHidden');
+  });
+
+  it('drop di un file sull header: niente navigazione, avviso', async () => {
+    await open();
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const notPrevented = fireEvent.drop(screen.getByLabelText('notes.titlePlaceholder'), { dataTransfer: { types: ['Files'], files: [file] } });
+    expect(notPrevented).toBe(false);
+    expect(h.toastError).toHaveBeenCalledWith('vault.imagesBlocked', { id: 'vault.imagesBlocked' });
+  });
+
+  it('dragover di un file viene accettato (altrimenti il drop non parte e il browser apre il file)', async () => {
+    await open();
+    expect(fireEvent.dragOver(screen.getByLabelText('notes.titlePlaceholder'), { dataTransfer: { types: ['Files'], files: [] } })).toBe(false);
   });
 });

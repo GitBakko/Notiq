@@ -375,6 +375,8 @@ export async function closeMigration(o: { pins: string[]; signal?: AbortSignal; 
     }
     return r;
   } finally {
+    // B.2: searchText in chiaro lasciato in Dexie dalle note prima del loro ingresso nel vault
+    await db.notes.filter((n) => !!n.isVault && !!n.searchText).modify({ searchText: '' }).catch((e) => console.error('[vault] pulizia searchText fallita', e));
     if (!o.decryptor) dec.terminate();
   }
 }

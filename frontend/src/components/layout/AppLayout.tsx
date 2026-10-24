@@ -16,6 +16,7 @@ import { CURRENT_VERSION } from '../../data/changelog';
 import i18n from '../../i18n';
 
 import { useSync } from '../../hooks/useSync';
+import { useKeyringRefresh } from '../../hooks/useKeyringRefresh';
 
 export default function AppLayout() {
   const { token, user, updateUser } = useAuthStore();
@@ -46,6 +47,8 @@ export default function AppLayout() {
       updateUser({ locale: frontendLang });
     }
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useKeyringRefresh(user?.id); // J.6
 
   // Ctrl+B to toggle sidebar collapse (desktop only)
   useEffect(() => {

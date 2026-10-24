@@ -517,6 +517,54 @@ describe('cambio PIN', () => {
   });
 });
 
+describe('allineamento cache al keyring del server (J.6)', () => {
+  type Cache = ReturnType<typeof useVaultStore.getState>['byUser'][string];
+  let stale: Cache;
+  beforeEach(async () => {
+    await doSetup();
+    await session.confirmKit(U);
+    stale = structuredClone(st().byUser[U]);
+    await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 }); // "altro dispositivo": il server ha il nuovo wrap
+    await st().lockVault();
+    useVaultStore.setState({ byUser: { [U]: stale } }); // questo dispositivo ha ancora la cache vecchia
+  });
+
+  it('rev piu\' alta sul server: cache aggiornata, offlineUnlock invariato; il vecchio PIN non sblocca piu\' offline', async () => {
+    await session.unlockOffline(U, PIN); // prima del contatto online il vecchio PIN funziona (limite intrinseco)
+    await st().lockVault();
+    session.syncKeyringCache(U, await h.server.getKeyring() as unknown as session.KeyringDto);
+    expect(st().byUser[U].rev).toBe(1);
+    expect(st().byUser[U].offlineUnlock).toBe(true);
+    await expect(session.unlockOffline(U, PIN)).rejects.toMatchObject({ code: 'wrongPin' });
+    await session.unlockOffline(U, PIN2);
+    expect(st().unlockedUserId).toBe(U);
+  });
+
+  it('refreshKeyringCache fa GET + sync', async () => {
+    await session.refreshKeyringCache(U);
+    expect(st().byUser[U].rev).toBe(1);
+  });
+
+  it('rev uguale o piu\' bassa: cache invariata (mai indietro)', async () => {
+    const kr = await h.server.getKeyring() as unknown as session.KeyringDto;
+    session.syncKeyringCache(U, { ...kr, rev: stale.rev });
+    session.syncKeyringCache(U, { ...kr, rev: stale.rev - 1 });
+    expect(st().byUser[U]).toEqual(stale);
+  });
+
+  it('nessuna cache, NONE, RESET_PENDING, keyring incompleto, errore di rete: nessuna scrittura e nessun throw', async () => {
+    const kr = await h.server.getKeyring() as unknown as session.KeyringDto;
+    session.syncKeyringCache('altro', kr);
+    expect(st().byUser['altro']).toBeUndefined();
+    session.syncKeyringCache(U, { ...kr, status: 'NONE' });
+    session.syncKeyringCache(U, { ...kr, status: 'RESET_PENDING' });
+    session.syncKeyringCache(U, { ...kr, wrappedVkPin: null });
+    h.server.getKeyring = async () => { throw apiErr(0, 'errors.common.networkError'); };
+    await expect(session.refreshKeyringCache(U)).resolves.toBeUndefined();
+    expect(st().byUser[U]).toEqual(stale);
+  });
+});
+
 describe('rigenerazione del Kit', () => {
   beforeEach(async () => {
     await doSetup();

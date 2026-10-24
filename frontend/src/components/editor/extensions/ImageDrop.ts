@@ -1,7 +1,14 @@
 import Image from '@tiptap/extension-image';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { ReactNodeViewRenderer } from '@tiptap/react';
+import i18n from 'i18next';
+import toast from 'react-hot-toast';
 import { ResizableImage } from './ResizableImage';
+import { isLocalImageSrc, stripSlice } from './remoteImages';
+
+// Senza uploadFn (vault, pagina pubblica in sola lettura) l'editor non ha dove mettere i file: drop e paste di file si bloccano
+// (niente navigazione del browser verso il file) e le immagini remote incollate si tolgono (F.13: niente web beacon).
+const notify = (key: string) => toast.error(i18n.t(key), { id: key });
 
 export const ImageDrop = Image.extend({
   name: 'image',
@@ -29,6 +36,11 @@ export const ImageDrop = Image.extend({
     };
   },
 
+  // La regola markdown ![alt](src) creerebbe un'immagine remota digitando: senza uploadFn non esiste.
+  addInputRules() {
+    return (this.options as unknown as { uploadFn?: unknown }).uploadFn ? (this.parent?.() ?? []) : [];
+  },
+
   addNodeView() {
     return ReactNodeViewRenderer(ResizableImage);
   },
@@ -38,12 +50,29 @@ export const ImageDrop = Image.extend({
     const uploadFn = opts.uploadFn ?? null;
     const onUploaded = opts.onUploaded ?? null;
     const onRemoved = opts.onRemoved ?? null;
+    const editor = this.editor;
 
     return [
       ...(this.parent?.() || []),
       new Plugin({
         key: new PluginKey('imageDrop'),
         props: {
+          handleDOMEvents: {
+            // nel DOM event, non in handleDrop: parte prima di posAtCoords e anche a editor non modificabile
+            drop: (view, event) => {
+              if (uploadFn || !(event as DragEvent).dataTransfer?.files?.length) return false;
+              event.preventDefault();
+              // a sola lettura (pagina pubblica) il blocco e' silenzioso: l'avviso parla del Vault
+              if (view.editable) notify('vault.imagesBlocked');
+              return true;
+            },
+          },
+          transformPasted: (slice) => {
+            if (uploadFn) return slice;
+            const r = stripSlice(slice);
+            if (r.removed) notify('vault.remoteImagesRemoved');
+            return r.slice;
+          },
           handleDrop: (view, event, _slice, moved) => {
             if (moved || !uploadFn) return false;
 
@@ -75,7 +104,15 @@ export const ImageDrop = Image.extend({
           },
 
           handlePaste: (view, event) => {
-            if (!uploadFn) return false;
+            if (!uploadFn) {
+              const cd = event.clipboardData;
+              if (!cd || !Array.from(cd.items ?? []).some((i) => i.kind === 'file')) return false;
+              // con testo/HTML nella clipboard (es. copia da Excel) il testo si incolla comunque, senza avviso
+              if (cd.types?.includes('text/html') || cd.types?.includes('text/plain')) return false;
+              event.preventDefault();
+              notify('vault.imagesBlocked');
+              return true;
+            }
 
             const items = event.clipboardData?.items;
             if (!items) return false;
@@ -103,6 +140,22 @@ export const ImageDrop = Image.extend({
 
             return true;
           },
+        },
+      }),
+      // Rete finale (F.13): immagini remote entrate senza passare da transformPasted (insertContent, menu contestuale "Incolla")
+      new Plugin({
+        key: new PluginKey('remoteImageGuard'),
+        appendTransaction: (transactions, _old, newState) => {
+          if (uploadFn || !editor.isEditable || !transactions.some((tr) => tr.docChanged)) return null;
+          const found: { pos: number; size: number }[] = [];
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name === 'image' && !isLocalImageSrc(node.attrs.src)) found.push({ pos, size: node.nodeSize });
+          });
+          if (!found.length) return null;
+          const tr = newState.tr;
+          for (const { pos, size } of found.reverse()) tr.delete(pos, pos + size);
+          notify('vault.remoteImagesRemoved');
+          return tr;
         },
       }),
       // Track image removals from editor body

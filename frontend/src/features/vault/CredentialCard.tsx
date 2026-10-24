@@ -97,7 +97,7 @@ export default memo(function CredentialCard({ note, isSelected, onClick }: Crede
                 isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-neutral-900 dark:text-white'
               )}
             >
-              {view?.title || t('vault.credential.untitled')}
+              {view?.title || (!ENVELOPE_RE.test(note.content ?? '') ? note.title : '') || t('vault.credential.untitled')}
             </h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex-shrink-0">
               {t('vault.credential.badge')}

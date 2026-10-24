@@ -32,7 +32,10 @@ vi.mock('../../../lib/apiCache', () => ({ purgeApiCache: purgeMock, purgeVaultCa
 vi.mock('../../../lib/db', () => ({
   db: {
     syncQueue: { filter: (fn: (i: any) => boolean) => ({ toArray: async () => queue.items.filter(fn) }) },
-    notes: { get: async (id: string) => notes.get(id) },
+    notes: {
+      get: async (id: string) => notes.get(id),
+      filter: (fn: (n: any) => boolean) => ({ modify: async (patch: any) => { for (const n of notes.values()) if (fn(n)) Object.assign(n, patch); } }),
+    },
   },
 }));
 // PBKDF2 100k di CryptoJS impiega secondi in Node: qui un cifrario finto con la stessa interfaccia (v2:... e formato legacy 'LEG:'); crypto.ts ha i suoi test
@@ -364,6 +367,15 @@ describe('closeMigration', () => {
     await closeMigration({ pins: ['pinA11'] });
     await reconcileMock.mock.calls[0][0].decryptLegacy({ content: encryptContent(JSON.stringify(cred()), 'pinA11') });
     expect(touch).toHaveBeenCalledTimes(1);
+  });
+
+  it('B.2: svuota searchText delle righe vault (anche se il reconcile fallisce), lascia stare le righe normali', async () => {
+    notes.set('v1', { id: 'v1', isVault: true, searchText: 'titolo in chiaro' });
+    notes.set('n1', { id: 'n1', isVault: false, searchText: 'testo normale' });
+    reconcileMock.mockRejectedValueOnce(new Error('boom'));
+    await expect(closeMigration({ pins: [] })).rejects.toThrow('boom');
+    expect(notes.get('v1').searchText).toBe('');
+    expect(notes.get('n1').searchText).toBe('testo normale');
   });
 
   it('skipped busy (signal) -> niente pulizia, "riprova"', async () => {

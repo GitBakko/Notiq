@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import { setup } from '../../lib/vaultSession';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
 import { checkPin } from './PinPolicy';
+import PinInput from './PinInput';
 import RecoveryKitSheet from './RecoveryKitSheet';
 
 interface Props {
@@ -135,31 +136,8 @@ export default function VaultSetup({ onAlreadySetup, onDone }: Props = {}) {
 
             <form onSubmit={handleSetup} className="space-y-4">
               <p className="text-xs text-left text-neutral-500 dark:text-neutral-400">{t('vault.setup.pinRules')}</p>
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder={t('vault.enterPin')}
-                aria-label={t('vault.enterPin')}
-                autoComplete="new-password"
-                autoCapitalize="off"
-                spellCheck={false}
-                maxLength={6}
-                className={INPUT}
-                autoFocus
-              />
-              <input
-                type="password"
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value)}
-                placeholder={t('vault.confirmPin')}
-                aria-label={t('vault.confirmPin')}
-                autoComplete="new-password"
-                autoCapitalize="off"
-                spellCheck={false}
-                maxLength={6}
-                className={INPUT}
-              />
+              <PinInput value={pin} onChange={setPin} label={t('vault.enterPin')} autoComplete="new-password" className={INPUT} autoFocus />
+              <PinInput value={confirmPin} onChange={setConfirmPin} label={t('vault.confirmPin')} autoComplete="new-password" className={INPUT} />
               <input
                 type="password"
                 value={password}

@@ -36,4 +36,19 @@ describe('CredentialCard', () => {
     expect(decryptItem).not.toHaveBeenCalled();
     expect(screen.getByText('vault.credential.untitled')).toBeTruthy();
   });
+
+  it('B.1: riga legacy (non envelope) con titolo: mostra il titolo; riga envelope con titolo ma senza chiavi: untitled', async () => {
+    decryptItem.mockReset();
+    const { unmount } = render(<CredentialCard note={{ ...base, title: 'Banca', content: 'legacy-ciphertext' } as never} isSelected={false} onClick={() => {}} />);
+    await flush();
+    expect(screen.getByText('Banca')).toBeTruthy();
+    unmount();
+    const prev = state.keys;
+    state.keys = null;
+    render(<CredentialCard note={{ ...base, title: 'Segreto', content: ENV } as never} isSelected={false} onClick={() => {}} />);
+    await flush();
+    state.keys = prev;
+    expect(screen.queryByText('Segreto')).toBeNull();
+    expect(screen.getByText('vault.credential.untitled')).toBeTruthy();
+  });
 });

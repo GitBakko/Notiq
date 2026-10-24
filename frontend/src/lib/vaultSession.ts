@@ -88,6 +88,24 @@ function cacheKeyring(userId: string, kr: KeyringDto, offlineUnlock: boolean) {
   });
 }
 
+/**
+ * Allinea la cache al keyring del server (J.6): un cambio PIN fatto da un altro dispositivo alza `rev`, e senza questo
+ * il vecchio PIN continuerebbe a sbloccare offline. Solo avanti (epoch/rev maggiori): una GET partita prima di un cambio
+ * PIN locale non riporta indietro la cache. Senza cache o con keyring non READY/incompleto non fa nulla.
+ * Limite intrinseco: un dispositivo sempre offline non vede il cambio.
+ */
+export function syncKeyringCache(userId: string, kr: KeyringDto): void {
+  const c = store().byUser[userId];
+  if (!c || kr.status !== 'READY') return;
+  if (!(kr.epoch > c.epoch || (kr.epoch === c.epoch && kr.rev > c.rev))) return;
+  try { cacheKeyring(userId, kr, c.offlineUnlock); } catch { /* keyring incompleto: cache invariata */ }
+}
+
+/** GET del keyring + `syncKeyringCache`; errori di rete o server ignorati (best effort). */
+export async function refreshKeyringCache(userId: string): Promise<void> {
+  try { syncKeyringCache(userId, await fetchKeyring()); } catch { /* offline o server giu': cache invariata */ }
+}
+
 const wrappedHash = (b64: string) => sha256hexBytes(b64uDecode(b64));
 
 /** Share cifrato col device key (+ wrappedVkSigKey per lo sblocco offline). Un errore IDB spegne lo sblocco offline (false), non blocca il flusso. */

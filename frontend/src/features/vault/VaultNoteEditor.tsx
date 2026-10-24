@@ -17,6 +17,7 @@ import { moveOut, VaultMoveError } from '../../lib/vaultMove';
 import { useVaultStore } from '../../store/vaultStore';
 import { useAuthStore } from '../../store/authStore';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
+import { stripRemoteImagesFromContent } from '../../components/editor/extensions/remoteImages';
 import VaultNotLoaded from './VaultNotLoaded';
 
 // Vault v3 (T18, plan 5.6/5.9): editor delle note vault. Niente noteId/provider/collaboration: per costruzione niente
@@ -128,10 +129,16 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
         if (!row) setPhase({ k: 'gone' });
         else if (!row.content) setPhase({ k: 'unavailable' });
         else if (!ENVELOPE_RE.test(row.content)) {
+          // sola lettura: l'editor riceve il contenuto senza immagini remote (render sotto); qui solo l'avviso
+          if (stripRemoteImagesFromContent(row.content).removed) toast(tRef.current('vault.remoteImagesHidden'));
           setPhase({ k: 'legacy', title: row.title ?? '', body: row.content, docOk: isDoc(row.content) });
         } else {
-          const { t: tt, c } = await decryptItem(id, 'NOTE', row.content);
+          const dec = await decryptItem(id, 'NOTE', row.content);
           if (cancelled) return;
+          // F.13: nessuna risorsa remota in una nota vault; le immagini sparite dal salvataggio in poi (o dall'uscita dal vault)
+          const { content: c, removed } = stripRemoteImagesFromContent(dec.c);
+          const tt = dec.t;
+          if (removed) toast(tRef.current('vault.remoteImagesHidden'));
           latest.current = { title: tt, body: c };
           dirty.current = false;
           setTitle(tt);
@@ -245,7 +252,16 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
   const btn = 'p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full transition-colors';
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-neutral-900 relative">
+    <div
+      className="flex flex-col h-full bg-white dark:bg-neutral-900 relative"
+      // un file lasciato fuori dall'editor (header, sola lettura) farebbe navigare il browser verso il file
+      onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
+      onDrop={(e) => {
+        if (!e.dataTransfer?.files?.length || e.defaultPrevented) return;
+        e.preventDefault();
+        toast.error(t('vault.imagesBlocked'), { id: 'vault.imagesBlocked' });
+      }}
+    >
       <header className="flex flex-col md:flex-row md:items-center gap-2 px-4 py-3 border-b border-neutral-200/60 dark:border-neutral-800/40 bg-white dark:bg-neutral-900 z-20">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <button onClick={back} className={clsx(btn, 'hover:bg-neutral-100 dark:hover:bg-neutral-800 flex-shrink-0')} aria-label={t('common.back')}>
@@ -255,7 +271,7 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
             type="text"
             value={shownTitle}
             onChange={(e) => {
-              if (!editable) return;
+              if (!editable || e.target.value === latest.current.title) return;
               setTitle(e.target.value);
               latest.current.title = e.target.value;
               schedule();
@@ -346,9 +362,10 @@ export default function VaultNoteEditor({ note, onBack }: Props) {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
         {(ready || phase.docOk) && (
           <Editor
-            content={ready ? body : phase.body}
+            content={ready ? body : stripRemoteImagesFromContent(phase.body).content}
             onChange={(c) => {
-              if (!editable) return;
+              // l'editor riemette onChange(content) al mount e a ogni setEditable: senza modifica vera niente PUT (difetto 2.1)
+              if (!editable || c === latest.current.body) return;
               setBody(c);
               latest.current.body = c;
               schedule();
