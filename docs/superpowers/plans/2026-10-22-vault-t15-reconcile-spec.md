@@ -172,7 +172,7 @@ Tutti i 15 rilievi (9 del reviewer, 6 del red-team) sono accolti, due in forma r
   - `POST /vault/items` restituisce anche gli id assenti e quelli non vault.
   - `note.service.ts` risponde 422 se arriva una nota cifrata su una nota non vault. Oggi la sovrascrive in silenzio.
   - Nessuna migration, nessuna versione Dexie nuova.
-- **Limiti che restano.** Una nota spostata fuori dal vault è vuota offline finché non la apri online. Una scheda iOS sospesa può far aspettare il riconciliatore.
+- **Limiti che restano.** Una scheda iOS sospesa può far aspettare il riconciliatore. Il limite della nota spostata fuori dal vault vuota offline è stato rimosso il 27/10 da I.8/D2: la pull recupera il content con `GET /notes/:id`.
 
 Non ho verificato: il comportamento di `POST /vault/items` con vault bloccato, se una PUT con 404 scarta l'UPDATE, e il codice di T18 (non esiste ancora). I diff di `syncService.ts` sono TIER 1 e non si applicano senza la tua conferma esplicita.
 ## Addendum 1 (22/10): modi dei lock e stato al listing
@@ -246,3 +246,15 @@ Nasce da F.21 del retest del 24/10. Prevale su Addendum 2 §5 solo per `vault:no
 - Un UPDATE `failed` `notReady` senza chiave `content` (solo metadati) ha `i.data?.content !== rowContent` sempre vero (`reactivates`), quindi il memo non lo frena: con il server RESET_PENDING si riattiva a ogni trigger del giro (T-a, T-b, T-c, "Controlla ora"), con 1 PUT 422 per trigger. Preesistente, uguale per stale. Produttori reali: `updateNote` con soli metadati su una riga vault (`noteService.ts:184`) e `deleteNote`/`restoreNote` (`{isTrashed}`, `noteService.ts:240,253`). Non si frena col solo memo: `vaultHeld` (`syncService.ts:1008`) tratterrebbe le modifiche nuove fino al prossimo sblocco.
 - Una CREATE `failed` `notReady` con il server senza la nota (S0) passa da T9 REFRESH_CREATE, non gated: `canonicalCreate` è falso su un item `failed` e il commit rimette in coda la CREATE a ogni giro. 1 POST 422 per trigger. Preesistente, limitato dai trigger.
 - Con il server RESET_PENDING e versioni in chiaro, `finalizeItems` risponde 409 (`vault.service.ts:549`) e il giro si interrompe dopo le riattivazioni: T-g non parte e gli item restano pending fino alla push successiva (tick di `useSync`). Nessuna perdita.
+
+## Addendum 4 (27/10): trigger T-h per righe vault vuote dopo la pull (J.7)
+
+Nasce da J.7 del piano dei MINOR residui. Prevale su Addendum 2 §1 solo per l'aggiunta del trigger; nessuna op nuova, `vaultReconcile.ts`, `syncService.ts` e Dexie invariati.
+
+**1. Trigger.** T-h è la comparsa di una riga vault dell'utente, non condivisa, con content vuoto. Casi coperti: pull dopo "Rimuovi dal dispositivo" e successivo sblocco, nuovo dispositivo, passaggio normale→vault della pull. `VaultPage.needIds` aggiunge `e<noteId>` per queste righe agli id `q<itemId>` di T-d.
+
+**2. Memo e debounce.** T-h usa lo stesso memo e lo stesso debounce di 1 s di T-d. Gli id presenti al primo valore della sessione entrano nel memo senza scattare perché li copre T-a. Ogni id fa scattare al massimo un giro per sessione sbloccata; il memo si azzera quando cambiano le chiavi. Una riga che resta vuota perché HYDRATE fallisce o il dispositivo è offline non genera cicli.
+
+**3. Terminazione.** La frase di Addendum 2 §1 diventa: T-a, T-b e T-c seguono eventi esterni; T-d e T-h scattano al massimo una volta per id e per sessione; T-f fa al massimo 2 giri per ogni trigger esterno; T-g non avvia giri. Un 409 persistente sullo stesso item dà al massimo un giro in più. La riga dei componenti di accettazione diventa `VaultPage: T-c, T-d, T-h (memo), T-f, T-g, banner`.
+
+**4. Accettazione.** Dopo "Rimuovi dal dispositivo" e lo sblocco online, i titoli decifrati compaiono entro 1-2 s dall'arrivo della pull, senza chiudere note e senza "Controlla ora". In Dexie il content riprende il formato `nv3.` e il titolo resta `''`; nessun plaintext in Dexie o syncQueue. I test T-a, T-b, T-d, T-f e T-g restano invariati. L'E2E deve trattenere la pull fino a dopo lo sblocco, altrimenti T-a copre il difetto e il test non discrimina.

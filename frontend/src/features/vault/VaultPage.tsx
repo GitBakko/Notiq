@@ -179,7 +179,7 @@ export default function VaultPage() {
   const laterTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const needTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const runRef = useRef<(retry?: boolean) => void>(() => {});
-  const seenRef = useRef<{ keys: unknown; ids: Set<string> } | null>(null); // memo di T-d, per sessione sbloccata
+  const seenRef = useRef<{ keys: unknown; ids: Set<string> } | null>(null); // memo di T-d/T-h, per sessione sbloccata
   useEffect(() => {
     aliveRef.current = true;
     return () => { aliveRef.current = false; clearTimeout(laterTimer.current); clearTimeout(needTimer.current); };
@@ -217,11 +217,12 @@ export default function VaultPage() {
     void syncPush().catch(() => false).then(() => { if (aliveRef.current) runReconcile(); });
   }, [runReconcile]);
 
-  // T-d: un item `vault:conflict` nuovo (mai visto in questa sessione sbloccata) fa partire un giro. Il memo evita i cicli con T5.
+  // T-d: item `vault:conflict` nuovo; T-h: riga vault vuota nuova dopo la pull. Il memo evita i cicli.
   const needIds = useLiveQuery(async () => {
     if (!userId) return [] as string[];
     const q = await db.syncQueue.filter((i) => i.userId === userId && i.entity === 'NOTE' && i.status === 'failed' && i.lastError === 'vault:conflict').toArray();
-    return q.map((i) => `q${i.id}`);
+    const e = (await db.notes.toArray()).filter((n) => n.userId === userId && !!n.isVault && n.ownership !== 'shared' && !n.content);
+    return [...q.map((i) => `q${i.id}`), ...e.map((n) => `e${n.id}`)];
   }, [userId]);
   useEffect(() => {
     if (!needIds || !reconcileEnabled) return;

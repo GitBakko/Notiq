@@ -4,6 +4,19 @@ import {
   apiFor, createCredentialUi, createSecureNoteUi, expectUnlocked, loginInBrowser, logoutUi, newDevice, PIN, setupVaultUi, unlockUi, WRONG_PIN,
 } from './vault-helpers';
 
+async function vaultRowsOf(page: import('@playwright/test').Page): Promise<{ title?: string; content?: string; isVault?: boolean }[]> {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('NotiqDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const r = db.transaction('notes', 'readonly').objectStore('notes').getAll();
+      r.onsuccess = () => { db.close(); resolve((r.result as { isVault?: boolean }[]).filter((n) => n.isVault)); };
+      r.onerror = () => reject(r.error);
+    };
+  }));
+}
+
 // Accettazione 3 (dispositivo B chiede il PIN e decifra) e 8 (logout -> login porta allo sblocco, non al setup).
 
 test('dispositivo B (contesto pulito) chiede il PIN, rifiuta quello sbagliato e decifra; logout/login di A portano allo sblocco', async ({ page, browser }) => {
@@ -60,5 +73,38 @@ test('dispositivo B (contesto pulito) chiede il PIN, rifiuta quello sbagliato e 
   await unlockUi(page, PIN);
   await expectUnlocked(page);
   await expect(page.getByText(noteTitle)).toBeVisible({ timeout: 30000 });
+  await api.dispose();
+});
+
+test('J.7/T-h: dopo Rimuovi dal dispositivo la pull successiva idrata i titoli senza Controlla ora', async ({ page }) => {
+  test.setTimeout(240000);
+  const user = await registerAndLogin(page, { name: 'Vault Rehydrate After Pull' });
+  const api = await apiFor(page);
+  await setupVaultUi(page, user);
+  await createSecureNoteUi(page, api, { title: 'MK-J7-TITLE', body: 'MK-J7-BODY' });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+  const holdPull = async (route: import('@playwright/test').Route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/notes' && url.searchParams.get('all') === '1') return route.abort('failed');
+    return route.continue();
+  };
+  await page.route('**/api/notes?*', holdPull);
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Remove from this device', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove from this device', exact: true }).click();
+  await expect(page.getByText('Vault removed from this device', { exact: true })).toBeVisible({ timeout: 15000 });
+
+  await page.goto('/vault');
+  await unlockUi(page);
+  await expectUnlocked(page);
+  expect(await vaultRowsOf(page)).toHaveLength(0);
+  await page.unroute('**/api/notes?*', holdPull);
+
+  await expect(page.getByRole('heading', { name: 'MK-J7-TITLE', exact: true })).toBeVisible({ timeout: 90000 });
+  const rows = await vaultRowsOf(page);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].title).toBe('');
+  expect(rows[0].content).toMatch(/^nv3\./);
   await api.dispose();
 });

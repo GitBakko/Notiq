@@ -683,8 +683,8 @@ describe('VaultPage: sbloccato', () => {
   });
 });
 
-// Addendum 2 §1: trigger del giro con fake timer (solo setTimeout: i promise restano reali)
-describe('VaultPage: trigger del giro T-d, T-f, T-g', () => {
+// Addendum 2 §1 e Addendum 4: trigger del giro con fake timer (solo setTimeout: i promise restano reali)
+describe('VaultPage: trigger del giro T-d, T-h, T-f, T-g', () => {
   const tick = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
   const conflict = (id: number, o: Record<string, unknown> = {}) => ({ id, userId: 'u1', entity: 'NOTE', status: 'failed', lastError: 'vault:conflict', ...o });
   const mountAndSettle = async () => { const r = mount(); await tick(); return r; };
@@ -745,6 +745,57 @@ describe('VaultPage: trigger del giro T-d, T-f, T-g', () => {
     await mountAndSettle();
     Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
     h.queue.push(conflict(1));
+    await notifyLive();
+    await tick();
+    await tick(3000);
+    expect(h.reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('T-h: una riga vault vuota nuova dopo lo sblocco dà un giro dopo 1 s', async () => {
+    unlock();
+    await mountAndSettle();
+    expect(h.reconcile).toHaveBeenCalledTimes(1);
+    h.rows.push({ id: 'n1', userId: 'u1', isVault: true, content: '', ownership: 'owned' });
+    await notifyLive();
+    await tick();
+    await tick(999);
+    expect(h.reconcile).toHaveBeenCalledTimes(1);
+    await tick(1);
+    expect(h.reconcile).toHaveBeenCalledTimes(2);
+  });
+
+  it('T-h (memo): la stessa riga ancora vuota non riscatta; una seconda riga vuota sì', async () => {
+    unlock();
+    await mountAndSettle();
+    h.rows.push({ id: 'n1', userId: 'u1', isVault: true, content: '', ownership: 'owned' });
+    await notifyLive();
+    await tick();
+    await tick(1000);
+    expect(h.reconcile).toHaveBeenCalledTimes(2);
+    await notifyLive();
+    await tick();
+    await tick(3000);
+    expect(h.reconcile).toHaveBeenCalledTimes(2);
+    h.rows.push({ id: 'n2', userId: 'u1', isVault: true, content: '', ownership: 'owned' });
+    await notifyLive();
+    await tick();
+    await tick(1000);
+    expect(h.reconcile).toHaveBeenCalledTimes(3);
+  });
+
+  it('T-h: primo valore, condivise, envelope, altri utenti e offline non scattano', async () => {
+    unlock();
+    h.rows.push(
+      { id: 'shared', userId: 'u1', isVault: true, content: '', ownership: 'shared' },
+      { id: 'other', userId: 'u2', isVault: true, content: '', ownership: 'owned' },
+      { id: 'env', userId: 'u1', isVault: true, content: ENV('env'), ownership: 'owned' },
+      { id: 'initial', userId: 'u1', isVault: true, content: '', ownership: 'owned' },
+    );
+    await mountAndSettle();
+    await tick(5000);
+    expect(h.reconcile).toHaveBeenCalledTimes(1);
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    h.rows.push({ id: 'offline', userId: 'u1', isVault: true, content: '', ownership: 'owned' });
     await notifyLive();
     await tick();
     await tick(3000);
