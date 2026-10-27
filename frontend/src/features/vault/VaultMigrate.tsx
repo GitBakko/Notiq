@@ -37,6 +37,10 @@ const errKey = (e: unknown): string => {
   const k = (e as { key?: unknown } | null)?.key;
   return typeof k === 'string' ? k : 'errors.common.unknownError';
 };
+const fmt = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 
 function OldPinsFields({ pins, onChange, disabled }: { pins: string[]; onChange: (p: string[]) => void; disabled?: boolean }) {
   const { t } = useTranslation();
@@ -90,6 +94,8 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
   const [oldPins, setOldPins] = useState<string[]>(['']);
   const [formError, setFormError] = useState<string | null>(null);
   const [unlockPin, setUnlockPin] = useState('');
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Stage>('flush');
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
@@ -102,6 +108,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
   const submittingRef = useRef(false); // guardia di rientranza di start(): due submit nello stesso tick passano entrambi lo stato React
   const mountedRef = useRef(true);
   kitRef.current = kit;
+  const remaining = lockedUntil ? Math.max(0, lockedUntil - now) : 0;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -112,6 +119,19 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
       kitRef.current?.fill(0);
     };
   }, []);
+
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const id = setInterval(() => {
+      const n = Date.now();
+      setNow(n);
+      if (n >= lockedUntil) {
+        setLockedUntil(null);
+        setFormError(null);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
 
   const pinsList = () => oldPins.filter((p) => p !== '');
   const decryptor = () => (decRef.current ??= createLegacyDecryptor());
@@ -239,6 +259,13 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
       setUnlockPin('');
       setPin(''); setPin2(''); setPassword('');
     } catch (err) {
+      setUnlockPin('');
+      const e = err as { code?: unknown; lockedUntil?: unknown };
+      if (e?.code === 'pinLocked' && typeof e.lockedUntil === 'string') {
+        const until = Date.parse(e.lockedUntil);
+        setNow(Date.now());
+        setLockedUntil(Number.isFinite(until) ? until : null);
+      }
       setFormError(t(errKey(err)));
       setPhase('unlock');
       return;
@@ -317,9 +344,11 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
         {phase === 'unlock' && (
           <form onSubmit={submitUnlock} className="space-y-4">
             <p className="text-neutral-500 dark:text-neutral-400 text-center">{t('vault.migrate.unlockHint')}</p>
-            <input type="password" value={unlockPin} onChange={(e) => setUnlockPin(e.target.value)} placeholder={t('vault.enterPin')} aria-label={t('vault.enterPin')} autoComplete="off" className={INPUT} autoFocus required />
-            {formError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{formError}</p>}
-            <Button type="submit" variant="primary" className="w-full min-h-[44px]" disabled={!unlockPin}>{t('vault.migrate.unlockButton')}</Button>
+            <input type="password" value={unlockPin} onChange={(e) => setUnlockPin(e.target.value)} placeholder={t('vault.enterPin')} aria-label={t('vault.enterPin')} autoComplete="off" className={INPUT} autoFocus required disabled={remaining > 0} />
+            {remaining > 0 ? (
+              <p role="status" className="text-sm text-amber-700 dark:text-amber-400">{t('vault.unlock.lockedFor', { time: fmt(remaining) })}</p>
+            ) : formError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{formError}</p>}
+            <Button type="submit" variant="primary" className="w-full min-h-[44px]" disabled={!unlockPin || remaining > 0}>{t('vault.migrate.unlockButton')}</Button>
             <Button type="button" variant="secondary" className="w-full min-h-[44px]" onClick={onDone}>{t('common.cancel')}</Button>
           </form>
         )}

@@ -111,6 +111,33 @@ describe('VaultMigrate', () => {
     expect(renderKit).not.toHaveBeenCalled();
   });
 
+  it('PIN errato nella fase unlock: il campo viene svuotato', async () => {
+    m.setup.mockResolvedValue({ ok: false, reason: 'alreadySetup' });
+    m.unlock.mockRejectedValue({ key: 'errors.vault.invalidPin' });
+    render(<VaultMigrate userId={U} rootKey={rootKey} renderKit={renderKit} onDone={onDone} />);
+    fill();
+    submit();
+    fireEvent.change(await screen.findByLabelText('vault.enterPin'), { target: { value: 'wrong1' } });
+    fireEvent.click(screen.getByText('vault.migrate.unlockButton'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('errors.vault.invalidPin');
+    expect(screen.getByLabelText('vault.enterPin')).toHaveValue('');
+  });
+
+  it('lockout nella fase unlock: countdown, campi disabilitati e riattivazione alla scadenza', async () => {
+    m.setup.mockResolvedValue({ ok: false, reason: 'alreadySetup' });
+    m.unlock.mockRejectedValue({ code: 'pinLocked', key: 'errors.vault.locked', lockedUntil: new Date(Date.now() + 1_000).toISOString() });
+    render(<VaultMigrate userId={U} rootKey={rootKey} renderKit={renderKit} onDone={onDone} />);
+    fill();
+    submit();
+    fireEvent.change(await screen.findByLabelText('vault.enterPin'), { target: { value: 'other1' } });
+    fireEvent.click(screen.getByText('vault.migrate.unlockButton'));
+    expect(await screen.findByText(/vault\.unlock\.lockedFor/)).toBeTruthy();
+    expect(screen.getByLabelText('vault.enterPin')).toBeDisabled();
+    expect(screen.getByText('vault.migrate.unlockButton')).toBeDisabled();
+    await waitFor(() => expect(screen.getByLabelText('vault.enterPin')).toBeEnabled(), { timeout: 3000 });
+    expect(screen.queryByText(/vault\.unlock\.lockedFor/)).toBeNull();
+  });
+
   it('setup rifiutato (password): si torna al modulo con il messaggio, campi intatti', async () => {
     m.setup.mockRejectedValue({ key: 'errors.vault.invalidPassword' });
     render(<VaultMigrate userId={U} rootKey={rootKey} renderKit={renderKit} onDone={onDone} />);
