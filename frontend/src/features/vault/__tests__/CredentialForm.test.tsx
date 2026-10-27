@@ -42,6 +42,10 @@ vi.mock('../../../lib/vaultCodec', () => ({
   decryptItem: (...a: unknown[]) => decryptItem(...a),
   encryptItem: (...a: unknown[]) => encryptItem(...a),
 }));
+const dbNote = { get: vi.fn<(id: string) => Promise<{ content: string } | undefined>>(async () => undefined) };
+vi.mock('../../../lib/db', () => ({ db: { notes: { get: (id: string) => dbNote.get(id) } } }));
+const hydrateVaultNote = vi.fn<(id: string) => Promise<boolean>>(async () => false);
+vi.mock('../../../lib/vaultReconcile', () => ({ hydrateVaultNote: (id: string) => hydrateVaultNote(id) }));
 const toastError = vi.fn();
 vi.mock('react-hot-toast', () => ({ default: { error: (...a: unknown[]) => toastError(...a), success: vi.fn() } }));
 vi.mock('../../../lib/api', () => ({ default: { get: vi.fn() } }));
@@ -81,6 +85,8 @@ describe('CredentialForm envelope save', () => {
     lock.held = false; lock.gate = null; lock.nolocks = false; lock.reject = false;
     decryptItem.mockReset().mockResolvedValue({ t: 'Mail', c: JSON.stringify({ siteUrl: '', username: 'bob', password: 'pw', notes: '' }) });
     encryptItem.mockReset().mockResolvedValue(ENV);
+    dbNote.get.mockReset().mockResolvedValue(undefined);
+    hydrateVaultNote.mockReset().mockResolvedValue(false);
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -94,6 +100,33 @@ describe('CredentialForm envelope save', () => {
     const r = render(<CredentialForm note={loadedNote} onBack={() => {}} />);
     expect(r.container.querySelectorAll('input').length).toBe(0);
     await flush();
+    expect(decryptItem).toHaveBeenCalledWith('n1', 'CREDENTIAL', ENV);
+    expect((screen.getByPlaceholderText('vault.credential.untitled') as HTMLInputElement).value).toBe('Mail');
+  });
+
+  it('hydrates before the first decrypt, once per note', async () => {
+    const order: string[] = [];
+    hydrateVaultNote.mockImplementation(async () => { order.push('hydrate'); return true; });
+    decryptItem.mockImplementation(async () => {
+      order.push('decrypt');
+      return { t: 'Mail', c: JSON.stringify({ siteUrl: '', username: 'bob', password: 'pw', notes: '' }) };
+    });
+    await mount();
+    expect(order).toEqual(['hydrate', 'decrypt']);
+    expect(hydrateVaultNote).toHaveBeenCalledWith('n1');
+  });
+
+  it('first decrypt reads the fresh envelope from Dexie, not the stale prop', async () => {
+    const fresh = 'nv3.1.BBBBBBBBBBBBBBBB.' + 'B'.repeat(30);
+    dbNote.get.mockResolvedValue({ content: fresh });
+    await mount();
+    expect(decryptItem).toHaveBeenCalledWith('n1', 'CREDENTIAL', fresh);
+    expect(decryptItem).not.toHaveBeenCalledWith('n1', 'CREDENTIAL', ENV);
+  });
+
+  it('hydration failure still opens the local copy', async () => {
+    hydrateVaultNote.mockRejectedValue(new Error('offline'));
+    await mount();
     expect(decryptItem).toHaveBeenCalledWith('n1', 'CREDENTIAL', ENV);
     expect((screen.getByPlaceholderText('vault.credential.untitled') as HTMLInputElement).value).toBe('Mail');
   });

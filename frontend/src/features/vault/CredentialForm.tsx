@@ -14,6 +14,8 @@ import type { Note } from '../notes/noteService';
 import VaultNotLoaded from './VaultNotLoaded';
 import { withNoteLock } from '../../lib/vaultNoteLock';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
+import { db } from '../../lib/db';
+import { hydrateVaultNote } from '../../lib/vaultReconcile';
 
 interface CredentialFormProps {
   note: Note;
@@ -88,7 +90,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
   titleRef.current = title;
 
   // Decifra solo a lock shared concesso (un reconcile/pull esclusivo in corso non lascia un envelope vecchio da modificare).
-  // Dopo il primo caricamento ridecifra un cambio esterno di note.content, ma mai la propria scrittura e mai sopra modifiche non scritte.
+  // Al primo caricamento rilegge la riga idratata da Dexie; dopo ridecifra i cambi esterni, mai sopra modifiche non scritte.
   useEffect(() => {
     if (!lockGranted || !keys || !note.content || !ENVELOPE_RE.test(note.content)) return; // non envelope: schermata legacy, niente decrypt
     const content = note.content;
@@ -98,29 +100,30 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
     }
     let cancelled = false;
     const seq = editSeqRef.current;
-    decryptItem(note.id, 'CREDENTIAL', content)
-      .then(({ t: envTitle, c }) => {
-        const decrypted = parseCredential(c);
-        if (!decrypted) throw new Error('vault.credential.shape');
-        // modifica arrivata durante la decifratura: vince l'utente
-        if (cancelled || editSeqRef.current !== seq) return;
-        decryptedRef.current = { id: note.id, content };
-        dataRef.current = decrypted;
-        setData(decrypted);
-        setDecryptFailed(false);
-        setTitle(envTitle);
-        titleRef.current = envTitle;
-        setFaviconError(false);
-        // Track the committed URL from decrypted data
-        committedUrlRef.current = decrypted.siteUrl || '';
-        lastFetchedUrl.current = decrypted.siteUrl || '';
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDecryptFailed(true);
-        toast.error(tRef.current('vault.credential.decryptFailed'));
-      });
+    void (async () => {
+      const freshContent = last?.id === note.id ? content : (await db.notes.get(note.id))?.content || content;
+      if (cancelled) return;
+      const { t: envTitle, c } = await decryptItem(note.id, 'CREDENTIAL', freshContent);
+      const decrypted = parseCredential(c);
+      if (!decrypted) throw new Error('vault.credential.shape');
+      // modifica arrivata durante la decifratura: vince l'utente
+      if (cancelled || editSeqRef.current !== seq) return;
+      decryptedRef.current = { id: note.id, content: freshContent };
+      dataRef.current = decrypted;
+      setData(decrypted);
+      setDecryptFailed(false);
+      setTitle(envTitle);
+      titleRef.current = envTitle;
+      setFaviconError(false);
+      // Track the committed URL from decrypted data
+      committedUrlRef.current = decrypted.siteUrl || '';
+      lastFetchedUrl.current = decrypted.siteUrl || '';
+      setLoaded(true);
+    })().catch(() => {
+      if (cancelled) return;
+      setDecryptFailed(true);
+      toast.error(tRef.current('vault.credential.decryptFailed'));
+    });
     return () => { cancelled = true; };
   }, [note.id, note.content, keys, lockGranted]);
 
@@ -384,7 +387,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
   }, []);
 
   // Lock shared sulla nota per tutta la vita del form (come VaultNoteEditor): reconcile/pull esclusivi restano fuori.
-  // Decifratura ed editing partono alla concessione; senza Web Locks si apre comunque.
+  // Prima della concessione idrata l'envelope dal server; decifratura ed editing partono solo dopo, anche senza Web Locks.
   // Dichiarato dopo l'effetto di unmount: il suo cleanup accoda il flush finale, il rilascio lo attende.
   useEffect(() => {
     let cancelled = false;
@@ -392,9 +395,13 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
     const held = new Promise<void>((r) => { release = r; });
     setLockGranted(false);
     setLoaded(false);
+    const grant = async () => {
+      await hydrateVaultNote(note.id).catch(() => false);
+      if (!cancelled) setLockGranted(true);
+    };
     const lockDone = (async () => {
-      const r = await withNoteLock(note.id, () => { if (!cancelled) setLockGranted(true); return held; }, { mode: 'shared' });
-      if (r.status === 'nolocks' && !cancelled) setLockGranted(true);
+      const r = await withNoteLock(note.id, async () => { await grant(); return held; }, { mode: 'shared' });
+      if (r.status === 'nolocks') await grant();
     })().catch((e) => {
       console.error('[vault] note lock failed', e);
       // InvalidStateError (bfcache/prerender) o AbortError (unload): come nolocks, altrimenti il form resta in caricamento
