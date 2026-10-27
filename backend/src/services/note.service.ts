@@ -321,6 +321,7 @@ export const updateNote = async (userId: string, id: string, data: {
     !note.isVault && !movingToVault && !movingOutOfVault && rest.isVault !== true &&
     !note.isEncrypted && rest.isEncrypted !== true && note.noteType === 'NOTE';
   let liveArchiveContent = undefined as string | undefined; // assigned inside the tx closure
+  let guardDropped = undefined as string | undefined;
   let writtenContent = undefined as string | undefined; // content actually written to Note, assigned inside the tx closure
 
   // 1.13.3: for a plain note WITHOUT a live doc, rebase the stored Y state onto the new content (outside the tx:
@@ -368,6 +369,7 @@ export const updateNote = async (userId: string, id: string, data: {
     if (contentField !== undefined) {
       // Vault P1: with a keyring the 150-char guard would silently drop short envelopes / plaintext on exit.
       finalContent = guard ? contentField : guardEmptyContentOverwrite(note.content, contentField);
+      guardDropped = finalContent === undefined ? contentField : undefined;
     }
     // Live path: content never reaches the Note (no content, ydocState, searchText, in-tx snapshot).
     liveArchiveContent = undefined;
@@ -408,7 +410,8 @@ export const updateNote = async (userId: string, id: string, data: {
       updateData.searchText = extractTextFromTipTapJson(contentField);
     }
 
-    if (finalContent !== undefined && finalContent !== note.content) {
+    // [BACKUP] 2026-10-27 — outgoing nv3 envelopes were snapshotted and occupied the writer's throttle window.
+    if (finalContent !== undefined && finalContent !== note.content && parseEnvelope(note.content) === null) {
       try {
         await snapshotPreviousVersion(tx, id, note.content, note.title, { writer: `rest:${userId}` });
       } catch (snapErr) {
@@ -442,7 +445,7 @@ export const updateNote = async (userId: string, id: string, data: {
     }
   }
 
-  // contentDeferred: the content was NOT applied (live doc wins) but is safe in version history.
+  // contentDeferred: the content was NOT applied (live doc or empty-overwrite guard); recoverable text is archived.
   // If the archive fails we rethrow: the route answers 5xx and the sync item stays queued with backoff,
   // instead of a 200 that would make the device drop its only copy of the text.
   let contentDeferred = false;
@@ -455,6 +458,15 @@ export const updateNote = async (userId: string, id: string, data: {
     }
     // The live doc won and the server did NOT apply this content, whatever the archive outcome (also 'skipped':
     // empty/degenerate/non-JSON). The FE realigns Dexie only when its local content is the one it pushed.
+    contentDeferred = true;
+  } else if (guardDropped !== undefined && plain) {
+    try {
+      await archiveRestWriteWhileLive(id, guardDropped, updated.title, userId, sessionKey);
+    } catch (err) {
+      logger.error({ err, noteId: id }, 'updateNote: REST content not archived after the empty-overwrite guard');
+      throw err;
+    }
+    // Same rule as the live path (H4): the server did not apply this content, whatever the archive outcome.
     contentDeferred = true;
   } else if (
     plain && writtenContent !== undefined &&

@@ -36,6 +36,8 @@
 
 ## 3. Decisioni che spettano all'utente
 
+**Esito del 27/10/2026 — decisioni CHIUSE.** L'utente ha approvato tutte le raccomandazioni: D1=A; D2=b; D3=sì per tutte le note vault; D4=a; D5=B; D6=a; D7=a (B.11 accettato senza modifiche); D8=a; D9=44 px sempre, senza reset `md:`; D10=B estesa anche a `DeleteConfirmationDialog` e `InputDialog`, senza toccare `Button.tsx`; D11=`text-neutral-500`; D12=A con tutti gli allineamenti; D13=A. Per D2 l'utente ha successivamente scritto **«confermo il diff»**, approvando esplicitamente il diff TIER1 della sezione 4 prima della sua applicazione con Edit. La stessa decisione è registrata in `claude-mem` (#110735) e nella memoria nativa di Claude Code.
+
 Ogni decisione ha le opzioni e una raccomandazione. Le raccomandazioni tengono conto della critica.
 
 **D1. I.8, testo del toast `sync.contentDeferred`.** Il toast ora vale anche per lo scarto del guard, non solo per la sessione live.

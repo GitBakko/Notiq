@@ -1,9 +1,43 @@
 import { test, expect } from '@playwright/test';
 import { registerAndLogin } from './helpers';
 import {
-  apiFor, blockApi, createCredentialUi, deviceShareOf, dumpDeviceStorage, expectUnlocked, loginInBrowser, lockUi, newDevice, PIN, serverNote, setupVaultUi,
+  apiFor, blockApi, createCredentialUi, createSecureNoteUi, deviceShareOf, dumpDeviceStorage, expectUnlocked, loginInBrowser, lockUi, newDevice, noteIdOf, PIN, serverNote, setupVaultUi,
   syncQueueOf, unblockApi, unlockUi, userIdOf, vaultCacheOf, waitForServerEdit,
 } from './vault-helpers';
+
+async function dexieNoteOf(page: import('@playwright/test').Page, id: string): Promise<{ isVault?: boolean; content?: string } | undefined> {
+  return page.evaluate((noteId) => new Promise((resolve, reject) => {
+    const open = indexedDB.open('NotiqDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const r = db.transaction('notes', 'readonly').objectStore('notes').get(noteId);
+      r.onsuccess = () => { db.close(); resolve(r.result); };
+      r.onerror = () => reject(r.error);
+    };
+  }), id);
+}
+
+async function seedOfflineEdit(page: import('@playwright/test').Page, id: string, content: string): Promise<void> {
+  await page.evaluate(({ noteId, value }) => new Promise<void>((resolve, reject) => {
+    const open = indexedDB.open('NotiqDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction(['notes', 'syncQueue'], 'readwrite');
+      const r = tx.objectStore('notes').get(noteId);
+      r.onsuccess = () => {
+        tx.objectStore('notes').put({ ...r.result, content: value, syncStatus: 'updated' });
+        tx.objectStore('syncQueue').add({
+          type: 'UPDATE', entity: 'NOTE', entityId: noteId, userId: r.result.userId,
+          data: { content: value }, createdAt: Date.now(),
+        });
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }), { noteId: id, value: content });
+}
 
 // Accettazione 7 (interruttore OFF: niente wrappedVkPin/share, avviso offline) e 9 (offline: sblocco con cache, avviso senza, mai il setup).
 // "Offline" = (a) navigator.onLine=false con la SPA gia' caricata (ctx.setOffline) e (b) server irraggiungibile con reload
@@ -177,4 +211,83 @@ test('senza cache locale: avviso "sei offline", mai il setup (ne con il vault es
   await expect(c.page.getByRole('button', { name: 'Create Vault' })).toBeDisabled();
   await c.ctx.setOffline(false);
   await c.ctx.close();
+});
+
+test('I.8/D2: dopo vault → normale B ha il corpo completo e il suo edit offline raggiunge il server', async ({ page, browser }) => {
+  test.setTimeout(300000);
+  const user = await registerAndLogin(page, { name: 'Vault Exit Offline Merge' });
+  const api = await apiFor(page);
+  const body = `MK-I8-BODY ${'x'.repeat(180)}`;
+  const b = await newDevice(browser);
+  try {
+    await setupVaultUi(page, user);
+    const id = await createSecureNoteUi(page, api, { title: 'MK-I8-NOTE', body });
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+    await loginInBrowser(b.page, user);
+    await b.page.goto('/vault');
+    await unlockUi(b.page);
+    await expectUnlocked(b.page);
+    await expect(b.page.getByText('MK-I8-NOTE', { exact: true })).toBeVisible({ timeout: 60000 });
+
+    await page.getByText('MK-I8-NOTE', { exact: true }).click();
+    await page.getByRole('button', { name: 'Remove from Vault', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
+    await expect(page.getByText('Removed from Vault', { exact: true })).toBeVisible({ timeout: 30000 });
+
+    await expect.poll(async () => {
+      const row = await dexieNoteOf(b.page, id);
+      return row?.isVault === false && row.content?.includes('MK-I8-BODY');
+    }, { timeout: 90000, intervals: [1000] }).toBe(true);
+
+    await b.page.goto(`/notes?noteId=${id}`);
+    await expect(b.page.locator('.ProseMirror')).toContainText('MK-I8-BODY', { timeout: 30000 });
+    await b.ctx.setOffline(true);
+    await b.page.locator('.ProseMirror').click();
+    await b.page.locator('.ProseMirror').press('Control+End');
+    await b.page.locator('.ProseMirror').pressSequentially(' MK-B-OFFLINE');
+    await expect.poll(async () => (await syncQueueOf(b.page)).length, { timeout: 30000 }).toBeGreaterThan(0);
+    await b.ctx.setOffline(false);
+
+    await expect.poll(async () => (await serverNote(api, id)).content as string, { timeout: 60000, intervals: [1000] }).toContain('MK-B-OFFLINE');
+    expect((await serverNote(api, id)).content).toContain('MK-I8-BODY');
+    await expect(b.page.locator('.ProseMirror')).toContainText('MK-I8-BODY');
+    await expect(b.page.locator('.ProseMirror')).toContainText('MK-B-OFFLINE');
+  } finally {
+    await b.ctx.setOffline(false).catch(() => {});
+    await b.ctx.close();
+    await api.dispose();
+  }
+});
+
+test('I.8: il guard archivia il testo corto, avvisa e riallinea editor e Dexie', async ({ page }) => {
+  test.setTimeout(180000);
+  await registerAndLogin(page, { name: 'Content Guard Deferred' });
+  const api = await apiFor(page);
+  const original = `MK-GUARD-ORIGINAL ${'x'.repeat(180)}`;
+  await page.getByRole('button', { name: 'New Note', exact: true }).click();
+  await page.getByPlaceholder('Note Title').fill('MK-GUARD-NOTE');
+  await page.locator('.ProseMirror').fill(original);
+  const id = noteIdOf(page);
+  await expect.poll(async () => (await serverNote(api, id)).content as string, { timeout: 45000 }).toContain('MK-GUARD-ORIGINAL');
+  const before = (await serverNote(api, id)).content as string;
+
+  const short = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'MK-B-OFFLINE' }] }] });
+  await page.context().setOffline(true);
+  await seedOfflineEdit(page, id, short);
+  await expect.poll(async () => (await syncQueueOf(page)).length, { timeout: 30000 }).toBeGreaterThan(0);
+  await page.context().setOffline(false);
+
+  await expect(page.getByText("Your changes could not replace this note's current content. Any text you wrote is in its version history.", { exact: true })).toBeVisible({ timeout: 60000 });
+  await expect.poll(async () => {
+    const r = await api.get(`/api/notes/${id}/versions`);
+    const j = await r.json();
+    const versions = Array.isArray(j) ? j : (j.versions ?? []);
+    return versions.some((v: { content?: string }) => v.content?.includes('MK-B-OFFLINE'));
+  }, { timeout: 45000, intervals: [1000] }).toBe(true);
+  expect((await serverNote(api, id)).content).toBe(before);
+  await expect(page.locator('.ProseMirror')).toContainText('MK-GUARD-ORIGINAL', { timeout: 15000 });
+  await expect(page.locator('.ProseMirror')).not.toContainText('MK-B-OFFLINE');
+  await expect.poll(async () => (await dexieNoteOf(page, id))?.content, { timeout: 15000 }).toBe(before);
+  await api.dispose();
 });

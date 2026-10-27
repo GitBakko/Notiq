@@ -1363,7 +1363,7 @@
     "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection",
     "sharedSaveForbidden": "You no longer have access to this note — your latest changes were not saved",
     "noteMoveReverted": "The note was not moved: the notebook no longer exists. It is back in its previous notebook.",
-    "contentDeferred": "This note is open in a live shared session: your changes were saved to its version history instead of replacing it."
+    "contentDeferred": "Your changes could not replace this note's current content. Any text you wrote is in its version history."
   },
   "collaboration": {
     "you": "You",

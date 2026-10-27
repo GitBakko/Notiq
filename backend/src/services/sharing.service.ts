@@ -855,7 +855,7 @@ export const updateSharedNoteContent = async (
   if (note.isVault) throw new ForbiddenError('errors.sharing.forbidden');
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
-  let liveArchiveContent: string | undefined;
+  let deferredArchiveContent: string | undefined;
 
   if (data.content && data.content !== note.content) {
     const accepted = guardEmptyContentOverwrite(note.content, data.content);
@@ -863,7 +863,7 @@ export const updateSharedNoteContent = async (
     if (accepted !== undefined && live) {
       // 1.13.3: a live collab doc wins (same rule as updateNote). Writing content/ydocState under it would be
       // reverted by its next store() or duplicated on reconnect. Keep the write recoverable in history instead.
-      liveArchiveContent = accepted;
+      deferredArchiveContent = accepted;
     } else if (accepted !== undefined) {
       // Snapshot the OLD content before overwriting — best-effort, throttled (not forced)
       // so frequent collaborator saves are deduped alongside the Hocuspocus store() snapshot.
@@ -878,6 +878,9 @@ export const updateSharedNoteContent = async (
       // reconnect). Rebased onto the accepted content; null when in doubt or for encrypted notes.
       // CREDENTIAL notes are not TipTap JSON either: never rebased.
       updateData.ydocState = (note.isEncrypted || note.noteType === 'CREDENTIAL') ? null : rebaseYdocState(note.ydocState, accepted);
+    } else {
+      // [BACKUP] 2026-10-27 — guard-dropped content returned 200 without a history copy.
+      deferredArchiveContent = data.content;
     }
   }
 
@@ -889,12 +892,12 @@ export const updateSharedNoteContent = async (
     const r = await prisma.note.updateMany({ where: { id: noteId, isVault: false }, data: updateData });
     if (r.count === 0) throw new ForbiddenError('errors.sharing.forbidden');
   }
-  if (liveArchiveContent !== undefined) {
+  if (deferredArchiveContent !== undefined) {
     try {
-      await archiveRestWriteWhileLive(noteId, liveArchiveContent, note.title, userId, sessionKey);
+      await archiveRestWriteWhileLive(noteId, deferredArchiveContent, note.title, userId, sessionKey);
     } catch (err) {
       // Rethrow (as updateNote): a 200 would make the device drop its only copy of the text.
-      logger.error({ err, noteId }, 'updateSharedNoteContent: REST content not archived while collab doc is live');
+      logger.error({ err, noteId }, 'updateSharedNoteContent: REST content not archived');
       throw err;
     }
   }

@@ -223,6 +223,13 @@ export const syncPull = async () => {
       // T15: vault flag flips, one by one under the note lock. Held (open editor) -> skipped, the next pull retries.
       // Server content wins (n.content ?? ''), with no vaultBaseHash / vaultSentHashes: the row changes nature.
       for (const n of vaultFlips) {
+        // I.8: GET /notes omits content; a note leaving the vault would land as '' (empty offline). Fetch it once.
+        if (!n.isVault && !n.content) {
+          try {
+            const { data } = await api.get<{ content?: string }>(`/notes/${n.id}`);
+            if (typeof data?.content === 'string') n.content = data.content;
+          } catch { /* offline/404: keep '' as before; the editor loads it when online */ }
+        }
         const apply = () => db.transaction('rw', db.notes, async () => {
           const row = await db.notes.get(n.id);
           if (row && row.syncStatus === 'synced' && !!row.isVault !== !!n.isVault) await db.notes.put(n);

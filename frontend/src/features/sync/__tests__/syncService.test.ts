@@ -306,6 +306,47 @@ describe('syncPull', () => {
       }));
     });
 
+    it('fetches full content once when a synced note leaves the vault', async () => {
+      const serverNote = {
+        id: 'note-1', title: 'Plain', notebookId: 'nb-1', userId: 'user-1', isVault: false,
+        isTrashed: false, createdAt: '2026-01-01', updatedAt: '2026-01-01', tags: [], attachments: [],
+      };
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/notes?includeTrashed=true&all=1') return Promise.resolve({ data: [serverNote] });
+        if (url === '/notes/note-1') return Promise.resolve({ data: { content: '<p>Full server content</p>' } });
+        return Promise.resolve({ data: [] });
+      });
+      mockDb.notes.bulkGet.mockResolvedValue([{ id: 'note-1', isVault: true, content: 'nv3.old' }]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', isVault: true, syncStatus: 'synced' });
+
+      await syncPull();
+
+      expect(mockApi.get).toHaveBeenCalledWith('/notes/note-1');
+      expect(mockDb.notes.put).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'note-1', isVault: false, content: '<p>Full server content</p>',
+      }));
+    });
+
+    it('keeps the previous empty-content fallback when fetching a note leaving the vault fails', async () => {
+      const serverNote = {
+        id: 'note-1', title: 'Plain', notebookId: 'nb-1', userId: 'user-1', isVault: false,
+        isTrashed: false, createdAt: '2026-01-01', updatedAt: '2026-01-01', tags: [], attachments: [],
+      };
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/notes?includeTrashed=true&all=1') return Promise.resolve({ data: [serverNote] });
+        if (url === '/notes/note-1') return Promise.reject(new Error('offline'));
+        return Promise.resolve({ data: [] });
+      });
+      mockDb.notes.bulkGet.mockResolvedValue([{ id: 'note-1', isVault: true, content: 'nv3.old' }]);
+      mockDb.notes.get.mockResolvedValue({ id: 'note-1', isVault: true, syncStatus: 'synced' });
+
+      await syncPull();
+
+      expect(mockDb.notes.put).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'note-1', isVault: false, content: '',
+      }));
+    });
+
     it('prevents zombie resurrection for deleted notes', async () => {
       const serverNotes = [
         {

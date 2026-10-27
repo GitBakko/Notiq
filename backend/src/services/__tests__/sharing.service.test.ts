@@ -913,11 +913,17 @@ describe('updateSharedNoteContent', () => {
     prismaMock.noteVersion.deleteMany.mockResolvedValue({ count: 0 });
   });
 
-  it('DROPS an empty-over-substantial content write and does NOT null ydocState', async () => {
+  it('DROPS an empty-over-substantial content write, archives it and does NOT null ydocState', async () => {
     await updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC });
     expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
-    // No snapshot taken — content was dropped before reaching the accepted branch
     expect(prismaMock.noteVersion.create).not.toHaveBeenCalled();
+    expect(archiveRestWriteWhileLive).toHaveBeenCalledWith('note-1', EMPTY_DOC, 'Shared', 'user-2', undefined);
+  });
+
+  it('rethrows when archiving guard-dropped collaborator content fails', async () => {
+    (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
+    await expect(updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC })).rejects.toThrow('boom');
+    expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
   });
 
   it('writes substantial content and nulls ydocState so fetch falls back to content', async () => {
@@ -1012,9 +1018,9 @@ describe('updateSharedNoteContent', () => {
       await expect(updateSharedNoteContent('user-2', 'note-1', { content: newGood })).rejects.toThrow('boom');
     });
 
-    it('empty-over-substantial content is dropped, not archived', async () => {
+    it('empty-over-substantial content is dropped and archived', async () => {
       await updateSharedNoteContent('user-2', 'note-1', { content: EMPTY_DOC });
-      expect(archiveRestWriteWhileLive).not.toHaveBeenCalled();
+      expect(archiveRestWriteWhileLive).toHaveBeenCalledWith('note-1', EMPTY_DOC, 'Shared', 'user-2', undefined);
     });
   });
 

@@ -987,7 +987,7 @@
     "sharedSaveFailed": "Le modifiche a questa nota condivisa non sono state salvate sul server — verifica la connessione",
     "sharedSaveForbidden": "Non hai più accesso a questa nota — le ultime modifiche non sono state salvate",
     "noteMoveReverted": "La nota non è stata spostata: il taccuino non esiste più. È tornata nel taccuino precedente.",
-    "contentDeferred": "La nota è aperta in una sessione condivisa: le tue modifiche sono state salvate nella cronologia delle versioni invece di sostituirla."
+    "contentDeferred": "Le tue modifiche non hanno sostituito il contenuto attuale della nota. Il testo scritto è nella cronologia delle versioni."
   },
   "collaboration": {
     "you": "Tu",

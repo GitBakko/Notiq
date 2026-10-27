@@ -622,14 +622,55 @@ describe('updateNote', () => {
       expect((logger as any).error).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.stringContaining('REST content not archived'));
     });
 
-    it('empty-overwrite guard dropping the content -> no ydocState key, not archived', async () => {
+    it('empty-overwrite guard: no content/ydocState written, archive skipped still means contentDeferred', async () => {
+      const empty = '{"type":"doc","content":[]}';
       prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
       prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
-      await updateNote('user-1', 'n1', { content: '{"type":"doc","content":[]}' });
+      (archiveRestWriteWhileLive as any).mockResolvedValueOnce('skipped');
+      const res = await updateNote('user-1', 'n1', { content: empty });
       const data = prismaMock.note.update.mock.calls[0][0].data;
       expect(data).not.toHaveProperty('content');
       expect(data).not.toHaveProperty('ydocState');
+      expect(archived()).toEqual([['n1', empty, 'Existing', 'user-1', undefined]]);
+      expect(res).toMatchObject({ contentDeferred: true });
+    });
+
+    it('non-live guard archives short non-degenerate content and returns contentDeferred', async () => {
+      docs.clear();
+      const short = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"offline"}]}]}';
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      const res = await updateNote('user-1', 'n1', { content: short });
+      expect(prismaMock.note.update.mock.calls[0][0].data).not.toHaveProperty('content');
+      expect(archived()).toEqual([['n1', short, 'Existing', 'user-1', undefined]]);
+      expect(res).toMatchObject({ contentDeferred: true });
+    });
+
+    it('guard archive throwing rejects and is logged, so the sync item stays queued', async () => {
+      docs.clear();
+      const short = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"offline"}]}]}';
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      (archiveRestWriteWhileLive as any).mockRejectedValueOnce(new Error('boom'));
+      await expect(updateNote('user-1', 'n1', { content: short })).rejects.toThrow('boom');
+      expect((logger as any).error).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'n1' }), expect.stringContaining('empty-overwrite guard'));
+    });
+
+    it('encrypted note with guard-dropped content is not archived and has no contentDeferred flag', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, isEncrypted: true, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, isEncrypted: true, noteType: 'NOTE' });
+      const res = await updateNote('user-1', 'n1', { content: '{"type":"doc","content":[]}' });
       expect(archived()).toHaveLength(0);
+      expect(res).not.toHaveProperty('contentDeferred');
+    });
+
+    it('does not snapshot an outgoing nv3 envelope', async () => {
+      docs.clear();
+      const encrypted = `nv3.0.${'A'.repeat(16)}.${'B'.repeat(22)}`;
+      prismaMock.note.findFirst.mockResolvedValue({ ...existingNote, content: encrypted, noteType: 'NOTE' });
+      prismaMock.note.update.mockResolvedValue({ ...existingNote, noteType: 'NOTE' });
+      await updateNote('user-1', 'n1', { content: newContent });
+      expect(snapshotPreviousVersion).not.toHaveBeenCalled();
     });
 
     describe('contentDeferred flag (live doc)', () => {
