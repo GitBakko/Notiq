@@ -11,6 +11,12 @@ export const timeAgo = (date: Date | string, locale?: Locale): string => {
   return formatDistanceToNow(clamped, { addSuffix: true, locale });
 };
 
+export const toDatetimeLocal = (iso: string): string => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
 export const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B';
   const k = 1024;

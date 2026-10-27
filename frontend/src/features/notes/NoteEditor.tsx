@@ -32,6 +32,7 @@ import { queryKeys } from '../../lib/queryKeys';
 import { useAiStatus } from '../../hooks/useAiStatus';
 import ScrollToEditButton from '../../components/editor/ScrollToEditButton';
 import KanbanBoardLink from '../kanban/components/KanbanBoardLink';
+import { toDatetimeLocal } from '../../utils/format';
 
 const ARCHIVE_BUSY_RETRY_MS = 2 * 60 * 1000;
 const isArchiveBusyError = (err: unknown) => {
@@ -769,7 +770,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                 ref={reminderInputRef}
                                 type="datetime-local"
                                 disabled={frozen}
-                                value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
+                                value={note.reminderDate ? toDatetimeLocal(note.reminderDate) : ''}
                                 onChange={(e) => {
                                     if (e.target.value) {
                                         saveNote({ reminderDate: new Date(e.target.value).toISOString(), isReminderDone: false });
@@ -882,7 +883,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             ref={reminderInputRef}
                             type="datetime-local"
                             disabled={frozen}
-                            value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
+                            value={note.reminderDate ? toDatetimeLocal(note.reminderDate) : ''}
                             onChange={(e) => {
                                 if (e.target.value) {
                                     saveNote({ reminderDate: new Date(e.target.value).toISOString(), isReminderDone: false });

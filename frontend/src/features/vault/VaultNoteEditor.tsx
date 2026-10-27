@@ -19,6 +19,7 @@ import { useAuthStore } from '../../store/authStore';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { stripRemoteImagesFromContent } from '../../components/editor/extensions/remoteImages';
 import VaultNotLoaded from './VaultNotLoaded';
+import { toDatetimeLocal } from '../../utils/format';
 
 // Vault v3 (T18, plan 5.6/5.9): editor delle note vault. Niente noteId/provider/collaboration: per costruzione niente
 // condivisione, AI, versioni, allegati. Tiene il lock `shared` della nota finche' e' montato (il reconcile e la pull, che lo
@@ -325,7 +326,7 @@ export default function VaultNoteEditor({ note, onBack, onReleased }: Props) {
               <input
                 ref={reminderRef}
                 type="datetime-local"
-                value={note.reminderDate ? new Date(note.reminderDate).toISOString().slice(0, 16) : ''}
+                value={note.reminderDate ? toDatetimeLocal(note.reminderDate) : ''}
                 onChange={(e) => { if (e.target.value) void patch({ reminderDate: new Date(e.target.value).toISOString(), isReminderDone: false }); }}
                 className="absolute opacity-0 w-0 h-0 overflow-hidden"
                 tabIndex={-1}

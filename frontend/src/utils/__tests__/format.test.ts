@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatBytes } from '../format';
+import { formatBytes, toDatetimeLocal } from '../format';
 
 describe('formatBytes', () => {
   it('returns "0 B" for 0 bytes', () => {
@@ -59,5 +59,20 @@ describe('formatBytes', () => {
   it('handles small positive values', () => {
     expect(formatBytes(1)).toBe('1 B');
     expect(formatBytes(500)).toBe('500 B');
+  });
+});
+
+describe('toDatetimeLocal', () => {
+  it.each([
+    [2026, 0, 15, '2026-01-15T12:00'],
+    [2026, 2, 29, '2026-03-29T12:00'],
+    [2026, 6, 1, '2026-07-01T12:00'],
+    [2026, 9, 25, '2026-10-25T12:00'],
+  ])('preserves local noon for %i-%i-%i', (year, month, day, expected) => {
+    expect(toDatetimeLocal(new Date(year, month, day, 12, 0).toISOString())).toBe(expected);
+  });
+
+  it('returns an empty value for an invalid date', () => {
+    expect(toDatetimeLocal('garbage')).toBe('');
   });
 });
