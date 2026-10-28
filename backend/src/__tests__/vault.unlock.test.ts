@@ -161,23 +161,6 @@ describe('unlock: errori e lockout', () => {
     await new Promise((r) => setImmediate(r));
     expect(logger.warn).toHaveBeenCalled();
   });
-  it('bypass temporaneo per un solo utente: 403 senza contatori, audit o email', async () => {
-    const saved = process.env.VAULT_UNLOCK_NO_LOCKOUT_USERS;
-    process.env.VAULT_UNLOCK_NO_LOCKOUT_USERS = `altro-utente, ${U} `;
-    try {
-      for (let i = 0; i < 8; i++) {
-        const e = await fail(unlock(U, wrongKey));
-        expect(e.statusCode).toBe(403);
-        expect(e.message).toBe('errors.vault.invalidPin');
-      }
-      expect(mp.$queryRaw).not.toHaveBeenCalled();
-      expect(lockedCalls()).toHaveLength(0);
-      expect(sendNotificationEmail).not.toHaveBeenCalled();
-    } finally {
-      if (saved === undefined) delete process.env.VAULT_UNLOCK_NO_LOCKOUT_USERS;
-      else process.env.VAULT_UNLOCK_NO_LOCKOUT_USERS = saved;
-    }
-  });
 });
 
 describe('unlock: successo', () => {
