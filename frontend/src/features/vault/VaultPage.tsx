@@ -47,7 +47,7 @@ type Gate =
   | { k: 'none'; legacyCount: number }
   | { k: 'ready' }
   | { k: 'resetPending' }
-  | { k: 'setupDisabled' };
+  | { k: 'setupDisabled'; legacyCount: number };
 
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const MAX_ENVELOPE_LEN = 2 * 1024 * 1024; // oltre non passa il limite del server
@@ -129,7 +129,7 @@ export default function VaultPage() {
       // setupAllowed (kill switch D2) arriva dal server; assente (backend vecchio) = consentito
       const kr = await getKeyring<KeyringDto & { setupAllowed?: boolean }>();
       if (kr.status === 'READY') syncKeyringCache(userId, kr); // J.6: la cache offline segue il keyring del server (mai indietro)
-      next = kr.status === 'NONE' ? (kr.setupAllowed === false ? { k: 'setupDisabled' } : { k: 'none', legacyCount: kr.legacyCount ?? 0 })
+      next = kr.status === 'NONE' ? (kr.setupAllowed === false ? { k: 'setupDisabled', legacyCount: kr.legacyCount ?? 0 } : { k: 'none', legacyCount: kr.legacyCount ?? 0 })
         : kr.status === 'READY' ? { k: 'ready' }
         : { k: 'resetPending' };
     } catch (err) {
@@ -460,7 +460,7 @@ export default function VaultPage() {
     if (gate.k === 'none' && gate.legacyCount > 0) {
       return rootKey
         ? <VaultMigrate userId={userId} rootKey={rootKey} renderKit={renderKit} onDone={finishWizard} />
-        : infoScreen(t('errors.vault.setupDisabled'));
+        : infoScreen(t('vault.setupDisabledLegacy'));
     }
     return <VaultSetup onAlreadySetup={handleAlreadySetup} onDone={finishWizard} />;
   }
@@ -469,7 +469,7 @@ export default function VaultPage() {
     switch (gate.k) {
       case 'unknown': return <VaultOfflineNotice onRetry={retryKeyring} retrying={retrying} />;
       case 'unavailable': return infoScreen(t('errors.vault.unavailable'), true);
-      case 'setupDisabled': return infoScreen(t('errors.vault.setupDisabled'), true);
+      case 'setupDisabled': return infoScreen(t(gate.legacyCount > 0 ? 'vault.setupDisabledLegacy' : 'errors.vault.setupDisabled'), true);
       case 'resetPending': return infoScreen(t('vault.resetPending'));
       case 'ready': return <VaultUnlock notice={alreadySetup ? 'alreadySetup' : undefined} onUnlocked={() => setAlreadySetup(false)} />;
       default: return infoScreen(t('common.loading'));

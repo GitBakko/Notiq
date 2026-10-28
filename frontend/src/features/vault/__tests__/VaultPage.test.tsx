@@ -237,11 +237,11 @@ describe('VaultPage: macchina a stati da bloccato', () => {
     expect(h.migrateProps[0].resume).toBeFalsy();
   });
 
-  it('NONE con legacy ma senza chiave root attiva -> testo "non accessibile", niente wizard', async () => {
+  it('NONE con legacy ma senza chiave root attiva -> testo legacy dedicato, niente wizard', async () => {
     h.rootKey.v = null;
     h.getKeyring.mockResolvedValue({ status: 'NONE', legacyCount: 2 });
     mount();
-    await screen.findByText('errors.vault.setupDisabled');
+    await screen.findByText('vault.setupDisabledLegacy');
     expect(screen.queryByTestId('migrate')).toBeNull();
   });
 
@@ -260,10 +260,10 @@ describe('VaultPage: macchina a stati da bloccato', () => {
     expect(screen.queryByText('vault.offline.title')).toBeNull();
   });
 
-  it('NONE + setupAllowed false con legacy -> stesso testo, niente wizard di migrazione', async () => {
+  it('NONE + setupAllowed false con legacy -> testo legacy dedicato, niente wizard di migrazione', async () => {
     h.getKeyring.mockResolvedValue({ status: 'NONE', legacyCount: 2, setupAllowed: false });
     mount();
-    await screen.findByText('errors.vault.setupDisabled');
+    await screen.findByText('vault.setupDisabledLegacy');
     expect(screen.queryByTestId('setup')).toBeNull();
     expect(screen.queryByTestId('migrate')).toBeNull();
   });

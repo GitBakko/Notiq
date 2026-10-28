@@ -524,6 +524,7 @@
     "exitMessage": "La nota verrà salvata non cifrata fra le note normali. Continuare?",
     "reminderGeneric": "Promemoria del vault",
     "resetPending": "Il vault non è disponibile al momento.",
+    "setupDisabledLegacy": "Il nuovo vault sarà disponibile a breve. Fino ad allora il tuo vault non è accessibile da questa versione.",
     "kitUnconfirmed": "Il Kit di recupero non è stato confermato: rigeneralo.",
     "kitUnconfirmedAction": "Rigenera",
     "pendingPinApplied": "Il nuovo PIN è attivo.",
@@ -982,8 +983,10 @@
   "sync": {
     "pending": "{{count}} modifiche in attesa di sincronizzazione",
     "failed": "{{count}} modifiche non sincronizzate",
+    "vaultFailed": "{{count}} modifiche del vault in attesa",
     "retry": "Riprova",
     "failedToast": "Alcune modifiche non sono state sincronizzate. Usa Riprova nella barra di sincronizzazione.",
+    "vaultFailedToast": "Alcune modifiche del vault sono in attesa di riconciliazione. Riprova non le riguarda: si risolvono allo sblocco del vault, alla chiusura della nota o con «Controlla ora» nelle impostazioni del vault.",
     "pendingToast": "La sincronizzazione sta richiedendo più tempo del solito",
     "sharedSaveFailed": "Le modifiche a questa nota condivisa non sono state salvate sul server — verifica la connessione",
     "sharedSaveForbidden": "Non hai più accesso a questa nota — le ultime modifiche non sono state salvate",

@@ -425,6 +425,7 @@
     "exitMessage": "The note will be saved unencrypted in your normal notes. Continue?",
     "reminderGeneric": "Vault reminder",
     "resetPending": "The vault is not available right now.",
+    "setupDisabledLegacy": "The new vault will be available soon. Until then your vault can't be opened from this version.",
     "kitUnconfirmed": "The Recovery Kit was not confirmed: generate it again.",
     "kitUnconfirmedAction": "Regenerate",
     "pendingPinApplied": "Your new PIN is active.",
@@ -1358,8 +1359,10 @@
   "sync": {
     "pending": "{{count}} change(s) waiting to sync",
     "failed": "{{count}} change(s) failed to sync",
+    "vaultFailed": "{{count}} vault change(s) waiting",
     "retry": "Retry",
     "failedToast": "Some changes could not be synced. Use Retry in the sync bar.",
+    "vaultFailedToast": "Some vault changes are waiting to be reconciled. Retry does not apply to them: they are resolved when you unlock the vault, close the note, or use \"Check now\" in the vault settings.",
     "pendingToast": "Changes are taking longer than usual to sync",
     "sharedSaveFailed": "Changes to this shared note could not be saved to the server — check your connection",
     "sharedSaveForbidden": "You no longer have access to this note — your latest changes were not saved",

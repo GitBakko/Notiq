@@ -25,6 +25,7 @@ export default function SyncStatusIndicator() {
   );
 
   const failedCount = items?.filter((i) => i.status === 'failed').length ?? 0;
+  const vaultOnly = failedCount > 0 && (items ?? []).filter((i) => i.status === 'failed').every((i) => i.lastError?.startsWith('vault:'));
   const pendingItems = items?.filter((i) => i.status !== 'failed') ?? [];
   const oldestPendingAt = pendingItems.length > 0
     ? pendingItems.reduce((min, i) => Math.min(min, i.createdAt), Infinity)
@@ -43,10 +44,10 @@ export default function SyncStatusIndicator() {
   const prevFailedRef = useRef(0);
   useEffect(() => {
     if (failedCount > 0 && prevFailedRef.current === 0) {
-      toast.error(t('sync.failedToast'));
+      toast.error(t(vaultOnly ? 'sync.vaultFailedToast' : 'sync.failedToast'));
     }
     prevFailedRef.current = failedCount;
-  }, [failedCount, t]);
+  }, [failedCount, vaultOnly, t]);
 
   // One toast when items stay pending >60s; re-arm when the queue drains
   const pendingToastShownRef = useRef(false);
@@ -72,17 +73,19 @@ export default function SyncStatusIndicator() {
 
   if (failedCount > 0) {
     return (
-      <div className="flex items-center justify-center gap-2 px-3 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-medium border-b border-red-200 dark:border-red-900/40">
+      <div className={`${vaultOnly ? 'py-1.5 ' : ''}flex items-center justify-center gap-2 px-3 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-medium border-b border-red-200 dark:border-red-900/40`}>
         <CloudOff size={12} aria-hidden="true" />
-        <span>{t('sync.failed', { count: failedCount })}</span>
-        <button
-          onClick={handleRetry}
-          disabled={isRetrying}
-          className="flex items-center gap-1 min-h-[44px] min-w-[44px] px-3 font-semibold hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={isRetrying ? 'animate-spin' : ''} aria-hidden="true" />
-          {t('sync.retry')}
-        </button>
+        <span>{t(vaultOnly ? 'sync.vaultFailed' : 'sync.failed', { count: failedCount })}</span>
+        {!vaultOnly && (
+          <button
+            onClick={handleRetry}
+            disabled={isRetrying}
+            className="flex items-center gap-1 min-h-[44px] min-w-[44px] px-3 font-semibold hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={isRetrying ? 'animate-spin' : ''} aria-hidden="true" />
+            {t('sync.retry')}
+          </button>
+        )}
       </div>
     );
   }

@@ -83,6 +83,37 @@ describe('SyncStatusIndicator', () => {
     expect(screen.queryByText('sync.pending:1')).toBeNull();
   });
 
+  it('vault-only failures: dedicated toast/banner and no Retry', () => {
+    mockUseLiveQuery.mockReturnValue([
+      { id: 1, status: 'failed', lastError: 'vault:conflict', createdAt: Date.now(), userId: 'user-1' },
+    ]);
+    render(<SyncStatusIndicator />);
+    expect(screen.getByText('sync.vaultFailed:1')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(mockToast.error).toHaveBeenCalledWith('sync.vaultFailedToast');
+  });
+
+  it('mixed failures keep the generic toast and working Retry', async () => {
+    mockUseLiveQuery.mockReturnValue([
+      { id: 1, status: 'failed', lastError: 'vault:conflict', createdAt: Date.now(), userId: 'user-1' },
+      { id: 2, status: 'failed', lastError: 'validation', createdAt: Date.now(), userId: 'user-1' },
+    ]);
+    render(<SyncStatusIndicator />);
+    expect(screen.getByText('sync.failed:2')).toBeTruthy();
+    expect(mockToast.error).toHaveBeenCalledWith('sync.failedToast');
+    await act(async () => { fireEvent.click(screen.getByRole('button')); });
+    expect(mockRetry).toHaveBeenCalledOnce();
+  });
+
+  it('vault:notEnvelope counts as a vault failure', () => {
+    mockUseLiveQuery.mockReturnValue([
+      { id: 1, status: 'failed', lastError: 'vault:notEnvelope', createdAt: Date.now(), userId: 'user-1' },
+    ]);
+    render(<SyncStatusIndicator />);
+    expect(screen.getByText('sync.vaultFailed:1')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('fires the error toast only on the FIRST transition to failed', () => {
     mockUseLiveQuery.mockReturnValue([
       { id: 1, status: 'failed', createdAt: Date.now(), userId: 'user-1' },

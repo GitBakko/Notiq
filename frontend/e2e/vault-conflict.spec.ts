@@ -43,6 +43,8 @@ test('edit concorrente reale (A offline, B online): 1 copia in conflitto e nessu
   await page.context().setOffline(false);
   // Editor di A ancora aperto (lock condiviso sulla nota): il push fallisce con vault:conflict, il server di B NON viene sovrascritto
   await expect.poll(async () => (await syncQueueOf(page)).join(' '), { timeout: 60000 }).toContain('vault:conflict');
+  await expect(page.getByText('1 vault change(s) waiting', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
   expect((await vaultItems(api)).items).toHaveLength(1);
   expect((await (await api.get(`/api/notes/${id}`)).json()).content).toBe(afterB);
   // A scrive ancora (editor aperto) a conflitto in corso: il server resta sul valore di B finche' non compare la copia
