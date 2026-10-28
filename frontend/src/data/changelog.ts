@@ -11,6 +11,17 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.14.0',
+    date: '2026-10-28',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.vaultE2EE' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultMobileExperience' },
+      { type: 'fix', titleKey: 'whatsNew.entries.vaultOfflineReliability' },
+      { type: 'fix', titleKey: 'whatsNew.entries.reminderLocalTime' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultMigrationGuidance' },
+    ],
+  },
+  {
     version: '1.13.3',
     date: '2026-10-02',
     entries: [

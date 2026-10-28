@@ -1381,6 +1381,11 @@
     "viewFullHistory": "View full history",
     "gotIt": "Got it",
     "entries": {
+      "vaultE2EE": "New end-to-end encrypted vault with PIN protection, offline unlock, recovery kit and migration of existing items",
+      "vaultMobileExperience": "Vault setup, credentials, password generator and note editor now adapt to mobile screens, with improved accessibility and contrast",
+      "vaultOfflineReliability": "Offline edits, multi-device changes and moves into or out of the vault now reconcile without losing text",
+      "reminderLocalTime": "The reminder picker now preserves the local time you selected",
+      "vaultMigrationGuidance": "Clearer guidance for vault migration, lockouts, attachments and reconciliation",
       "liveNoteKeepsOfflineSave": "A note open in a live shared session is no longer overwritten by an offline save from another device: the offline text goes into the version history and you get a notice",
       "noDuplicatedParagraphs": "No more duplicated paragraphs when a device that was asleep reconnects to a shared note after a restore or a change made elsewhere",
       "editorWaitsForSync": "The editor no longer saves before it has synced with the shared session, preventing empty or outdated overwrites",

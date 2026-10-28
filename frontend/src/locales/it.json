@@ -1005,6 +1005,11 @@
     "viewFullHistory": "Vedi lo storico completo",
     "gotIt": "Ho capito",
     "entries": {
+      "vaultE2EE": "Nuovo vault cifrato end-to-end con PIN, sblocco offline, Kit di recupero e migrazione degli elementi esistenti",
+      "vaultMobileExperience": "Setup del vault, credenziali, generatore di password ed editor delle note ora si adattano agli schermi mobili, con accessibilità e contrasto migliorati",
+      "vaultOfflineReliability": "Modifiche offline, cambiamenti da più dispositivi e spostamenti dentro o fuori dal vault ora si riconciliano senza perdere testo",
+      "reminderLocalTime": "Il selettore del promemoria ora mantiene l'ora locale scelta",
+      "vaultMigrationGuidance": "Indicazioni più chiare per migrazione, blocco dei tentativi, allegati e riconciliazione del vault",
       "liveNoteKeepsOfflineSave": "Una nota aperta in una sessione condivisa non viene più sovrascritta da un salvataggio offline fatto da un altro dispositivo: il testo offline finisce nella cronologia delle versioni e ricevi un avviso.",
       "noDuplicatedParagraphs": "Niente più paragrafi duplicati quando un dispositivo rimasto inattivo si riconnette a una nota condivisa dopo un ripristino o una modifica fatta altrove.",
       "editorWaitsForSync": "L'editor non salva più prima di essersi sincronizzato con la sessione condivisa, evitando sovrascritture vuote o obsolete.",
