@@ -27,7 +27,7 @@ import VaultMigrate from '../VaultMigrate';
 import { useVaultStore, type VaultKeys } from '../../../store/vaultStore';
 
 const U = 'u1';
-const result = (o = {}) => ({ migrated: 3, locked: [], tooLarge: [], conflicts: [], unverified: [], failed: [], notFound: 0, ...o });
+const result = (o = {}) => ({ migrated: 3, locked: [], tooLarge: [], conflicts: [], unverified: [], failed: [], notFound: 0, withAttachments: 0, ...o });
 let kit: Uint8Array;
 const renderKit = vi.fn((k: Uint8Array, onConfirmed: () => void) => <button onClick={onConfirmed}>kit-done{k.length}</button>);
 const onDone = vi.fn();
@@ -316,6 +316,13 @@ describe('VaultMigrate', () => {
     closeWith({ copies: 1 });
     await doneResume();
     expect(screen.getByText('vault.migrate.copiesCreated')).toBeTruthy();
+  });
+
+  it('allegati nel riepilogo: mostra l’avviso solo se withAttachments > 0', async () => {
+    m.migrate.mockResolvedValue(result({ withAttachments: 2 }));
+    closeWith({});
+    await doneResume();
+    expect(screen.getByText('vault.migrate.attachmentsNotice')).toBeTruthy();
   });
 
   it('resume senza chiave root: funziona (il resume non fa il setup)', async () => {

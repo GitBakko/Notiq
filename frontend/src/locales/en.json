@@ -535,6 +535,7 @@
       "lockedSummary": "{{n}} credentials are locked with a previous PIN and were left unchanged. Add another PIN and try again.",
       "localResolved": "Already up to date from the server: {{n}}.",
       "copiesCreated": "Local versions saved as copies: {{n}}.",
+      "attachmentsNotice": "{{n}} notes have attachments: the attachments are not encrypted and are not shown in the vault.",
       "localLocked": "Items with local changes still locked by a previous PIN: {{n}}. Add the PIN and try again.",
       "notVerified": "{{n}} items were not confirmed (changed on another device or rejected). Try again.",
       "errors": {

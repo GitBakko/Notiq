@@ -377,6 +377,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
             </p>
             {(closeRes?.copies ?? 0) > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.copiesCreated', { n: closeRes?.copies })}</p>}
             {result.tooLarge.length > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrateTooLarge', { n: result.tooLarge.length })}</p>}
+            {result.withAttachments > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.attachmentsNotice', { n: result.withAttachments })}</p>}
             {(result.conflicts.length > 0 || result.unverified.length > 0 || result.failed.length > 0) && (
               <p className="text-sm text-amber-700 dark:text-amber-400">{t('vault.migrate.notVerified', { n: result.conflicts.length + result.unverified.length + result.failed.length })}</p>
             )}

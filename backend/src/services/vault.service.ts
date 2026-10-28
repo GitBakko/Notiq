@@ -443,19 +443,20 @@ export async function unlock(userId: string, authKey: Buffer): Promise<{ serverS
 
 const itemSelect = {
   id: true, noteType: true, title: true, content: true, updatedAt: true, isTrashed: true,
-  _count: { select: { versions: { where: { NOT: { content: { startsWith: 'nv3.' } } } } } },
+  _count: { select: { versions: { where: { NOT: { content: { startsWith: 'nv3.' } } } }, attachments: true } },
 } as const;
 
 export async function getItems(userId: string, opts: { ids?: string[]; after?: string } = {}) {
   if (!userId) throw new Error('getItems: userId required');
   const toItem = (r: {
     id: string; noteType: string; title: string; content: string; updatedAt: Date; isTrashed: boolean;
-    _count: { versions: number };
+    _count: { versions: number; attachments: number };
   }) => ({
     id: r.id,
     noteType: r.noteType,
     title: r.title,
     hasPlaintextVersions: r._count.versions > 0,
+    hasAttachments: r._count.attachments > 0,
     content: r.content,
     contentHash: sha256hex(r.content),
     updatedAt: r.updatedAt,

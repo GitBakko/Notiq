@@ -145,6 +145,14 @@ describe('classify / packBatches', () => {
 });
 
 describe('migrateLegacy', () => {
+  it('conta gli item con allegati; il campo assente nei backend vecchi vale 0', async () => {
+    put('a', 'NOTE', 'Con allegato', doc('a'));
+    put('b', 'NOTE', 'Senza campo', doc('b'));
+    srv.items.get('a').hasAttachments = true;
+    const r = await migrateLegacy({ ctx, pins: [] });
+    expect(r.withAttachments).toBe(1);
+  });
+
   it('titolo da /items.title anche oltre le prime 50 note; GET /notes mai chiamato; 250 -> 200+50', async () => {
     for (let i = 0; i < 249; i++) put(`n${String(i).padStart(3, '0')}`, 'NOTE', `Titolo ${i}`, doc(`n${i}`));
     put('zzz-late', 'NOTE', 'Fuori dalle prime 50', doc('late'));

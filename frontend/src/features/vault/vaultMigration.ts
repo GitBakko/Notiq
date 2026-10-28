@@ -221,6 +221,8 @@ export interface MigrationResult {
   /** Cifratura o round-trip fallito in memoria: non inviati. */
   failed: string[];
   notFound: number;
+  /** Item della coda legacy con allegati (gli allegati non sono cifrati né mostrati nel vault). */
+  withAttachments: number;
 }
 
 interface Prepared { id: string; noteType: VaultNoteType; t: string; c: string; env: string; baseHash: string; size: number }
@@ -247,7 +249,7 @@ export async function migrateLegacy(opts: MigrationOptions): Promise<MigrationRe
   const { ctx, pins, signal } = opts;
   const dec = opts.decryptor ?? createLegacyDecryptor();
   const unlock = makeLegacyUnlocker(pins, dec);
-  const res: MigrationResult = { migrated: 0, locked: [], tooLarge: [], conflicts: [], unverified: [], failed: [], notFound: 0 };
+  const res: MigrationResult = { migrated: 0, locked: [], tooLarge: [], conflicts: [], unverified: [], failed: [], notFound: 0, withAttachments: 0 };
   const settled = new Set<string>();
   let total = 0;
   const tick = (id: string) => {
@@ -315,6 +317,7 @@ export async function migrateLegacy(opts: MigrationOptions): Promise<MigrationRe
 
   try {
     let queue = await listLegacy();
+    res.withAttachments = queue.filter((i) => (i as { hasAttachments?: boolean }).hasAttachments).length;
     total = queue.length;
     opts.onProgress?.({ done: 0, total });
     for (let round = 1; queue.length > 0; round++) {

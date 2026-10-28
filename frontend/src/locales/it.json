@@ -634,6 +634,7 @@
       "lockedSummary": "{{n}} credenziali sono bloccate con un PIN precedente e non sono state modificate. Aggiungi un altro PIN e riprova.",
       "localResolved": "Già aggiornati dal server: {{n}}.",
       "copiesCreated": "Versioni locali salvate come copie: {{n}}.",
+      "attachmentsNotice": "{{n}} note hanno allegati: gli allegati non sono cifrati e non compaiono nel vault.",
       "localLocked": "Elementi con modifiche locali ancora bloccati da un PIN precedente: {{n}}. Aggiungi il PIN e riprova.",
       "notVerified": "{{n}} elementi non sono stati confermati (modificati su un altro dispositivo o rifiutati). Riprova.",
       "errors": {
