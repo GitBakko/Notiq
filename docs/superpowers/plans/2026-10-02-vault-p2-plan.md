@@ -1008,4 +1008,10 @@ Commit: T13 `4a0ae78`, T21a `c2a1ee9`; T14 e la CAS idempotente sono nei commit 
 - Entry frontend: `/assets/index-CXMfL_xE.js`.
 - `frontend/dist/sw.js`: 1 riferimento a `/api/vault/`; nessuna occorrenza di `rk_e434f78b8f179ab3` nei sorgenti.
 - Esiti locali finali: E2E 70/70, unit frontend 1193/1193, typecheck e build verdi; lint `src + e2e` 0 errori con 51 warning preesistenti.
-- Benchmark iOS, scelta finale di `t`, timestamp `ts1`, dump del canary ed esiti prod: da annotare qui durante il runbook.
+- Primo deploy completato: backup **`ts1 = E:\www\Notiq\_backup_20261028_173543`**; dump DB completato, nessuna migration pendente, health check 200. Pepper `ok`, `pepperKeyId = 13526804f7800111`. ARR `includePortInXForwardedFor:false` applicato dall'utente a livello globale, con consapevolezza dell'impatto multi-sito; log successivi senza porta.
+- Benchmark iPhone 15 Pro Max, iOS 27.2, entry `index-CXMfL_xE.js`, tutti senza errori/retry/OOM:
+  - **Safari** (`standalone:false`): p95 caldo per t=3..10 = `[107,140,175,215,248,283,318,366]` ms; cold worst = `[163,193,222,257,288,323,356,396]` ms.
+  - **PWA** (`standalone:true`): p95 caldo per t=3..10 = `[107,139,174,219,253,289,321,359]` ms; cold worst = `[161,191,224,258,300,338,362,397]` ms.
+  - Tutti i vincoli p95 ≤1500 ms e cold ≤2000 ms rispettati in entrambi gli ambienti. **t scelto = 10**, commit `b35dbd9`. Il dispositivo è più recente dell'iPhone 12/A14 di riferimento: il margine su A14 più vecchi non è misurato.
+- Secondo pacchetto con t=10: `notiq-v1.14.0-full-20261028_181445.zip`; SHA256 `56428E482BCAF0B9A7F9A7DE6E1B7FF1BF6A8FC65076EA969EE6E573B1D590C1`; entry `/assets/index-BanbVA9L.js`. Test mirati KDF: backend 82/82, frontend 18/18.
+- Dump del canary ed esiti prod: da annotare qui durante il runbook.
