@@ -1014,4 +1014,8 @@ Commit: T13 `4a0ae78`, T21a `c2a1ee9`; T14 e la CAS idempotente sono nei commit 
   - **PWA** (`standalone:true`): p95 caldo per t=3..10 = `[107,139,174,219,253,289,321,359]` ms; cold worst = `[161,191,224,258,300,338,362,397]` ms.
   - Tutti i vincoli p95 ≤1500 ms e cold ≤2000 ms rispettati in entrambi gli ambienti. **t scelto = 10**, commit `b35dbd9`. Il dispositivo è più recente dell'iPhone 12/A14 di riferimento: il margine su A14 più vecchi non è misurato.
 - Secondo pacchetto con t=10: `notiq-v1.14.0-full-20261028_181445.zip`; SHA256 `56428E482BCAF0B9A7F9A7DE6E1B7FF1BF6A8FC65076EA969EE6E573B1D590C1`; entry `/assets/index-BanbVA9L.js`. Test mirati KDF: backend 82/82, frontend 18/18.
-- Dump del canary ed esiti prod: da annotare qui durante il runbook.
+- Secondo deploy completato con t=10: backup `E:\www\Notiq\_backup_20261028_183050`; entry e `DEFAULT_KDF.t=10` verificati. Dump fresco pre-canary: `E:\www\Notiq\db_notiq_prod_pre_canary_20261028_183500.dump`.
+- Canary SUPERADMIN `10be538c-cbc5-4b2a-8b62-1e316ce1e0c0`: nessuna nota legacy; keyring READY con `migrationState=NONE`. Due item di prova: tutte le righe DB hanno envelope nv3, titolo vuoto, `searchText` e `ydocState` NULL; 0 NoteVersion non nv3.
+- Rigenerazione Kit: MD5 escrow da `717d885e31e7388832d87a31e8000fc3` a `db55a3d3657d5c0ed2c6780265de24b0`, PASS. Sblocco e modifica offline su iPhone PASS. Cache Storage senza `/api/vault/` e `/api/notes/`; logout con eliminazione di `api-cache`, PASS.
+- Apertura generale completata con `VAULT_SETUP_USERS=*`; account non canary con `setupAllowed:true` e log puliti.
+- Da chiudere: allineamento del tag `v1.14.0` al commit del pacchetto finale `b35dbd9`.
