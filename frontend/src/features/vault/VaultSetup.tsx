@@ -99,8 +99,9 @@ export default function VaultSetup({ onAlreadySetup, onDone }: Props = {}) {
   const disabled = !rootKey; // T25 riempie utils/vaultRootKeys.ts
 
   return (
-    <div className="flex flex-col items-center justify-center h-full p-4">
-      <div className="bg-white dark:bg-neutral-800 p-5 sm:p-8 rounded-xl shadow-lg max-w-md w-full text-center border border-neutral-200/60 dark:border-neutral-700/40">
+    <div className="h-full overflow-y-auto p-4 [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-h-full flex-col items-center justify-center">
+        <div className="bg-white dark:bg-neutral-800 p-5 sm:p-8 rounded-xl shadow-lg max-w-md w-full text-center border border-neutral-200/60 dark:border-neutral-700/40">
         <div className="bg-emerald-100 dark:bg-emerald-900/30 p-4 rounded-full inline-flex mb-4">
           <Lock size={32} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
         </div>
@@ -184,6 +185,7 @@ export default function VaultSetup({ onAlreadySetup, onDone }: Props = {}) {
             </form>
           </>
         )}
+        </div>
       </div>
 
       {kit && user && <RecoveryKitSheet kit={kit} userId={user.id} onDone={finished} />}

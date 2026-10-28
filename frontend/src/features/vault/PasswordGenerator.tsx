@@ -58,7 +58,7 @@ export default function PasswordGenerator({ onUse, onClose }: PasswordGeneratorP
   };
 
   return (
-    <div className="p-4 bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-xl shadow-lg w-80 space-y-4">
+    <div className="fixed left-4 right-4 top-1/2 -translate-y-1/2 w-auto max-w-sm max-h-[85dvh] overflow-y-auto [-webkit-overflow-scrolling:touch] p-4 bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 rounded-xl shadow-lg space-y-3 sm:space-y-4 sm:absolute sm:left-auto sm:right-0 sm:top-0 sm:translate-y-0 sm:w-80 sm:max-h-none sm:overflow-visible">
       <h3 className="font-semibold text-neutral-900 dark:text-white text-sm">{t('vault.credential.generator.title')}</h3>
 
       {/* Preview */}
@@ -78,14 +78,14 @@ export default function PasswordGenerator({ onUse, onClose }: PasswordGeneratorP
           max={64}
           value={length}
           onChange={(e) => setLength(Number(e.target.value))}
-          className="w-full accent-emerald-600"
+          className="w-full min-h-[44px] sm:min-h-0 accent-emerald-600"
         />
       </div>
 
       {/* Options */}
       <div className="space-y-2">
         {(Object.keys(CHARSETS) as Array<keyof typeof CHARSETS>).map((key) => (
-          <label key={key} className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
+          <label key={key} className="flex min-h-[44px] sm:min-h-0 items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
             <input
               type="checkbox"
               checked={options[key]}
@@ -98,16 +98,16 @@ export default function PasswordGenerator({ onUse, onClose }: PasswordGeneratorP
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
-        <Button variant="ghost" size="sm" onClick={regenerate} className="flex-1">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
+        <Button variant="ghost" size="sm" onClick={regenerate} className="flex-1 max-sm:min-h-[44px]">
           <RefreshCw size={14} className="mr-1" />
           {t('vault.credential.generator.regenerate')}
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleCopy} className="flex-1">
+        <Button variant="ghost" size="sm" onClick={handleCopy} className="flex-1 max-sm:min-h-[44px]">
           {copied ? <Check size={14} className="mr-1 text-emerald-500" /> : <Copy size={14} className="mr-1" />}
           {t('vault.credential.generator.copy')}
         </Button>
-        <Button variant="primary" size="sm" onClick={() => { onUse(password); onClose(); }} className="flex-1">
+        <Button variant="primary" size="sm" onClick={() => { onUse(password); onClose(); }} className="col-span-2 sm:col-span-1 flex-1 max-sm:min-h-[44px]">
           {t('vault.credential.generator.use')}
         </Button>
       </div>

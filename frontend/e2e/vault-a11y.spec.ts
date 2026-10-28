@@ -137,3 +137,56 @@ test('contrasti NoteEditor: icone normali, hover, attive e dark mode', async ({ 
   }
   await api.dispose();
 });
+
+test('password generator mobile: pannello fixed dentro il viewport', async ({ page }) => {
+  test.setTimeout(120000);
+  const user = await registerAndLogin(page, { name: 'Generator Layout' });
+  const api = await apiFor(page);
+  await setupVaultUi(page, user);
+  await createCredentialUi(page, api, { title: 'Generator Layout', siteUrl: 'https://example.com', username: 'bob', password: 'pw', notes: '' });
+
+  for (const width of [320, 360, 412]) {
+    await page.setViewportSize({ width, height: 648 });
+    await openVault(page);
+    await page.getByRole('button', { name: /Generator Layout/ }).click();
+    await page.getByRole('button', { name: 'Generate password', exact: true }).click();
+    const generator = page.getByRole('heading', { name: 'Password Generator', exact: true }).locator('..');
+    const generatorBox = await generator.boundingBox();
+    expect(generatorBox).not.toBeNull();
+    expect(generatorBox!.x).toBeGreaterThanOrEqual(0);
+    expect(generatorBox!.x + generatorBox!.width).toBeLessThanOrEqual(width);
+    expect(generatorBox!.y).toBeGreaterThanOrEqual(0);
+    expect(generatorBox!.y + generatorBox!.height).toBeLessThanOrEqual(648);
+    expect(await generator.evaluate((el) => getComputedStyle(el).position)).toBe('fixed');
+    expect(await generator.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+    const regenerateBox = await generator.getByRole('button', { name: 'Regenerate', exact: true }).boundingBox();
+    const copyBox = await generator.getByRole('button', { name: 'Copy', exact: true }).boundingBox();
+    const useBox = await generator.getByRole('button', { name: 'Use', exact: true }).boundingBox();
+    expect(regenerateBox).not.toBeNull();
+    expect(copyBox).not.toBeNull();
+    expect(useBox).not.toBeNull();
+    expect(Math.abs(regenerateBox!.y - copyBox!.y)).toBeLessThanOrEqual(1);
+    expect(useBox!.y).toBeGreaterThan(regenerateBox!.y);
+    await generator.getByRole('button', { name: 'Use', exact: true }).click();
+  }
+  await api.dispose();
+});
+
+test('setup mobile: Create Vault raggiungibile con scroll verticale', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 648 });
+  await registerAndLogin(page, { name: 'Mobile Setup Scroll' });
+  await page.goto('/vault');
+  await expect(page.getByRole('heading', { name: 'Set up your Vault' })).toBeVisible({ timeout: 30000 });
+  const submit = page.getByRole('button', { name: 'Create Vault', exact: true });
+  const bottom = () => submit.evaluate((el) => el.getBoundingClientRect().bottom);
+  expect(await bottom()).toBeGreaterThan(648);
+  await page.mouse.move(180, 400);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(bottom).toBeLessThanOrEqual(648);
+  const position = await submit.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return { top: rect.top, height: rect.height };
+  });
+  expect(position.top).toBeGreaterThanOrEqual(0);
+  expect(position.height).toBeGreaterThanOrEqual(44);
+});
