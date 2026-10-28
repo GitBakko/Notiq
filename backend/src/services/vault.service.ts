@@ -389,6 +389,12 @@ export async function unlock(userId: string, authKey: Buffer): Promise<{ serverS
   const ok = !!stored && stored.length === expected.length && crypto.timingSafeEqual(stored, expected);
 
   if (!ok) {
+    const noLockoutUsers = (process.env.VAULT_UNLOCK_NO_LOCKOUT_USERS ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (noLockoutUsers.includes(userId)) throw new AppError(403, 'errors.vault.invalidPin');
+
     // Un solo statement atomico (RT-3), tempo in UTC: le colonne TIMESTAMP(3) di Prisma sono UTC
     const rows = await prisma.$queryRaw<{ failedAttempts: number; lockedUntil: Date | null }[]>`
       UPDATE "VaultKeyring"
