@@ -999,3 +999,13 @@ Commit: T13 `4a0ae78`, T21a `c2a1ee9`; T14 e la CAS idempotente sono nei commit 
 - **Titolo in chiaro inviato da un item legacy senza `content`** (UPDATE `{title, isPinned}` di un bundle pre-P2) con keyring READY. Il server lo rifiuta e non lo salva. Il passo 0 della migrazione svuota la coda prima del keyring, quindi può capitare solo con una scheda col bundle vecchio dopo la migrazione.
 
 **Chiavi i18n nuove per T24:** `errors.vault.kitNotUpdated`, `errors.vault.offlineUnavailable`, `errors.vault.notReady`, `errors.vault.invalidPin`.
+
+## Addendum D4 — rilascio 1.14.0 (28/10/2026)
+
+- Release e tag `v1.14.0`: `aafca4c`, su `main` e `origin/main`.
+- Pacchetto primo deploy: `notiq-v1.14.0-full-20261028_171355.zip`.
+- SHA256: `A25889A858F02F9EFB142DA4BCE0C7B42FC018BC17FA3818CFD656FC9429206F`.
+- Entry frontend: `/assets/index-CXMfL_xE.js`.
+- `frontend/dist/sw.js`: 1 riferimento a `/api/vault/`; nessuna occorrenza di `rk_e434f78b8f179ab3` nei sorgenti.
+- Esiti locali finali: E2E 70/70, unit frontend 1193/1193, typecheck e build verdi; lint `src + e2e` 0 errori con 51 warning preesistenti.
+- Benchmark iOS, scelta finale di `t`, timestamp `ts1`, dump del canary ed esiti prod: da annotare qui durante il runbook.
