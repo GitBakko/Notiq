@@ -36,8 +36,8 @@ export default function EditorToolbarPrimary({
 
   return (
     <div className={clsx(
-      "flex gap-1 p-2 items-center",
-      isMobile ? "flex-nowrap" : "flex-wrap overflow-visible"
+      "flex gap-1 items-center",
+      isMobile ? "flex-nowrap px-4 py-2" : "flex-wrap overflow-visible p-2"
     )}>
       {/* Bold, Italic, Underline — always visible */}
       <ToolbarButton

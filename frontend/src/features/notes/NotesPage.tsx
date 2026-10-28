@@ -231,7 +231,7 @@ export default function NotesPage() {
   if (editorNoteId !== mountedEditorNoteId) setMountedEditorNoteId(editorNoteId); // adjust state during render (converges)
 
   const renderEditor = () => (
-    <div className="flex-1 flex flex-col h-full relative bg-white dark:bg-neutral-950">
+    <div className="flex-1 flex flex-col h-full max-md:min-w-0 relative bg-white dark:bg-neutral-950">
       {showLoading ? (
         <div className="flex h-full items-center justify-center text-neutral-400">
           {t('common.loading')}

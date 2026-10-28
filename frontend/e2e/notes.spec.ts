@@ -80,6 +80,55 @@ test.describe('Notes', () => {
     await expect(page.locator('.ProseMirror')).toHaveText('This is the content of my first note.');
   });
 
+  test('mobile header e status bar restano dentro il viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('button', { name: 'New Note', exact: true }).click();
+    await expect(page).toHaveURL(/.*noteId=.*/, { timeout: 10000 });
+    await page.locator('input[placeholder="Note Title"]').fill('TEST I8 - nota temporanea');
+    await page.locator('.ProseMirror').fill('Mobile layout body');
+    await page.waitForTimeout(1000);
+
+    for (const width of [360, 320]) {
+      await page.setViewportSize({ width, height: 648 });
+      const more = page.getByRole('button', { name: 'More', exact: true });
+      await expect(more).toBeVisible();
+      const moreBox = await more.boundingBox();
+      expect(moreBox).not.toBeNull();
+      expect(moreBox!.x + moreBox!.width).toBeLessThanOrEqual(width);
+      const toolbarMore = page.getByRole('button', { name: 'Show more formatting options', exact: true });
+      const toolbarMoreBox = await toolbarMore.boundingBox();
+      expect(toolbarMoreBox).not.toBeNull();
+      expect(Math.abs((moreBox!.x + moreBox!.width) - (toolbarMoreBox!.x + toolbarMoreBox!.width))).toBeLessThanOrEqual(1);
+      const status = page.locator('.font-mono').last();
+      const statusBox = await status.boundingBox();
+      expect(statusBox).not.toBeNull();
+      expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(width);
+      const cursor = status.locator(':scope > div').last();
+      const cursorBox = await cursor.boundingBox();
+      expect(cursorBox).not.toBeNull();
+      expect(cursorBox!.x).toBeGreaterThanOrEqual(0);
+      expect(cursorBox!.x + cursorBox!.width).toBeLessThanOrEqual(width);
+    }
+
+    await page.getByRole('button', { name: 'More', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Add reminder', exact: true })).toBeVisible();
+  });
+
+  test('mobile sidebar: logo e azioni del footer non si sovrappongono', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 648 });
+    await page.goto('/notes');
+    await page.locator('svg.lucide-menu').first().locator('..').click();
+    const logo = page.getByRole('img', { name: 'Notiq Logo', exact: true });
+    await expect(logo).toBeVisible();
+    const footer = logo.locator('xpath=../..');
+    await expect(footer.getByText('Notiq', { exact: true })).toBeHidden();
+    const logoBox = await logo.boundingBox();
+    const notificationsBox = await footer.getByRole('button', { name: 'Notifications', exact: true }).boundingBox();
+    expect(logoBox).not.toBeNull();
+    expect(notificationsBox).not.toBeNull();
+    expect(notificationsBox!.x).toBeGreaterThanOrEqual(logoBox!.x + logoBox!.width);
+  });
+
   test('should delete a note', async ({ page }) => {
     console.log('Waiting for sidebar...');
     console.log('Waiting for sidebar...');

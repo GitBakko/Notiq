@@ -737,15 +737,15 @@ export default function Sidebar() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-neutral-200/60 dark:border-neutral-800/40 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="p-4 border-t border-neutral-200/60 dark:border-neutral-800/40 flex items-center justify-between gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <img src="/logo-no-bg.png" alt={t('common.logoAlt')} className="h-6 w-6 object-contain" />
-                <div className="flex flex-col">
+                <div className="hidden sm:flex flex-col">
                   <span className="text-xs font-bold text-neutral-900 dark:text-white leading-none">{t('common.notiq')}</span>
                   <span className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-none mt-0.5">v{CURRENT_VERSION}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 <button
                   onClick={toggleNotificationPanel}
                   className="relative p-2.5 sm:p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 rounded-lg dark:hover:bg-neutral-800 transition-colors"
