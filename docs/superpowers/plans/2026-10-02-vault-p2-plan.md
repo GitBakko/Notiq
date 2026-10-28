@@ -1018,4 +1018,4 @@ Commit: T13 `4a0ae78`, T21a `c2a1ee9`; T14 e la CAS idempotente sono nei commit 
 - Canary SUPERADMIN `10be538c-cbc5-4b2a-8b62-1e316ce1e0c0`: nessuna nota legacy; keyring READY con `migrationState=NONE`. Due item di prova: tutte le righe DB hanno envelope nv3, titolo vuoto, `searchText` e `ydocState` NULL; 0 NoteVersion non nv3.
 - Rigenerazione Kit: MD5 escrow da `717d885e31e7388832d87a31e8000fc3` a `db55a3d3657d5c0ed2c6780265de24b0`, PASS. Sblocco e modifica offline su iPhone PASS. Cache Storage senza `/api/vault/` e `/api/notes/`; logout con eliminazione di `api-cache`, PASS.
 - Apertura generale completata con `VAULT_SETUP_USERS=*`; account non canary con `setupAllowed:true` e log puliti.
-- Da chiudere: allineamento del tag `v1.14.0` al commit del pacchetto finale `b35dbd9`.
+- Tag finale `v1.14.0` allineato al commit del pacchetto `b35dbd9` e pushato. **Runbook P2 completato.**
