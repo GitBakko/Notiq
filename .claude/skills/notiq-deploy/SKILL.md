@@ -105,6 +105,7 @@ Piano: `docs/superpowers/plans/2026-10-02-vault-p2-plan.md` §11 + addendum. Rec
 2. **Pre-deploy, su Postgres di prod** (annotare i risultati):
    - `SELECT count(*) FROM "VaultKeyring";` → 0.
    - `SELECT "userId", count(*) FROM "Note" WHERE "isVault" AND content NOT LIKE 'nv3.%' GROUP BY 1;` → utenti con vault legacy.
+   - `SELECT count(*) FROM "Note" WHERE "isVault" AND "noteType"='NOTE' AND content NOT LIKE '{%';` → note RAW non TipTap interessate dal limite B.16-F, accettato con l'opzione A il 28/10/2026; annotare il risultato senza riaprire il reconcile.
    - `SELECT n.id FROM "Note" n WHERE n."isVault" AND EXISTS (SELECT 1 FROM "Attachment" a WHERE a."noteId" = n.id);` → note vault con allegati (il corpo si migra, gli allegati si segnalano: D3).
    - `SELECT "userId", count(*) FROM "Note" GROUP BY 1 HAVING count(*) > 50;` → utenti toccati da `GET /notes?all=1` (il 21/10 era vuoto).
    - `SELECT count(*) FROM "Note" WHERE "noteType" = 'CREDENTIAL' AND "searchText" IS NOT NULL;` → credenziali vecchie con testo in chiaro nell'indice di ricerca. Il codice nuovo non lo rigenera, ma le righe esistenti si ripuliscono solo con una scrittura in prod: farla (`UPDATE "Note" SET "searchText" = NULL WHERE "noteType" = 'CREDENTIAL' AND "searchText" IS NOT NULL;`, il conteggio deve coincidere con quello della query sopra) solo dopo `pg_dump` e con conferma esplicita dell'utente.

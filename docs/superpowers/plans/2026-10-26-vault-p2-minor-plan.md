@@ -953,3 +953,9 @@ Tutto in locale. **Mai PROD.**
    - Rilanci mirati: `e2e/vault-*.spec.ts`, `e2e/reminder-timezone.spec.ts`, `e2e/vault-a11y.spec.ts`, `e2e/kanban.spec.ts`, `e2e/notes.spec.ts`, `e2e/offline-first.spec.ts`.
 5. **Prove locali** in `frontend/manual-p2/`: `lotto-R07g-out`, `lotto-R06c`, `lotto-09c-b4b5`, `lotto-09e-b9b10b11`, `lotto-R09f-b14b15b16m4`, `lotto-10c-a3`.
 6. **Prove manuali residue** (solo quelle impossibili in autonomia, ognuna col motivo scritto nella sua voce): telefono in modalità aereo (I.8), picker nativo e notifica (F.10), tap reale (M.3), screen reader (M.5), tema reale dell'OS con la PWA installata (M.6), giudizi estetici (M.6, contrasti di NoteEditor) e chiarezza dei testi (H.3).
+
+## 9. Decisione B.16-F (28/10/2026)
+
+L'utente ha scelto **l'opzione A: limite accettato**. Dopo un'interruzione di `finalize`, una nota vault RAW non TipTap (`body.type !== 'doc'`) può conservare vecchie `NoteVersion` in chiaro; il contenuto attuale della nota resta comunque cifrato con envelope `nv3`. Non si apre un difetto separato e non si modifica `vaultReconcile.ts` per questo rilascio.
+
+Il runbook P2 include la query pre-deploy che conta le note RAW interessate, così da verificare se esistono casi reali prima del rilascio. Questa decisione è registrata anche in `claude-mem` (#113106).
