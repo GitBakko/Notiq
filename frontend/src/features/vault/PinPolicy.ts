@@ -91,8 +91,8 @@ function hasPersonal(p: string, ctx: PinContext): boolean {
 export async function checkPin(pin: string, ctx: PinContext = {}): Promise<PinCheck> {
   if (!FORMAT.test(pin)) return { ok: false, reason: 'format' };
   const p = pin.toLowerCase();
-  if (hasDate(p)) return { ok: false, reason: 'date' };
   if (hasSequence(p)) return { ok: false, reason: 'sequence' };
+  if (hasDate(p)) return { ok: false, reason: 'date' };
   if (hasRepetition(p)) return { ok: false, reason: 'repetition' };
   if (hasPersonal(p, ctx)) return { ok: false, reason: 'personal' };
   if (await isCommonWord(p)) return { ok: false, reason: 'common' };

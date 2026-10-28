@@ -5,7 +5,7 @@ import policySource from '../PinPolicy.ts?raw';
 const rejected: [string, PinRejection][] = [
   ['123456', 'format'], ['abcdef', 'format'], ['k7Rq2', 'format'], ['k7Rq2xZ', 'format'],
   ['2024ab', 'date'], ['1203ab', 'date'],
-  ['qwer12', 'sequence'], ['abc7x9', 'sequence'], ['1qaz9x', 'sequence'], ['x7qazk', 'sequence'], ['zaq1x7', 'sequence'], ['x3edcv', 'sequence'], ['k9olm7', 'sequence'],
+  ['qwer12', 'sequence'], ['abc7x9', 'sequence'], ['12345a', 'sequence'], ['1qaz9x', 'sequence'], ['x7qazk', 'sequence'], ['zaq1x7', 'sequence'], ['x3edcv', 'sequence'], ['k9olm7', 'sequence'],
   ['a1a1a1', 'repetition'], ['a1b2c3', 'repetition'], ['k7k9k2', 'repetition'], ['Ab1Ab1', 'repetition'], ['Qq1Qq1', 'repetition'], ['kz7kz7', 'repetition'], ['x9x9x9', 'repetition'],
   ['1q2w3e', 'repetition'], ['a1s2d3', 'repetition'], ['ab12ab', 'repetition'], ['aabb11', 'repetition'],
   ['luca1x', 'common'], ['xluca1', 'common'],
