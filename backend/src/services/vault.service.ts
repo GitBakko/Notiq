@@ -196,7 +196,7 @@ export async function getKeyring(userId: string) {
 
 type Bytes = Buffer<ArrayBuffer>;
 
-export const KDF_T_MIN = 3;
+export const KDF_T_MIN = 10;
 
 // ES2022 Object.hasOwn non e' nella lib di questo tsconfig
 const isRootKey = (id: string) => Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, id);

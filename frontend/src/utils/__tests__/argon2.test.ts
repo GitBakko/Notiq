@@ -27,7 +27,7 @@ describe('argon2 fallback diretto (Worker assente)', () => {
   it.each([new Uint8Array(15), new Uint8Array(17), 'somesaltsomesalt'])('deriveS rifiuta salt non Uint8Array(16)', async (salt) => {
     await expect(deriveS('k7Rq2x', salt as Uint8Array, DEFAULT_KDF)).rejects.toThrow('kdfFailed');
   });
-  it('DEFAULT_KDF', () => expect(DEFAULT_KDF).toEqual({ m: 65536, t: 3, p: 1 }));
+  it('DEFAULT_KDF', () => expect(DEFAULT_KDF).toEqual({ m: 65536, t: 10, p: 1 }));
 });
 
 describe('argon2 con Worker', () => {

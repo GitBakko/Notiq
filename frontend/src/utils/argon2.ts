@@ -1,7 +1,7 @@
 export interface KdfParams { m: number; t: number; p: number }
 
 // Unica fonte per i keyring NUOVI (setup, cambio PIN). Lo sblocco usa i kdfParams del keyring.
-export const DEFAULT_KDF: KdfParams = { m: 65536, t: 3, p: 1 };
+export const DEFAULT_KDF: KdfParams = { m: 65536, t: 10, p: 1 };
 
 const TIMEOUT_MS = 30_000;
 
