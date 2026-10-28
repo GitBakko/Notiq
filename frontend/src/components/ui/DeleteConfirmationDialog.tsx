@@ -60,11 +60,12 @@ export function DeleteConfirmationDialog({
         </div>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} className="min-h-[44px]">
             {t('common.cancel')}
           </Button>
           <Button
             variant="danger"
+            className="min-h-[44px]"
             onClick={() => {
               if (isMatch) {
                 onConfirm();

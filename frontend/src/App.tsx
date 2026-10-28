@@ -47,7 +47,7 @@ function App() {
         toastOptions={{
           success: {
             style: {
-              background: '#10b981',
+              background: '#047857',
               color: '#fff',
             },
           },

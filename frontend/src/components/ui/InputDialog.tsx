@@ -58,10 +58,10 @@ export function InputDialog({
         />
 
         <div className="mt-6 flex justify-end gap-3">
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="ghost" onClick={onClose} className="min-h-[44px]">
             {cancelText}
           </Button>
-          <Button type="submit" variant="primary">
+          <Button type="submit" variant="primary" className="min-h-[44px]">
             {confirmText}
           </Button>
         </div>

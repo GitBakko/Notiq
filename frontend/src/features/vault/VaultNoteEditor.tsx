@@ -307,7 +307,7 @@ export default function VaultNoteEditor({ note, onBack, onReleased }: Props) {
                 onClick={() => reminderRef.current?.showPicker()}
                 title={note.reminderDate ? t('notes.editReminder') : t('notes.addReminder')}
                 aria-label={note.reminderDate ? t('notes.editReminder') : t('notes.addReminder')}
-                className={clsx(btn, note.reminderDate ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-neutral-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20')}
+                className={clsx(btn, note.reminderDate ? 'text-amber-600 bg-amber-50 dark:text-amber-500 dark:bg-amber-900/20' : 'text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-500 dark:hover:bg-amber-900/20')}
               >
                 <Bell className={clsx('w-5 h-5', note.reminderDate && 'fill-current')} />
               </button>
@@ -339,7 +339,7 @@ export default function VaultNoteEditor({ note, onBack, onReleased }: Props) {
               onClick={() => void togglePin()}
               title={note.isPinned ? t('notes.unpin') : t('notes.pin')}
               aria-label={note.isPinned ? t('notes.unpin') : t('notes.pin')}
-              className={clsx(btn, note.isPinned ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-neutral-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20')}
+              className={clsx(btn, note.isPinned ? 'text-amber-600 bg-amber-50 dark:text-amber-500 dark:bg-amber-900/20' : 'text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-500 dark:hover:bg-amber-900/20')}
             >
               <Star className={clsx('w-5 h-5', note.isPinned && 'fill-current')} />
             </button>

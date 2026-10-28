@@ -29,11 +29,12 @@ export function ConfirmDialog({
       </div>
 
       <div className="mt-6 flex justify-end gap-3">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose} className="min-h-[44px]">
           {cancelText}
         </Button>
         <Button
           variant={variant === 'danger' ? 'danger' : 'primary'}
+          className="min-h-[44px]"
           onClick={() => {
             onConfirm();
             onClose();

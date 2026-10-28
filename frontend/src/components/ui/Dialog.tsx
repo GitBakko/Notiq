@@ -51,7 +51,7 @@ export function Dialog({ isOpen, onClose, title, children, className }: DialogPr
       >
         <div className="flex items-center justify-between mb-4">
             {title && <h2 id="dialog-title" className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white">{title}</h2>}
-            <button onClick={onClose} aria-label={t('common.close')} className="text-neutral-400 hover:text-neutral-600 transition-colors dark:text-neutral-500 dark:hover:text-neutral-300">
+            <button onClick={onClose} aria-label={t('common.close')} className="-m-3 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 transition-colors dark:text-neutral-400 dark:hover:text-neutral-200">
                 <X size={20} />
             </button>
         </div>

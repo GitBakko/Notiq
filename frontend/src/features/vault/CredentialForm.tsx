@@ -462,7 +462,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-neutral-500 dark:text-neutral-400">
         <p>{t('vault.credential.decryptFailed')}</p>
-        <Button variant="ghost" onClick={onBack} className="mt-4">
+        <Button variant="ghost" onClick={onBack} className="mt-4 min-h-[44px]">
           <ArrowLeft size={16} className="mr-2" />
           {t('common.back')}
         </Button>
@@ -477,18 +477,19 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
   return (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-neutral-900 overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-neutral-200/60 dark:border-neutral-800/40">
+      <div className="flex items-center justify-between px-4 py-1 border-b border-neutral-200/60 dark:border-neutral-800/40">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 text-sm"
+          className="flex items-center gap-1 min-h-[44px] pr-2 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 text-sm"
         >
           <ArrowLeft size={16} />
           {t('common.back')}
         </button>
         <button
           onClick={() => setShowDeleteConfirm(true)}
-          className="flex items-center gap-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 text-sm transition-colors"
+          className="flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] text-neutral-500 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400 text-sm transition-colors"
           title={t('common.delete')}
+          aria-label={t('common.delete')}
         >
           <Trash2 size={16} />
         </button>
@@ -501,10 +502,10 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
             {t('vault.credential.deleteConfirmPermanent')}
           </p>
           <div className="flex gap-2 flex-shrink-0">
-            <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
+            <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)} className="min-h-[44px]">
               {t('common.cancel')}
             </Button>
-            <Button variant="danger" size="sm" onClick={handleDelete}>
+            <Button variant="danger" size="sm" onClick={handleDelete} className="min-h-[44px]">
               {t('common.delete')}
             </Button>
           </div>
@@ -540,7 +541,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
               className="w-full text-xl font-semibold bg-transparent border-none outline-none text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500"
             />
             {domain && (
-              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">{domain}</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-0.5">{domain}</p>
             )}
           </div>
         </div>
@@ -558,7 +559,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
 
         {/* Website section */}
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-500 uppercase tracking-wider">
             {t('vault.credential.websiteInfo')}
           </h4>
           <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 space-y-3">
@@ -574,7 +575,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                     onChange={(e) => handleUrlChange(e.target.value)}
                     onBlur={handleUrlBlur}
                     placeholder={t('vault.credential.siteUrlPlaceholder')}
-                    className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="w-full min-h-[44px] px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   {fetchingMeta && (
                     <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-neutral-400" />
@@ -585,7 +586,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                   <button
                     type="button"
                     onClick={() => window.open(data.siteUrl, '_blank', 'noopener,noreferrer')}
-                    className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:text-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:text-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                     title={t('vault.credential.openUrl')}
                   >
                     <ExternalLink size={16} />
@@ -605,7 +606,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                     <button
                       type="button"
                       onClick={handleRetakeScreenshot}
-                      className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                      className="flex items-center gap-1 min-h-[44px] text-xs text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors"
                     >
                       <RefreshCw size={12} />
                       {t('vault.credential.retakeScreenshot')}
@@ -614,7 +615,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                 </div>
                 {fetchingScreenshot ? (
                   <div className="flex items-center justify-center h-40 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                    <div className="flex flex-col items-center gap-2 text-neutral-400">
+                    <div className="flex flex-col items-center gap-2 text-neutral-500 dark:text-neutral-400">
                       <Camera size={20} className="animate-pulse" />
                       <span className="text-xs">{t('vault.credential.loadingScreenshot')}</span>
                     </div>
@@ -633,7 +634,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
 
         {/* Login Details section */}
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-500 uppercase tracking-wider">
             {t('vault.credential.loginDetails')}
           </h4>
           <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 space-y-4">
@@ -649,7 +650,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                   onChange={(e) => updateField('username', e.target.value)}
                   placeholder={t('vault.credential.usernamePlaceholder')}
                   autoComplete="off"
-                  className="flex-1 px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  className="flex-1 min-h-[44px] px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 />
                 <CopyButton value={data.username} label={t('vault.credential.copyUsername')} />
               </div>
@@ -668,12 +669,12 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                     onChange={(e) => updateField('password', e.target.value)}
                     placeholder={t('vault.credential.passwordPlaceholder')}
                     autoComplete="new-password"
-                    className="w-full px-3 py-2 pr-9 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="w-full min-h-[44px] px-3 py-2 pr-11 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+                    className="absolute right-0 inset-y-0 min-w-[44px] flex items-center justify-center text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300"
                     title={showPassword ? t('vault.credential.hidePassword') : t('vault.credential.showPassword')}
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -684,7 +685,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
                   <button
                     type="button"
                     onClick={() => setShowGenerator(!showGenerator)}
-                    className="p-1.5 rounded-lg text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors"
                     title={t('vault.credential.generatePassword')}
                   >
                     <Zap size={16} />
@@ -705,7 +706,7 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
 
         {/* Notes section */}
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+          <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-500 uppercase tracking-wider">
             {t('vault.credential.additionalNotes')}
           </h4>
           <textarea

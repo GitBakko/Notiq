@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // uiStore calls window.matchMedia at import time (applyThemeClass with theme 'system').
-// jsdom does not implement it, so it must exist BEFORE the import below — vi.hoisted runs first.
+const media = vi.hoisted(() => ({ matches: false, listener: null as null | ((e: { matches: boolean }) => void) }));
 vi.hoisted(() => {
   window.matchMedia = ((query: string) => ({
-    matches: false,
+    get matches() { return media.matches; },
     media: query,
     onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (_type: string, cb: (e: { matches: boolean }) => void) => { media.listener = cb; },
+    removeEventListener: () => { media.listener = null; },
     addListener: () => {},
     removeListener: () => {},
     dispatchEvent: () => false,
@@ -79,5 +79,31 @@ describe('uiStore — kanban filter persistence', () => {
     const raw = localStorage.getItem('ui-storage');
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw as string).state.kanbanFilters['board-1'].search).toBe('persisted');
+  });
+});
+
+describe('uiStore — system theme media changes', () => {
+  beforeEach(() => {
+    media.matches = false;
+    document.documentElement.className = 'light';
+  });
+
+  it('follows dark/light OS changes only in system theme', () => {
+    useUIStore.getState().setTheme('system');
+    expect(media.listener).not.toBeNull();
+    media.matches = true;
+    media.listener!({ matches: true });
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    media.matches = false;
+    media.listener!({ matches: false });
+    expect(document.documentElement.classList.contains('light')).toBe(true);
+  });
+
+  it('does not change an explicit light theme when the OS changes', () => {
+    useUIStore.getState().setTheme('light');
+    media.matches = true;
+    media.listener!({ matches: true });
+    expect(document.documentElement.classList.contains('light')).toBe(true);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 });

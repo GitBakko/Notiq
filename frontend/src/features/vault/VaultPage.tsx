@@ -613,7 +613,7 @@ export default function VaultPage() {
               key={key}
               onClick={() => setTypeFilter(key)}
               className={clsx(
-                'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+                'inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
                 typeFilter === key
                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                   : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'

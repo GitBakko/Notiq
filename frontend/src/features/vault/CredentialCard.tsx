@@ -115,7 +115,7 @@ export default memo(function CredentialCard({ note, isSelected, onClick }: Crede
               ))}
             </div>
           )}
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+          <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
             {new Date(note.updatedAt).toLocaleDateString()}
           </p>
         </div>

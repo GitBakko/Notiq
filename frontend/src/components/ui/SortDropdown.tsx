@@ -44,7 +44,7 @@ export default function SortDropdown({ sortField, sortOrder, onChange }: SortDro
       <button
         onClick={() => setOpen(!open)}
         className={clsx(
-          'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
+          'flex items-center justify-center min-h-[44px] min-w-[44px] gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
           open
             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
             : 'text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'

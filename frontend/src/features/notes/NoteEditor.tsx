@@ -688,7 +688,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                     <button
                         onClick={() => setIsSizeModalOpen(true)}
                         title={t('notes.size.title')}
-                        className="p-2 rounded-full transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                        className="p-2 rounded-full transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
                     >
                         <HardDrive className="w-5 h-5" />
                     </button>
@@ -698,7 +698,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                             onClick={() => setIsVersionsOpen(true)}
                             aria-label={t('notes.versions.title')}
                             title={t('notes.versions.title')}
-                            className="p-2 rounded-full transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                            className="p-2 rounded-full transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 min-h-[44px] min-w-[44px] flex items-center justify-center"
                         >
                             <History className="w-5 h-5" />
                         </button>
@@ -717,7 +717,7 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                         <button
                             onClick={() => { setIsAiOpen(!isAiOpen); if (!isAiOpen) setIsChatOpen(false); }}
                             title={t('ai.title')}
-                            className={clsx("p-2 rounded-full transition-colors", isAiOpen ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" : "hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400")}
+                            className={clsx("p-2 rounded-full transition-colors", isAiOpen ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" : "hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400")}
                         >
                             <Sparkles className="w-5 h-5" />
                         </button>
@@ -750,8 +750,8 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
                                 className={clsx(
                                     "p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                     note.reminderDate
-                                        ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20"
-                                        : "text-neutral-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                        ? "text-amber-600 bg-amber-50 dark:text-amber-500 dark:bg-amber-900/20"
+                                        : "text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-500 dark:hover:bg-amber-900/20"
                                 )}
                             >
                                 <Bell className={clsx("w-5 h-5", note.reminderDate && "fill-current")} />
@@ -783,11 +783,11 @@ export default function NoteEditor({ note, onBack }: NoteEditorProps) {
 
                     {!isSharedNote && (
                         <>
-                            <button onClick={handlePinToggle} disabled={frozen} title={note.isPinned ? t('notes.unpin') : t('notes.pin')} className={clsx("p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-neutral-400 hover:text-amber-500 hover:bg-amber-50")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
+                            <button onClick={handlePinToggle} disabled={frozen} title={note.isPinned ? t('notes.unpin') : t('notes.pin')} className={clsx("p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isPinned ? "text-amber-600 bg-amber-50 dark:text-amber-500 dark:bg-amber-900/20" : "text-neutral-500 hover:text-amber-600 hover:bg-amber-50 dark:text-neutral-400 dark:hover:text-amber-500 dark:hover:bg-amber-900/20")}><Star className={clsx("w-5 h-5", note.isPinned && "fill-current")} /></button>
 
-                            <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} disabled={vaultMoveDisabled} title={vaultMoveTitle} aria-label={vaultMoveTitle} className={clsx("p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isVault ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
+                            <button onClick={() => { if (!note.isVault && (note.isPublic || (note.sharedWith && note.sharedWith.length > 0))) setIsVaultConfirmOpen(true); else handleVaultToggle(); }} disabled={vaultMoveDisabled} title={vaultMoveTitle} aria-label={vaultMoveTitle} className={clsx("p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed", note.isVault ? "text-emerald-600 bg-emerald-50 dark:text-emerald-500 dark:bg-emerald-900/20" : "text-neutral-500 hover:text-emerald-600 hover:bg-emerald-50 dark:text-neutral-400 dark:hover:text-emerald-500 dark:hover:bg-emerald-900/20")}><Lock className={clsx("w-5 h-5", note.isVault && "fill-current")} /></button>
 
-                            <button onClick={() => setIsDeleteConfirmOpen(true)} disabled={frozen} title={t('common.delete')} className="p-2 hover:bg-red-50 text-neutral-400 hover:text-red-500 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-5 h-5" /></button>
+                            <button onClick={() => setIsDeleteConfirmOpen(true)} disabled={frozen} title={t('common.delete')} className="p-2 rounded-full transition-colors text-neutral-500 hover:bg-red-50 hover:text-red-600 dark:text-neutral-400 dark:hover:bg-red-900/20 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-5 h-5" /></button>
                         </>
                     )}
                 </div>

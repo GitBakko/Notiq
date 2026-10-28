@@ -103,3 +103,6 @@ export const useUIStore = create<UIState>()(
 
 // Initialize theme from persisted state
 applyThemeClass(useUIStore.getState().theme);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (useUIStore.getState().theme === 'system') applyThemeClass('system');
+});
