@@ -44,22 +44,17 @@ export default function TransformToKanbanModal({ isOpen, onClose, items, editor 
   // (and never retries), leaving the column step with nothing to show. Dexie has
   // the columns immediately; the server query stays as the fallback for boards
   // that were never opened on this device.
-  const liveColumns = useLiveQuery(
-    async () => (selectedBoardId
-      ? db.kanbanColumns.where('boardId').equals(selectedBoardId).sortBy('position')
-      : undefined),
-    [selectedBoardId],
-  );
-  const liveCards = useLiveQuery(
-    async () => (selectedBoardId
-      ? db.kanbanCards.where('boardId').equals(selectedBoardId).toArray()
-      : undefined),
-    [selectedBoardId],
-  );
-  const liveBoard = useLiveQuery(
-    async () => (selectedBoardId ? db.kanbanBoards.get(selectedBoardId) : undefined),
-    [selectedBoardId],
-  );
+  const q = useLiveQuery(async () => (selectedBoardId ? {
+    id: selectedBoardId,
+    columns: await db.kanbanColumns.where('boardId').equals(selectedBoardId).sortBy('position'),
+    cards: await db.kanbanCards.where('boardId').equals(selectedBoardId).toArray(),
+    board: await db.kanbanBoards.get(selectedBoardId),
+  } : undefined), [selectedBoardId]);
+  // useLiveQuery keeps the previous deps' result until the new query emits: use it only if it is the selected board's
+  const live = q && q.id === selectedBoardId ? q : undefined;
+  const liveColumns = live?.columns;
+  const liveCards = live?.cards;
+  const liveBoard = live?.board;
 
   const columns = (liveColumns?.length ? liveColumns : boardDetail?.columns) ?? [];
   const boardTitle = boardDetail?.title ?? liveBoard?.title ?? '';
