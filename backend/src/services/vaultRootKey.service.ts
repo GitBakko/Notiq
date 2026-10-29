@@ -7,7 +7,6 @@ const CURVE = 'secp384r1';
 const RAW_PUB_LEN = 97;
 const IV_LEN = 12;
 const SHARE_LEN = 32;
-const TAG_LEN = 16;
 
 export interface RootReleaseInput {
   requestId: string;

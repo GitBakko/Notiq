@@ -139,7 +139,7 @@ export function openServerShare(userId: string, epoch: number, enc: Buffer): Buf
   return Buffer.concat([d.update(enc.subarray(12, enc.length - 16)), d.final()]);
 }
 
-function authVerifierOf(userId: string, authKey: Uint8Array): Buffer<ArrayBuffer> {
+export function authVerifierOf(userId: string, authKey: Uint8Array): Buffer<ArrayBuffer> {
   return Buffer.from(
     crypto.createHmac('sha256', verifierKey()).update(userId, 'utf8').update('|', 'utf8').update(authKey).digest(),
   );

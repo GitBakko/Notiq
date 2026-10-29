@@ -41,7 +41,7 @@ function keyringBody(over: Record<string, unknown> = {}) {
     expectedEpoch: 0,
     password: 'pw',
     kdf: 'argon2id',
-    kdfParams: { m: 65536, t: 3, p: 1 },
+    kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 },
     pinSalt: b(16),
     wrappedVkPin: b(60),
     authKey: b(32),
