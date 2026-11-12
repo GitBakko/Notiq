@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import prisma from '../plugins/prisma';
 import { AppError } from '../utils/errors';
@@ -7,7 +7,7 @@ import { VAULT_ROOT_KEYS } from '../utils/vaultRootKeys';
 import { logEvent } from './audit.service';
 import { notifyRecovery, notifySuperadmins, type RecoveryEvent } from './vaultRecoveryNotify';
 import { assertPointOnCurve, releaseRootShare, sealRecoveryCode } from './vaultRootKey.service';
-import { authVerifierOf, keyringUpdatePayloadSchema, pepperStatus, sha256hex, verifierKey, verifyVkProof } from './vault.service';
+import { authVerifierOf, b64url, keyringUpdatePayloadSchema, pepperStatus, sealServerShare, sha256hex, verifierKey, verifyVkProof } from './vault.service';
 
 const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -299,7 +299,11 @@ function isLapsed(row: { status: string; expiresAt?: Date | null; releaseExpires
 }
 
 export async function getRecovery(userId: string, requestId: string) {
-  const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' } });
+  // Richiesta e keyring in UNA lettura: due query separate potevano accoppiare il seal vecchio con l'escrowBlob nuovo se un complete o un annullo cadeva in mezzo.
+  const row = await prisma.vaultRequest.findFirst({
+    where: { id: requestId, userId, type: 'RECOVERY' },
+    include: { user: { select: { vaultKeyring: { select: { status: true, escrowBlob: true } } } } },
+  });
   if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
   // Scaduta per tempo ma non ancora marcata dal job: si presenta gia' come EXPIRED, senza seal ne' codice (G7).
   const now = new Date();
@@ -316,6 +320,9 @@ export async function getRecovery(userId: string, requestId: string) {
     const value = (n?.data as { sealedCodeA?: unknown } | null | undefined)?.sealedCodeA;
     sealedCodeA = typeof value === 'string' ? value : null;
   }
+  // L'escrow esce solo insieme al seal (stessa finestra) e solo con keyring READY: il client lo apre col Kit per ricavare VK (G-B).
+  const keyring = row.user?.vaultKeyring;
+  const escrowBlob = sealable && keyring?.status === 'READY' ? (keyring.escrowBlob ?? null) : null;
   return {
     status,
     fingerprint: row.fingerprint,
@@ -324,6 +331,7 @@ export async function getRecovery(userId: string, requestId: string) {
     sealedCodeA,
     rootShareForClient: sealable ? row.rootShareForClient : null,
     rootSignature: sealable ? row.rootSignature : null,
+    escrowBlob,
   };
 }
 
@@ -396,6 +404,13 @@ export async function getRecoveryForAdmin(requestId: string) {
   return { ...adminView(row), audit };
 }
 
+// wrap ed escrow obbligatori; il wrap porta anche il nuovo serverShare (la KEK lo include: senza, il nuovo PIN non sbloccherebbe); `rotate` vietato e chiavi sconosciute rifiutate a ogni livello (strict).
+export const recoveryCompletePayloadSchema = z.object({
+  rev: keyringUpdatePayloadSchema.shape.rev,
+  wrap: keyringUpdatePayloadSchema.shape.wrap.unwrap().extend({ serverShare: b64url(32) }).strict(),
+  escrow: keyringUpdatePayloadSchema.shape.escrow.unwrap().strict(),
+}).strict();
+
 export async function completeRecovery(userId: string, requestId: string, payloadRaw: string, proof: Buffer) {
   const payloadHash = sha256hex(payloadRaw);
   const existing = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' } });
@@ -404,10 +419,10 @@ export async function completeRecovery(userId: string, requestId: string, payloa
   if (existing.status !== 'RELEASED' || !existing.releaseExpiresAt || existing.releaseExpiresAt <= new Date()) {
     throw new AppError(409, 'errors.vault.recoveryStateConflict');
   }
-  let payload: z.infer<typeof keyringUpdatePayloadSchema>;
+  let payload: z.infer<typeof recoveryCompletePayloadSchema>;
   try {
-    const parsed = keyringUpdatePayloadSchema.safeParse(JSON.parse(payloadRaw));
-    if (!parsed.success || parsed.data.rotate !== undefined || !parsed.data.wrap || !parsed.data.escrow) throw new Error('invalid'); // wrap ed escrow obbligatori (spec §3.2.7)
+    const parsed = recoveryCompletePayloadSchema.safeParse(JSON.parse(payloadRaw));
+    if (!parsed.success) throw new Error('invalid');
     payload = parsed.data;
   } catch {
     throw new AppError(400, 'errors.vault.invalidPayload');
@@ -418,24 +433,26 @@ export async function completeRecovery(userId: string, requestId: string, payloa
     const keyring = request?.user.vaultKeyring;
     if (!request || !keyring || keyring.status !== 'READY') throw new AppError(409, 'errors.vault.recoveryStateConflict');
     verifyVkProof(keyring, 'POST', `/api/vault/recovery/${requestId}/complete`, payloadRaw, payload.rev, proof);
-    if (payload.escrow && !Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, payload.escrow.rootKeyId)) throw new AppError(400, 'errors.vault.invalidRootKey');
-    if (payload.wrap && keyring.pepperKeyId !== pepperStatus().keyId) throw new AppError(503, 'errors.vault.pepperMismatch');
+    if (!Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, payload.escrow.rootKeyId)) throw new AppError(400, 'errors.vault.invalidRootKey');
+    if (keyring.pepperKeyId !== pepperStatus().keyId) throw new AppError(503, 'errors.vault.pepperMismatch');
+    const { wrap, escrow } = payload;
     // U4: con il PIN nuovo, contatore dei tentativi e lockout dello sblocco ripartono da zero.
-    const data: Prisma.VaultKeyringUpdateManyMutationInput = { rev: { increment: 1 }, failedAttempts: 0, lockedUntil: null };
-    if (payload.wrap) {
-      data.kdf = payload.wrap.kdf;
-      data.kdfParams = payload.wrap.kdfParams;
-      data.pinSalt = Buffer.from(payload.wrap.pinSalt, 'base64url');
-      data.wrappedVkPin = Buffer.from(payload.wrap.wrappedVkPin, 'base64url');
-      data.authVerifier = authVerifierOf(userId, Buffer.from(payload.wrap.authKey, 'base64url'));
-      data.pepperKeyId = pepperStatus().keyId;
-    }
-    if (payload.escrow) {
-      data.escrowBlob = Buffer.from(payload.escrow.escrowBlob, 'base64url');
-      data.sealedRootShare = Buffer.from(payload.escrow.sealedRootShare, 'base64url');
-      data.rootKeyId = payload.escrow.rootKeyId;
-      data.userShareUnderVk = Buffer.from(payload.escrow.userShareUnderVk, 'base64url');
-    }
+    const data: Prisma.VaultKeyringUpdateManyMutationInput = {
+      rev: { increment: 1 },
+      failedAttempts: 0,
+      lockedUntil: null,
+      kdf: wrap.kdf,
+      kdfParams: wrap.kdfParams,
+      pinSalt: Buffer.from(wrap.pinSalt, 'base64url'),
+      wrappedVkPin: Buffer.from(wrap.wrappedVkPin, 'base64url'),
+      authVerifier: authVerifierOf(userId, Buffer.from(wrap.authKey, 'base64url')),
+      serverShareEnc: sealServerShare(userId, keyring.epoch, Buffer.from(wrap.serverShare, 'base64url')),
+      pepperKeyId: pepperStatus().keyId,
+      escrowBlob: Buffer.from(escrow.escrowBlob, 'base64url'),
+      sealedRootShare: Buffer.from(escrow.sealedRootShare, 'base64url'),
+      rootKeyId: escrow.rootKeyId,
+      userShareUnderVk: Buffer.from(escrow.userShareUnderVk, 'base64url'),
+    };
     const changedKeyring = await tx.vaultKeyring.updateMany({ where: { userId, status: 'READY', epoch: keyring.epoch, rev: payload.rev }, data });
     if (changedKeyring.count !== 1) throw new AppError(409, 'errors.vault.staleRev');
     const changedRequest = await tx.vaultRequest.updateMany({

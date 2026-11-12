@@ -2,9 +2,10 @@
 // (test di parita in backend). Se la lista fosse vuota il setup sarebbe disabilitato e non chiamerebbe il server.
 import { b64uDecode } from './vaultCrypto';
 
-export const VAULT_ROOT_KEYS: Readonly<Record<string, { ecdhSpki: string }>> = Object.freeze({
+export const VAULT_ROOT_KEYS: Readonly<Record<string, { ecdhSpki: string; ecdsaSpki: string }>> = Object.freeze({
   rk_68a265761e7e37c7: Object.freeze({
     ecdhSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE9UaYkpTPMfyJoTc6nnvLCB8F8Syd9j9Uy9JMQmeyRuBo8FLYCgLPRmq8djnO4sawRKTUzp4famYsn6M3kfFI9y9UQgWBIuZ8sZ61OBUpuRCH7sJ4LbLkYElNDqRo3YU_',
+    ecdsaSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEG2wXXQ9NrQeaMQIzyJod3M56-bTKPI--i3klBSzqYOnBILPGmeSy6BIryUvUBLF8RlVOoUpJ-gsOk5HiKZHBtM4e-NEJBda2zIEYj-RUHfygIRkcmAg9pIAaOFO417uJ',
   }),
 });
 

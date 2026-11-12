@@ -163,7 +163,7 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
   fastify.get('/recovery/:id', limit(60, '1 minute'), async (request) => {
     const { id } = parse(recoveryIdSchema, request.params);
     const r = await recoveryService.getRecovery(request.user.id, id);
-    return { ...r, rootShareForClient: toB64(r.rootShareForClient), rootSignature: toB64(r.rootSignature) };
+    return { ...r, rootShareForClient: toB64(r.rootShareForClient), rootSignature: toB64(r.rootSignature), escrowBlob: toB64(r.escrowBlob) };
   });
 
   fastify.post('/recovery/:id/confirm', limit(5, '15 minutes'), async (request) => {

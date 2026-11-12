@@ -1,6 +1,6 @@
 import pino from 'pino';
 
-const REDACT_KEYS = ['authKey', 'serverShare', 'passphrase', 'pin', 'codeA', 'codeB'];
+const REDACT_KEYS = ['authKey', 'serverShare', 'passphrase', 'pin', 'codeA', 'codeB', 'payload'];
 export const REDACT_PATHS = REDACT_KEYS.flatMap((k) => [k, `*.${k}`, `*.*.${k}`]);
 
 export const loggerOptions = {

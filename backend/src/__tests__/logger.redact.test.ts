@@ -36,15 +36,21 @@ describe('logger REDACT_PATHS', () => {
     expect(c.out).not.toContain('X1');
   });
 
+  it('redacts payload (complete del recupero: authKey e serverShare viaggiano nella stringa)', () => {
+    const c = capture();
+    c.log.info({ body: { payload: '{"authKey":"AAAA"}' } }, 'x');
+    expect(c.out).not.toContain('AAAA');
+  });
+
   it('shared logger options wire in the redaction', () => {
     expect(loggerOptions.redact.paths).toBe(REDACT_PATHS);
     expect(loggerOptions.redact.censor).toBe('[REDACTED]');
   });
 
-  it('covers all six keys at the three depths', () => {
-    for (const k of ['authKey', 'serverShare', 'passphrase', 'pin', 'codeA', 'codeB']) {
+  it('covers all seven keys at the three depths', () => {
+    for (const k of ['authKey', 'serverShare', 'passphrase', 'pin', 'codeA', 'codeB', 'payload']) {
       expect(REDACT_PATHS).toEqual(expect.arrayContaining([k, `*.${k}`, `*.*.${k}`]));
     }
-    expect(REDACT_PATHS).toHaveLength(18);
+    expect(REDACT_PATHS).toHaveLength(21);
   });
 });

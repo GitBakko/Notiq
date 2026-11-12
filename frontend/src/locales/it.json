@@ -1870,7 +1870,8 @@
       "releaseSignatureInvalid": "Il rilascio non è stato verificato e non è stato salvato.",
       "rootKeyUnavailable": "La chiave di recupero non è disponibile sul server.",
       "rootShareInvalid": "I dati di recupero salvati non sono validi. Contatta l'assistenza.",
-      "recoveryFingerprintMismatch": "Il codice richiesta non corrisponde alla richiesta salvata. Contatta l'assistenza."
+      "recoveryFingerprintMismatch": "Il codice richiesta non corrisponde alla richiesta salvata. Contatta l'assistenza.",
+      "recoveryInProgress": "Per questo account è in corso un recupero. Completalo o annullalo prima di rigenerare il Kit di recupero."
     },
     "common": {
       "accessDenied": "Accesso negato",

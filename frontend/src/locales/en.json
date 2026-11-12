@@ -1870,7 +1870,8 @@
       "releaseSignatureInvalid": "The release could not be verified and was not saved.",
       "rootKeyUnavailable": "The recovery key is not available on the server.",
       "rootShareInvalid": "The stored recovery data is not valid. Contact support.",
-      "recoveryFingerprintMismatch": "The request code does not match the stored request. Contact support."
+      "recoveryFingerprintMismatch": "The request code does not match the stored request. Contact support.",
+      "recoveryInProgress": "A recovery is in progress for this account. Finish or cancel it before regenerating the Recovery Kit."
     },
     "common": {
       "accessDenied": "Access denied",

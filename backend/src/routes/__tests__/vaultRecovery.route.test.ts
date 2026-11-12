@@ -184,6 +184,7 @@ describe('GET /recovery/:id', () => {
       sealedCodeA: null,
       rootShareForClient: Buffer.alloc(40, 2),
       rootSignature: Buffer.alloc(64, 3),
+      escrowBlob: Buffer.alloc(60, 4),
     });
     const res = await call('GET', `/recovery/${UUID}`);
     expect(res.statusCode).toBe(200);
@@ -195,14 +196,16 @@ describe('GET /recovery/:id', () => {
       sealedCodeA: null,
       rootShareForClient: b(40, 2),
       rootSignature: b(64, 3),
+      escrowBlob: b(60, 4),
     });
     expect(rs.getRecovery).toHaveBeenCalledWith('user-1', UUID);
   });
 
   it('PENDING_CODE: sealedCodeA passa, share e firma null', async () => {
-    rs.getRecovery.mockResolvedValue({ status: 'PENDING_CODE', fingerprint: 'F', notBefore: null, releaseExpiresAt: null, sealedCodeA: 'abc_def', rootShareForClient: null, rootSignature: null });
+    rs.getRecovery.mockResolvedValue({ status: 'PENDING_CODE', fingerprint: 'F', notBefore: null, releaseExpiresAt: null, sealedCodeA: 'abc_def', rootShareForClient: null, rootSignature: null, escrowBlob: null });
     const j = (await call('GET', `/recovery/${UUID}`)).json();
     expect(j.sealedCodeA).toBe('abc_def');
+    expect(j.escrowBlob).toBeNull();
     expect(j.rootShareForClient).toBeNull();
     expect(j.rootSignature).toBeNull();
   });

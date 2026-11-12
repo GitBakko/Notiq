@@ -124,7 +124,7 @@ export function b64url(len: number | [number, number]) {
 const shareAad = (userId: string, epoch: number) =>
   Buffer.from(`notiq/vault/v3/servershare|${userId}|${epoch}`, 'utf8');
 
-function sealServerShare(userId: string, epoch: number, share: Uint8Array): Buffer<ArrayBuffer> {
+export function sealServerShare(userId: string, epoch: number, share: Uint8Array): Buffer<ArrayBuffer> {
   const iv = crypto.randomBytes(12);
   const c = crypto.createCipheriv('aes-256-gcm', shareWrapKey(), iv);
   c.setAAD(shareAad(userId, epoch));
@@ -340,6 +340,14 @@ export async function updateKeyring(userId: string, payloadRaw: string, proof: B
   }
   if (wrap && row.pepperKeyId !== pepperStatus().keyId) {
     throw new AppError(503, 'errors.vault.pepperMismatch');
+  }
+  // Con un rilascio aperto un escrow nuovo si accoppierebbe all'S_root gia' rilasciato: il client vedrebbe kitInvalid anche col Kit giusto.
+  if (escrow) {
+    const open = await prisma.vaultRequest.findFirst({
+      where: { userId, type: 'RECOVERY', status: 'RELEASED', releaseExpiresAt: { gt: new Date() } },
+      select: { id: true },
+    });
+    if (open) throw new AppError(409, 'errors.vault.recoveryInProgress');
   }
 
   const dec = (v: string) => Buffer.from(v, 'base64url');

@@ -437,4 +437,32 @@ describe('updateKeyring', () => {
     const { raw, sig } = signed({ rev: 4, escrow: escrow('rk_nope') });
     expect((await fail(updateKeyring('u1', raw, sig))).message).toBe('errors.vault.invalidRootKey');
   });
+
+  describe('rilascio di recupero aperto', () => {
+    it('escrow con RECOVERY RELEASED non scaduta -> 409 recoveryInProgress, nessuna scrittura', async () => {
+      mp.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+      const { raw, sig } = signed({ rev: 4, escrow: escrow() });
+      const e = await fail(updateKeyring('u1', raw, sig));
+      expect(e.statusCode).toBe(409);
+      expect(e.message).toBe('errors.vault.recoveryInProgress');
+      expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+      expect(mp.vaultRequest.findFirst.mock.calls[0][0].where).toMatchObject({
+        userId: 'u1', type: 'RECOVERY', status: 'RELEASED', releaseExpiresAt: { gt: expect.any(Date) },
+      });
+    });
+
+    it('escrow senza rilascio aperto -> 200', async () => {
+      mp.vaultRequest.findFirst.mockResolvedValue(null);
+      const { raw, sig } = signed({ rev: 4, escrow: escrow() });
+      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5 });
+    });
+
+    it('solo wrap con rilascio aperto -> 200, senza nemmeno cercare il rilascio', async () => {
+      mp.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+      mp.vaultRequest.findFirst.mockClear();
+      const { raw, sig } = signed({ rev: 4, wrap: wrap() });
+      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5 });
+      expect(mp.vaultRequest.findFirst).not.toHaveBeenCalled();
+    });
+  });
 });

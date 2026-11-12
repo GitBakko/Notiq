@@ -11,7 +11,7 @@ import { AppError } from '../utils/errors';
 import { logEvent } from '../services/audit.service';
 import { notifyRecovery, notifySuperadmins } from '../services/vaultRecoveryNotify';
 import { releaseRootShare } from '../services/vaultRootKey.service';
-import { pepperStatus, verifierKey } from '../services/vault.service';
+import { openServerShare, pepperStatus, verifierKey } from '../services/vault.service';
 import {
   approveRecovery, cancelRecovery, completeRecovery, confirmRecovery, createRecoveryRequest, expireRecoveryRequests, fingerprintOf,
   getOpenRecovery, getRecovery, getRecoveryForAdmin, listRecoveriesForAdmin, rejectRecovery, releaseRecovery,
@@ -505,6 +505,37 @@ describe('lettura per l\'utente', () => {
     expect(stale.rootSignature).toBeNull();
   });
 
+  it('G-B: escrowBlob solo con il seal servibile (RELEASED non scaduta); null in WAITING, COMPLETED, EXPIRED e RELEASED scaduta', async () => {
+    const user = { vaultKeyring: { status: 'READY', escrowBlob: Buffer.alloc(60, 9) } };
+    const seal = { rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(96, 3) };
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...base, ...seal, user, status: 'RELEASED', releaseExpiresAt: new Date(Date.now() + 60_000) });
+    mp.vaultKeyring.findUnique.mockClear();
+    const live = await getRecovery(U, RID);
+    expect(Buffer.from(live.escrowBlob!).equals(Buffer.alloc(60, 9))).toBe(true);
+    // Una sola lettura coerente: richiesta + keyring insieme, nessuna query separata sul keyring.
+    expect(mp.vaultRequest.findFirst.mock.calls[0][0].include).toEqual({ user: { select: { vaultKeyring: { select: { status: true, escrowBlob: true } } } } });
+    expect(mp.vaultKeyring.findUnique).not.toHaveBeenCalled();
+    for (const row of [
+      { status: 'WAITING' },
+      { status: 'COMPLETED' },
+      { status: 'EXPIRED' },
+      { status: 'RELEASED', releaseExpiresAt: new Date(Date.now() - 1000) },
+    ]) {
+      mp.vaultRequest.findFirst.mockResolvedValue({ ...base, ...seal, user, ...row });
+      expect((await getRecovery(U, RID)).escrowBlob).toBeNull();
+    }
+  });
+
+  it('escrowBlob null se il keyring non e READY (anche con seal servibile) o manca', async () => {
+    const live = { ...base, rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(96, 3), status: 'RELEASED', releaseExpiresAt: new Date(Date.now() + 60_000) };
+    for (const user of [{ vaultKeyring: { status: 'RESET_PENDING', escrowBlob: Buffer.alloc(60, 9) } }, { vaultKeyring: null }, null]) {
+      mp.vaultRequest.findFirst.mockResolvedValue({ ...live, user });
+      const r = await getRecovery(U, RID);
+      expect(r.rootShareForClient).toHaveLength(157);
+      expect(r.escrowBlob).toBeNull();
+    }
+  });
+
   it('G9: sealedCodeA solo in PENDING_CODE, letto dalla notifica code della richiesta (filtro JSON path)', async () => {
     mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'PENDING_CODE' });
     mp.notification.findFirst.mockResolvedValue({ data: { event: 'code', requestId: RID, sealedCodeA: 'SEALED' } });
@@ -614,7 +645,7 @@ describe('completamento', () => {
     const msg = `notiq/vault/v3/proof|POST /api/vault/recovery/${RID}/complete|${U}|2|3|${crypto.createHash('sha256').update(payload).digest('hex')}`;
     return crypto.sign('sha256', Buffer.from(msg), { key: pair.privateKey, dsaEncoding: 'ieee-p1363' });
   };
-  const wrap = () => ({ kdf: 'argon2id', kdfParams: { m: 65536, t: 10, p: 1 }, pinSalt: Buffer.alloc(16).toString('base64url'), wrappedVkPin: Buffer.alloc(60).toString('base64url'), authKey: Buffer.alloc(32).toString('base64url') });
+  const wrap = () => ({ kdf: 'argon2id', kdfParams: { m: 65536, t: 10, p: 1 }, pinSalt: Buffer.alloc(16).toString('base64url'), wrappedVkPin: Buffer.alloc(60).toString('base64url'), authKey: Buffer.alloc(32).toString('base64url'), serverShare: Buffer.alloc(32, 7).toString('base64url') });
   const escrow = () => ({ escrowBlob: Buffer.alloc(60).toString('base64url'), sealedRootShare: Buffer.alloc(157).toString('base64url'), rootKeyId: 'rk_68a265761e7e37c7', userShareUnderVk: Buffer.alloc(48).toString('base64url') });
   const setup = () => {
     const pair = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
@@ -641,6 +672,43 @@ describe('completamento', () => {
     const replay = await completeRecovery(U, RID, payload, proof);
     expect(replay).toEqual({ status: 'COMPLETED', idempotent: true });
     expect(notifyRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it('G-A: complete scrive serverShareEnc (sigillato per utente ed epoch) insieme ad authVerifier', async () => {
+    const pair = setup();
+    const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow() });
+    await completeRecovery(U, RID, payload, proofOf(pair, payload));
+    const data = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
+    expect(data.authVerifier).toBeDefined();
+    expect(openServerShare(U, 2, data.serverShareEnc).equals(Buffer.alloc(32, 7))).toBe(true);
+    expect(() => openServerShare(U, 3, data.serverShareEnc)).toThrow();
+  });
+
+  it('G-A: wrap senza serverShare (o di lunghezza sbagliata) e rotate -> 400 senza transazione', async () => {
+    const pair = setup();
+    const { serverShare: _s, ...noShare } = wrap();
+    for (const body of [
+      { rev: 3, wrap: noShare, escrow: escrow() },
+      { rev: 3, wrap: { ...wrap(), serverShare: Buffer.alloc(31).toString('base64url') }, escrow: escrow() },
+      { rev: 3, wrap: wrap(), escrow: escrow(), rotate: {} },
+    ]) {
+      const payload = JSON.stringify(body);
+      await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidPayload' });
+    }
+    expect(mp.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('chiavi sconosciute dentro wrap o escrow (o in cima) -> 400, nessuna transazione', async () => {
+    const pair = setup();
+    for (const body of [
+      { rev: 3, wrap: { ...wrap(), extra: 1 }, escrow: escrow() },
+      { rev: 3, wrap: wrap(), escrow: { ...escrow(), extra: 1 } },
+      { rev: 3, wrap: wrap(), escrow: escrow(), extra: 1 },
+    ]) {
+      const payload = JSON.stringify(body);
+      await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidPayload' });
+    }
+    expect(mp.$transaction).not.toHaveBeenCalled();
   });
 
   it('G5: payload solo-wrap o solo-escrow o vuoto -> 400, nessuna transazione', async () => {
