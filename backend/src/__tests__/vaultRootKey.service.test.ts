@@ -145,6 +145,21 @@ describe('vaultRootKey.service', () => {
     await expect(releaseRootShare(releaseInput(generateClient().publicRaw))).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.rootKeyUnavailable' });
   });
 
+  it('B2: file leggibile ma malformato (JSON valido di forma sbagliata, header con v errata) -> 503, non 403', async () => {
+    const client = generateClient();
+    fs.writeFileSync(file, JSON.stringify({ hello: 'world' }));
+    await expect(releaseRootShare(releaseInput(client.publicRaw))).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.rootKeyUnavailable' });
+    fs.writeFileSync(file, 'not json');
+    await expect(releaseRootShare(releaseInput(client.publicRaw))).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.rootKeyUnavailable' });
+    const sealed = JSON.parse(await sealRootKeyFile({ [pairA.rootKeyId]: pairA }, 'correct horse battery staple')) as { header: string; ct: string };
+    fs.writeFileSync(file, JSON.stringify({ header: JSON.stringify({ ...JSON.parse(sealed.header), v: 2 }), ct: sealed.ct }));
+    await expect(releaseRootShare(releaseInput(client.publicRaw))).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.rootKeyUnavailable' });
+  });
+
+  it('B2: file corretto con passphrase errata resta 403 (l\'unico esito contato)', async () => {
+    await expect(releaseRootShare({ ...releaseInput(generateClient().publicRaw), passphrase: 'wrong' })).rejects.toMatchObject({ statusCode: 403, message: 'errors.vault.invalidRootPassphrase' });
+  });
+
   it('F1: path che punta a una cartella (errore fs) -> 503', async () => {
     process.env.VAULT_ROOT_KEY_PATH = dir;
     await expect(releaseRootShare(releaseInput(generateClient().publicRaw))).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.rootKeyUnavailable' });

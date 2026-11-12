@@ -11,6 +11,7 @@ import { authVerifierOf, keyringUpdatePayloadSchema, pepperStatus, sha256hex, ve
 
 const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const TIMED_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING'] as const; // scadono su expiresAt; RELEASED su releaseExpiresAt
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // FP = primi 40 bit di SHA-256(clientEphPub) in 8 cifre Crockford, bit piu' significativi per primi (spec §3.2.2).
@@ -45,6 +46,54 @@ function newCode(): string {
   return `${out.slice(0, 8)}${out.slice(8, 16)}`;
 }
 
+const EXPIRY_REASON = { PENDING_APPROVAL: 'approval', PENDING_CODE: 'code', WAITING: 'waiting', RELEASED: 'release' } as const;
+
+type LapsedRow = { id: string; userId: string; status: string };
+
+/** Marca EXPIRED le richieste scadute per tempo (di un utente, o tutte). Per riga e condizionata a stato e scadenza letti: un approve/confirm/release/cancel concorrente vince e count e' 0. */
+async function expireLapsed(db: Prisma.TransactionClient | typeof prisma, now: Date, userId?: string, onDone?: (row: LapsedRow) => Promise<void>): Promise<LapsedRow[]> {
+  const candidates = await db.vaultRequest.findMany({
+    where: {
+      type: 'RECOVERY',
+      ...(userId ? { userId } : {}),
+      OR: [{ status: { in: [...TIMED_STATES] }, expiresAt: { lte: now } }, { status: 'RELEASED', releaseExpiresAt: { lte: now } }],
+    },
+    select: { id: true, userId: true, status: true, expiresAt: true, releaseExpiresAt: true },
+  });
+  const done: LapsedRow[] = [];
+  // Con onDone (job, righe autocommit) ogni riga e' annunciata subito e un errore non ferma le altre: si rilancia il primo alla fine. Senza (dentro la transazione) il primo errore esce subito.
+  let firstError: unknown;
+  let failed = false;
+  for (const c of candidates) {
+    try {
+      const released = c.status === 'RELEASED';
+      const r = await db.vaultRequest.updateMany({
+        where: { id: c.id, type: 'RECOVERY', status: c.status, ...(released ? { releaseExpiresAt: c.releaseExpiresAt } : { expiresAt: c.expiresAt }) },
+        data: released ? { status: 'EXPIRED', rootShareForClient: null, rootSignature: null } : { status: 'EXPIRED' },
+      });
+      if (r.count === 1) {
+        done.push(c);
+        await onDone?.(c);
+      }
+    } catch (e) {
+      if (!onDone) throw e;
+      if (!failed) { failed = true; firstError = e; }
+    }
+  }
+  if (failed) throw firstError;
+  return done;
+}
+
+// Audit e notify solo per le righe davvero scadute da noi, e solo a transizione committata.
+async function announceExpiredRow(c: LapsedRow): Promise<void> {
+  await logEvent(c.userId, 'vault.recovery.expired', { requestId: c.id, reason: EXPIRY_REASON[c.status as keyof typeof EXPIRY_REASON] });
+  notify(c.userId, 'expired', { requestId: c.id });
+}
+
+async function announceExpired(rows: LapsedRow[]): Promise<void> {
+  for (const c of rows) await announceExpiredRow(c);
+}
+
 function assertPub(pub: Uint8Array): void {
   if (pub.length !== 97 || pub[0] !== 0x04) throw new AppError(400, 'errors.vault.invalidPayload');
   assertPointOnCurve(pub); // un punto fuori curva farebbe nascere una richiesta che l'approve non puo' mai sigillare
@@ -55,8 +104,11 @@ export async function createRecoveryRequest(userId: string, clientEphPub: Uint8A
   const keyring = await prisma.vaultKeyring.findUnique({ where: { userId }, select: { status: true, sealedRootShare: true, rootKeyId: true } });
   if (!keyring || keyring.status !== 'READY' || !keyring.sealedRootShare || !keyring.rootKeyId) throw new AppError(409, 'errors.vault.recoveryNoKeyring');
   // Lock per utente: senza, richieste concorrenti passano tutte il controllo "nessuna aperta" e ne creano piu' d'una.
+  let lapsed: LapsedRow[] = [];
   const row = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'vault-recovery:' + userId}))`;
+    // Una richiesta scaduta per tempo ma non ancora marcata dal job non e' piu' aperta (il banner non la mostra): va scaduta qui, prima del controllo.
+    lapsed = await expireLapsed(tx, new Date(), userId);
     const open = await tx.vaultRequest.findFirst({ where: { userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] } }, select: { id: true } });
     if (open) throw new AppError(409, 'errors.vault.recoveryAlreadyOpen');
     // Quota: non contano annullate, rifiutate ed EXPIRED per tentativi esauriti (attempts >= 5); contano le EXPIRED per tempo.
@@ -78,6 +130,7 @@ export async function createRecoveryRequest(userId: string, clientEphPub: Uint8A
       },
     });
   });
+  await announceExpired(lapsed);
   await logEvent(userId, 'vault.recovery.requested', { requestId: row.id, fingerprint: row.fingerprint });
   notify(userId, 'requested', { requestId: row.id, fingerprint: row.fingerprint ?? undefined });
   return { id: row.id, fingerprint: row.fingerprint };
@@ -112,7 +165,7 @@ export async function approveRecovery(adminId: string, requestId: string) {
 export async function rejectRecovery(adminId: string, requestId: string, reason: string) {
   const rejectReason = reason.slice(0, 500);
   const r = await prisma.vaultRequest.updateMany({
-    where: { id: requestId, type: 'RECOVERY', status: 'PENDING_APPROVAL' },
+    where: { id: requestId, type: 'RECOVERY', status: 'PENDING_APPROVAL', expiresAt: { gt: new Date() } },
     data: { status: 'REJECTED', rejectReason },
   });
   if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
@@ -150,9 +203,10 @@ export async function confirmRecovery(userId: string, requestId: string, codeA: 
     throw new AppError(403, 'errors.vault.recoveryInvalidCode');
   }
   const notBefore = new Date(Date.now() + 3 * DAY_MS);
+  const waitingExpiresAt = new Date(notBefore.getTime() + 7 * DAY_MS); // spec §3.3 (tabella dei limiti): una WAITING non rilasciata entro 7 giorni da notBefore scade
   const waiting = await prisma.vaultRequest.updateMany({
     where: { id: requestId, userId, status: 'PENDING_CODE' },
-    data: { status: 'WAITING', notBefore, codeAHash: null, codeBHash: null },
+    data: { status: 'WAITING', notBefore, expiresAt: waitingExpiresAt, codeAHash: null, codeBHash: null },
   });
   if (waiting.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
   await logEvent(userId, 'vault.recovery.confirmed', { requestId, notBefore: notBefore.toISOString() });
@@ -161,11 +215,19 @@ export async function confirmRecovery(userId: string, requestId: string, codeA: 
 }
 
 export async function cancelRecovery(userId: string, requestId: string) {
+  const now = new Date();
   const r = await prisma.vaultRequest.updateMany({
-    where: { id: requestId, userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] } },
-    data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledBy: userId, rootShareForClient: null, rootSignature: null },
+    // Anche il tempo: una scaduta non ancora marcata dal job finirebbe CANCELLED, che non conta nella quota, invece di EXPIRED.
+    where: {
+      id: requestId, userId, type: 'RECOVERY',
+      OR: [{ status: { in: [...TIMED_STATES] }, expiresAt: { gt: now } }, { status: 'RELEASED', releaseExpiresAt: { gt: now } }],
+    },
+    data: { status: 'CANCELLED', cancelledAt: now, cancelledBy: userId, rootShareForClient: null, rootSignature: null },
   });
-  if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  if (r.count !== 1) {
+    const current = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' }, select: { status: true, expiresAt: true, releaseExpiresAt: true } });
+    throw current && (current.status === 'EXPIRED' || isLapsed(current, now)) ? new AppError(410, 'errors.vault.recoveryExpired') : new AppError(409, 'errors.vault.recoveryStateConflict');
+  }
   await logEvent(userId, 'vault.recovery.cancelled', { requestId });
   notify(userId, 'cancelled', { requestId });
   return { status: 'CANCELLED' as const };
@@ -181,7 +243,7 @@ async function checkReleaseRate(adminId: string): Promise<void> {
 
 export async function releaseRecovery(adminId: string, requestId: string, passphrase: string) {
   await checkReleaseRate(adminId);
-  const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, status: 'WAITING', notBefore: { lte: new Date() } }, include: { user: { select: { vaultKeyring: true } } } });
+  const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, type: 'RECOVERY', status: 'WAITING', notBefore: { lte: new Date() }, expiresAt: { gt: new Date() } }, include: { user: { select: { vaultKeyring: true } } } });
   if (!row?.user.vaultKeyring?.sealedRootShare || !row.user.vaultKeyring.rootKeyId || !row.clientEphPub || !row.fingerprint || !row.notBefore) {
     throw new AppError(409, 'errors.vault.recoveryStateConflict');
   }
@@ -209,7 +271,7 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
     throw err;
   }
   const changed = await prisma.vaultRequest.updateMany({
-    where: { id: requestId, status: 'WAITING', notBefore: { lte: new Date() } },
+    where: { id: requestId, type: 'RECOVERY', status: 'WAITING', notBefore: { lte: new Date() }, expiresAt: { gt: new Date() } },
     data: {
       status: 'RELEASED',
       releasedById: adminId,
@@ -231,13 +293,21 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
   return { status: 'RELEASED' as const };
 }
 
+function isLapsed(row: { status: string; expiresAt?: Date | null; releaseExpiresAt?: Date | null }, now: Date): boolean {
+  if (row.status === 'RELEASED') return !!row.releaseExpiresAt && row.releaseExpiresAt <= now;
+  return (TIMED_STATES as readonly string[]).includes(row.status) && !!row.expiresAt && row.expiresAt <= now;
+}
+
 export async function getRecovery(userId: string, requestId: string) {
   const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' } });
   if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
-  const sealable = row.status === 'RELEASED' && !!row.releaseExpiresAt && row.releaseExpiresAt > new Date(); // G7: scaduto = non servito, anche se il job non e' ancora girato
+  // Scaduta per tempo ma non ancora marcata dal job: si presenta gia' come EXPIRED, senza seal ne' codice (G7).
+  const now = new Date();
+  const status = isLapsed(row, now) ? 'EXPIRED' : row.status;
+  const sealable = status === 'RELEASED' && !!row.releaseExpiresAt && row.releaseExpiresAt > now;
   // VaultRequest non ha una colonna per la meta A cifrata (G9): sta nella notifica `code` della richiesta.
   let sealedCodeA: string | null = null;
-  if (row.status === 'PENDING_CODE') {
+  if (status === 'PENDING_CODE') {
     const n = await prisma.notification.findFirst({
       where: { userId, type: 'VAULT_RECOVERY', AND: [{ data: { path: ['requestId'], equals: requestId } }, { data: { path: ['event'], equals: 'code' } }] },
       orderBy: { createdAt: 'desc' },
@@ -247,7 +317,7 @@ export async function getRecovery(userId: string, requestId: string) {
     sealedCodeA = typeof value === 'string' ? value : null;
   }
   return {
-    status: row.status,
+    status,
     fingerprint: row.fingerprint,
     notBefore: row.notBefore,
     releaseExpiresAt: row.releaseExpiresAt,
@@ -258,8 +328,13 @@ export async function getRecovery(userId: string, requestId: string) {
 }
 
 export async function getOpenRecovery(userId: string) {
+  const now = new Date();
   const row = await prisma.vaultRequest.findFirst({
-    where: { userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] } },
+    where: {
+      userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] },
+      // Le scadute per tempo e non ancora marcate dal job non sono piu' aperte: il banner sparisce subito.
+      AND: [{ OR: [{ status: { in: [...TIMED_STATES] }, expiresAt: { gt: now } }, { status: 'RELEASED', releaseExpiresAt: { gt: now } }] }],
+    },
     orderBy: { createdAt: 'desc' },
     select: { id: true, status: true, fingerprint: true, createdAt: true, notBefore: true },
   });
@@ -272,11 +347,13 @@ const ADMIN_INCLUDE = { user: { select: { email: true, vaultKeyring: { select: {
 type AdminRow = Prisma.VaultRequestGetPayload<{ include: typeof ADMIN_INCLUDE }>;
 
 function adminView(row: AdminRow, now = new Date()) {
+  // Scaduta per tempo ma non ancora marcata dal job: stesso criterio di getRecovery, mai "pronta" al rilascio.
+  const status = isLapsed(row, now) ? 'EXPIRED' : row.status;
   return {
     id: row.id,
     userId: row.userId,
     userEmail: row.user?.email,
-    status: row.status,
+    status,
     fingerprint: row.fingerprint,
     reason: row.reason,
     requestIp: row.requestIp,
@@ -294,7 +371,7 @@ function adminView(row: AdminRow, now = new Date()) {
     cancelledAt: row.cancelledAt,
     keyringStatus: (row.user?.vaultKeyring?.status ?? null),
     rootKeyId: (row.user?.vaultKeyring?.rootKeyId ?? null),
-    readyForRelease: row.status === 'WAITING' && !!row.notBefore && row.notBefore <= now,
+    readyForRelease: status === 'WAITING' && !!row.notBefore && row.notBefore <= now,
   };
 }
 
@@ -372,9 +449,44 @@ export async function completeRecovery(userId: string, requestId: string, payloa
   return { status: 'COMPLETED' as const, idempotent: false };
 }
 
+const REMINDER_LEAD_MS = DAY_MS;
+
 export async function expireRecoveryRequests(now = new Date()) {
-  const expiredApproval = await prisma.vaultRequest.updateMany({ where: { type: 'RECOVERY', status: 'PENDING_APPROVAL', expiresAt: { lte: now } }, data: { status: 'EXPIRED' } });
-  const expiredCode = await prisma.vaultRequest.updateMany({ where: { type: 'RECOVERY', status: 'PENDING_CODE', expiresAt: { lte: now } }, data: { status: 'EXPIRED' } });
-  const expiredRelease = await prisma.vaultRequest.updateMany({ where: { type: 'RECOVERY', status: 'RELEASED', releaseExpiresAt: { lte: now } }, data: { status: 'EXPIRED', rootShareForClient: null, rootSignature: null } });
-  return expiredApproval.count + expiredCode.count + expiredRelease.count;
+  const done = await expireLapsed(prisma, now, undefined, announceExpiredRow);
+  return done.length;
+}
+
+/** Promemoria una tantum nelle 24 h prima di notBefore; il marker AuditLog (scritto nella stessa transazione del lock per richiesta, PRIMA della notifica) evita i doppioni fra run e worker. */
+export async function sendRecoveryReminders(now = new Date()) {
+  const due = await prisma.vaultRequest.findMany({
+    where: { type: 'RECOVERY', status: 'WAITING', notBefore: { gt: now, lte: new Date(now.getTime() + REMINDER_LEAD_MS) } },
+    select: { id: true, userId: true, fingerprint: true, notBefore: true },
+  });
+  let sent = 0;
+  for (const r of due) {
+    // Marker con create diretto (logEvent ingoia gli errori: senza marker la notify ripartirebbe a ogni run); lock try per richiesta contro il count-poi-insert fra worker.
+    const marked = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${'vault-recovery-reminder:' + r.id})) AS locked`;
+      if (!lock?.locked) return false;
+      const already = await tx.auditLog.count({ where: { event: 'vault.recovery.reminder_sent', details: { path: ['requestId'], equals: r.id } } });
+      if (already > 0) return false;
+      await tx.auditLog.create({ data: { userId: r.userId, event: 'vault.recovery.reminder_sent', details: { requestId: r.id } } });
+      return true;
+    });
+    if (!marked) continue;
+    notify(r.userId, 'reminder', { requestId: r.id, fingerprint: r.fingerprint ?? undefined, notBefore: r.notBefore ?? undefined });
+    sent += 1;
+  }
+  return sent;
+}
+
+/** Le due passate sono indipendenti: un errore della prima non salta la seconda; il primo errore viene rilanciato per il log del chiamante. */
+export async function runRecoveryJobs() {
+  let firstError: unknown;
+  let expired = 0;
+  let reminded = 0;
+  try { expired = await expireRecoveryRequests(); } catch (err) { firstError = err; }
+  try { reminded = await sendRecoveryReminders(); } catch (err) { firstError ??= err; }
+  if (firstError !== undefined) throw firstError;
+  return { expired, reminded };
 }

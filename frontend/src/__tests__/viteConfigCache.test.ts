@@ -23,6 +23,9 @@ describe('vite.config runtimeCaching[0].urlPattern', () => {
     expect(match('/api/notes/abc')).toBe(false);
     expect(match('/api/notes/abc/versions')).toBe(false);
     expect(match('/api/vault/keyring')).toBe(false);
+    expect(match('/api/admin/vault-recovery')).toBe(false);
+    expect(match('/api/admin/vault-recovery/abc/release')).toBe(false);
+    expect(match('/api/admin/users')).toBe(true);
     expect(match('/api/notebooks')).toBe(true);
     expect(match('/uploads/x.png')).toBe(false);
   });

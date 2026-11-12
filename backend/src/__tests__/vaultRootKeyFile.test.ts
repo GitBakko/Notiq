@@ -8,6 +8,7 @@ import {
   generateRootKeyPair,
   sealRootKeyFile,
   openRootKeyFile,
+  RootKeyFileError,
   assertPathOutsideApp,
   writeAtomicNoOverwrite,
 } from '../utils/vaultRootKeyFile';
@@ -213,6 +214,66 @@ describe('vaultRootKeyFile', () => {
       await expect(openRootKeyFile(f, PASS)).rejects.toThrow(FIXED);
       expect(Date.now() - t0).toBeLessThan(1000);
     }
+  });
+
+  it('B2: file malformato -> kind malformed (header invalido, ids o SPKI incoerenti); solo il tag GCM e\' kind passphrase', async () => {
+    const kindOf = async (f: string, pass = PASS) => {
+      const err = await openRootKeyFile(f, pass).then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(RootKeyFileError);
+      expect((err as Error).message).toBe('vault root file: cannot open');
+      return (err as RootKeyFileError).kind;
+    };
+    const kp = generateRootKeyPair();
+    const sealed = JSON.parse(await sealRootKeyFile({ [kp.rootKeyId]: kp }, PASS, KDF)) as { header: string; ct: string };
+    const withHeader = (name: string, patch: (h: Record<string, unknown>) => void) => {
+      const h = JSON.parse(sealed.header) as Record<string, unknown>;
+      patch(h);
+      const f = tmpFile(name);
+      fs.writeFileSync(f, JSON.stringify({ header: JSON.stringify(h), ct: sealed.ct }));
+      return f;
+    };
+
+    const notJson = tmpFile('not-json.json');
+    fs.writeFileSync(notJson, 'not json at all');
+    expect(await kindOf(notJson)).toBe('malformed');
+    const wrongShape = tmpFile('wrong-shape.json');
+    fs.writeFileSync(wrongShape, JSON.stringify({ hello: 'world' }));
+    expect(await kindOf(wrongShape)).toBe('malformed');
+    expect(await kindOf(withHeader('v2.json', (h) => { h.v = 2; }))).toBe('malformed');
+    expect(await kindOf(withHeader('kdf.json', (h) => { h.kdf = 'scrypt'; }))).toBe('malformed');
+    expect(await kindOf(withHeader('kdfp.json', (h) => { (h.kdfParams as Record<string, number>).t = 10000; }))).toBe('malformed');
+    expect(await kindOf(withHeader('salt.json', (h) => { h.salt = 42; }))).toBe('malformed');
+    expect(await kindOf(withHeader('pub.json', (h) => { h.pub = 'x'; }))).toBe('malformed');
+
+    // passphrase giusta ma contenuto incoerente (ids/SPKI): il tag GCM ha gia' verificato, quindi non e' un tentativo errato
+    const other = generateRootKeyPair();
+    const spki = tmpFile('spki-kind.json');
+    fs.writeFileSync(spki, await sealRootKeyFile({ [kp.rootKeyId]: { ...kp, ecdhSpki: other.ecdhSpki } }, PASS, KDF));
+    expect(await kindOf(spki)).toBe('malformed');
+
+    // file corretto: passphrase errata e header/ct manomessi falliscono sul tag GCM
+    const ok = tmpFile('kind-ok.json');
+    fs.writeFileSync(ok, JSON.stringify(sealed));
+    expect(await kindOf(ok, 'wrong passphrase wrong passphrase')).toBe('passphrase');
+  });
+
+  it('L2: iv e salt di lunghezza diversa da 12 e 16 byte sono malformed (non passphrase errata)', async () => {
+    const kp = generateRootKeyPair();
+    const sealed = JSON.parse(await sealRootKeyFile({ [kp.rootKeyId]: kp }, PASS, KDF)) as { header: string; ct: string };
+    const kindWith = async (name: string, patch: (h: Record<string, unknown>) => void) => {
+      const h = JSON.parse(sealed.header) as Record<string, unknown>;
+      patch(h);
+      const f = tmpFile(name);
+      fs.writeFileSync(f, JSON.stringify({ header: JSON.stringify(h), ct: sealed.ct }));
+      const err = await openRootKeyFile(f, PASS).then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(RootKeyFileError);
+      return (err as RootKeyFileError).kind;
+    };
+    const b = (n: number) => crypto.randomBytes(n).toString('base64url');
+    expect(await kindWith('iv-long.json', (h) => { h.iv = b(16); })).toBe('malformed');
+    expect(await kindWith('iv-short.json', (h) => { h.iv = b(8); })).toBe('malformed');
+    expect(await kindWith('salt-long.json', (h) => { h.salt = b(32); })).toBe('malformed');
+    expect(await kindWith('salt-short.json', (h) => { h.salt = b(8); })).toBe('malformed');
   });
 
   it('la passphrase e\' normalizzata NFC: forma NFC e NFD sono equivalenti', async () => {

@@ -15,6 +15,7 @@ import { pepperStatus, verifierKey } from '../services/vault.service';
 import {
   approveRecovery, cancelRecovery, completeRecovery, confirmRecovery, createRecoveryRequest, expireRecoveryRequests, fingerprintOf,
   getOpenRecovery, getRecovery, getRecoveryForAdmin, listRecoveriesForAdmin, rejectRecovery, releaseRecovery,
+  runRecoveryJobs, sendRecoveryReminders,
 } from '../services/vaultRecovery.service';
 
 const mp = prisma as any;
@@ -61,6 +62,7 @@ beforeEach(() => {
   vi.mocked(notifySuperadmins).mockResolvedValue(undefined);
   mp.auditLog = { count: vi.fn(), create: vi.fn(), findMany: vi.fn() };
   mp.$transaction = vi.fn();
+  mp.vaultRequest.findMany.mockReset().mockResolvedValue([]);
   mp.vaultRequest.findFirst.mockResolvedValue(null);
   mp.vaultRequest.findUnique.mockResolvedValue(null);
   mp.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', sealedRootShare: Buffer.alloc(157, 1), rootKeyId: 'rk_test' });
@@ -72,6 +74,7 @@ beforeEach(() => {
   mp.auditLog.count.mockResolvedValue(0);
   mp.auditLog.create.mockResolvedValue({});
   mp.$executeRaw = vi.fn().mockResolvedValue(1);
+  mp.$queryRaw = vi.fn().mockResolvedValue([{ locked: true }]);
   mp.$transaction.mockImplementation(async (fn: any) => fn(mp));
 });
 
@@ -115,6 +118,32 @@ describe('richiesta e approvazione', () => {
     const [strings, ...values] = lockArgs;
     expect(strings.join('?')).toContain('pg_advisory_xact_lock');
     expect(values).toEqual([`vault-recovery:${U}`]);
+  });
+
+  it('M1: create scade le righe gia scadute dell\'utente dentro il lock, prima del controllo "una aperta"; audit e notify expired dopo il commit', async () => {
+    const order: string[] = [];
+    const past = new Date(Date.now() - 1000);
+    mp.$transaction.mockImplementation(async (fn: any) => { order.push('tx'); const r = await fn(mp); order.push('commit'); return r; });
+    mp.$executeRaw.mockImplementation(async () => { order.push('lock'); return 1; });
+    mp.vaultRequest.findMany.mockImplementation(async () => { order.push('findMany'); return [{ id: 'old', userId: U, status: 'WAITING', expiresAt: past, releaseExpiresAt: null }]; });
+    mp.vaultRequest.updateMany.mockImplementation(async () => { order.push('expire'); return { count: 1 }; });
+    mp.vaultRequest.findFirst.mockImplementation(async () => { order.push('findFirst'); return null; });
+    vi.mocked(logEvent).mockImplementation(async () => { order.push('audit'); });
+    await createRecoveryRequest(U, pub(), undefined, 'ip', 'ua');
+    expect(order.slice(0, 6)).toEqual(['tx', 'lock', 'findMany', 'expire', 'findFirst', 'commit']);
+    expect(mp.vaultRequest.findMany.mock.calls[0][0].where).toMatchObject({ userId: U, type: 'RECOVERY' });
+    expect(mp.vaultRequest.updateMany).toHaveBeenCalledWith({ where: { id: 'old', type: 'RECOVERY', status: 'WAITING', expiresAt: past }, data: { status: 'EXPIRED' } });
+    expect(order.indexOf('audit')).toBeGreaterThan(order.indexOf('commit'));
+    expect(logEvent).toHaveBeenCalledWith(U, 'vault.recovery.expired', { requestId: 'old', reason: 'waiting' });
+    expect(notifyRecovery).toHaveBeenCalledWith(U, 'expired', { requestId: 'old' });
+  });
+
+  it('M1: riga scaduta che un job concorrente ha gia marcato (count 0) -> nessuna audit ne notify expired', async () => {
+    mp.vaultRequest.findMany.mockResolvedValue([{ id: 'old', userId: U, status: 'PENDING_CODE', expiresAt: new Date(Date.now() - 1000), releaseExpiresAt: null }]);
+    mp.vaultRequest.updateMany.mockResolvedValue({ count: 0 });
+    await createRecoveryRequest(U, pub(), undefined, 'ip', 'ua');
+    expect(logEvent).not.toHaveBeenCalledWith(U, 'vault.recovery.expired', expect.anything());
+    expect(notifyRecovery).not.toHaveBeenCalledWith(U, 'expired', expect.anything());
   });
 
   it('F4: la quota non conta CANCELLED, REJECTED ed EXPIRED per tentativi esauriti; conta EXPIRED per tempo', async () => {
@@ -320,6 +349,27 @@ describe('conferma e annullamento', () => {
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'cancelled', { requestId: RID });
   });
 
+  it('M1: cancel e condizionata al tempo (expiresAt, o releaseExpiresAt per RELEASED)', async () => {
+    await cancelRecovery(U, RID);
+    const where = mp.vaultRequest.updateMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ id: RID, userId: U, type: 'RECOVERY' });
+    expect(where.OR).toEqual([
+      { status: { in: ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING'] }, expiresAt: { gt: expect.any(Date) } },
+      { status: 'RELEASED', releaseExpiresAt: { gt: expect.any(Date) } },
+    ]);
+  });
+
+  it.each([
+    ['WAITING scaduta per tempo', { status: 'WAITING', expiresAt: new Date(Date.now() - 1000), releaseExpiresAt: null }],
+    ['RELEASED con releaseExpiresAt passato', { status: 'RELEASED', expiresAt: null, releaseExpiresAt: new Date(Date.now() - 1000) }],
+    ['gia EXPIRED', { status: 'EXPIRED', expiresAt: null, releaseExpiresAt: null }],
+  ])('M1: cancel su %s -> 410 recoveryExpired, niente CANCELLED ne notify', async (_n, current) => {
+    mp.vaultRequest.updateMany.mockResolvedValue({ count: 0 });
+    mp.vaultRequest.findFirst.mockResolvedValue(current);
+    await expect(cancelRecovery(U, RID)).rejects.toMatchObject({ statusCode: 410, message: 'errors.vault.recoveryExpired' });
+    expect(notifyRecovery).not.toHaveBeenCalled();
+  });
+
   it('annullamento di una richiesta non aperta -> 409, nessuna notify', async () => {
     mp.vaultRequest.updateMany.mockResolvedValue({ count: 0 });
     await expect(cancelRecovery(U, RID)).rejects.toMatchObject({ statusCode: 409 });
@@ -345,6 +395,13 @@ describe('rifiuto', () => {
     await expect(rejectRecovery(ADMIN, RID, 'no')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryStateConflict' });
     expect(notifyRecovery).not.toHaveBeenCalled();
   });
+
+  it('la where esclude una PENDING_APPROVAL scaduta (expiresAt > now), come approve', async () => {
+    mp.vaultRequest.findUnique.mockResolvedValue({ userId: U });
+    await rejectRecovery(ADMIN, RID, 'no');
+    const where = mp.vaultRequest.updateMany.mock.calls[0][0].where;
+    expect(where.expiresAt).toEqual({ gt: expect.any(Date) });
+  });
 });
 
 describe('rilascio', () => {
@@ -369,6 +426,14 @@ describe('rilascio', () => {
     expect(data.rootSignature).toHaveLength(64);
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'released', { requestId: RID });
     expect(notifySuperadmins).not.toHaveBeenCalled();
+  });
+
+  it('M4: release cerca e aggiorna solo richieste di tipo RECOVERY', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(waitingRow());
+    (releaseRootShare as any).mockResolvedValue({ rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) });
+    await releaseRecovery(ADMIN, RID, 'passphrase');
+    expect(mp.vaultRequest.findFirst.mock.calls[0][0].where).toMatchObject({ id: RID, type: 'RECOVERY', status: 'WAITING' });
+    expect(mp.vaultRequest.updateMany.mock.calls[0][0].where).toMatchObject({ id: RID, type: 'RECOVERY', status: 'WAITING' });
   });
 
   it('se WAITING non esiste piu\', nessuna scrittura del seal e nessuna notify', async () => {
@@ -480,7 +545,7 @@ describe('lettura admin (nessun segreto)', () => {
   const LIST_KEYS = ['approvedAt', 'approvedById', 'cancelledAt', 'completedAt', 'createdAt', 'expiresAt', 'fingerprint', 'id', 'keyringStatus', 'notBefore', 'readyForRelease', 'reason', 'rejectReason', 'releaseExpiresAt', 'releasedAt', 'releasedById', 'requestIp', 'requestUserAgent', 'rootKeyId', 'status', 'userEmail', 'userId'];
   const secretRow = (over: Record<string, unknown> = {}) => ({
     id: RID, userId: U, type: 'RECOVERY', status: 'WAITING', fingerprint: 'FP', reason: 'forgot', requestIp: '192.0.2.1', requestUserAgent: 'ua',
-    createdAt: new Date(), expiresAt: new Date(), notBefore: new Date(Date.now() - 1000), approvedById: ADMIN, approvedAt: new Date(), rejectReason: null,
+    createdAt: new Date(), expiresAt: new Date(Date.now() + 7 * 24 * 3600_000), notBefore: new Date(Date.now() - 1000), approvedById: ADMIN, approvedAt: new Date(), rejectReason: null,
     releasedById: null, releasedAt: null, releaseExpiresAt: null, completedAt: null, cancelledAt: null, cancelledBy: null, attempts: 1,
     codeHash: 'h0', codeAHash: 'h1', codeBHash: 'h2', clientEphPub: Buffer.alloc(97), rootShareForClient: Buffer.alloc(157), rootSignature: Buffer.alloc(64), completedPayloadHash: 'h3',
     user: { email: 'a@example.com', vaultKeyring: { status: 'READY', rootKeyId: 'rk_test' } },
@@ -505,6 +570,17 @@ describe('lettura admin (nessun segreto)', () => {
     expect(q.skip).toBe(20);
     expect(q.take).toBe(10);
     expect(q.orderBy).toEqual({ createdAt: 'desc' });
+  });
+
+  it('M2: WAITING oltre la scadenza (notBefore + 7 giorni) e EXPIRED e non pronta; RELEASED scaduta idem', async () => {
+    const past = new Date(Date.now() - 1000);
+    mp.vaultRequest.findMany.mockResolvedValue([secretRow({ expiresAt: past }), secretRow({ status: 'RELEASED', expiresAt: null, releaseExpiresAt: past })]);
+    mp.vaultRequest.count.mockResolvedValue(2);
+    const { items } = await listRecoveriesForAdmin({ page: 1, limit: 50 });
+    expect(items.map((i: any) => [i.status, i.readyForRelease])).toEqual([['EXPIRED', false], ['EXPIRED', false]]);
+    mp.vaultRequest.findFirst.mockResolvedValue(secretRow({ expiresAt: past }));
+    mp.auditLog.findMany.mockResolvedValue([]);
+    expect(await getRecoveryForAdmin(RID)).toMatchObject({ status: 'EXPIRED', readyForRelease: false });
   });
 
   it('readyForRelease false se notBefore nel futuro o stato diverso da WAITING', async () => {
@@ -578,12 +654,209 @@ describe('completamento', () => {
   });
 });
 
-describe('scadenze', () => {
-  it('pulisce i seal dei rilasci scaduti', async () => {
-    mp.vaultRequest.updateMany.mockResolvedValue({ count: 1 });
-    expect(await expireRecoveryRequests(new Date('2030-01-01T00:00:00Z'))).toBe(3);
-    const releaseData = mp.vaultRequest.updateMany.mock.calls[2][0].data;
-    expect(releaseData.rootShareForClient).toBeNull();
-    expect(releaseData.rootSignature).toBeNull();
+describe('scadenze (T7)', () => {
+  const NOW = new Date('2030-01-01T00:00:00Z');
+  const past = new Date('2029-12-31T00:00:00Z');
+  const row = (id: string, status: string, extra: Record<string, unknown> = {}) => ({ id, userId: `u-${id}`, status, expiresAt: past, releaseExpiresAt: null, ...extra });
+
+  /** Store finto: findMany serve le righe non ancora EXPIRED, updateMany applica la transizione solo se id e stato coincidono. */
+  function fakeStore(rows: ReturnType<typeof row>[]) {
+    mp.vaultRequest.findMany.mockImplementation(async () => rows.filter((r) => r.status !== 'EXPIRED').map((r) => ({ ...r })));
+    mp.vaultRequest.updateMany.mockImplementation(async ({ where, data }: any) => {
+      const r = rows.find((x) => x.id === where.id && x.status === where.status);
+      if (!r) return { count: 0 };
+      Object.assign(r, data);
+      return { count: 1 };
+    });
+    return rows;
+  }
+  const expiredNotifies = () => vi.mocked(notifyRecovery).mock.calls.filter((c) => c[1] === 'expired');
+
+  it('findMany cerca i candidati in ogni stato con scadenza', async () => {
+    mp.vaultRequest.findMany.mockResolvedValue([]);
+    expect(await expireRecoveryRequests(NOW)).toBe(0);
+    expect(mp.vaultRequest.findMany.mock.calls[0][0].where).toEqual({
+      type: 'RECOVERY',
+      OR: [
+        { status: { in: ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING'] }, expiresAt: { lte: NOW } },
+        { status: 'RELEASED', releaseExpiresAt: { lte: NOW } },
+      ],
+    });
+  });
+
+  it('due run consecutive -> una sola audit/notify expired per richiesta; il motivo segue lo stato', async () => {
+    fakeStore([row('a', 'PENDING_APPROVAL'), row('b', 'PENDING_CODE'), row('c', 'WAITING'), row('d', 'RELEASED', { releaseExpiresAt: past })]);
+    expect(await expireRecoveryRequests(NOW)).toBe(4);
+    expect(await expireRecoveryRequests(NOW)).toBe(0);
+    await Promise.resolve();
+    expect(expiredNotifies()).toHaveLength(4);
+    expect(vi.mocked(logEvent).mock.calls.filter((c) => c[1] === 'vault.recovery.expired')).toEqual([
+      ['u-a', 'vault.recovery.expired', { requestId: 'a', reason: 'approval' }],
+      ['u-b', 'vault.recovery.expired', { requestId: 'b', reason: 'code' }],
+      ['u-c', 'vault.recovery.expired', { requestId: 'c', reason: 'waiting' }],
+      ['u-d', 'vault.recovery.expired', { requestId: 'd', reason: 'release' }],
+    ]);
+    expect(notifyRecovery).toHaveBeenCalledWith('u-a', 'expired', { requestId: 'a' });
+  });
+
+  it('la transizione e\' condizionata per riga (stato e scadenza letti); WAITING oltre notBefore+7g scade', async () => {
+    const waitingExpiry = new Date('2029-12-30T00:00:00Z'); // notBefore (27/12) + 7 giorni, gia' passato
+    fakeStore([row('w', 'WAITING', { expiresAt: waitingExpiry })]);
+    expect(await expireRecoveryRequests(NOW)).toBe(1);
+    expect(mp.vaultRequest.updateMany).toHaveBeenCalledWith({ where: { id: 'w', type: 'RECOVERY', status: 'WAITING', expiresAt: waitingExpiry }, data: { status: 'EXPIRED' } });
+  });
+
+  it('un RELEASED scaduto ha il seal azzerato, condizionato a status e releaseExpiresAt', async () => {
+    fakeStore([row('r', 'RELEASED', { expiresAt: null, releaseExpiresAt: past })]);
+    expect(await expireRecoveryRequests(NOW)).toBe(1);
+    expect(mp.vaultRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'r', type: 'RECOVERY', status: 'RELEASED', releaseExpiresAt: past },
+      data: { status: 'EXPIRED', rootShareForClient: null, rootSignature: null },
+    });
+  });
+
+  it('job: se la riga 2 lancia, le righe 1 e 3 sono annunciate e si rilancia il primo errore', async () => {
+    mp.vaultRequest.findMany.mockResolvedValue([row('a', 'PENDING_APPROVAL'), row('b', 'PENDING_CODE'), row('c', 'WAITING')]);
+    const boom = new Error('db down');
+    mp.vaultRequest.updateMany.mockImplementation(async ({ where }: any) => {
+      if (where.id === 'b') throw boom;
+      return { count: 1 };
+    });
+    await expect(expireRecoveryRequests(NOW)).rejects.toBe(boom);
+    expect(vi.mocked(logEvent).mock.calls.filter((c) => c[1] === 'vault.recovery.expired').map((c) => (c[2] as any).requestId)).toEqual(['a', 'c']);
+    expect(expiredNotifies().map((c) => (c[2] as any).requestId)).toEqual(['a', 'c']);
+  });
+
+  it('corsa persa (updateMany conta 0): nessun conteggio, audit o notify', async () => {
+    mp.vaultRequest.findMany.mockResolvedValue([row('x', 'PENDING_CODE')]);
+    mp.vaultRequest.updateMany.mockResolvedValue({ count: 0 });
+    expect(await expireRecoveryRequests(NOW)).toBe(0);
+    await Promise.resolve();
+    expect(logEvent).not.toHaveBeenCalled();
+    expect(notifyRecovery).not.toHaveBeenCalled();
+  });
+
+  describe('promemoria 24 h prima di notBefore', () => {
+    const soon = new Date(NOW.getTime() + 5 * 60 * 60 * 1000);
+
+    it('cerca WAITING con notBefore in (now, now+24h] e scrive il marker prima di notificare', async () => {
+      mp.vaultRequest.findMany.mockResolvedValue([{ id: 'p', userId: 'u-p', fingerprint: 'FP1', notBefore: soon }]);
+      mp.auditLog.count.mockResolvedValue(0);
+      expect(await sendRecoveryReminders(NOW)).toBe(1);
+      expect(mp.vaultRequest.findMany.mock.calls[0][0].where).toEqual({
+        type: 'RECOVERY', status: 'WAITING', notBefore: { gt: NOW, lte: new Date(NOW.getTime() + 24 * 60 * 60 * 1000) },
+      });
+      expect(mp.auditLog.count).toHaveBeenCalledWith({ where: { event: 'vault.recovery.reminder_sent', details: { path: ['requestId'], equals: 'p' } } });
+      expect(mp.auditLog.create).toHaveBeenCalledWith({ data: { userId: 'u-p', event: 'vault.recovery.reminder_sent', details: { requestId: 'p' } } });
+      expect(notifyRecovery).toHaveBeenCalledWith('u-p', 'reminder', { requestId: 'p', fingerprint: 'FP1', notBefore: soon });
+    });
+
+    it('M3: lock advisory try (per requestId) come prima istruzione della transazione; notify solo dopo il commit', async () => {
+      const order: string[] = [];
+      mp.vaultRequest.findMany.mockResolvedValue([{ id: 'p', userId: 'u-p', fingerprint: 'FP1', notBefore: soon }]);
+      mp.$transaction.mockImplementation(async (fn: any) => { const r = await fn(mp); order.push('commit'); return r; });
+      mp.$queryRaw.mockImplementation(async (...args: any[]) => { order.push('lock'); expect(args[0].join('?')).toContain('pg_try_advisory_xact_lock'); expect(args.slice(1)).toEqual(['vault-recovery-reminder:p']); return [{ locked: true }]; });
+      mp.auditLog.count.mockImplementation(async () => { order.push('count'); return 0; });
+      mp.auditLog.create.mockImplementation(async () => { order.push('marker'); return {}; });
+      vi.mocked(notifyRecovery).mockImplementation(async () => { order.push('notify'); });
+      expect(await sendRecoveryReminders(NOW)).toBe(1);
+      await Promise.resolve();
+      expect(order).toEqual(['lock', 'count', 'marker', 'commit', 'notify']);
+    });
+
+    it('M3: lock non preso (altro worker) -> ne marker ne notify', async () => {
+      mp.vaultRequest.findMany.mockResolvedValue([{ id: 'p', userId: 'u-p', fingerprint: 'FP1', notBefore: soon }]);
+      mp.$queryRaw.mockResolvedValue([{ locked: false }]);
+      expect(await sendRecoveryReminders(NOW)).toBe(0);
+      await Promise.resolve();
+      expect(mp.auditLog.count).not.toHaveBeenCalled();
+      expect(mp.auditLog.create).not.toHaveBeenCalled();
+      expect(notifyRecovery).not.toHaveBeenCalled();
+    });
+
+    it('M3: scrittura del marker fallita -> errore rilanciato e nessuna notify', async () => {
+      mp.vaultRequest.findMany.mockResolvedValue([{ id: 'p', userId: 'u-p', fingerprint: 'FP1', notBefore: soon }]);
+      mp.auditLog.create.mockRejectedValue(new Error('db down'));
+      await expect(sendRecoveryReminders(NOW)).rejects.toThrow('db down');
+      await Promise.resolve();
+      expect(notifyRecovery).not.toHaveBeenCalled();
+    });
+
+    it('con il marker gia\' scritto non rimanda: due run -> un solo reminder', async () => {
+      mp.vaultRequest.findMany.mockResolvedValue([{ id: 'p', userId: 'u-p', fingerprint: 'FP1', notBefore: soon }]);
+      let sent = 0;
+      mp.auditLog.count.mockImplementation(async () => sent);
+      mp.auditLog.create.mockImplementation(async () => { sent += 1; return {}; });
+      expect(await sendRecoveryReminders(NOW)).toBe(1);
+      expect(await sendRecoveryReminders(NOW)).toBe(0);
+      await Promise.resolve();
+      expect(vi.mocked(notifyRecovery).mock.calls.filter((c) => c[1] === 'reminder')).toHaveLength(1);
+    });
+  });
+
+  describe('runRecoveryJobs', () => {
+    it('esegue entrambe in sequenza e ritorna i conteggi', async () => {
+      mp.vaultRequest.findMany.mockResolvedValue([]);
+      expect(await runRecoveryJobs()).toEqual({ expired: 0, reminded: 0 });
+      expect(mp.vaultRequest.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('un errore della prima non blocca la seconda; l\'errore viene rilanciato', async () => {
+      mp.vaultRequest.findMany.mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce([{ id: 'p', userId: 'u-p', fingerprint: 'FP1', notBefore: new Date(Date.now() + 3600_000) }]);
+      mp.auditLog.count.mockResolvedValue(0);
+      await expect(runRecoveryJobs()).rejects.toThrow('db down');
+      expect(notifyRecovery).toHaveBeenCalledWith('u-p', 'reminder', expect.anything());
+    });
+  });
+});
+
+describe('scadenza di WAITING e lettura (B2)', () => {
+  const future = () => new Date(Date.now() + 3600_000);
+  const past = () => new Date(Date.now() - 1000);
+
+  it('confirm riuscito: expiresAt = notBefore + 7 giorni', async () => {
+    mp.vaultRequest.findUnique.mockResolvedValue({ attempts: 1, fingerprint: 'FP', codeAHash: hash('A', 'AAAAAAAA'), codeBHash: hash('B', 'BBBBBBBB') });
+    const { notBefore } = await confirmRecovery(U, RID, 'AAAAAAAA', 'BBBBBBBB');
+    const data = mp.vaultRequest.updateMany.mock.calls[1][0].data;
+    expect(data.expiresAt).toEqual(new Date(notBefore.getTime() + 7 * 24 * 60 * 60 * 1000));
+  });
+
+  it('getOpenRecovery esclude a lettura le scadute non ancora marcate dal job', async () => {
+    await getOpenRecovery(U);
+    const where = mp.vaultRequest.findFirst.mock.calls[0][0].where;
+    expect(where.AND).toEqual([{
+      OR: [
+        { status: { in: ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING'] }, expiresAt: { gt: expect.any(Date) } },
+        { status: 'RELEASED', releaseExpiresAt: { gt: expect.any(Date) } },
+      ],
+    }]);
+  });
+
+  it('getRecovery presenta come EXPIRED (senza seal ne\' sealedCodeA) le scadute per tempo', async () => {
+    const seal = { rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) };
+    const base = { id: RID, userId: U, type: 'RECOVERY', fingerprint: 'FP', notBefore: null, releaseExpiresAt: null, expiresAt: null, rootShareForClient: null, rootSignature: null };
+    for (const stale of [
+      { status: 'PENDING_APPROVAL', expiresAt: past() },
+      { status: 'PENDING_CODE', expiresAt: past() },
+      { status: 'WAITING', expiresAt: past(), notBefore: past() },
+      { status: 'RELEASED', releaseExpiresAt: past(), ...seal },
+    ]) {
+      mp.notification.findFirst.mockClear();
+      mp.vaultRequest.findFirst.mockResolvedValue({ ...base, ...stale });
+      const r = await getRecovery(U, RID);
+      expect(r.status).toBe('EXPIRED');
+      expect(r.sealedCodeA).toBeNull();
+      expect(r.rootShareForClient).toBeNull();
+      expect(r.rootSignature).toBeNull();
+      expect(mp.notification.findFirst).not.toHaveBeenCalled();
+    }
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'WAITING', expiresAt: future(), notBefore: future() });
+    expect((await getRecovery(U, RID)).status).toBe('WAITING');
+  });
+
+  it('release: una WAITING scaduta per tempo non si rilascia (findFirst e updateMany con expiresAt > now)', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(null);
+    await expect(releaseRecovery(ADMIN, RID, 'p')).rejects.toMatchObject({ statusCode: 409 });
+    expect(mp.vaultRequest.findFirst.mock.calls[0][0].where).toMatchObject({ status: 'WAITING', expiresAt: { gt: expect.any(Date) } });
   });
 });

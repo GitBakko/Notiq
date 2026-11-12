@@ -311,6 +311,7 @@ server.get('/uploads/:filename', async (request, reply) => {
 import { hocuspocus } from './hocuspocus';
 import { chatWss, authenticateFromUrl } from './chatWebSocket';
 import { archiveCompletedCards } from './services/kanban/card.service';
+import { runRecoveryJobs } from './services/vaultRecovery.service';
 import type { WebSocket } from 'ws';
 
 const start = async () => {
@@ -349,8 +350,9 @@ const start = async () => {
     // ponytail: plain unref'd setInterval, same pattern as utils/metrics.ts:57-61. Two known
     // ceilings, both accepted: under pm2 cluster mode every worker schedules its own timer
     // (updateMany is idempotent, so N sweeps converge on the same rows), and the first tick is
-    // one hour after boot, so a server restarting more often than hourly never sweeps. Move to a
-    // real scheduler with leader election only if a second periodic job appears.
+    // one hour after boot, so a server restarting more often than hourly never sweeps. The second job
+    // (vault recovery, below) is idempotent too: conditional updateMany + AuditLog-deduplicated reminder.
+    // Move to a real scheduler with leader election only if a job appears that is not.
     const archiveTimer = setInterval(() => {
       archiveCompletedCards().catch((err) =>
         server.log.error({ err }, 'Scheduled kanban card archive failed')
@@ -358,10 +360,21 @@ const start = async () => {
     }, 60 * 60 * 1000);
     if (archiveTimer.unref) archiveTimer.unref(); // never hold the process open
 
+    // Vault recovery: expiries (approval 7d, code 24h, release 7d) and the reminder 24h before notBefore.
+    // Same unref'd setInterval as above: every transition is a conditional updateMany and the reminder is
+    // deduplicated by an AuditLog marker, so overlapping workers converge. Expiry is also enforced at read time.
+    const recoveryTimer = setInterval(() => {
+      runRecoveryJobs().catch((err) =>
+        server.log.error({ err }, 'Scheduled vault recovery job failed')
+      );
+    }, 15 * 60 * 1000);
+    if (recoveryTimer.unref) recoveryTimer.unref();
+
     server.log.info('Server running on port 3001');
     server.log.info('Hocuspocus attached to /ws');
     server.log.info('Chat WebSocket attached to /chat-ws');
     server.log.info('Kanban archive job scheduled (hourly)');
+    server.log.info('Vault recovery job scheduled (every 15 min)');
   } catch (err) {
     server.log.error(err);
     process.exit(1);

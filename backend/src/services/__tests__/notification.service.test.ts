@@ -6,6 +6,7 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteNotification,
+  deleteAllNotifications,
 } from '../notification.service';
 
 const prismaMock = prisma as any;
@@ -208,5 +209,50 @@ describe('deleteNotification', () => {
     const result = await deleteNotification('non-existent', USER_ID);
 
     expect(result).toEqual({ count: 0 });
+  });
+});
+
+describe('guardia VAULT_RECOVERY (richiesta di recupero aperta)', () => {
+  const NOT_RECOVERY = { NOT: { type: 'VAULT_RECOVERY' } };
+
+  it('cerca solo richieste RECOVERY aperte dell utente (4 stati)', async () => {
+    prismaMock.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+    prismaMock.notification.deleteMany.mockResolvedValue({ count: 2 });
+    await deleteAllNotifications(USER_ID);
+    expect(prismaMock.vaultRequest.findFirst).toHaveBeenCalledWith({
+      where: { userId: USER_ID, type: 'RECOVERY', status: { in: ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] } },
+      select: { id: true },
+    });
+  });
+
+  it('deleteAll con richiesta aperta lascia le VAULT_RECOVERY', async () => {
+    prismaMock.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+    prismaMock.notification.deleteMany.mockResolvedValue({ count: 3 });
+    await deleteAllNotifications(USER_ID);
+    expect(prismaMock.notification.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID, ...NOT_RECOVERY } });
+  });
+
+  it('deleteNotification con richiesta aperta lascia le VAULT_RECOVERY', async () => {
+    prismaMock.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+    prismaMock.notification.deleteMany.mockResolvedValue({ count: 0 });
+    await deleteNotification(NOTIFICATION_ID, USER_ID);
+    expect(prismaMock.notification.deleteMany).toHaveBeenCalledWith({ where: { id: NOTIFICATION_ID, userId: USER_ID, ...NOT_RECOVERY } });
+  });
+
+  it('markAllAsRead con richiesta aperta lascia le VAULT_RECOVERY', async () => {
+    prismaMock.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+    prismaMock.notification.updateMany.mockResolvedValue({ count: 1 });
+    await markAllNotificationsAsRead(USER_ID);
+    expect(prismaMock.notification.updateMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID, isRead: false, ...NOT_RECOVERY },
+      data: { isRead: true },
+    });
+  });
+
+  it('senza richiesta aperta (es. CANCELLED) cancella tutto', async () => {
+    prismaMock.vaultRequest.findFirst.mockResolvedValue(null);
+    prismaMock.notification.deleteMany.mockResolvedValue({ count: 4 });
+    await deleteAllNotifications(USER_ID);
+    expect(prismaMock.notification.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID } });
   });
 });

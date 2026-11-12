@@ -2,8 +2,10 @@ import crypto from 'crypto';
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../utils/errors';
+import { clientIpKey } from '../utils/clientIpKey';
 import * as vaultService from '../services/vault.service';
 import { b64url, pepperStatus, KDF_T_MIN } from '../services/vault.service';
+import * as recoveryService from '../services/vaultRecovery.service';
 
 const bytes = (v: string) => Buffer.from(v, 'base64url');
 
@@ -45,6 +47,13 @@ const migrateSchema = z.object({
     .max(200),
 });
 const finalizeSchema = z.object({ ids: z.array(z.string().uuid()).min(1).max(500) });
+const NO_CTRL = /^(?:[^\p{Cc}]|[\t\n\r])*$/u; // vieta i caratteri di controllo (NUL, ESC, DEL...) tranne tab, LF, CR: Postgres rifiuta NUL con un 500
+const recoveryCreateSchema = z.object({ clientEphPub: b64url(97), reason: z.string().max(500).regex(NO_CTRL).optional() });
+const recoveryIdSchema = z.object({ id: z.string().uuid() });
+const recoveryCode = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{8}$/);
+const recoveryConfirmSchema = z.object({ codeA: recoveryCode, codeB: recoveryCode });
+const recoveryCompleteSchema = z.object({ payload: z.string().max(65536), vkProof: b64url(64) });
+const toB64 = (v: Uint8Array | null) => (v ? Buffer.from(v).toString('base64url') : null);
 
 // Fallimento = 400 fisso, senza issues: il gestore globale di app.ts rimanda gli issues Zod (RT-13).
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
@@ -64,9 +73,10 @@ function assertP256(der: Buffer) {
 }
 
 // Per-utente (non per IP spoofabile via X-Forwarded-For); fase onRequest di default: dopo authenticate (hook di istanza), prima del parsing del body.
-const limit = (max: number, timeWindow: string) => ({
+// perIp: chiave utente+sessione(sid del JWT)+IP per le sole route che la vittima di un JWT rubato deve poter usare (banner, annullo): un bucket condiviso le farebbe esaurire da fuori.
+const limit = (max: number, timeWindow: string, perIp = false) => ({
   config: {
-    rateLimit: { max, timeWindow, keyGenerator: (req: FastifyRequest) => req.user.id },
+    rateLimit: { max, timeWindow, keyGenerator: (req: FastifyRequest) => (perIp ? `${req.user.id}:${req.user.sid ?? ''}:${clientIpKey(req)}` : req.user.id) },
   },
 });
 
@@ -89,8 +99,9 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
     if (pepperStatus().status !== 'ok') throw new AppError(503, 'errors.vault.unavailable');
   });
 
-  fastify.get('/keyring', limit(60, '1 minute'), async (request) => {
-    return vaultService.getKeyring(request.user.id);
+  fastify.get('/keyring', limit(60, '1 minute', true), async (request) => {
+    const keyring = await vaultService.getKeyring(request.user.id);
+    return { ...keyring, openRecovery: await recoveryService.getOpenRecovery(request.user.id) };
   });
 
   fastify.post('/keyring', limit(5, '1 hour'), async (request, reply) => {
@@ -140,5 +151,35 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
   fastify.post('/finalize', limit(20, '1 minute'), async (request) => {
     const b = parse(finalizeSchema, request.body);
     return vaultService.finalize(request.user.id, b.ids);
+  });
+
+  // Recupero con la chiave root (spec §3.2). Il path di complete e' la stringa firmata da verifyVkProof: non cambiarlo.
+  fastify.post('/recovery', limit(3, '1 hour'), async (request, reply) => {
+    const b = parse(recoveryCreateSchema, request.body);
+    const result = await recoveryService.createRecoveryRequest(request.user.id, bytes(b.clientEphPub), b.reason, request.ip, request.headers['user-agent'] ?? '');
+    return reply.status(201).send(result);
+  });
+
+  fastify.get('/recovery/:id', limit(60, '1 minute'), async (request) => {
+    const { id } = parse(recoveryIdSchema, request.params);
+    const r = await recoveryService.getRecovery(request.user.id, id);
+    return { ...r, rootShareForClient: toB64(r.rootShareForClient), rootSignature: toB64(r.rootSignature) };
+  });
+
+  fastify.post('/recovery/:id/confirm', limit(5, '15 minutes'), async (request) => {
+    const { id } = parse(recoveryIdSchema, request.params);
+    const b = parse(recoveryConfirmSchema, request.body);
+    return recoveryService.confirmRecovery(request.user.id, id, b.codeA, b.codeB);
+  });
+
+  fastify.delete('/recovery/:id', limit(10, '1 minute', true), async (request) => {
+    const { id } = parse(recoveryIdSchema, request.params);
+    return recoveryService.cancelRecovery(request.user.id, id);
+  });
+
+  fastify.post('/recovery/:id/complete', limit(10, '1 hour'), async (request) => {
+    const { id } = parse(recoveryIdSchema, request.params);
+    const b = parse(recoveryCompleteSchema, request.body);
+    return recoveryService.completeRecovery(request.user.id, id, b.payload, bytes(b.vkProof));
   });
 }

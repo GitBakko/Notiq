@@ -6,6 +6,7 @@ import * as settingsService from '../services/settings.service';
 import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
 import { metrics } from '../utils/metrics';
+import vaultAdminRoutes from './vaultAdmin';
 
 const updateSettingSchema = z.object({
   key: z.string(),
@@ -38,6 +39,8 @@ async function requireSuperAdmin(fastify: FastifyInstance, request: { user: { id
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
+
+  fastify.register(vaultAdminRoutes, { prefix: '/vault-recovery' });
 
   fastify.post('/settings', async (request, reply) => {
     if (!await requireSuperAdmin(fastify, request)) {

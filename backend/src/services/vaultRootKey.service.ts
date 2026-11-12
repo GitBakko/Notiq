@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { AppError } from '../utils/errors';
 import { VAULT_ROOT_KEYS } from '../utils/vaultRootKeys';
-import { openRootKeyFile } from '../utils/vaultRootKeyFile';
+import { openRootKeyFile, RootKeyFileError } from '../utils/vaultRootKeyFile';
 import { openRootShare } from '../utils/vaultSeal';
 
 const CURVE = 'secp384r1';
@@ -90,7 +90,9 @@ export async function releaseRootShare(input: RootReleaseInput): Promise<{ rootS
   try {
     try {
       opened = await openRootKeyFile(rootKeyPath, input.passphrase);
-    } catch {
+    } catch (err) {
+      // File presente ma malformato: indisponibile come un file assente, non un tentativo errato. Solo il tag GCM non verificato (403) e' contato.
+      if (err instanceof RootKeyFileError && err.kind === 'malformed') throw new AppError(503, 'errors.vault.rootKeyUnavailable');
       throw new AppError(403, 'errors.vault.invalidRootPassphrase'); // l'unico esito contato dal rate limit
     }
     const entry = opened.keys[input.rootKeyId];

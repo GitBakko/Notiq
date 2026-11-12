@@ -63,8 +63,8 @@ export default defineConfig({
         importScripts: ['/push-sw.js'],
         runtimeCaching: [{
           // INLINE e senza riferimenti esterni: generateSW lo serializza con toString() in sw.js.
-          // Esclusi (vanno in rete senza handler): keyring/vault e tutto il sottoalbero /api/notes/ (contenuto e versioni in chiaro).
-          urlPattern: ({ url }) => url.pathname.startsWith('/api') && !url.pathname.startsWith('/api/vault/') && !url.pathname.startsWith('/api/notes/'),
+          // Esclusi (vanno in rete senza handler): keyring/vault, tutto il sottoalbero /api/notes/ (contenuto e versioni in chiaro) e /api/admin/vault-recovery (richieste di recupero, ruolo e audit).
+          urlPattern: ({ url }) => url.pathname.startsWith('/api') && !url.pathname.startsWith('/api/vault/') && !url.pathname.startsWith('/api/notes/') && !url.pathname.startsWith('/api/admin/vault-recovery'),
           handler: 'NetworkFirst',
           options: {
             cacheName: 'api-cache',

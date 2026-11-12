@@ -68,21 +68,33 @@ export const markNotificationAsRead = async (id: string, userId: string) => {
   });
 };
 
+// Con una richiesta di recupero vault aperta la notifica VAULT_RECOVERY non si cancella ne' si segna letta in blocco:
+// porta la meta A cifrata del codice. Lista = OPEN_STATES di vaultRecovery.service (import evitato per il ciclo notify<->notification).
+const RECOVERY_OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
+
+async function recoveryGuard(userId: string): Promise<Prisma.NotificationWhereInput> {
+  const open = await prisma.vaultRequest.findFirst({
+    where: { userId, type: 'RECOVERY', status: { in: [...RECOVERY_OPEN_STATES] } },
+    select: { id: true },
+  });
+  return open ? { NOT: { type: 'VAULT_RECOVERY' } } : {};
+}
+
 export const markAllNotificationsAsRead = async (userId: string) => {
   return prisma.notification.updateMany({
-    where: { userId, isRead: false },
+    where: { userId, isRead: false, ...(await recoveryGuard(userId)) },
     data: { isRead: true },
   });
 };
 
 export const deleteNotification = async (id: string, userId: string) => {
   return prisma.notification.deleteMany({
-    where: { id, userId },
+    where: { id, userId, ...(await recoveryGuard(userId)) },
   });
 };
 
 export const deleteAllNotifications = async (userId: string) => {
   return prisma.notification.deleteMany({
-    where: { userId },
+    where: { userId, ...(await recoveryGuard(userId)) },
   });
 };

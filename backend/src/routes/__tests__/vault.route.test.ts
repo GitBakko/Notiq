@@ -20,6 +20,15 @@ vi.mock('../../services/vault.service', async () => {
   };
 });
 
+vi.mock('../../services/vaultRecovery.service', () => ({
+  getOpenRecovery: vi.fn().mockResolvedValue(null),
+  createRecoveryRequest: vi.fn(),
+  getRecovery: vi.fn(),
+  confirmRecovery: vi.fn(),
+  cancelRecovery: vi.fn(),
+  completeRecovery: vi.fn(),
+}));
+
 import * as vaultService from '../../services/vault.service';
 import { KDF_T_MIN } from '../../services/vault.service';
 import { AppError } from '../../utils/errors';
@@ -129,6 +138,7 @@ describe('vault routes', () => {
     const res = await call('GET', '/keyring');
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe('NONE');
+    expect(res.json().openRecovery).toBeNull();
     expect(svc.getKeyring).toHaveBeenCalledWith('user-1');
   });
 

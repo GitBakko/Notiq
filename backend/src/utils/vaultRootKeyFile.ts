@@ -102,52 +102,87 @@ export async function sealRootKeyFile(
   }
 }
 
+// Messaggio sempre fisso; `kind` distingue solo per il service: 'passphrase' = tag GCM non verificato (l'unico esito che il rate limit conta),
+// 'malformed' = file illeggibile, header invalido o contenuto incoerente a passphrase corretta.
+export class RootKeyFileError extends Error {
+  constructor(readonly kind: 'malformed' | 'passphrase') {
+    super(OPEN_ERROR);
+  }
+}
+
+// Lunghezza esatta: un salt/iv anomalo deve dare 'malformed' (503 non contato), non fallire sul tag GCM come passphrase errata.
+const isB64u = (s: unknown, len: number): s is string => typeof s === 'string' && unb64u(s).length === len;
+
+// Validazione dell'header, prima di derivare o decifrare qualsiasi cosa.
+function readHeader(filePath: string): { file: { header: string; ct: string }; header: RootKeyFileHeader } {
+  const file = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { header: string; ct: string };
+  if (typeof file.header !== 'string' || typeof file.ct !== 'string') throw new Error('shape');
+  const header = JSON.parse(file.header) as RootKeyFileHeader;
+  if (header.v !== 1 || header.kdf !== 'argon2id') throw new Error('version');
+  validateKdfParams(header.kdfParams);
+  if (!isB64u(header.salt, 16) || !isB64u(header.iv, 12) || !header.pub || typeof header.pub !== 'object') throw new Error('header');
+  if (unb64u(file.ct).length < 16) throw new Error('short');
+  return { file, header };
+}
+
 export async function openRootKeyFile(
   filePath: string,
   passphrase: string,
 ): Promise<{ header: RootKeyFileHeader; keys: Record<string, RootKeyEntry> }> {
   let key: Buffer | undefined;
   try {
-    const file = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { header: string; ct: string };
-    if (typeof file.header !== 'string' || typeof file.ct !== 'string') throw new Error('shape');
-    const header = JSON.parse(file.header) as RootKeyFileHeader;
-    if (header.v !== 1 || header.kdf !== 'argon2id') throw new Error('version');
-    validateKdfParams(header.kdfParams);
+    let parsed: ReturnType<typeof readHeader>;
+    try {
+      parsed = readHeader(filePath);
+    } catch {
+      throw new RootKeyFileError('malformed');
+    }
+    const { file, header } = parsed;
     key = await deriveKey(passphrase, unb64u(header.salt), header.kdfParams);
     const ct = unb64u(file.ct);
-    if (ct.length < 16) throw new Error('short');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, unb64u(header.iv));
-    decipher.setAAD(Buffer.from(file.header, 'utf8'));
-    decipher.setAuthTag(ct.subarray(ct.length - 16));
-    const plain = Buffer.concat([decipher.update(ct.subarray(0, ct.length - 16)), decipher.final()]);
-    const priv = JSON.parse(plain.toString('utf8')) as Record<string, { ecdhPkcs8: string; ecdsaPkcs8: string }>;
-    plain.fill(0);
-
-    const pubIds = Object.keys(header.pub).sort();
-    const privIds = Object.keys(priv).sort();
-    if (pubIds.length !== privIds.length || pubIds.some((id, i) => id !== privIds[i])) throw new Error('ids');
-
-    const keys: Record<string, RootKeyEntry> = {};
-    for (const id of pubIds) {
-      const entry: RootKeyEntry = {
-        ecdhSpki: unb64u(header.pub[id].ecdhSpki),
-        ecdsaSpki: unb64u(header.pub[id].ecdsaSpki),
-        ecdhPkcs8: unb64u(priv[id].ecdhPkcs8),
-        ecdsaPkcs8: unb64u(priv[id].ecdsaPkcs8),
-      };
-      // le SPKI pubbliche devono coincidere byte per byte con quelle derivate dalle private decifrate
-      const ecdhSpki = crypto.createPublicKey(crypto.createPrivateKey({ key: entry.ecdhPkcs8, format: 'der', type: 'pkcs8' }))
-        .export({ type: 'spki', format: 'der' });
-      const ecdsaSpki = crypto.createPublicKey(crypto.createPrivateKey({ key: entry.ecdsaPkcs8, format: 'der', type: 'pkcs8' }))
-        .export({ type: 'spki', format: 'der' });
-      if (!ecdhSpki.equals(entry.ecdhSpki) || !ecdsaSpki.equals(entry.ecdsaSpki)) throw new Error('spki');
-      if (rootKeyIdOf(ecdhSpki, ecdsaSpki) !== id) throw new Error('rootKeyId');
-      keys[id] = entry;
+    let plain: Buffer;
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, unb64u(header.iv));
+      decipher.setAAD(Buffer.from(file.header, 'utf8'));
+      decipher.setAuthTag(ct.subarray(ct.length - 16));
+      plain = Buffer.concat([decipher.update(ct.subarray(0, ct.length - 16)), decipher.final()]);
+    } catch {
+      throw new RootKeyFileError('passphrase');
     }
-    return { header, keys };
-  } catch {
-    // messaggio fisso: niente dettagli, niente passphrase
-    throw new Error(OPEN_ERROR);
+    // Da qui il tag GCM ha verificato la passphrase: ogni difetto del contenuto e' un file malformato, non un tentativo errato.
+    try {
+      const priv = JSON.parse(plain.toString('utf8')) as Record<string, { ecdhPkcs8: string; ecdsaPkcs8: string }>;
+      plain.fill(0);
+
+      const pubIds = Object.keys(header.pub).sort();
+      const privIds = Object.keys(priv).sort();
+      if (pubIds.length !== privIds.length || pubIds.some((id, i) => id !== privIds[i])) throw new Error('ids');
+
+      const keys: Record<string, RootKeyEntry> = {};
+      for (const id of pubIds) {
+        const entry: RootKeyEntry = {
+          ecdhSpki: unb64u(header.pub[id].ecdhSpki),
+          ecdsaSpki: unb64u(header.pub[id].ecdsaSpki),
+          ecdhPkcs8: unb64u(priv[id].ecdhPkcs8),
+          ecdsaPkcs8: unb64u(priv[id].ecdsaPkcs8),
+        };
+        // le SPKI pubbliche devono coincidere byte per byte con quelle derivate dalle private decifrate
+        const ecdhSpki = crypto.createPublicKey(crypto.createPrivateKey({ key: entry.ecdhPkcs8, format: 'der', type: 'pkcs8' }))
+          .export({ type: 'spki', format: 'der' });
+        const ecdsaSpki = crypto.createPublicKey(crypto.createPrivateKey({ key: entry.ecdsaPkcs8, format: 'der', type: 'pkcs8' }))
+          .export({ type: 'spki', format: 'der' });
+        if (!ecdhSpki.equals(entry.ecdhSpki) || !ecdsaSpki.equals(entry.ecdsaSpki)) throw new Error('spki');
+        if (rootKeyIdOf(ecdhSpki, ecdsaSpki) !== id) throw new Error('rootKeyId');
+        keys[id] = entry;
+      }
+      return { header, keys };
+    } catch {
+      plain.fill(0);
+      throw new RootKeyFileError('malformed');
+    }
+  } catch (e) {
+    // messaggio fisso: niente dettagli, niente passphrase. Un errore imprevisto (es. derivazione) non e' un tentativo errato.
+    throw e instanceof RootKeyFileError ? e : new RootKeyFileError('malformed');
   } finally {
     key?.fill(0);
   }
