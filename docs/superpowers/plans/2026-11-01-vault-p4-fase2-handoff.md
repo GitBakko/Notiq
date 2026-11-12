@@ -44,7 +44,7 @@ Regole di processo:
 
 ## Ambiente di sviluppo
 
-- `backend/.env` non è nel repo: partire da `backend/.env.example`. I test backend e Prisma richiedono un Postgres raggiungibile (dev: container `notiq-db`, porta 5433).
+- `backend/.env` non è nel repo: partire da `backend/.env.example`. I test backend e Prisma richiedono un Postgres raggiungibile (dev: container `notiq-db`, porta 5434).
 - Typecheck frontend: `npx tsc -p tsconfig.app.json --noEmit` (il `tsc --noEmit` liscio non compila nulla). I test backend non sono typechecked.
 - E2E instabili noti: `collaboration.spec.ts:249` e `auth.spec.ts:41`. Non archiviarli come flaky senza conferma con `git stash` su `main` pulito.
 - Regole di progetto (TIER, i18n, dark mode, Dexie): `CLAUDE.md` di root e `frontend/CLAUDE.md`.

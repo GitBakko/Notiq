@@ -95,7 +95,7 @@ Frontend: Dexie (IndexedDB) ← syncPull/syncPush → REST API (/api/*)
 
 ```
 # backend/.env (dotenv caricato da prisma.config.js e app.ts)
-DATABASE_URL="postgresql://user:pass@localhost:5433/evernote_clone?schema=public"
+DATABASE_URL="postgresql://user:pass@localhost:5434/evernote_clone?schema=public"
 JWT_SECRET="secret"
 FRONTEND_URL="http://localhost:5173"
 LOG_LEVEL="info"
@@ -122,7 +122,7 @@ Dev proxy (vite.config.ts): `/api` → `:3001`, `/uploads` → `:3001`, `/ws` e 
 
 ### Docker
 
-- **Dev DB:** container Docker `notiq-db` su porta 5433 con volume `evernote_postgres_data` (PostgreSQL 15)
+- **Dev DB:** container Docker `notiq-db` su porta 5434 con volume `evernote_postgres_data` (PostgreSQL 15)
 - **Dockerfiles:** Node 22-alpine (Prisma 7 richiede Node 20.19+). Backend Dockerfile include `prisma generate` esplicito.
 - **Attenzione:** `docker compose up` avvia un backend sulla porta 3001 che intercetta il proxy Vite dev. Fermare i container Docker (`docker compose down`) quando si usa il dev locale.
 - Entry point backend Docker: `dist/app.js` (non `dist/index.js`)
