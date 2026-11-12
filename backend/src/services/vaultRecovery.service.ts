@@ -5,22 +5,33 @@ import prisma from '../plugins/prisma';
 import { AppError } from '../utils/errors';
 import { VAULT_ROOT_KEYS } from '../utils/vaultRootKeys';
 import { logEvent } from './audit.service';
-import { releaseRootShare } from './vaultRootKey.service';
+import { notifyRecovery, notifySuperadmins, type RecoveryEvent } from './vaultRecoveryNotify';
+import { assertPointOnCurve, releaseRootShare, sealRecoveryCode } from './vaultRootKey.service';
 import { authVerifierOf, keyringUpdatePayloadSchema, pepperStatus, sha256hex, verifierKey, verifyVkProof } from './vault.service';
 
 const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function fingerprintOf(pub: Uint8Array): string {
-  const digest = crypto.createHash('sha256').update(pub).digest();
-  let value = digest.readUInt32BE(0);
+// FP = primi 40 bit di SHA-256(clientEphPub) in 8 cifre Crockford, bit piu' significativi per primi (spec §3.2.2).
+export function fingerprintOf(pub: Uint8Array): string {
+  const value = crypto.createHash('sha256').update(pub).digest().readUIntBE(0, 5);
   let out = '';
-  for (let i = 0; i < 8; i++) {
-    out += ALPHABET[value % 32];
-    value = Math.floor(value / 32);
-  }
+  for (let i = 7; i >= 0; i--) out += ALPHABET[Math.floor(value / 32 ** i) % 32];
   return out;
+}
+
+function safeEqual(stored: string | null, expected: string): boolean {
+  return stored !== null && stored.length === expected.length && crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(expected));
+}
+
+// Il recapito (SMTP, push) non deve mai far fallire ne' rallentare una transizione gia' committata: parte in background.
+function notify(userId: string, event: RecoveryEvent, args: Parameters<typeof notifyRecovery>[2]): void {
+  void (async () => { try { await notifyRecovery(userId, event, args); } catch { /* best effort */ } })();
+}
+
+function notifyAdminsInBackground(event: Parameters<typeof notifySuperadmins>[0], requestId: string, actorId: string): void {
+  void (async () => { try { await notifySuperadmins(event, { requestId, actorId }); } catch { /* best effort */ } })();
 }
 
 function codeHash(requestId: string, part: 'A' | 'B', code: string): string {
@@ -36,43 +47,79 @@ function newCode(): string {
 
 function assertPub(pub: Uint8Array): void {
   if (pub.length !== 97 || pub[0] !== 0x04) throw new AppError(400, 'errors.vault.invalidPayload');
+  assertPointOnCurve(pub); // un punto fuori curva farebbe nascere una richiesta che l'approve non puo' mai sigillare
 }
 
 export async function createRecoveryRequest(userId: string, clientEphPub: Uint8Array, reason: string | undefined, requestIp: string, requestUserAgent: string) {
   assertPub(clientEphPub);
-  const open = await prisma.vaultRequest.findFirst({ where: { userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] } }, select: { id: true } });
-  if (open) throw new AppError(409, 'errors.vault.recoveryAlreadyOpen');
-  const recent = await prisma.vaultRequest.count({ where: { userId, type: 'RECOVERY', status: { notIn: ['CANCELLED', 'REJECTED'] }, createdAt: { gte: new Date(Date.now() - 30 * DAY_MS) } } });
-  if (recent >= 3) throw new AppError(429, 'errors.vault.recoveryRateLimited');
-  const row = await prisma.vaultRequest.create({
-    data: {
-      userId,
-      type: 'RECOVERY',
-      status: 'PENDING_APPROVAL',
-      clientEphPub: Buffer.from(clientEphPub),
-      fingerprint: fingerprintOf(clientEphPub),
-      reason: reason?.slice(0, 500) || null,
-      requestIp: requestIp.slice(0, 200),
-      requestUserAgent: requestUserAgent.slice(0, 500),
-      expiresAt: new Date(Date.now() + 7 * DAY_MS),
-    },
+  const keyring = await prisma.vaultKeyring.findUnique({ where: { userId }, select: { status: true, sealedRootShare: true, rootKeyId: true } });
+  if (!keyring || keyring.status !== 'READY' || !keyring.sealedRootShare || !keyring.rootKeyId) throw new AppError(409, 'errors.vault.recoveryNoKeyring');
+  // Lock per utente: senza, richieste concorrenti passano tutte il controllo "nessuna aperta" e ne creano piu' d'una.
+  const row = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'vault-recovery:' + userId}))`;
+    const open = await tx.vaultRequest.findFirst({ where: { userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] } }, select: { id: true } });
+    if (open) throw new AppError(409, 'errors.vault.recoveryAlreadyOpen');
+    // Quota: non contano annullate, rifiutate ed EXPIRED per tentativi esauriti (attempts >= 5); contano le EXPIRED per tempo.
+    const recent = await tx.vaultRequest.count({
+      where: { userId, type: 'RECOVERY', status: { notIn: ['CANCELLED', 'REJECTED'] }, NOT: { status: 'EXPIRED', attempts: { gte: 5 } }, createdAt: { gte: new Date(Date.now() - 30 * DAY_MS) } },
+    });
+    if (recent >= 3) throw new AppError(429, 'errors.vault.recoveryRateLimited');
+    return tx.vaultRequest.create({
+      data: {
+        userId,
+        type: 'RECOVERY',
+        status: 'PENDING_APPROVAL',
+        clientEphPub: Buffer.from(clientEphPub),
+        fingerprint: fingerprintOf(clientEphPub),
+        reason: reason?.slice(0, 500) || null,
+        requestIp: requestIp.slice(0, 200),
+        requestUserAgent: requestUserAgent.slice(0, 500),
+        expiresAt: new Date(Date.now() + 7 * DAY_MS),
+      },
+    });
   });
   await logEvent(userId, 'vault.recovery.requested', { requestId: row.id, fingerprint: row.fingerprint });
+  notify(userId, 'requested', { requestId: row.id, fingerprint: row.fingerprint ?? undefined });
   return { id: row.id, fingerprint: row.fingerprint };
 }
 
 export async function approveRecovery(adminId: string, requestId: string) {
-  const r = await prisma.vaultRequest.updateMany({
-    where: { id: requestId, status: 'PENDING_APPROVAL', expiresAt: { gt: new Date() } },
-    data: { status: 'PENDING_CODE', approvedById: adminId, approvedAt: new Date(), expiresAt: new Date(Date.now() + DAY_MS), attempts: 0 },
+  const row = await prisma.vaultRequest.findFirst({
+    where: { id: requestId, type: 'RECOVERY', status: 'PENDING_APPROVAL', expiresAt: { gt: new Date() } },
+    select: { userId: true, clientEphPub: true },
   });
-  if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  if (!row?.clientEphPub) throw new AppError(409, 'errors.vault.recoveryStateConflict');
   const code = newCode();
   const codeA = code.slice(0, 8);
   const codeB = code.slice(8);
-  await prisma.vaultRequest.update({ where: { id: requestId }, data: { codeAHash: codeHash(requestId, 'A', codeA), codeBHash: codeHash(requestId, 'B', codeB) } });
-  await logEvent(adminId, 'vault.recovery.approved', { requestId });
-  return { codeA, codeB };
+  const sealedCodeA = sealRecoveryCode(codeA, row.clientEphPub, requestId, row.userId).toString('base64url');
+  // Transizione e hash dei codici in un solo statement: mai una riga PENDING_CODE senza hash.
+  const r = await prisma.vaultRequest.updateMany({
+    where: { id: requestId, status: 'PENDING_APPROVAL', expiresAt: { gt: new Date() } },
+    data: {
+      status: 'PENDING_CODE', approvedById: adminId, approvedAt: new Date(), expiresAt: new Date(Date.now() + DAY_MS), attempts: 0,
+      codeAHash: codeHash(requestId, 'A', codeA), codeBHash: codeHash(requestId, 'B', codeB),
+    },
+  });
+  if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  const self = adminId === row.userId;
+  await logEvent(adminId, 'vault.recovery.approved', self ? { requestId, self: true } : { requestId });
+  if (self) notifyAdminsInBackground('selfAction', requestId, adminId);
+  notify(row.userId, 'code', { requestId, codeB, sealedCodeA });
+  return { status: 'PENDING_CODE' as const };
+}
+
+export async function rejectRecovery(adminId: string, requestId: string, reason: string) {
+  const rejectReason = reason.slice(0, 500);
+  const r = await prisma.vaultRequest.updateMany({
+    where: { id: requestId, type: 'RECOVERY', status: 'PENDING_APPROVAL' },
+    data: { status: 'REJECTED', rejectReason },
+  });
+  if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  await logEvent(adminId, 'vault.recovery.rejected', { requestId });
+  const row = await prisma.vaultRequest.findUnique({ where: { id: requestId }, select: { userId: true } });
+  if (row) notify(row.userId, 'rejected', { requestId, reason: rejectReason });
+  return { status: 'REJECTED' as const };
 }
 
 export async function confirmRecovery(userId: string, requestId: string, codeA: string, codeB: string) {
@@ -80,14 +127,26 @@ export async function confirmRecovery(userId: string, requestId: string, codeA: 
     where: { id: requestId, userId, type: 'RECOVERY', status: 'PENDING_CODE', attempts: { lt: 5 }, expiresAt: { gt: new Date() } },
     data: { attempts: { increment: 1 } },
   });
-  if (updated.count !== 1) throw new AppError(410, 'errors.vault.recoveryExpired');
+  if (updated.count !== 1) {
+    // Non tutti i conteggi 0 sono una scadenza: un retry dopo una risposta persa trova la richiesta gia' avanzata.
+    const current = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' }, select: { status: true, attempts: true, expiresAt: true } });
+    if (!current) throw new AppError(404, 'errors.vault.recoveryNotFound');
+    const expired = current.status === 'EXPIRED' || (current.status === 'PENDING_CODE' && (current.attempts >= 5 || !current.expiresAt || current.expiresAt <= new Date()));
+    throw expired ? new AppError(410, 'errors.vault.recoveryExpired') : new AppError(409, 'errors.vault.recoveryStateConflict');
+  }
   const row = await prisma.vaultRequest.findUnique({ where: { id: requestId } });
   if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
-  const valid = crypto.timingSafeEqual(Buffer.from(row.codeAHash ?? ''), Buffer.from(codeHash(requestId, 'A', codeA)))
-    && crypto.timingSafeEqual(Buffer.from(row.codeBHash ?? ''), Buffer.from(codeHash(requestId, 'B', codeB)));
-  if (!valid) {
-    if (row.attempts >= 5) await prisma.vaultRequest.update({ where: { id: requestId }, data: { status: 'EXPIRED' } });
+  const validA = safeEqual(row.codeAHash, codeHash(requestId, 'A', codeA));
+  const validB = safeEqual(row.codeBHash, codeHash(requestId, 'B', codeB));
+  if (!validA || !validB) {
+    // Condizionata a PENDING_CODE: un confirm concorrente gia' arrivato a WAITING non va riportato a EXPIRED.
+    const exhausted = row.attempts >= 5 ? await prisma.vaultRequest.updateMany({ where: { id: requestId, status: 'PENDING_CODE' }, data: { status: 'EXPIRED' } }) : null;
     await logEvent(userId, 'vault.recovery.code_failed', { requestId, attempts: row.attempts });
+    notify(userId, 'codeFailed', { requestId });
+    if (exhausted?.count === 1) {
+      await logEvent(userId, 'vault.recovery.expired', { requestId, reason: 'attempts' });
+      notify(userId, 'expired', { requestId });
+    }
     throw new AppError(403, 'errors.vault.recoveryInvalidCode');
   }
   const notBefore = new Date(Date.now() + 3 * DAY_MS);
@@ -97,6 +156,7 @@ export async function confirmRecovery(userId: string, requestId: string, codeA: 
   });
   if (waiting.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
   await logEvent(userId, 'vault.recovery.confirmed', { requestId, notBefore: notBefore.toISOString() });
+  notify(userId, 'waiting', { requestId, fingerprint: row.fingerprint ?? undefined, notBefore });
   return { status: 'WAITING' as const, notBefore };
 }
 
@@ -107,6 +167,7 @@ export async function cancelRecovery(userId: string, requestId: string) {
   });
   if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
   await logEvent(userId, 'vault.recovery.cancelled', { requestId });
+  notify(userId, 'cancelled', { requestId });
   return { status: 'CANCELLED' as const };
 }
 
@@ -124,6 +185,8 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
   if (!row?.user.vaultKeyring?.sealedRootShare || !row.user.vaultKeyring.rootKeyId || !row.clientEphPub || !row.fingerprint || !row.notBefore) {
     throw new AppError(409, 'errors.vault.recoveryStateConflict');
   }
+  // La firma copre row.fingerprint: va ricalcolato dalla chiave salvata prima di spendere Argon2id sul file root.
+  if (fingerprintOf(row.clientEphPub) !== row.fingerprint) throw new AppError(409, 'errors.vault.recoveryFingerprintMismatch');
   let released: { rootShareForClient: Buffer; rootSignature: Buffer };
   try {
     released = await releaseRootShare({
@@ -138,7 +201,11 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
       passphrase,
     });
   } catch (err) {
-    await prisma.auditLog.create({ data: { userId: adminId, event: 'vault.recovery.release_failed', details: { requestId } } });
+    // Solo la passphrase errata conta per il rate limit: 503 (file assente), 400 e 500 (firma) non sono tentativi.
+    if (err instanceof AppError && err.message === 'errors.vault.invalidRootPassphrase') {
+      await prisma.auditLog.create({ data: { userId: adminId, event: 'vault.recovery.release_failed', details: { requestId } } });
+      notifyAdminsInBackground('releaseFailed', requestId, adminId);
+    }
     throw err;
   }
   const changed = await prisma.vaultRequest.updateMany({
@@ -157,21 +224,99 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
     released.rootSignature.fill(0);
     throw new AppError(409, 'errors.vault.recoveryStateConflict');
   }
-  await logEvent(adminId, 'vault.recovery.released', { requestId });
+  const self = adminId === row.userId;
+  await logEvent(adminId, 'vault.recovery.released', self ? { requestId, self: true } : { requestId });
+  if (self) notifyAdminsInBackground('selfAction', requestId, adminId);
+  notify(row.userId, 'released', { requestId });
   return { status: 'RELEASED' as const };
 }
 
 export async function getRecovery(userId: string, requestId: string) {
   const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' } });
   if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
+  const sealable = row.status === 'RELEASED' && !!row.releaseExpiresAt && row.releaseExpiresAt > new Date(); // G7: scaduto = non servito, anche se il job non e' ancora girato
+  // VaultRequest non ha una colonna per la meta A cifrata (G9): sta nella notifica `code` della richiesta.
+  let sealedCodeA: string | null = null;
+  if (row.status === 'PENDING_CODE') {
+    const n = await prisma.notification.findFirst({
+      where: { userId, type: 'VAULT_RECOVERY', AND: [{ data: { path: ['requestId'], equals: requestId } }, { data: { path: ['event'], equals: 'code' } }] },
+      orderBy: { createdAt: 'desc' },
+      select: { data: true },
+    });
+    const value = (n?.data as { sealedCodeA?: unknown } | null | undefined)?.sealedCodeA;
+    sealedCodeA = typeof value === 'string' ? value : null;
+  }
   return {
     status: row.status,
     fingerprint: row.fingerprint,
     notBefore: row.notBefore,
     releaseExpiresAt: row.releaseExpiresAt,
-    rootShareForClient: row.status === 'RELEASED' ? row.rootShareForClient : null,
-    rootSignature: row.status === 'RELEASED' ? row.rootSignature : null,
+    sealedCodeA,
+    rootShareForClient: sealable ? row.rootShareForClient : null,
+    rootSignature: sealable ? row.rootSignature : null,
   };
+}
+
+export async function getOpenRecovery(userId: string) {
+  const row = await prisma.vaultRequest.findFirst({
+    where: { userId, type: 'RECOVERY', status: { in: [...OPEN_STATES] } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, status: true, fingerprint: true, createdAt: true, notBefore: true },
+  });
+  return row && { id: row.id, status: row.status, fingerprint: row.fingerprint, createdAt: row.createdAt, notBefore: row.notBefore };
+}
+
+const ADMIN_INCLUDE = { user: { select: { email: true, vaultKeyring: { select: { status: true, rootKeyId: true } } } } } as const;
+
+// Vista admin: campi elencati a mano, cosi' un campo segreto aggiunto allo schema non esce per default.
+type AdminRow = Prisma.VaultRequestGetPayload<{ include: typeof ADMIN_INCLUDE }>;
+
+function adminView(row: AdminRow, now = new Date()) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    userEmail: row.user?.email,
+    status: row.status,
+    fingerprint: row.fingerprint,
+    reason: row.reason,
+    requestIp: row.requestIp,
+    requestUserAgent: row.requestUserAgent,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+    notBefore: row.notBefore,
+    approvedById: row.approvedById,
+    approvedAt: row.approvedAt,
+    rejectReason: row.rejectReason,
+    releasedById: row.releasedById,
+    releasedAt: row.releasedAt,
+    releaseExpiresAt: row.releaseExpiresAt,
+    completedAt: row.completedAt,
+    cancelledAt: row.cancelledAt,
+    keyringStatus: (row.user?.vaultKeyring?.status ?? null),
+    rootKeyId: (row.user?.vaultKeyring?.rootKeyId ?? null),
+    readyForRelease: row.status === 'WAITING' && !!row.notBefore && row.notBefore <= now,
+  };
+}
+
+export async function listRecoveriesForAdmin(opts: { page: number; limit: number; status?: Prisma.VaultRequestWhereInput['status']; userId?: string }) {
+  const where: Prisma.VaultRequestWhereInput = { type: 'RECOVERY', ...(opts.status ? { status: opts.status } : {}), ...(opts.userId ? { userId: opts.userId } : {}) };
+  const [rows, total] = await Promise.all([
+    prisma.vaultRequest.findMany({ where, include: ADMIN_INCLUDE, orderBy: { createdAt: 'desc' }, skip: (opts.page - 1) * opts.limit, take: opts.limit }),
+    prisma.vaultRequest.count({ where }),
+  ]);
+  const now = new Date();
+  return { items: rows.map((r) => adminView(r, now)), total, page: opts.page, limit: opts.limit };
+}
+
+export async function getRecoveryForAdmin(requestId: string) {
+  const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, type: 'RECOVERY' }, include: ADMIN_INCLUDE });
+  if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
+  const audit = await prisma.auditLog.findMany({
+    where: { details: { path: ['requestId'], equals: requestId } },
+    orderBy: { createdAt: 'asc' },
+    select: { event: true, userId: true, createdAt: true, details: true },
+  });
+  return { ...adminView(row), audit };
 }
 
 export async function completeRecovery(userId: string, requestId: string, payloadRaw: string, proof: Buffer) {
@@ -185,7 +330,7 @@ export async function completeRecovery(userId: string, requestId: string, payloa
   let payload: z.infer<typeof keyringUpdatePayloadSchema>;
   try {
     const parsed = keyringUpdatePayloadSchema.safeParse(JSON.parse(payloadRaw));
-    if (!parsed.success || parsed.data.rotate !== undefined) throw new Error('invalid');
+    if (!parsed.success || parsed.data.rotate !== undefined || !parsed.data.wrap || !parsed.data.escrow) throw new Error('invalid'); // wrap ed escrow obbligatori (spec §3.2.7)
     payload = parsed.data;
   } catch {
     throw new AppError(400, 'errors.vault.invalidPayload');
@@ -198,7 +343,8 @@ export async function completeRecovery(userId: string, requestId: string, payloa
     verifyVkProof(keyring, 'POST', `/api/vault/recovery/${requestId}/complete`, payloadRaw, payload.rev, proof);
     if (payload.escrow && !Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, payload.escrow.rootKeyId)) throw new AppError(400, 'errors.vault.invalidRootKey');
     if (payload.wrap && keyring.pepperKeyId !== pepperStatus().keyId) throw new AppError(503, 'errors.vault.pepperMismatch');
-    const data: Prisma.VaultKeyringUpdateManyMutationInput = { rev: { increment: 1 } };
+    // U4: con il PIN nuovo, contatore dei tentativi e lockout dello sblocco ripartono da zero.
+    const data: Prisma.VaultKeyringUpdateManyMutationInput = { rev: { increment: 1 }, failedAttempts: 0, lockedUntil: null };
     if (payload.wrap) {
       data.kdf = payload.wrap.kdf;
       data.kdfParams = payload.wrap.kdfParams;
@@ -222,6 +368,7 @@ export async function completeRecovery(userId: string, requestId: string, payloa
     if (changedRequest.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
   });
   await logEvent(userId, 'vault.recovery.completed', { requestId });
+  notify(userId, 'completed', { requestId });
   return { status: 'COMPLETED' as const, idempotent: false };
 }
 

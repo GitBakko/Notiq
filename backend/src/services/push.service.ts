@@ -59,7 +59,7 @@ export const sendPushNotification = async (userId: string, payload: PushPayload)
       keys: sub.keys as { p256dh: string; auth: string },
     };
 
-    return webpush.sendNotification(pushSubscription, JSON.stringify(payload))
+    return webpush.sendNotification(pushSubscription, JSON.stringify(payload), { timeout: 10_000 })
       .catch(async (error: unknown) => {
         if (error instanceof Error && 'statusCode' in error && (error as { statusCode: number }).statusCode === 410) {
           // Subscription is no longer valid, delete it

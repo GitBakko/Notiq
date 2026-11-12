@@ -173,3 +173,13 @@ Dopo la riga 508 (fine del case `VAULT_LOCKOUT`), prima della `}` dello switch:
 - Push: `data` finisce nel payload push (`notification.service.ts:44`); contiene `sealedCodeA` (ciphertext per `clientEphPub`), mai `codeB`.
 - Idempotenza: email di scadenza e promemoria solo su `count===1` o dopo il controllo del marker.
 - Gate: `app.ts` ed `email.service.ts` sono TIER 2, quindi hardRisk → reviewer + red-team.
+
+## 8. Esito del blocco A (T1-T3) e residui da chiudere nei blocchi B e C
+
+Blocco A committato dopo reviewer (2 giri) e red-team: nessun BLOCKER/MAJOR/CRITICAL/HIGH aperto. Correzioni F1-F10 del primo giro: errori del rilascio separati (solo la passphrase errata conta), lock consultivo per utente sulla create (verificato su Postgres reale), notifiche in background e timeout web-push 10 s, quota senza le `EXPIRED` per tentativi esauriti (spec §3.3 aggiornata), controllo del fingerprint prima del rilascio, punto P-384 validato alla create, `confirm` 404/410/409, audit ed email `expired` al 5° errore, motivo del rifiuto nell'email, fingerprint nei testi `requested`/`waiting`.
+
+Residui:
+- **Blocco B.** `utils/vaultRootKeyFile.ts:111-128`: un file root leggibile ma malformato (JSON, `v`/`kdf`, `kdfParams`, ids) finisce nel 403 `invalidRootPassphrase` contato. Validare l'header fuori dal catch della passphrase → 503 `rootKeyUnavailable`; solo il fallimento del tag GCM resta 403. Test con un file JSON valido ma di forma sbagliata.
+- **Blocco C (T8).** `frontend/src/features/notifications/NotificationItem.tsx:83-140`: `buildArgs` non passa `fingerprint` da `data.localizationArgs`, quindi il testo ripiega sul `message` del server nella lingua di `user.locale`. Aggiungere `fingerprint` agli args, con test.
+- **Blocco B (T7).** Scadenza di `WAITING` e filtro a lettura di `getOpenRecovery` (vedi T7).
+- Al 5° codice errato l'utente riceve sia `codeFailed` sia `expired`: accettato.

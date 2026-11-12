@@ -165,7 +165,7 @@ La chiave root si genera **una volta** con lo script ops `npm run vault:root-key
 
 | Cosa | Limite |
 |---|---|
-| Richieste per utente | Al massimo 1 aperta e 3 ogni 30 giorni, **senza contare** quelle `CANCELLED` o `REJECTED`: 3 richieste aperte da un attaccante con JWT rubato e annullate dalla vittima non la escludono dal recupero. Lo spam resta limitato da "1 aperta" + `POST /vault/recovery` 3/h, e ogni richiesta manda un'email all'utente |
+| Richieste per utente | Al massimo 1 aperta e 3 ogni 30 giorni, **senza contare** quelle `CANCELLED`, `REJECTED` o `EXPIRED` per tentativi esauriti (`attempts >= 5`, decisione del 12/11/2026: altrimenti chi ha il solo JWT brucia la quota sbagliando apposta i codici della richiesta legittima): 3 richieste aperte da un attaccante con JWT rubato e annullate dalla vittima non la escludono dal recupero. Lo spam resta limitato da "1 aperta" + `POST /vault/recovery` 3/h, e ogni richiesta manda un'email all'utente |
 | Approvazione | Entro 7 giorni, poi `EXPIRED` |
 | Codice A+B | 24 ore, 5 tentativi in tutto; `confirm` 5/15 min |
 | Attesa | 72 ore da `confirm`, annullabile da ogni sessione |
@@ -406,7 +406,7 @@ Nuovo `backend/src/routes/vault.ts`, plugin con `onRequest:[fastify.authenticate
 | `POST /api/vault/finalize` | `{ids ≤500}` | Controlla gli envelope, cancella le versioni in chiaro, imposta DONE |
 | `POST /api/vault/reset/challenge` | → `{requestId, code, expiresAt, counts}` | 5/h |
 | `POST /api/vault/reset` · `POST /api/vault/reset/cancel` | `{requestId, code, password}` | 3/15min |
-| `POST /api/vault/recovery` | `{clientEphPub97, reason? ≤500}` → `{id, fingerprint}` | `PENDING_APPROVAL`; 1 aperta, 3 ogni 30 giorni (escluse `CANCELLED`/`REJECTED`), 3/h |
+| `POST /api/vault/recovery` | `{clientEphPub97, reason? ≤500}` → `{id, fingerprint}` | `PENDING_APPROVAL`; 1 aperta, 3 ogni 30 giorni (escluse `CANCELLED`/`REJECTED` e le `EXPIRED` per tentativi esauriti), 3/h |
 | `GET /api/vault/recovery/:id` | → `{status, fingerprint, notBefore, sealedCodeA?, rootShareForClient?, rootSignature?}` | `sealedCodeA` solo in `PENDING_CODE`, il seal solo in `RELEASED`: sono comunque cifrati per `clientEphPub` |
 | `POST /api/vault/recovery/:id/confirm` | `{codeA, codeB}` (8+8 Crockford) | Tempo costante; 5 tentativi totali, 24h; 5/15min → `WAITING`, `notBefore=now+72h` |
 | `DELETE /api/vault/recovery/:id` | | Da **qualsiasi** sessione dell'utente, in ogni stato non terminale → `CANCELLED` |
@@ -640,7 +640,7 @@ Il hotfix P0 non chiude questi casi; restano aperti fino a P2 (i primi due, fino
 | **Round 3.** Rotazione della chiave root → vault irrecuperabile prima del re-seal | Il file root tiene tutte le coppie `rootKeyId` ancora referenziate; il rilascio usa il `rootKeyId` del keyring; rimozione solo con count = 0 (§2.1, §2.2, §3.2.6, §7.1, P5) |
 | **Round 3.** Risposta di `complete` persa → Kit nuovo mai visto, Kit vecchio morto | Nuovo Kit mostrato **prima** di `complete`; `payload` pendente salvato in `notiq-vault-device`; `complete` idempotente con `completedPayloadHash`; lo stesso schema vale per la rigenerazione del Kit (§3.2.7, §7.1, §7.2) |
 | **Round 3.** Contatori della passphrase in memoria (azzerati dal restart pm2) e blocco globale causato da un co-admin | Contatori da righe `AuditLog` scritte in modo sincrono, **per admin**; blocco di 24h solo per quell'admin (§3.3, §7.2) |
-| **Round 3.** 3 richieste/30gg consumate dall'attaccante | Non si contano le `CANCELLED`/`REJECTED` (§3.3, §7.2) |
+| **Round 3.** 3 richieste/30gg consumate dall'attaccante | Non si contano le `CANCELLED`/`REJECTED` né le `EXPIRED` per tentativi esauriti (§3.3, §7.2) |
 | **Round 3.** Transizioni read-then-write (cancel vs release, confirm concorrenti) | Ogni transizione è `updateMany` con lo stato atteso, e `count !== 1` → 409; `attempts` incrementato prima del confronto (§3.2.6, §3.3) |
 | **Round 3.** Snapshot in chiaro di una migrazione interrotta restano per sempre | Ripresa automatica di verifica + `finalize` a ogni sblocco `IN_PROGRESS`; elenco admin + email dopo 7 giorni; residuo finché l'utente non sblocca (§6.2.8, §9.10) |
 

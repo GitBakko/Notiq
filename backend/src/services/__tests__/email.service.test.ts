@@ -975,3 +975,41 @@ describe('sendNotificationEmail — unhandled template types', () => {
     expect(mockSendMail).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// sendNotificationEmail — VAULT_RECOVERY (transactional, texts already localized by the caller)
+// ---------------------------------------------------------------------------
+describe('sendNotificationEmail — VAULT_RECOVERY', () => {
+  it('is sent even when emailNotificationsEnabled=false (transactional)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ emailNotificationsEnabled: false });
+
+    await sendNotificationEmail('user@example.com', 'VAULT_RECOVERY', { title: 'Recovery', body: 'Body', cta: 'Open Notiq', codeB: 'ABCD1234' });
+
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+    const mail = mockSendMail.mock.calls[0][0];
+    expect(mail.subject).toBe('Recovery - Notiq');
+    expect(mail.html).toContain('ABCD1234');
+    expect(mail.html).toContain(`${FRONTEND_URL}/vault`);
+  });
+
+  it('escapes HTML in title, body, cta and codeB', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ emailNotificationsEnabled: true });
+
+    await sendNotificationEmail('user@example.com', 'VAULT_RECOVERY', {
+      title: '<script>t</script>', body: '<script>b</script>', cta: '<script>c</script>', codeB: '<script>x</script>',
+    });
+
+    const mail = mockSendMail.mock.calls[0][0];
+    expect(mail.subject).not.toContain('<script>');
+    expect(mail.html).not.toContain('<script>');
+    expect(mail.html).toContain('&lt;script&gt;');
+  });
+
+  it('does not send without a title', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ emailNotificationsEnabled: true });
+
+    await sendNotificationEmail('user@example.com', 'VAULT_RECOVERY', { body: 'Body' });
+
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+});

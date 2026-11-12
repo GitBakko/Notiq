@@ -124,10 +124,12 @@ describe('sendPushNotification', () => {
     expect(mockSendNotification).toHaveBeenCalledWith(
       { endpoint: subscriptions[0].endpoint, keys: subscriptions[0].keys },
       JSON.stringify(payload),
+      { timeout: 10_000 },
     );
     expect(mockSendNotification).toHaveBeenCalledWith(
       { endpoint: subscriptions[1].endpoint, keys: subscriptions[1].keys },
       JSON.stringify(payload),
+      { timeout: 10_000 },
     );
   });
 
@@ -247,6 +249,7 @@ describe('sendPushNotification', () => {
     expect(mockSendNotification).toHaveBeenCalledWith(
       { endpoint: sub.endpoint, keys: sub.keys },
       JSON.stringify(simplePayload),
+      { timeout: 10_000 },
     );
   });
 

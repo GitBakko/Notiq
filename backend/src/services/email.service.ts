@@ -58,12 +58,13 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 };
 
-type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'REGISTRATION_INVITATION' | 'SHARE_RESPONSE' | 'VERIFY_EMAIL' | 'INVITE_APPROVED' | 'INVITE_REJECTED' | 'GROUP_MEMBER_ADDED' | 'GROUP_MEMBER_REMOVED' | 'GROUP_INVITE_REGISTER' | 'GROUP_MEMBER_JOINED' | 'KANBAN_COMMENT' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED' | 'VAULT_LOCKOUT';
+type EmailTemplateType = 'SHARE_NOTE' | 'SHARE_NOTEBOOK' | 'WELCOME' | 'RESET_PASSWORD' | 'REMINDER' | 'CHAT_MESSAGE' | 'SHARE_INVITATION' | 'REGISTRATION_INVITATION' | 'SHARE_RESPONSE' | 'VERIFY_EMAIL' | 'INVITE_APPROVED' | 'INVITE_REJECTED' | 'GROUP_MEMBER_ADDED' | 'GROUP_MEMBER_REMOVED' | 'GROUP_INVITE_REGISTER' | 'GROUP_MEMBER_JOINED' | 'KANBAN_COMMENT' | 'KANBAN_COMMENT_DELETED' | 'KANBAN_CARD_MOVED' | 'VAULT_LOCKOUT' | 'VAULT_RECOVERY';
 
 // Transactional emails that are always sent regardless of user email preferences
 const TRANSACTIONAL_EMAIL_TYPES: Set<string> = new Set([
   'VERIFY_EMAIL', 'REGISTRATION_INVITATION', 'INVITE_APPROVED', 'INVITE_REJECTED',
   'WELCOME', 'RESET_PASSWORD', 'GROUP_INVITE_REGISTER', 'VAULT_LOCKOUT',
+  'VAULT_RECOVERY',
 ]);
 
 export const sendNotificationEmail = async (
@@ -504,6 +505,23 @@ export const sendNotificationEmail = async (
           </div>
         `;
       }
+      break;
+    }
+    case 'VAULT_RECOVERY': {
+      // Texts already localized by vaultRecoveryNotify.ts (EN/IT); here only escaping and layout.
+      if (!data.title) break;
+      const codeB = data.codeB
+        ? `<p style="font-size: 1.4em; letter-spacing: 3px;"><strong>${escapeHtml(data.codeB)}</strong></p>`
+        : '';
+      subject = `${escapeHtml(data.title)} - Notiq`;
+      html = `
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2>${escapeHtml(data.title)}</h2>
+          <p>${escapeHtml(data.body || '')}</p>
+          ${codeB}
+          <p><a href="${FRONTEND_URL}/vault" style="background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">${escapeHtml(data.cta || 'Notiq')}</a></p>
+        </div>
+      `;
       break;
     }
   }

@@ -6,6 +6,51 @@
 
 type Locale = 'en' | 'it';
 
+// Generic texts: they end up in the notification row and in the push (no codes, no personal detail).
+// Keep in sync with the frontend locales (notifications.vaultRecovery.*).
+export const VAULT_RECOVERY_TEXTS: Record<string, Record<Locale, { title: string; body: string }>> = {
+  requested: {
+    en: { title: 'Vault recovery requested', body: 'A vault recovery request was opened on your account. Request code: {{fingerprint}}. If it was not you, cancel it from the vault page.' },
+    it: { title: 'Recupero del vault richiesto', body: 'È stata aperta una richiesta di recupero del vault sul tuo account. Codice richiesta: {{fingerprint}}. Se non sei stato tu, annullala dalla pagina del vault.' },
+  },
+  code: {
+    en: { title: 'Recovery codes ready', body: 'Your request was approved. Open the vault page to see the first half of the code; the second half was sent by email.' },
+    it: { title: 'Codici di recupero pronti', body: 'La tua richiesta è stata approvata. Apri la pagina del vault per vedere la prima metà del codice; la seconda metà è arrivata via email.' },
+  },
+  codeFailed: {
+    en: { title: 'Wrong recovery code', body: 'A wrong code was entered for your vault recovery request.' },
+    it: { title: 'Codice di recupero errato', body: 'È stato inserito un codice errato per la tua richiesta di recupero del vault.' },
+  },
+  waiting: {
+    en: { title: 'Recovery waiting period started', body: 'The codes were confirmed. The recovery will be available after the waiting period. Request code: {{fingerprint}}. If it was not you, cancel it from the vault page.' },
+    it: { title: 'Attesa del recupero avviata', body: 'I codici sono stati confermati. Il recupero sarà disponibile al termine dell\'attesa. Codice richiesta: {{fingerprint}}. Se non sei stato tu, annullalo dalla pagina del vault.' },
+  },
+  reminder: {
+    en: { title: 'Recovery available soon', body: 'The waiting period for your vault recovery ends within 24 hours. If it was not you, cancel it now.' },
+    it: { title: 'Recupero disponibile a breve', body: 'L\'attesa per il recupero del tuo vault termina entro 24 ore. Se non sei stato tu, annullalo ora.' },
+  },
+  released: {
+    en: { title: 'Recovery released', body: 'Your vault recovery was released. Open the vault page to complete it.' },
+    it: { title: 'Recupero rilasciato', body: 'Il recupero del tuo vault è stato rilasciato. Apri la pagina del vault per completarlo.' },
+  },
+  completed: {
+    en: { title: 'Vault recovered', body: 'Your vault recovery was completed. If it was not you, change your account password now.' },
+    it: { title: 'Vault recuperato', body: 'Il recupero del tuo vault è stato completato. Se non sei stato tu, cambia subito la password dell\'account.' },
+  },
+  cancelled: {
+    en: { title: 'Recovery cancelled', body: 'Your vault recovery request was cancelled.' },
+    it: { title: 'Recupero annullato', body: 'La tua richiesta di recupero del vault è stata annullata.' },
+  },
+  rejected: {
+    en: { title: 'Recovery rejected', body: 'Your vault recovery request was rejected by an administrator.' },
+    it: { title: 'Recupero rifiutato', body: 'La tua richiesta di recupero del vault è stata rifiutata da un amministratore.' },
+  },
+  expired: {
+    en: { title: 'Recovery expired', body: 'Your vault recovery request expired. You can start a new one.' },
+    it: { title: 'Recupero scaduto', body: 'La tua richiesta di recupero del vault è scaduta. Puoi avviarne una nuova.' },
+  },
+};
+
 const translations: Record<string, Record<Locale, string>> = {
   // --- Share Note ---
   'notifications.shareNote': {
@@ -192,6 +237,11 @@ const translations: Record<string, Record<Locale, string>> = {
     en: 'Board Chat',
     it: 'Chat Board',
   },
+  // --- Vault recovery (generic: no codes, no personal detail) ---
+  ...Object.fromEntries(Object.entries(VAULT_RECOVERY_TEXTS).flatMap(([ev, l]) => [
+    [`notifications.vaultRecovery.${ev}`, { en: l.en.body, it: l.it.body }],
+    [`notifications.vaultRecovery.${ev}_TITLE`, { en: l.en.title, it: l.it.title }],
+  ])),
   // --- UI labels ---
   'notifications.openApp': {
     en: 'Open App',
