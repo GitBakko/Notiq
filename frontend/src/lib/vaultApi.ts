@@ -67,7 +67,7 @@ function retryDelay(err: unknown): number {
   return Number.isFinite(h) && h > 0 ? Math.min(h * 1000, RETRY_MAX_MS) : RETRY_DEFAULT_MS;
 }
 
-async function call<T>(method: 'get' | 'post' | 'put', url: string, body?: unknown, retryOn429 = false, timeout?: number): Promise<T> {
+async function call<T>(method: 'get' | 'post' | 'put' | 'delete', url: string, body?: unknown, retryOn429 = false, timeout?: number): Promise<T> {
   const run = async (): Promise<T> => {
     const res = await api.request<T>({ method, url, data: body, ...(timeout ? { timeout } : {}) });
     return res.data;
@@ -85,6 +85,15 @@ async function call<T>(method: 'get' | 'post' | 'put', url: string, body?: unkno
     }
     throw toVaultError(e);
   }
+}
+
+/** Richiesta di recupero aperta dell'utente, come la restituisce GET /keyring (null: nessuna). */
+export interface OpenRecovery {
+  id: string;
+  status: 'PENDING_APPROVAL' | 'PENDING_CODE' | 'WAITING' | 'RELEASED';
+  fingerprint: string;
+  createdAt: string;
+  notBefore: string | null;
 }
 
 export interface VaultKdfParams {
@@ -149,5 +158,7 @@ export const updateKeyring = <T = unknown>(payload: string, vkProof: string) =>
 export const getItems = <T = unknown>(body: VaultItemsBody = {}) => call<T>('post', '/vault/items', body, true);
 
 export const migrateItems = <T = unknown>(items: MigrateItem[]) => call<T>('post', '/vault/migrate', { items }, true, MIGRATE_TIMEOUT_MS);
+
+export const cancelRecovery = (id: string) => call<{ status: 'CANCELLED' }>('delete', `/vault/recovery/${encodeURIComponent(id)}`);
 
 export const finalizeItems = <T = unknown>(ids: string[]) => call<T>('post', '/vault/finalize', { ids });

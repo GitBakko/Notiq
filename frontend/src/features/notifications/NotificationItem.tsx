@@ -41,6 +41,8 @@ function getNotificationUrl(notification: Notification): string | null {
     case 'KANBAN_COMMENT_DELETED':
     case 'KANBAN_CARD_MOVED':
       return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';
+    case 'VAULT_RECOVERY':
+      return '/vault';
     case 'SYSTEM': {
       // Friend requests → Chat page
       if (data.localizationKey?.includes('friendRequest')) return '/shared?tab=friends';
@@ -135,6 +137,9 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   // the number 0-as-string, so test for null/undefined, not falsiness.
   if (src.count !== undefined && src.count !== null) args.count = String(src.count);
   if (src.summary) args.summary = src.summary;
+
+  // fingerprint — used by vaultRecovery.*
+  if (src.fingerprint) args.fingerprint = src.fingerprint;
 
   return args;
 }

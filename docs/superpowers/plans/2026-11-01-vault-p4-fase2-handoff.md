@@ -53,3 +53,22 @@ Regole di processo:
 
 - Delivery delle notifiche alla scadenza dei promemoria: non implementata.
 - Conferma esplicita di "sincronizzazione completata": assente.
+
+## Aggiornamento 12/11/2026: Fase 2 completata
+
+Piano eseguito: `docs/superpowers/plans/2026-11-12-vault-p4-fase2-plan.md` (task T1-T9, gap G1-G12, decisioni U1-U5, residui in §8). Commit su `feat/vault-p4`:
+
+- `471ccd9`: piano della Fase 2 e porta del DB dev spostata a 5434.
+- `f4f0319` (blocco A, T1-T3): correzioni della Fase 1, `sealRecoveryCode`, API admin, notifiche ed email del recupero.
+- `d14c841` (blocco B, T4-T7): route utente e admin, guardia sulle notifiche, job delle scadenze e dei promemoria in `app.ts`, validazione del file root.
+- Blocco C (T8-T9): banner `RecoveryBanner` + `useOpenRecovery` in `AppLayout`, `buildArgs` con il fingerprint, contratti del fingerprint e di `sealedCodeA` nella spec §3.2.
+
+Verifiche: backend 2082/2082; frontend 1212 test, typecheck pulito; E2E `vault*.spec.ts` 19/19 (i 3 test di `vault-a11y` falliti al primo giro per carico passano al rilancio); prova visiva del banner in chiaro, scuro e mobile. Ogni blocco è passato da reviewer e red-team, senza BLOCKER/MAJOR/CRITICAL/HIGH aperti.
+
+Decisioni prese durante l'esecuzione (già nella spec):
+- La quota di 3 richieste in 30 giorni non conta le `EXPIRED` per tentativi esauriti.
+- Una `WAITING` non rilasciata scade 7 giorni dopo `notBefore`.
+- `GET /vault/keyring` e `DELETE /vault/recovery/:id` hanno il rate limit per utente, sessione e IP.
+- Residui accettati e documentati in §3.2: segna-letto singolo, corsa tra guardia e create, limite di route in memoria per worker pm2.
+
+Prossimo: Fase 3. Contratti da rispettare nel client: fingerprint a 40 bit (vettore fisso nel test G1 di `vaultRecovery.service.test.ts`), blob `sealedCodeA` da 133 byte (spec §3.2.4), firma del rilascio verificata con la chiave root fissata.

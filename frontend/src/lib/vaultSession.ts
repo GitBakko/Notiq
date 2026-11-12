@@ -3,7 +3,7 @@
 // Il Kit (S_user, 20 B) lo restituiscono solo setup e regenerateKit DOPO la risposta 2xx del server: chi lo mostra lo
 // tiene nello stato del componente e fa fill(0) a fine cerimonia, poi chiama confirmKit.
 import * as vaultApi from './vaultApi';
-import type { VaultApiError } from './vaultApi';
+import type { OpenRecovery, VaultApiError } from './vaultApi';
 import { purgeApiCache } from './apiCache';
 import * as device from './deviceKeyStore';
 import { useVaultStore, type VaultKeys } from '../store/vaultStore';
@@ -35,6 +35,7 @@ export interface KeyringDto {
   lockedUntil: string | null;
   escrowHash: string | null;
   legacyCount: number;
+  openRecovery?: OpenRecovery | null;
 }
 
 export type VaultSessionCode =

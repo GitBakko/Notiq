@@ -324,6 +324,33 @@
   },
   "vault": {
     "title": "Secure Vault",
+    "recoveryBanner": {
+      "states": {
+        "pendingApproval": {
+          "title": "Vault recovery requested",
+          "text": "A recovery request is open on your account. Request code: {{fingerprint}}. It is waiting for approval. If it was not you, cancel it now."
+        },
+        "pendingCode": {
+          "title": "Vault recovery approved",
+          "text": "Recovery request {{fingerprint}} was approved and is waiting for the codes to be entered. If it was not you, cancel it now."
+        },
+        "waiting": {
+          "title": "Vault recovery in waiting period",
+          "text": "Recovery request {{fingerprint}} will be available on {{date}} (in about {{hours}} h). If it was not you, cancel it now.",
+          "textDue": "Recovery request {{fingerprint}} has finished its waiting period and is about to be released. If it was not you, cancel it now."
+        },
+        "released": {
+          "title": "Vault recovery released",
+          "text": "Recovery request {{fingerprint}} was released and can be completed. If it was not you, cancel it now."
+        }
+      },
+      "cancel": "Cancel recovery",
+      "confirmTitle": "Cancel the recovery?",
+      "confirmMessage": "The open recovery request will be cancelled and its codes will stop working. Your vault stays as it is.",
+      "confirmAction": "Cancel recovery",
+      "keep": "Keep it",
+      "cancelError": "Could not cancel the recovery. Try again."
+    },
     "conflictCopySuffix": "(conflict copy)",
     "setupTitle": "Set up your Vault",
     "setupDescription": "Create a PIN to protect your most private notes. This PIN will be required to access the Vault.",

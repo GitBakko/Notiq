@@ -8,6 +8,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import clsx from 'clsx';
 import CommandMenu from '../search/CommandMenu';
 import WhatsNewModal from '../WhatsNewModal';
+import RecoveryBanner from '../vault/RecoveryBanner';
 import AnnouncementBanner from '../../features/announcements/AnnouncementBanner';
 import NetworkStatusIndicator from './NetworkStatusIndicator';
 import SyncStatusIndicator from './SyncStatusIndicator';
@@ -94,6 +95,7 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col overflow-hidden w-full bg-white dark:bg-neutral-950">
         <NetworkStatusIndicator />
         <SyncStatusIndicator />
+        <RecoveryBanner />
         <AnnouncementBanner />
         <ErrorBoundary>
           <Outlet />

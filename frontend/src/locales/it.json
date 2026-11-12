@@ -423,6 +423,33 @@
   },
   "vault": {
     "title": "Vault Sicuro",
+    "recoveryBanner": {
+      "states": {
+        "pendingApproval": {
+          "title": "Recupero del vault richiesto",
+          "text": "Sul tuo account c'è una richiesta di recupero aperta. Codice della richiesta: {{fingerprint}}. È in attesa di approvazione. Se non sei stato tu, annullala subito."
+        },
+        "pendingCode": {
+          "title": "Recupero del vault approvato",
+          "text": "La richiesta di recupero {{fingerprint}} è stata approvata e attende l'inserimento dei codici. Se non sei stato tu, annullala subito."
+        },
+        "waiting": {
+          "title": "Recupero del vault in attesa",
+          "text": "La richiesta di recupero {{fingerprint}} sarà disponibile il {{date}} (tra circa {{hours}} h). Se non sei stato tu, annullala subito.",
+          "textDue": "La richiesta di recupero {{fingerprint}} ha finito l'attesa e sta per essere rilasciata. Se non sei stato tu, annullala subito."
+        },
+        "released": {
+          "title": "Recupero del vault rilasciato",
+          "text": "La richiesta di recupero {{fingerprint}} è stata rilasciata e può essere completata. Se non sei stato tu, annullala subito."
+        }
+      },
+      "cancel": "Annulla recupero",
+      "confirmTitle": "Annullare il recupero?",
+      "confirmMessage": "La richiesta di recupero aperta sarà annullata e i suoi codici smetteranno di funzionare. Il vault resta com'è.",
+      "confirmAction": "Annulla recupero",
+      "keep": "Mantieni",
+      "cancelError": "Impossibile annullare il recupero. Riprova."
+    },
     "conflictCopySuffix": "(copia in conflitto)",
     "setupTitle": "Configura il tuo Vault",
     "setupDescription": "Crea un PIN per proteggere le tue note più private. Questo PIN sarà richiesto per accedere al Vault.",
