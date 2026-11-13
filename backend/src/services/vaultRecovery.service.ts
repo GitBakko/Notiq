@@ -270,21 +270,29 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
     }
     throw err;
   }
-  const changed = await prisma.vaultRequest.updateMany({
-    where: { id: requestId, type: 'RECOVERY', status: 'WAITING', notBefore: { lte: new Date() }, expiresAt: { gt: new Date() } },
-    data: {
-      status: 'RELEASED',
-      releasedById: adminId,
-      releasedAt: new Date(),
-      releaseExpiresAt: new Date(Date.now() + 7 * DAY_MS),
-      rootShareForClient: Buffer.from(released.rootShareForClient),
-      rootSignature: Buffer.from(released.rootSignature),
-    },
-  });
-  if (changed.count !== 1) {
+  const { epoch, rev } = row.user.vaultKeyring;
+  try {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Il rev++ prende il lock di riga e fa fallire (409 staleRev) un PUT /keyring costruito sul rev vecchio: al retry il client trova recoveryInProgress.
+      const keyring = await tx.vaultKeyring.updateMany({ where: { userId: row.userId, status: 'READY', epoch, rev }, data: { rev: { increment: 1 } } });
+      if (keyring.count !== 1) throw new AppError(409, 'errors.vault.recoveryKeyringChanged');
+      const changed = await tx.vaultRequest.updateMany({
+        where: { id: requestId, type: 'RECOVERY', status: 'WAITING', notBefore: { lte: new Date() }, expiresAt: { gt: new Date() } },
+        data: {
+          status: 'RELEASED',
+          releasedById: adminId,
+          releasedAt: new Date(),
+          releaseExpiresAt: new Date(Date.now() + 7 * DAY_MS),
+          rootShareForClient: Buffer.from(released.rootShareForClient),
+          rootSignature: Buffer.from(released.rootSignature),
+        },
+      });
+      if (changed.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+    });
+  } catch (err) {
     released.rootShareForClient.fill(0);
     released.rootSignature.fill(0);
-    throw new AppError(409, 'errors.vault.recoveryStateConflict');
+    throw err;
   }
   const self = adminId === row.userId;
   await logEvent(adminId, 'vault.recovery.released', self ? { requestId, self: true } : { requestId });

@@ -230,6 +230,7 @@ async function completedVerdict(userId: string, requestId: string, own: string |
     kr = await fetchKeyring();
     markers = await device.listKitMarkers(userId);
   } catch {
+    if (!isCurrent(userId)) throw notReady(); // GET fallita col token di un altro utente: non e' un esito del nostro recupero
     return COMPLETED_UNVERIFIED;
   }
   if (!isCurrent(userId)) throw notReady(); // la GET e' del token di un altro utente: il suo escrowHash non dice nulla del nostro commit
@@ -269,6 +270,7 @@ async function classify(userId: string, e: unknown, requestId: string, ownEscrow
       const status = (await vaultApi.getRecovery(requestId)).status;
       if (status === 'COMPLETED') return await completedVerdict(userId, requestId, ownEscrowHash);
     } catch (g) {
+      if (g instanceof VaultSessionError) throw g; // notReady di completedVerdict: non va ridotto a unknown
       if (!isNotFound(g)) return UNKNOWN;
       if (!isCurrent(userId)) throw notReady();
     }

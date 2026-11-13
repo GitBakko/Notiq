@@ -82,6 +82,24 @@ const okRecovery = (d: unknown) => isObj(d) && RECOVERY_STATUSES.includes(d.stat
 const okCompleted = (d: unknown) => isObj(d) && d.status === 'COMPLETED';
 const okRev = (d: unknown) => isObj(d) && isUint(d.rev);
 const okCreated = (d: unknown) => isObj(d) && typeof d.id === 'string' && d.id !== '' && typeof d.fingerprint === 'string';
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isStrArr = (v: unknown) => Array.isArray(v) && v.every(isStr);
+// serverShare = 32 byte in base64url senza padding
+const B64URL = /^[A-Za-z0-9_-]{43}$/;
+const MIGRATE_STATUSES = ['ok', 'already', 'conflict', 'notFound', 'invalid'];
+const okUnlock = (d: unknown) => isObj(d) && isStr(d.serverShare) && B64URL.test(d.serverShare);
+const okConfirmed = (d: unknown) => isObj(d) && d.status === 'WAITING' && isStr(d.notBefore) && !Number.isNaN(Date.parse(d.notBefore));
+const okCancelled = (d: unknown) => isObj(d) && d.status === 'CANCELLED';
+// noteType solo come stringa: un valore nuovo di un server piu' recente non deve trasformare l'intera pagina in errore di rete e bloccare reconcile/migrazione.
+const okItem = (i: unknown) =>
+  isObj(i) && isStr(i.id) && isStr(i.noteType) && isStr(i.title) && isStr(i.content) && isStr(i.contentHash) && isStr(i.updatedAt)
+  && typeof i.isTrashed === 'boolean' && typeof i.hasPlaintextVersions === 'boolean' && typeof i.hasAttachments === 'boolean';
+// `next` assente = ultima pagina (i chiamanti usano `next ?? undefined`); absent/notVault compaiono solo nella risposta per `ids`.
+const okItems = (d: unknown) =>
+  isObj(d) && Array.isArray(d.items) && d.items.every(okItem) && (d.next == null || isStr(d.next))
+  && (d.absent === undefined || isStrArr(d.absent)) && (d.notVault === undefined || isStrArr(d.notVault));
+const okMigrated = (d: unknown) => isObj(d) && Array.isArray(d.results) && d.results.every((r) => isObj(r) && isStr(r.id) && MIGRATE_STATUSES.includes(r.status as string));
+const okFinalized = (d: unknown) => isObj(d) && isUint(d.finalized) && isStrArr(d.rejected);
 
 async function call<T>(method: 'get' | 'post' | 'put' | 'delete', url: string, body?: unknown, retryOn429 = false, timeout?: number, shape?: (d: unknown) => boolean): Promise<T> {
   const run = async (): Promise<T> => {
@@ -167,16 +185,16 @@ export async function getKeyring<T = unknown>(): Promise<T> {
 
 export const createKeyring = <T = unknown>(body: CreateKeyringBody) => call<T>('post', '/vault/keyring', body, false, undefined, okRev);
 
-export const unlock = (authKey: string) => call<{ serverShare: string }>('post', '/vault/unlock', { authKey });
+export const unlock = (authKey: string) => call<{ serverShare: string }>('post', '/vault/unlock', { authKey }, false, undefined, okUnlock);
 
 export const updateKeyring = <T = unknown>(payload: string, vkProof: string) =>
   call<T>('put', '/vault/keyring', { payload, vkProof }, false, undefined, okRev);
 
-export const getItems = <T = unknown>(body: VaultItemsBody = {}) => call<T>('post', '/vault/items', body, true);
+export const getItems = <T = unknown>(body: VaultItemsBody = {}) => call<T>('post', '/vault/items', body, true, undefined, okItems);
 
-export const migrateItems = <T = unknown>(items: MigrateItem[]) => call<T>('post', '/vault/migrate', { items }, true, MIGRATE_TIMEOUT_MS);
+export const migrateItems = <T = unknown>(items: MigrateItem[]) => call<T>('post', '/vault/migrate', { items }, true, MIGRATE_TIMEOUT_MS, okMigrated);
 
-export const cancelRecovery = (id: string) => call<{ status: 'CANCELLED' }>('delete', `/vault/recovery/${encodeURIComponent(id)}`);
+export const cancelRecovery = (id: string) => call<{ status: 'CANCELLED' }>('delete', `/vault/recovery/${encodeURIComponent(id)}`, undefined, false, undefined, okCancelled);
 
 /** Stati di una richiesta di recupero come li restituisce GET /recovery/:id (EXPIRED anche per scadenza non ancora marcata dal job). */
 export type RecoveryStatus = 'PENDING_APPROVAL' | 'PENDING_CODE' | 'WAITING' | 'RELEASED' | 'COMPLETED' | 'CANCELLED' | 'REJECTED' | 'EXPIRED';
@@ -205,9 +223,9 @@ export async function getRecovery(id: string): Promise<RecoveryDto> {
 }
 
 export const confirmRecovery = (id: string, codeA: string, codeB: string) =>
-  call<{ status: 'WAITING'; notBefore: string }>('post', `/vault/recovery/${encodeURIComponent(id)}/confirm`, { codeA, codeB });
+  call<{ status: 'WAITING'; notBefore: string }>('post', `/vault/recovery/${encodeURIComponent(id)}/confirm`, { codeA, codeB }, false, undefined, okConfirmed);
 
 export const completeRecovery = (id: string, payload: string, vkProof: string) =>
   call<{ status: 'COMPLETED' }>('post', `/vault/recovery/${encodeURIComponent(id)}/complete`, { payload, vkProof }, false, undefined, okCompleted);
 
-export const finalizeItems = <T = unknown>(ids: string[]) => call<T>('post', '/vault/finalize', { ids });
+export const finalizeItems = <T = unknown>(ids: string[]) => call<T>('post', '/vault/finalize', { ids }, false, undefined, okFinalized);

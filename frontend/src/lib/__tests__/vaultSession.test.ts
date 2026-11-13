@@ -69,7 +69,7 @@ class FakeServer {
   createError: unknown = null;
   /** 'applyThen409': applica e poi risponde 409; 'bumpThen409': un altro device alza rev, 409 una volta; 'plain409': 409 senza applicare;
    *  'recoveryThen409': un recupero completato altrove ruota serverShare e authKey, alza rev, 409 */
-  putMode: 'ok' | 'applyThen409' | 'bumpThen409' | 'plain409' | 'recoveryThen409' = 'ok';
+  putMode: 'ok' | 'applyThen409' | 'bumpThen409' | 'plain409' | 'recoveryThen409' | 'recoveryOpen409' = 'ok';
   unlockError: unknown = null;
   unlockCalls = 0;
   puts: string[] = [];
@@ -108,6 +108,7 @@ class FakeServer {
     const ok = verify('sha256', Buffer.from(msg), { key: Buffer.from(r.vkSigPub, 'base64url'), format: 'der', type: 'spki', dsaEncoding: 'ieee-p1363' }, Buffer.from(proof, 'base64url'));
     if (!ok) throw apiErr(400, 'errors.vault.invalidProof');
     if (this.putMode === 'plain409') throw apiErr(409, 'errors.vault.staleRev');
+    if (this.putMode === 'recoveryOpen409') throw apiErr(409, 'errors.vault.recoveryInProgress');
     if (this.putMode === 'recoveryThen409') {
       r.rev++; r.serverShare = b64uEncode(new Uint8Array(32).fill(7)); r.authKey = b64uEncode(new Uint8Array(32).fill(9)); r.wrappedVkPin = b64uEncode(new Uint8Array(60).fill(5)); this.putMode = 'ok';
       throw apiErr(409, 'errors.vault.staleRev');
@@ -720,6 +721,14 @@ describe('rigenerazione del Kit', () => {
     h.server.putMode = 'plain409';
     await expect(session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject({
       code: 'kitNotUpdated', key: 'errors.vault.kitNotUpdated',
+    });
+    expect(raw('pending').size).toBe(0);
+  });
+
+  it('409 recoveryInProgress -> errore con quella chiave, marker cancellato', async () => {
+    h.server.putMode = 'recoveryOpen409';
+    await expect(session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject({
+      code: 'recoveryInProgress', key: 'errors.vault.recoveryInProgress',
     });
     expect(raw('pending').size).toBe(0);
   });

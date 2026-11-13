@@ -1575,6 +1575,32 @@ describe('utente corrente dopo la GET del keyring in un verdetto COMPLETED', () 
   });
 });
 
+
+describe('utente cambiato con GET /keyring fallita in un verdetto COMPLETED', () => {
+  const switchAndFail = () => { h.server.onGetKeyring = async () => { if (h.server.posts.length) { useAuthStore.setState({ user: { id: OTHER, email: 'x@y.z' } }); throw netErr(); } }; };
+
+  it('409 + COMPLETED, GET /keyring fallita e utente cambiato: notReady (non completedUnverified)', async () => {
+    const w = await prepared();
+    h.server.completeError = apiErr(409, 'errors.vault.recoveryStateConflict');
+    h.server.onPost = () => { h.server.r!.status = 'COMPLETED'; };
+    switchAndFail();
+    await expect(complete(w)).rejects.toMatchObject({ code: 'notReady' });
+  });
+
+  it('percorso ambiguo (POST persa, poi 400, richiesta COMPLETED), utente cambiato durante completedVerdict: notReady (non unknown)', async () => {
+    const w = await prepared();
+    commitThenLose(() => apiErr(400));
+    switchAndFail();
+    await expect(complete(w)).rejects.toMatchObject({ code: 'notReady' });
+  });
+
+  it('stessa GET /keyring fallita con lo stesso utente: resta completedUnverified', async () => {
+    const w = await prepared();
+    h.server.completeError = apiErr(409, 'errors.vault.recoveryStateConflict');
+    h.server.onPost = () => { h.server.r!.status = 'COMPLETED'; h.server.getKeyringError = netErr(); };
+    expect(await complete(w)).toMatchObject({ verdict: 'completedUnverified' });
+  });
+});
 // Un 2xx con un body che non e' del vault (portale, proxy, errore IIS con 200) passa dalla guardia di forma di vaultApi (VERA, via importActual):
 // diventa un errore di rete, quindi un esito ambiguo, mai un successo, un rifiuto o un fatto ("niente openRecovery", "keyring invariato").
 describe('risposta 2xx non del vault (guardia di forma)', () => {
@@ -1646,31 +1672,25 @@ describe('risposta 2xx non del vault (guardia di forma)', () => {
 });
 
 describe('testi neutri sul recupero gia applicato', () => {
-  it('completedElsewhere: vale il PIN scelto al completamento, anche se da questo dispositivo', () => {
+  it('completedElsewhere: vale il PIN attuale, scelto al completamento, da questo o da un altro dispositivo', () => {
     const en = enLocale.vault.recovery.errors.completedElsewhere;
     const it_ = itLocale.vault.recovery.errors.completedElsewhere;
-    expect(en).toMatch(/already completed/i);
-    expect(en).toMatch(/PIN chosen when it was completed/i);
-    expect(en).toMatch(/even if that was from this device/i);
+    expect(en).toMatch(/already been completed, on this device or another one/i);
+    expect(en).toMatch(/current PIN, the one chosen when the recovery was completed/i);
+    expect(en).toMatch(/previous Recovery Kit is no longer valid/i);
     expect(en).not.toMatch(/another session/i);
-    expect(it_).toMatch(/già completato/i);
-    expect(it_).toMatch(/PIN scelto quando è stato completato/i);
-    expect(it_).toMatch(/anche se è stato da questo dispositivo/i);
+    expect(it_).toMatch(/già completato, da questo o da un altro dispositivo/i);
+    expect(it_).toMatch(/PIN attuale, cioè quello scelto quando è stato completato/i);
+    expect(it_).toMatch(/Kit di recupero precedente non vale più/i);
     expect(it_).not.toMatch(/un'altra sessione/i);
   });
 
-  it('pinChangedElsewhere: il PIN risulta gia cambiato (anche da un tentativo precedente), si prova il nuovo PIN', () => {
+  it('pinChangedElsewhere: il PIN risulta gia cambiato, qui o altrove; si sblocca con quello scelto piu di recente', () => {
     const en = enLocale.errors.vault.pinChangedElsewhere;
     const it_ = itLocale.errors.vault.pinChangedElsewhere;
-    expect(en).toMatch(/already appears to be changed/i);
-    expect(en).toMatch(/earlier attempt/i);
-    expect(en).toMatch(/another device/i);
-    expect(en).toMatch(/try the new PIN/i);
-    expect(en).not.toMatch(/current PIN/i);
-    expect(it_).toMatch(/risulta già cambiato/i);
-    expect(it_).toMatch(/tentativo precedente/i);
-    expect(it_).toMatch(/un altro dispositivo/i);
-    expect(it_).toMatch(/prova il nuovo PIN/i);
-    expect(it_).not.toMatch(/PIN attuale/i);
+    expect(en).toMatch(/already appears to have been changed, here or on another device/i);
+    expect(en).toMatch(/most recently chosen PIN/i);
+    expect(it_).toMatch(/risulta già cambiato, qui o su un altro dispositivo/i);
+    expect(it_).toMatch(/PIN scelto più di recente/i);
   });
 });

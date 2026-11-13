@@ -75,6 +75,7 @@ beforeEach(() => {
   mp.auditLog.create.mockResolvedValue({});
   mp.$executeRaw = vi.fn().mockResolvedValue(1);
   mp.$queryRaw = vi.fn().mockResolvedValue([{ locked: true }]);
+  // Il codice si affida alla forma interattiva $transaction(async tx => ...) per annullare rev++ se il flip della richiesta fallisce: il mock non puo' provare il rollback.
   mp.$transaction.mockImplementation(async (fn: any) => fn(mp));
 });
 
@@ -128,7 +129,7 @@ describe('richiesta e approvazione', () => {
     mp.vaultRequest.findMany.mockImplementation(async () => { order.push('findMany'); return [{ id: 'old', userId: U, status: 'WAITING', expiresAt: past, releaseExpiresAt: null }]; });
     mp.vaultRequest.updateMany.mockImplementation(async () => { order.push('expire'); return { count: 1 }; });
     mp.vaultRequest.findFirst.mockImplementation(async () => { order.push('findFirst'); return null; });
-    vi.mocked(logEvent).mockImplementation(async () => { order.push('audit'); });
+    vi.mocked(logEvent).mockImplementationOnce(async () => { order.push('audit'); });
     await createRecoveryRequest(U, pub(), undefined, 'ip', 'ua');
     expect(order.slice(0, 6)).toEqual(['tx', 'lock', 'findMany', 'expire', 'findFirst', 'commit']);
     expect(mp.vaultRequest.findMany.mock.calls[0][0].where).toMatchObject({ userId: U, type: 'RECOVERY' });
@@ -412,9 +413,46 @@ describe('rilascio', () => {
       clientEphPub: clientPub,
       fingerprint: fingerprintOf(clientPub),
       notBefore: new Date(Date.now() - 1000),
-      user: { vaultKeyring: { epoch: 2, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1) } },
+      user: { vaultKeyring: { epoch: 2, rev: 5, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1) } },
     };
   }
+
+  it('CAS sul keyring: stessa transazione, rev incrementato, poi la richiesta; audit dopo il commit', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(waitingRow());
+    (releaseRootShare as any).mockResolvedValue({ rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) });
+    const order: string[] = [];
+    mp.$transaction.mockImplementation(async (fn: any) => { order.push('tx'); const r = await fn(mp); order.push('commit'); return r; });
+    mp.vaultKeyring.updateMany.mockImplementation(async () => { order.push('keyring'); return { count: 1 }; });
+    mp.vaultRequest.updateMany.mockImplementation(async () => { order.push('request'); return { count: 1 }; });
+    vi.mocked(logEvent).mockImplementationOnce(async () => { order.push('audit'); });
+    await releaseRecovery(ADMIN, RID, 'passphrase');
+    expect(mp.vaultKeyring.updateMany).toHaveBeenCalledWith({ where: { userId: U, status: 'READY', epoch: 2, rev: 5 }, data: { rev: { increment: 1 } } });
+    expect(order).toEqual(['tx', 'keyring', 'request', 'commit', 'audit']);
+  });
+
+  it('CAS sul keyring fallito (count 0): 409, richiesta non toccata, buffer azzerati, niente audit/notify', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(waitingRow());
+    mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+    const released = { rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) };
+    (releaseRootShare as any).mockResolvedValue(released);
+    await expect(releaseRecovery(ADMIN, RID, 'p')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryKeyringChanged' });
+    expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
+    expect(released.rootShareForClient.equals(Buffer.alloc(157, 0))).toBe(true);
+    expect(released.rootSignature.equals(Buffer.alloc(64, 0))).toBe(true);
+    expect(logEvent).not.toHaveBeenCalled();
+    expect(notifyRecovery).not.toHaveBeenCalled();
+  });
+
+  it('richiesta non piu\' WAITING dentro la transazione: 409 e buffer azzerati', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(waitingRow());
+    mp.vaultRequest.updateMany.mockResolvedValue({ count: 0 });
+    const released = { rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) };
+    (releaseRootShare as any).mockResolvedValue(released);
+    await expect(releaseRecovery(ADMIN, RID, 'p')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryStateConflict' });
+    expect(released.rootShareForClient.equals(Buffer.alloc(157, 0))).toBe(true);
+    expect(released.rootSignature.equals(Buffer.alloc(64, 0))).toBe(true);
+    expect(logEvent).not.toHaveBeenCalled();
+  });
 
   it('sigilla e salva solo dopo una transizione WAITING -> RELEASED riuscita; notify released', async () => {
     mp.vaultRequest.findFirst.mockResolvedValue(waitingRow());

@@ -45,6 +45,7 @@ export type VaultSessionCode =
   | 'vaultLocked' // operazione che richiede il vault sbloccato
   | 'offlineUnavailable'
   | 'kitNotUpdated'
+  | 'recoveryInProgress' // 409 con recupero aperto (fino a 7 giorni): il Kit si rigenera dopo
   | 'pinChangedElsewhere' // changePin al 409: il wrap e' cambiato altrove (recupero o altro cambio PIN), niente da rimandare
   | 'keyringInvalid';
 
@@ -504,6 +505,7 @@ export async function regenerateKit(args: { userId: string; pin: string; rootKey
           return { kit: sUser, escrowHash };
         }
         await device.deleteKitMarker(userId, escrowHash).catch(() => {});
+        if (e.key === 'errors.vault.recoveryInProgress') throw new VaultSessionError('recoveryInProgress', e.key);
         throw new VaultSessionError('kitNotUpdated', 'errors.vault.kitNotUpdated');
       }
       if (isDefiniteReject(e)) await device.deleteKitMarker(userId, escrowHash).catch(() => {});

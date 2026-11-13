@@ -113,12 +113,12 @@ describe('retry 429', () => {
 
   it('retry-after 60 -> attesa cappata a 5000 ms', async () => {
     vi.useFakeTimers();
-    request.mockRejectedValueOnce(axErr(429, 'k', { 'retry-after': '60' })).mockResolvedValueOnce({ data: 1 });
+    request.mockRejectedValueOnce(axErr(429, 'k', { 'retry-after': '60' })).mockResolvedValueOnce({ data: { items: [], next: null } });
     const p = vaultApi.getItems({});
     await vi.advanceTimersByTimeAsync(4999);
     expect(request).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
-    await expect(p).resolves.toBe(1);
+    await expect(p).resolves.toEqual({ items: [], next: null });
   });
 
   it('getItems: nessun retry prima del ritardo (1 chiamata a 999 ms)', async () => {
@@ -134,7 +134,7 @@ describe('retry 429', () => {
 
 describe('migrateItems', () => {
   it('timeout per richiesta di 120000 ms', async () => {
-    request.mockResolvedValue({ data: {} });
+    request.mockResolvedValue({ data: { results: [] } });
     await vaultApi.migrateItems([]);
     expect(request.mock.calls[0][0]).toMatchObject({ url: '/vault/migrate', timeout: 120000 });
   });
@@ -203,7 +203,7 @@ describe('recovery', () => {
   });
 
   it('confirmRecovery: POST /vault/recovery/:id/confirm con i due codici', async () => {
-    request.mockResolvedValue({ data: { status: 'WAITING' } });
+    request.mockResolvedValue({ data: { status: 'WAITING', notBefore: '2026-11-16T10:00:00.000Z' } });
     await vaultApi.confirmRecovery(ID, 'K7M2Q9XA', 'B7M2Q9XA');
     expect(request.mock.calls[0][0]).toMatchObject({ method: 'post', url: `/vault/recovery/${ID}/confirm`, data: { codeA: 'K7M2Q9XA', codeB: 'B7M2Q9XA' } });
   });
@@ -218,7 +218,7 @@ describe('recovery', () => {
   });
 
   it('id con caratteri speciali codificato nell URL', async () => {
-    request.mockResolvedValue({ data: {} });
+    request.mockResolvedValue({ data: { status: 'WAITING', notBefore: '2026-11-16T10:00:00.000Z' } });
     await vaultApi.confirmRecovery('a/b', 'x', 'y');
     expect(request.mock.calls[0][0].url).toBe('/vault/recovery/a%2Fb/confirm');
   });
@@ -269,5 +269,115 @@ describe('forma delle risposte 2xx', () => {
     request.mockResolvedValue({ data: '<html>' });
     await fail(vaultApi.getKeyring());
     expect(del).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Ogni valore LEGITTIMO del backend deve passare la guardia di forma: un predicato troppo stretto trasformerebbe un successo vero in "errore di rete".
+// Le forme sono quelle di vault.service.ts (getKeyring) e vaultRecovery.service.ts, dopo la serializzazione JSON (Date -> ISO).
+describe('valori legittimi del backend (guardia di forma)', () => {
+  const ISO = '2026-11-16T10:00:00.000Z';
+  const keyringNone = {
+    status: 'NONE', epoch: 0, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: null,
+    migrationState: 'NONE', lockedUntil: null, resetScheduledAt: null, escrowHash: null, legacyCount: 0, setupAllowed: false, openRecovery: null,
+  };
+  const keyringReady = {
+    status: 'READY', epoch: 2, rev: 7, kdf: 'argon2id', kdfParams: { m: 65536, t: 10, p: 1 }, pinSalt: 'AAAA', wrappedVkPin: 'BBBB', wrappedVkSigKey: 'CCCC', rootKeyId: 'rk_1',
+    migrationState: 'DONE', lockedUntil: null, resetScheduledAt: null, escrowHash: 'ab'.repeat(32), legacyCount: 0, setupAllowed: true,
+    openRecovery: { id: 'r1', status: 'WAITING', fingerprint: 'E7E0T7Q5', createdAt: ISO, notBefore: ISO },
+  };
+
+  it.each([
+    ['NONE (epoch 0, rev 0, campi null)', keyringNone],
+    ['READY con openRecovery', keyringReady],
+    ['READY con lockout', { ...keyringReady, lockedUntil: ISO, openRecovery: null }],
+    ['RESET_PENDING', { ...keyringReady, status: 'RESET_PENDING', resetScheduledAt: ISO, migrationState: 'IN_PROGRESS' }],
+  ])('getKeyring: %s', async (_n, body) => {
+    request.mockResolvedValue({ data: body });
+    await expect(vaultApi.getKeyring()).resolves.toEqual(body);
+  });
+
+  const rec = (status: string, over: object = {}) => ({
+    status, fingerprint: 'E7E0T7Q5', notBefore: null, releaseExpiresAt: null, sealedCodeA: null, rootShareForClient: null, rootSignature: null, escrowBlob: null, ...over,
+  });
+  it.each([
+    ['PENDING_APPROVAL', rec('PENDING_APPROVAL')],
+    ['PENDING_CODE (sealedCodeA)', rec('PENDING_CODE', { sealedCodeA: 'AAAA' })],
+    ['PENDING_CODE (senza sealedCodeA)', rec('PENDING_CODE')],
+    ['WAITING', rec('WAITING', { notBefore: ISO })],
+    ['RELEASED (seal e escrow)', rec('RELEASED', { notBefore: ISO, releaseExpiresAt: ISO, rootShareForClient: 'AAAA', rootSignature: 'BBBB', escrowBlob: 'CCCC' })],
+    ['RELEASED scaduta (seal null)', rec('RELEASED', { notBefore: ISO, releaseExpiresAt: ISO })],
+    ['COMPLETED', rec('COMPLETED', { notBefore: ISO })],
+    ['CANCELLED', rec('CANCELLED', { notBefore: ISO })],
+    ['REJECTED', rec('REJECTED')],
+    ['EXPIRED', rec('EXPIRED', { notBefore: ISO })],
+    ['fingerprint null', rec('PENDING_APPROVAL', { fingerprint: null })],
+  ])('getRecovery: %s', async (_n, body) => {
+    request.mockResolvedValue({ data: body });
+    await expect(vaultApi.getRecovery('r1')).resolves.toEqual(body);
+  });
+
+  it.each([
+    ['normale', { status: 'COMPLETED', idempotent: false }],
+    ['idempotente', { status: 'COMPLETED', idempotent: true }],
+  ])('completeRecovery: %s', async (_n, body) => {
+    request.mockResolvedValue({ data: body });
+    await expect(vaultApi.completeRecovery('r1', '{}', 'p')).resolves.toEqual(body);
+  });
+});
+
+// Guardia di forma delle altre chiamate (forme di vault.service.ts / routes/vault.ts): un body che non e' del vault
+// (HTML di IIS per una route mancante, {}, enum o tipi sbagliati) e' un errore di rete.
+describe('forma delle risposte 2xx: unlock, items, migrate, finalize, confirm, cancel', () => {
+  const NET = { status: 0, kind: 'network', key: 'errors.common.networkError', fromServer: false };
+  const ISO = '2026-11-16T10:00:00.000Z';
+  const UUID = '0b6f1c2e-1111-4222-8333-444455556666';
+  const item = (over: object = {}) => ({
+    id: UUID, noteType: 'NOTE', title: '', hasPlaintextVersions: false, hasAttachments: false, content: 'nv3.1.iv.ct', contentHash: 'ab'.repeat(32), updatedAt: ISO, isTrashed: false, ...over,
+  });
+  const HTML = '<!doctype html><html><body>index</body></html>';
+
+  const cases: [string, () => Promise<unknown>, unknown[], unknown[]][] = [
+    ['unlock', () => vaultApi.unlock('a'),
+      [{ serverShare: 'A'.repeat(43) }, { serverShare: 'a-b_C9'.padEnd(43, 'x'), extra: 1 }],
+      [HTML, {}, { serverShare: '' }, { serverShare: 5 }, { serverShare: 'abc+/='.padEnd(43, 'x') }, { serverShare: null },
+       { serverShare: 'A'.repeat(42) }, { serverShare: 'A'.repeat(44) }]],
+    ['getItems', () => vaultApi.getItems({}),
+      [
+        { items: [], next: null },
+        { items: [item()], next: UUID },
+        { items: [item({ noteType: 'CREDENTIAL', isTrashed: true, hasPlaintextVersions: true, hasAttachments: true })], next: null, extra: 1 },
+        { items: [item({ noteType: 'FUTURE' })], next: null },
+        { items: [item()], next: null, absent: [], notVault: [] },
+        { items: [], next: null, absent: [UUID], notVault: [UUID] },
+      ],
+      [HTML, {}, { items: 'x', next: null }, { items: [{}], next: null }, { items: [item({ noteType: 5 })], next: null }, { items: [item({ isTrashed: 'no' })], next: null },
+        { items: [item({ content: 5 })], next: null }, { items: [], next: 5 }, { items: [], next: null, absent: 'x' }, { items: [], next: null, notVault: [1] }]],
+    ['migrateItems', () => vaultApi.migrateItems([]),
+      [{ results: [] }, { results: ['ok', 'already', 'conflict', 'notFound', 'invalid'].map((status) => ({ id: UUID, status })) }, { results: [], extra: 1 }],
+      [HTML, {}, { results: 'x' }, { results: [{ id: UUID, status: 'maybe' }] }, { results: [{ id: 5, status: 'ok' }] }, { results: [null] }]],
+    ['finalizeItems', () => vaultApi.finalizeItems([UUID]),
+      [
+        { finalized: 0, rejected: [], legacyCount: 0, migrationState: 'NONE' },
+        { finalized: 3, rejected: [UUID], legacyCount: 2, migrationState: 'IN_PROGRESS' },
+        { finalized: 1, rejected: [], legacyCount: 0, migrationState: 'DONE', extra: 1 },
+      ],
+      [HTML, {}, { finalized: '1', rejected: [] }, { finalized: -1, rejected: [] }, { finalized: 1 }, { finalized: 1, rejected: 'x' }, { finalized: 1, rejected: [5] }]],
+    ['confirmRecovery', () => vaultApi.confirmRecovery('r1', 'a', 'b'),
+      [{ status: 'WAITING', notBefore: ISO }, { status: 'WAITING', notBefore: ISO, extra: 1 }],
+      [HTML, {}, { status: 'PENDING_CODE', notBefore: ISO }, { status: 'WAITING' }, { status: 'WAITING', notBefore: null }, { status: 'WAITING', notBefore: 'domani' }, { status: 'WAITING', notBefore: 5 }]],
+    ['cancelRecovery', () => vaultApi.cancelRecovery('r1'),
+      [{ status: 'CANCELLED' }, { status: 'CANCELLED', extra: 1 }],
+      [HTML, {}, { status: 'WAITING' }, { status: 'cancelled' }, { status: 5 }]],
+  ];
+
+  describe.each(cases)('%s', (_n, fn, good, bad) => {
+    it.each(good.map((g, i) => [i, g] as const))('forma legittima #%i passa invariata', async (_i, body) => {
+      request.mockResolvedValue({ data: body });
+      await expect(fn()).resolves.toEqual(body);
+    });
+    it.each(bad.map((b, i) => [i, b] as const))('body non valido #%i -> errore di rete', async (_i, body) => {
+      request.mockResolvedValue({ data: body });
+      expect(await fail(fn())).toMatchObject(NET);
+    });
   });
 });
