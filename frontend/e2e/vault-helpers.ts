@@ -101,6 +101,9 @@ export async function submitSetup(page: Page, user: TestUser, opts: { pin?: stri
 /** Setup completo dal browser: /vault -> modulo -> Kit -> conferma. Ritorna il Kit. */
 export async function setupVaultUi(page: Page, user: TestUser, opts: { pin?: string; offlineUnlock?: boolean } = {}): Promise<string> {
   await page.goto('/vault');
+  // Tutti i vault*.spec passano da qui: backend senza i flag E2E = errore chiaro subito, non un timeout a meta' test.
+  const api = await apiFor(page);
+  try { await assertE2eBackend(api); } finally { await api.dispose(); }
   await expect(page.getByRole('heading', { name: 'Set up your Vault' })).toBeVisible({ timeout: 30000 });
   await submitSetup(page, user, opts);
   const kit = await confirmKitUi(page);
@@ -294,6 +297,83 @@ export async function dumpDeviceStorage(page: Page): Promise<string> {
             r.onsuccess = () => { out[n] = r.result; };
           }
           tx.oncomplete = () => { db.close(); resolve(JSON.stringify({ db: out, ls: { ...localStorage } })); };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Recupero con il Kit (P4): chiave root di test, hook __e2e del backend, superadmin per il test
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Passphrase della fixture `fixtures/vault-root-e2e.json`: pubblica e valida solo con la chiave root di test. */
+export const E2E_ROOT_PASSPHRASE = 'notiq-e2e-test-root-passphrase-NOT-A-SECRET';
+export const E2E_ROOT_KEY_ID = 'rk_42f37978a7909b3e';
+export const NEW_PIN = 'h3Vn9T';
+
+/** Fallisce subito se il backend non e' avviato con NODE_ENV=test + VAULT_E2E=1 (le route `__e2e` non esistono). */
+export async function assertE2eBackend(api: APIRequestContext) {
+  const r = await api.get('/api/vault/__e2e/recovery/00000000-0000-4000-8000-000000000000/code-b');
+  const msg = (await r.json().catch(() => ({}))).message;
+  expect(msg, 'Backend senza gli hook E2E: avviarlo con NODE_ENV=test e VAULT_E2E=1 (e VAULT_ROOT_KEY_PATH=frontend/e2e/fixtures/vault-root-e2e.json)').toBe('errors.vault.recoveryNotFound');
+}
+
+/** Dopo il setup: il keyring deve essere sigillato con la chiave root di test, cioe' Vite avviato con VITE_VAULT_E2E=1. */
+export async function assertTestRootKey(api: APIRequestContext) {
+  expect((await keyringOf(api)).rootKeyId, 'rootKeyId non e\' quello di test: il dev server Vite non e\' partito con VITE_VAULT_E2E=1 (porta gia\' occupata da un altro server?)').toBe(E2E_ROOT_KEY_ID);
+}
+
+/** Metà B del codice dall'outbox E2E (solo il proprietario della richiesta). */
+export async function codeBOf(api: APIRequestContext, requestId: string): Promise<string> {
+  const r = await api.get(`/api/vault/__e2e/recovery/${requestId}/code-b`);
+  expect(r.ok(), `code-b ${r.status()}`).toBe(true);
+  return (await r.json()).codeB as string;
+}
+
+/** Porta `notBefore` nel passato: il periodo di attesa e' finito. */
+export async function advanceRecovery(api: APIRequestContext, requestId: string) {
+  const r = await api.post(`/api/vault/__e2e/recovery/${requestId}/advance`);
+  expect(r.ok(), `advance ${r.status()}`).toBe(true);
+}
+
+/** La richiesta di recupero aperta dell'utente (id, stato, fingerprint), o null. */
+export async function openRecoveryOf(api: APIRequestContext): Promise<{ id: string; status: string; fingerprint: string } | null> {
+  return (await keyringOf(api)).openRecovery ?? null;
+}
+
+/**
+ * Superadmin NUOVO per ogni test (la route di rilascio ha un limite in memoria di 3 chiamate ogni 15 minuti per admin):
+ * utente normale promosso dal superadmin seminato. Ritorna le credenziali per il login nel browser.
+ */
+export async function createSuperadminViaApi(name: string): Promise<TestUser & { id: string }> {
+  const u = await createUserViaApi(name);
+  const api = await pwRequest.newContext({ baseURL: API });
+  const sa = await (await api.post('/api/auth/login', { data: { email: 'superadmin@notiq.ai', password: 'superadmin' } })).json();
+  const r = await api.put(`/api/admin/users/${u.id}`, { headers: { Authorization: `Bearer ${sa.token}` }, data: { role: 'SUPERADMIN' } });
+  expect(r.ok(), `promozione a SUPERADMIN: ${r.status()}`).toBe(true);
+  await api.dispose();
+  return u;
+}
+
+/** Chiavi degli store `deviceKeys` e `pending` di `notiq-vault-device` (solo le chiavi: nessun valore). */
+export async function deviceStoreKeys(page: Page): Promise<{ deviceKeys: string[]; pending: string[] }> {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('notiq-vault-device');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const out = { deviceKeys: [] as string[], pending: [] as string[] };
+          const names = (['deviceKeys', 'pending'] as const).filter((n) => db.objectStoreNames.contains(n));
+          if (!names.length) { db.close(); return resolve(out); }
+          const tx = db.transaction(names, 'readonly');
+          for (const n of names) {
+            const r = tx.objectStore(n).getAllKeys();
+            r.onsuccess = () => { out[n] = (r.result as IDBValidKey[]).map(String); };
+          }
+          tx.oncomplete = () => { db.close(); resolve(out); };
           tx.onerror = () => reject(tx.error);
         };
       }),

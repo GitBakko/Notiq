@@ -66,6 +66,20 @@ function Invoke-Robocopy {
     $global:LASTEXITCODE = 0
 }
 
+# True se la riga di .env attiverebbe gli hook E2E del vault. Fail-closed: qualunque riga con VAULT_E2E (anche =0) ferma il deploy.
+# NODE_ENV: ferma se il valore, tolti apici/backtick e un eventuale commento ' #...', contiene "test"
+# (NODE_ENV=production # not test passa: il commento non e' il valore, dotenv lo scarta).
+function Test-E2eEnvLine([string]$Line) {
+    $l = $Line.Replace([string][char]0xFEFF, '').Trim()
+    if ($l.StartsWith('#')) { return $false }
+    if ($l -match 'VAULT_E2E') { return $true }
+    if ($l -match '^(export\s+)?NODE_ENV\s*[=:]\s*(?<v>.*)$') {
+        $v = $Matches['v'] -replace '\s+#.*$', ''
+        return ($v -match 'test')
+    }
+    return $false
+}
+
 function Invoke-Native {
     param([scriptblock]$Block, [string]$Label)
     if ($DryRun) { Write-Dry $Label; return }
@@ -105,6 +119,44 @@ foreach ($scope in 'Machine', 'User') {
         throw "VAULT_PEPPER_KEY e' impostata nell'ambiente di macchina/utente: rimuovila (pm2 save la salverebbe nel dump). Deve stare solo in backend\.env"
     }
 }
+# Gli hook E2E del vault (chiave root di test, codice B in chiaro) si attivano con NODE_ENV=test + VAULT_E2E: in prod mai.
+# Si guarda tutto cio' che il backend puo' ereditare: processo corrente, macchina/utente, .env.
+if ($env:VAULT_E2E -or $env:NODE_ENV -eq 'test') {
+    throw "VAULT_E2E o NODE_ENV=test e' impostata nel processo corrente: rimuovila (hook E2E del vault, solo per i test)"
+}
+foreach ($scope in 'Machine', 'User') {
+    if ([Environment]::GetEnvironmentVariable('VAULT_E2E', $scope) -or [Environment]::GetEnvironmentVariable('NODE_ENV', $scope) -eq 'test') {
+        throw "VAULT_E2E o NODE_ENV=test e' impostata nell'ambiente di macchina/utente: rimuovila (hook E2E del vault, solo per i test)"
+    }
+}
+foreach ($line in (Get-Content -LiteralPath $envFile -Encoding UTF8)) {
+    if (Test-E2eEnvLine $line) { throw "VAULT_E2E o NODE_ENV=test in ${envFile}: rimuovila (hook E2E del vault, solo per i test)" }
+}
+# Il filtro a righe puo' sbagliare (separatori Unicode, quoting): l'ultima parola e' del parser che legge davvero il .env.
+# Script su file temp (niente problemi di quoting fra PS 5.1 e 7); fail-closed se node o dotenv mancano.
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "node non trovato sul PATH: non posso verificare ${envFile} con dotenv (fail-closed)" }
+$envCheckJs = Join-Path $env:TEMP ("notiq-envcheck-" + [guid]::NewGuid().ToString('N') + '.js')
+try {
+    Set-Content -LiteralPath $envCheckJs -Encoding ASCII -Value @'
+const path = require('path'), fs = require('fs');
+const f = process.argv[2];
+let dotenv;
+try { dotenv = require(require.resolve('dotenv', { paths: [path.dirname(f)] })); }
+catch (e) { console.error('dotenv non disponibile: ' + e.message); process.exit(2); }
+const p = dotenv.parse(fs.readFileSync(f));
+if (Object.prototype.hasOwnProperty.call(p, 'VAULT_E2E')) { console.error('VAULT_E2E presente'); process.exit(3); }
+if (/test/i.test(p.NODE_ENV || '')) { console.error('NODE_ENV contiene test'); process.exit(3); }
+'@
+    & node $envCheckJs $envFile
+    $envCheckExit = $LASTEXITCODE
+} finally { Remove-Item -LiteralPath $envCheckJs -Force -ErrorAction SilentlyContinue }
+if ($envCheckExit -eq 3) { throw "dotenv legge VAULT_E2E o NODE_ENV=test in ${envFile}: rimuovila (hook E2E del vault, solo per i test)" }
+if ($envCheckExit -ne 0) { throw "verifica di ${envFile} con dotenv non riuscita (exit $envCheckExit): serve dotenv in node_modules di ${BackendRoot} (fail-closed)" }
+# La chiave root di test non deve stare nel frontend che stiamo per pubblicare (id in chiaro in qualunque file non binario).
+$e2eKeyId = 'rk_42f37978a7909b3e'
+$leak = Get-ChildItem -LiteralPath $pkgFrontendDist -Recurse -File -Exclude *.png,*.jpg,*.jpeg,*.gif,*.webp,*.ico,*.woff,*.woff2,*.ttf,*.otf,*.eot,*.wasm |
+    Select-String -SimpleMatch $e2eKeyId -List | Select-Object -First 1
+if ($leak) { throw "la chiave root di TEST ($e2eKeyId) e' nel frontend del pacchetto ($($leak.Path)): ricostruisci con Build-Package.ps1" }
 if (-not (Select-String -LiteralPath $envFile -Pattern '^\s*(export\s+)?VAULT_PEPPER_KEY\s*[=:]\s*\S' -Quiet)) {
     Write-Warn2 "VAULT_PEPPER_KEY assente in ${envFile}: le route /api/vault risponderanno 503 (vedi runbook P1)"
 }
@@ -199,7 +251,7 @@ Write-Ok "dipendenze + client Prisma + migration applicate"
 
 # --- 8. Start backend ---
 Write-Step 8 "Start backend (pm2 restart $Pm2Name)..."
-if ($DryRun) { Write-Dry "pm2 restart $Pm2Name (start se assente)" }
+if ($DryRun) { Write-Dry "pm2 restart $Pm2Name (start se assente); pm2 save solo dopo la sonda anti-E2E" }
 else {
     pm2 restart $Pm2Name
     if ($LASTEXITCODE -ne 0) {
@@ -207,7 +259,7 @@ else {
         Push-Location $BackendRoot
         try { pm2 start dist/app.js --name $Pm2Name } finally { Pop-Location }
     }
-    pm2 save | Out-Null
+    # pm2 save e' nello step 9, dopo la sonda anti-E2E: un env di test non va persistito nel dump.
     Write-Ok "backend avviato"
 }
 
@@ -246,6 +298,30 @@ if (-not $DryRun) {
     if (-not $ok) {
         Write-Warn2 "health check locale non riuscito dopo ~20s — controlla: pm2 logs $Pm2Name --lines 50"
     }
+    # Sonda anti-E2E: con le route __e2e registrate la GET senza token darebbe 401; in prod non esistono -> 404.
+    # Ha un suo retry (anche se la health e' fallita): senza risposta il deploy non e' verificato, quindi errore.
+    $status = $null
+    $deadline = (Get-Date).AddSeconds(60)
+    while ($null -eq $status -and (Get-Date) -lt $deadline) {
+        try { $status = [int](Invoke-WebRequest -Uri 'http://127.0.0.1:3001/api/vault/__e2e/recovery/00000000-0000-0000-0000-000000000000/code-b' -UseBasicParsing -TimeoutSec 5).StatusCode }
+        catch {
+            # In pwsh 7 timeout/reset non hanno .Response: con StrictMode leggerlo diretto lancerebbe dentro il catch.
+            $resp = $_.Exception.PSObject.Properties['Response']
+            if ($resp -and $resp.Value) { $status = [int]$resp.Value.StatusCode }
+            else { Start-Sleep -Seconds 2 }
+        }
+    }
+    if ($null -eq $status) {
+        throw "sonda anti-E2E senza risposta dopo ~60s: deploy NON verificato (pm2 save non eseguito). Controlla: pm2 logs $Pm2Name --lines 50"
+    }
+    if ($status -ne 404) {
+        pm2 stop $Pm2Name | Out-Null
+        throw "le route E2E del vault rispondono (HTTP $status, atteso 404): il backend gira con gli hook di test. Backend FERMATO (pm2 stop $Pm2Name): togli VAULT_E2E/NODE_ENV=test dall'ambiente e rilancia"
+    }
+    Write-Ok "route E2E del vault assenti (404)"
+    pm2 save | Out-Null
+} else {
+    Write-Dry "sonda GET /api/vault/__e2e/... sul backend avviato: atteso 404 (retry ~60s; senza risposta errore), altrimenti pm2 stop $Pm2Name + errore; poi pm2 save"
 }
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Magenta

@@ -136,6 +136,13 @@ jobs:
 
       - name: Start backend on :3001
         working-directory: backend
+        # Vault: pepper e chiave root SOLO di test (costanti pubbliche), hook E2E attivi solo con NODE_ENV=test + VAULT_E2E=1. Mai in prod.
+        env:
+          NODE_ENV: test
+          VAULT_E2E: '1'
+          VAULT_PEPPER_KEY: bm90aXEtZTJlLXRlc3Qtb25seS1wZXBwZXIta2V5AAA
+          VAULT_SETUP_USERS: '*'
+          VAULT_ROOT_KEY_PATH: ${{ github.workspace }}/frontend/e2e/fixtures/vault-root-e2e.json
         run: |
           node dist/app.js > backend.log 2>&1 &
           echo $! > backend.pid

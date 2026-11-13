@@ -580,7 +580,7 @@ Il hotfix P0 non chiude questi casi; restano aperti fino a P2 (i primi due, fino
   - con due `rootKeyId` nel file, un keyring sigillato col vecchio id si recupera.
 - **Test:**
   - backend: `vaultRecovery.service.test.ts` (macchina a stati, rate limit, tempi con clock finto, HMAC delle metà, 5 tentativi, annullamento da un'altra sessione); `vaultRootKey.service.test.ts` con una chiave di test (passphrase giusta e sbagliata, seal verso `clientEphPub`, firma verificabile, passphrase assente dai log grazie a `redact`);
-  - e2e: `vault-recovery.spec.ts` (utente e admin in due contesti, clock avanzato oltre le 72 ore, metà B letta dalla mailbox di test) con un `rootKeyId` solo di test, **mai** incluso nel bundle di prod.
+  - e2e: `vault-recovery.spec.ts` (utente e admin in due contesti, clock avanzato oltre le 72 ore, metà B letta dalla mailbox di test) con un `rootKeyId` solo di test, **mai** incluso nel bundle di prod. Realizzazione (Fase 4, decisioni F3-F5): al posto della mailbox un outbox in memoria della metà B e la rotta `advance` per `notBefore`, entrambi attivi solo con `NODE_ENV=test` **e** `VAULT_E2E=1` (`backend/src/utils/vaultE2e.ts`, `routes/vaultE2e.ts`); chiave root di test `rk_42f37978a7909b3e` (fixture `frontend/e2e/fixtures/vault-root-e2e.json`, passphrase pubblica) accettata dal backend solo con gli stessi flag e presente nel frontend solo dietro `import.meta.env.DEV && VITE_VAULT_E2E === '1'`; il `postbuild` `frontend/scripts/check-bundle-root-keys.mjs` fa fallire la build se compare nel bundle.
 
 ### P5: rifinitura
 

@@ -64,6 +64,7 @@ A "skip existing" merge leaves OLD `index.html` + `sw.js` (fixed names, no conte
 - New `uploads/` subdir → needs an explicit static route in `backend/src/app.ts` (no wildcard serving).
 - Prisma 7 CLI: no `--schema` flag (reads `prisma.config.js`); use `db execute --file` not `--stdin`.
 - P2022 (column not found) after deploy → `npx prisma generate` + `pm2 restart notiq-backend`.
+- **Mai `VAULT_E2E` né `NODE_ENV=test` in prod** (`backend\.env`, env di macchina o utente, env catturato da `pm2 save`): insieme attivano gli hook solo-E2E del recupero vault e la chiave root di test. `Deploy-Server.ps1` si ferma se li trova (pre-volo); controllarlo anche dopo modifiche manuali all'env.
 
 ## Rilascio vault P1 (una tantum)
 Piano: `docs/superpowers/plans/2026-09-30-vault-p1-plan.md` §6 + addendum. P1 aggiunge la migration `20261001000000_vault_e2ee`, le route `/api/vault/*` (503 sulle scritture finché non c'è la root) e la cerimonia della chiave root. Nessun cambio UX.

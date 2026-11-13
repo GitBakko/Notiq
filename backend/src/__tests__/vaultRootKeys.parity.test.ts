@@ -12,11 +12,22 @@ const b64u = (s: string) => Buffer.from(s, 'base64url');
 const fePath = process.env.VAULT_FE_SRC ?? path.resolve(__dirname, '../../../frontend/src/utils/vaultRootKeys.ts');
 const feSrc = fs.readFileSync(fePath, 'utf8');
 
-const feKeys: Record<string, { ecdhSpki: string; ecdsaSpki: string }> = {};
-for (const m of feSrc.matchAll(/(?:^|[\s{,])['"]?(rk_[0-9a-f]{16})['"]?\s*:\s*(?:Object\.freeze\(\s*)?\{\s*ecdhSpki\s*:\s*(['"])([^'"]+)\2\s*,\s*ecdsaSpki\s*:\s*(['"])([^'"]+)\4/g)) {
-  feKeys[m[1]] = { ecdhSpki: m[3], ecdsaSpki: m[5] };
-}
-const feActive = /ACTIVE_VAULT_ROOT_KEY_ID[^=]*=\s*(['"])([^'"]*)\1/.exec(feSrc)?.[2];
+// Il frontend tiene la chiave di test in un blocco marcato e protetto da un flag dev-only: la mappa di produzione si legge a blocco rimosso.
+const E2E_BLOCK_RE = /\/\/ E2E-KEYS-BEGIN([\s\S]*?)\/\/ E2E-KEYS-END/;
+const feE2eBlock = E2E_BLOCK_RE.exec(feSrc)?.[1] ?? '';
+const feProdSrc = feSrc.replace(E2E_BLOCK_RE, '');
+
+const KEY_RE = /(?:^|[\s{,])['"]?(rk_[0-9a-f]{16})['"]?\s*:\s*(?:Object\.freeze\(\s*)?\{\s*ecdhSpki\s*:\s*(['"])([^'"]+)\2\s*,\s*ecdsaSpki\s*:\s*(['"])([^'"]+)\4/g;
+const parseKeys = (src: string) => {
+  const out: Record<string, { ecdhSpki: string; ecdsaSpki: string }> = {};
+  for (const m of src.matchAll(KEY_RE)) out[m[1]] = { ecdhSpki: m[3], ecdsaSpki: m[5] };
+  return out;
+};
+const feKeys = parseKeys(feProdSrc);
+const feE2eKeys = parseKeys(feE2eBlock);
+// Id attivo di produzione: il fallback dopo `??` (con il flag E2E vale quello di test, che sta nel blocco).
+const feActive = /ACTIVE_VAULT_ROOT_KEY_ID[^=]*=[^;]*?\?\?\s*(['"])([^'"]*)\1/.exec(feProdSrc)?.[2];
+const feE2eActive = /activeId\s*:\s*(['"])([^'"]*)\1/.exec(feE2eBlock)?.[2];
 
 describe('vaultRootKeys parita backend/frontend', () => {
   it('ogni chiave (produzione + test E2E): id ricalcolato, SPKI secp384r1', () => {
@@ -48,11 +59,32 @@ describe('vaultRootKeys parita backend/frontend', () => {
     }
   });
 
-  // Confronto SOLO con la mappa di PRODUZIONE. La chiave di test del frontend vivra in un ramo dev-only protetto da un flag, che la regex non deve leggere (un task successivo cambia insieme file frontend e regex).
+  // Confronto SOLO con la mappa di PRODUZIONE: il blocco E2E del frontend e' stato rimosso dal sorgente prima del parsing.
   it('mappa frontend {id: {ecdhSpki, ecdsaSpki}} identica a quella backend di PRODUZIONE (stesse chiavi, nessuna in piu o in meno)', () => {
     const be = Object.fromEntries(Object.entries(VAULT_ROOT_KEYS).filter(([id]) => !(id in VAULT_E2E_ROOT_KEYS)).map(([id, k]) => [id, { ecdhSpki: k.ecdhSpki, ecdsaSpki: k.ecdsaSpki }]));
     expect(Object.keys(feKeys).length).toBeGreaterThan(0);
     expect(feKeys).toEqual(be);
+  });
+
+  it('blocco E2E del frontend identico a VAULT_E2E_ROOT_KEYS del backend (id e entrambi gli SPKI) e chiave attiva E2E = quella di test', () => {
+    expect(feE2eBlock).not.toBe('');
+    expect(feE2eKeys).toEqual(VAULT_E2E_ROOT_KEYS);
+    expect(feE2eActive).toBe(E2E_KEY_ID);
+  });
+
+  it('il blocco E2E e protetto da MODE development + DEV + flag (mai attivo in build)', () => {
+    expect(feE2eBlock).toMatch(/import\.meta\.env\.MODE\s*===\s*'development'\s*&&\s*import\.meta\.env\.DEV\s*&&\s*import\.meta\.env\.VITE_VAULT_E2E\s*===\s*'1'/);
+    expect(feProdSrc).not.toContain(E2E_KEY_ID);
+  });
+
+  // Se la fixture ruota e lo scan non viene aggiornato, il postbuild diventa vacuo: lo scan deve contenere id e SPKI di test.
+  it('lo scan del bundle (check-bundle-root-keys.mjs) contiene id e SPKI della chiave di test', () => {
+    const scan = fs.readFileSync(path.resolve(__dirname, '../../../frontend/scripts/check-bundle-root-keys.mjs'), 'utf8');
+    expect(scan).toContain(E2E_KEY_ID);
+    for (const k of Object.values(VAULT_E2E_ROOT_KEYS)) {
+      expect(scan).toContain(k.ecdhSpki);
+      expect(scan).toContain(k.ecdsaSpki);
+    }
   });
 
   it('id attivo frontend presente nella mappa', () => {

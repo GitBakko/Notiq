@@ -90,9 +90,19 @@ if ($SkipBuild) {
     Write-Step 1 $total "Build SALTATA (-SkipBuild)"
 } else {
     Write-Step 1 $total "Build frontend (npm run build)..."
+    # Mai una build di produzione con l'ambiente di un giro E2E: niente NODE_ENV=test e niente chiave root di test nel bundle.
+    # I valori precedenti si ripristinano: la shell del chiamante non deve restare con NODE_ENV=production.
+    $prevNodeEnv = $env:NODE_ENV
+    $prevVaultE2e = $env:VITE_VAULT_E2E
+    $env:NODE_ENV = 'production'
+    Remove-Item Env:VITE_VAULT_E2E -ErrorAction SilentlyContinue
     Push-Location $Frontend
     try { npm run build; if ($LASTEXITCODE -ne 0) { throw "build frontend fallita (exit $LASTEXITCODE)" } }
-    finally { Pop-Location }
+    finally {
+        Pop-Location
+        if ($null -eq $prevNodeEnv) { Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue } else { $env:NODE_ENV = $prevNodeEnv }
+        if ($null -eq $prevVaultE2e) { Remove-Item Env:VITE_VAULT_E2E -ErrorAction SilentlyContinue } else { $env:VITE_VAULT_E2E = $prevVaultE2e }
+    }
     Write-Ok "frontend\dist pronto"
 
     Write-Step 1 $total "Build backend (npm run build)..."
@@ -101,6 +111,12 @@ if ($SkipBuild) {
     finally { Pop-Location }
     Write-Ok "backend\dist pronto"
 }
+
+# Scan del bundle SEMPRE (anche con -SkipBuild, che impacchetta una dist qualunque): la chiave root di test non deve esserci.
+Push-Location $Frontend
+try { node scripts/check-bundle-root-keys.mjs; if ($LASTEXITCODE -ne 0) { throw "scan del bundle frontend fallito (exit $LASTEXITCODE): chiave root di test nella dist o dist assente" } }
+finally { Pop-Location }
+Write-Ok "bundle frontend senza chiave root di test"
 
 # --- 2. Verifica output ---
 Write-Step 2 $total "Verifica artefatti build..."

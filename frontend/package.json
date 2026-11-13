@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "node scripts/check-bundle-root-keys.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
