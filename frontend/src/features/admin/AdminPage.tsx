@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
 import {
   Shield, LayoutDashboard, Users, History, Settings, Mail,
-  HeartPulse, LogOut, Megaphone, HardDrive, Gauge
+  HeartPulse, LogOut, Megaphone, HardDrive, Gauge, KeyRound
 } from 'lucide-react';
 import api from '../../lib/api';
 import type { DashboardStats, SystemHealth } from './types';
@@ -17,10 +17,11 @@ import RequestsTab from './tabs/RequestsTab';
 import SystemHealthTab from './tabs/SystemHealthTab';
 import AnnouncementsTab from './tabs/AnnouncementsTab';
 import ChatFilesTab from './tabs/ChatFilesTab';
+import VaultRecoveryTab from './tabs/VaultRecoveryTab';
 
-type TabId = 'dashboard' | 'users' | 'audit' | 'settings' | 'requests' | 'health' | 'announcements' | 'chatFiles';
+type TabId = 'dashboard' | 'users' | 'audit' | 'settings' | 'requests' | 'health' | 'announcements' | 'chatFiles' | 'vaultRecovery';
 
-const TABS: { id: TabId; icon: typeof LayoutDashboard; label: string }[] = [
+const TABS: { id: TabId; icon: typeof LayoutDashboard; label: string; labelKey?: string }[] = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { id: 'health', icon: HeartPulse, label: 'System Health' },
   { id: 'users', icon: Users, label: 'Users' },
@@ -29,6 +30,7 @@ const TABS: { id: TabId; icon: typeof LayoutDashboard; label: string }[] = [
   { id: 'requests', icon: Mail, label: 'Requests' },
   { id: 'announcements', icon: Megaphone, label: 'Announcements' },
   { id: 'chatFiles', icon: HardDrive, label: 'Chat Files' },
+  { id: 'vaultRecovery', icon: KeyRound, label: 'Vault recovery', labelKey: 'admin.vaultRecovery.tab' },
 ];
 
 export default function AdminPage() {
@@ -79,7 +81,7 @@ export default function AdminPage() {
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">
-          {TABS.map(({ id, icon: Icon, label }) => (
+          {TABS.map(({ id, icon: Icon, label, labelKey }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -89,7 +91,7 @@ export default function AdminPage() {
                   : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-700'
               }`}
             >
-              <Icon size={20} /> {label}
+              <Icon size={20} /> {labelKey ? t(labelKey) : label}
             </button>
           ))}
           <Link
@@ -117,6 +119,7 @@ export default function AdminPage() {
         {activeTab === 'requests' && <RequestsTab />}
         {activeTab === 'announcements' && <AnnouncementsTab />}
         {activeTab === 'chatFiles' && <ChatFilesTab />}
+        {activeTab === 'vaultRecovery' && <VaultRecoveryTab />}
       </div>
     </div>
   );

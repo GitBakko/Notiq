@@ -18,6 +18,7 @@ import { db, type LocalNote } from '../../lib/db';
 import { queryKeys } from '../../lib/queryKeys';
 import { LOCAL_FIRST } from '../../lib/networkMode';
 import { getKeyring } from '../../lib/vaultApi';
+import { RECOVERY_CLOSED_EVENT } from '../../lib/vaultEvents';
 import { decryptItem, encryptItem, type VaultNoteType } from '../../lib/vaultCodec';
 import { hydrateVaultNote, vaultReconcile } from '../../lib/vaultReconcile';
 import { checkPendingOnStart, refreshKeyringCache, syncKeyringCache, type KeyringDto } from '../../lib/vaultSession';
@@ -32,6 +33,7 @@ import RecoveryKitSheet from './RecoveryKitSheet';
 import VaultMigrate from './VaultMigrate';
 import VaultNoteEditor from './VaultNoteEditor';
 import VaultOfflineNotice from './VaultOfflineNotice';
+import VaultRecovery, { type RecoveryNext } from './VaultRecovery';
 import VaultSettingsSheet from './VaultSettingsSheet';
 import VaultSetup from './VaultSetup';
 import VaultUnlock from './VaultUnlock';
@@ -48,6 +50,9 @@ type Gate =
   | { k: 'ready' }
   | { k: 'resetPending' }
   | { k: 'setupDisabled'; legacyCount: number };
+
+// F10: con un rilascio aperto il PUT con l'escrow darebbe 409 recoveryInProgress, il foglio non serve (e non si puo' completare)
+const rotationOf = (kr: KeyringDto) => kr.kitRotationRequired === true && kr.openRecovery?.status !== 'RELEASED';
 
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const MAX_ENVELOPE_LEN = 2 * 1024 * 1024; // oltre non passa il limite del server
@@ -98,6 +103,7 @@ export default function VaultPage() {
   const [retrying, setRetrying] = useState(false);
   const [alreadySetup, setAlreadySetup] = useState(false); // il setup ha scoperto un keyring gia' creato altrove: avviso sullo sblocco
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [kitRotation, setKitRotation] = useState(false); // letto dal GET /keyring fatto da bloccato (nessun polling)
   const [showResume, setShowResume] = useState(false);
   const [legacyLeft, setLegacyLeft] = useState(0);
   const [legacyPinLeft, setLegacyPinLeft] = useState(0); // note con riga lasciate per un PIN precedente (B.13)
@@ -116,18 +122,43 @@ export default function VaultPage() {
   useEffect(() => { openNoteRef.current = selectedNoteId; }, [selectedNoteId]);
   const rootKey = getActiveRootKey();
   // Il wizard (setup o migrazione) resta montato finche' non finisce: il setup sblocca prima della cerimonia del Kit.
-  const showWizard = gate.k === 'none';
+  // Il recupero (?recovery=1 dal banner/notifica, o "PIN dimenticato") occupa lo stesso posto: reconcile e checkPendingOnStart restano spenti
+  // per tutta la cerimonia, cosi' il banner kitUnconfirmed non compare mentre il foglio del Kit e' aperto.
+  const [recoveryFlag, setRecoveryFlag] = useState(false);
+  // ?recovery=1 vale solo con keyring READY (o store gia' sbloccato, dove loadKeyring non gira): mai sopra il wizard di setup/migrazione
+  const recoveryParam = searchParams.get('recovery') === '1';
+  const recoveryOpen = recoveryFlag || (recoveryParam && (gate.k === 'ready' || unlocked));
+  // Aperta dal parametro, la cerimonia si aggancia al flag: un auto-lock o un cambio di gate non la smontano a meta' (Kit/PIN digitati, esito `applied` persi). Cade solo in closeRecovery.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- aggancio una tantum al flag
+    if (recoveryParam && (gate.k === 'ready' || unlocked)) setRecoveryFlag(true);
+  }, [recoveryParam, gate.k, unlocked]);
+  const showWizard = gate.k === 'none' || recoveryOpen;
   const reconcileEnabled = unlocked && !showWizard;
+  // il foglio rigenera il Kit: serve la rete e la chiave root attiva nel bundle (senza, il PUT non puo' sigillare l'escrow)
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  const forceKit = unlocked && kitRotation && !recoveryOpen && online && !!rootKey;
 
   // --- keyring: UNKNOWN / NONE / READY (piano 5.3) -------------------------------------------------
   const seqRef = useRef(0);
+  const rotSeqRef = useRef(0); // l'ultima lettura del flag vince: una risposta vecchia non lo riaccende
   const loadKeyring = useCallback(async () => {
     if (!userId) return;
     const seq = ++seqRef.current;
+    const rs = ++rotSeqRef.current;
     let next: Gate;
+    let rotation: boolean | null = null; // null = GET fallita: il valore precedente resta
     try {
       // setupAllowed (kill switch D2) arriva dal server; assente (backend vecchio) = consentito
       const kr = await getKeyring<KeyringDto & { setupAllowed?: boolean }>();
+      rotation = rotationOf(kr);
       if (kr.status === 'READY') syncKeyringCache(userId, kr); // J.6: la cache offline segue il keyring del server (mai indietro)
       next = kr.status === 'NONE' ? (kr.setupAllowed === false ? { k: 'setupDisabled', legacyCount: kr.legacyCount ?? 0 } : { k: 'none', legacyCount: kr.legacyCount ?? 0 })
         : kr.status === 'READY' ? { k: 'ready' }
@@ -140,6 +171,7 @@ export default function VaultPage() {
       else next = { k: 'unknown' };
     }
     if (seq !== seqRef.current) return;
+    if (rotation !== null && rs === rotSeqRef.current) setKitRotation(rotation);
     setGate(next);
     setRetrying(false);
   }, [userId]);
@@ -163,13 +195,39 @@ export default function VaultPage() {
   // J.6: da sbloccato loadKeyring non gira; la cache offline si riallinea comunque, subito e a ogni ritorno online.
   useEffect(() => {
     if (!unlocked || !userId) return;
-    const refresh = () => { void refreshKeyringCache(userId); };
+    const refresh = () => {
+      const rs = ++rotSeqRef.current;
+      // anche da sbloccato (pagina montata gia' sbloccata, sblocco offline) il flag di rotazione si legge qui
+      void refreshKeyringCache(userId).then((kr) => { if (kr && rs === rotSeqRef.current) setKitRotation(rotationOf(kr)); });
+    };
     if (navigator.onLine) refresh();
     window.addEventListener('online', refresh);
     return () => window.removeEventListener('online', refresh);
   }, [unlocked, userId]);
 
+  // Parametro rimasto su un gate che non e' READY (setup, migrazione, offline...): cade, cosi' non apre la cerimonia a wizard finito
+  useEffect(() => {
+    if (!recoveryParam || unlocked || gate.k === 'loading' || gate.k === 'ready') return;
+    setSearchParams((params) => {
+      const p = new URLSearchParams(params);
+      p.delete('recovery');
+      return p;
+    }, { replace: true });
+  }, [recoveryParam, unlocked, gate.k, setSearchParams]);
+
   const retryKeyring = () => { setRetrying(true); void loadKeyring(); };
+  const closeRecovery = (next: RecoveryNext) => {
+    setKitRotation(false); // il flag letto prima della cerimonia e' vecchio: dopo un recupero il Kit nuovo e' appena stato salvato
+    setRecoveryFlag(false);
+    setSearchParams((params) => {
+      const p = new URLSearchParams(params);
+      p.delete('recovery');
+      return p;
+    }, { replace: true }); // Indietro non deve riaprire la cerimonia
+    window.dispatchEvent(new Event(RECOVERY_CLOSED_EVENT)); // il banner globale rilegge lo stato della richiesta
+    if (next === 'regenerate') setSettingsOpen(true);
+    void loadKeyring(); // il keyring puo' essere cambiato durante il recupero: lo stato e il flag si rileggono SEMPRE (F10 sul valore fresco)
+  };
   const finishWizard = () => setGate({ k: 'ready' }); // setup/migrazione chiusi: il keyring e' READY per costruzione
   const handleAlreadySetup = () => { setAlreadySetup(true); finishWizard(); };
 
@@ -457,6 +515,7 @@ export default function VaultPage() {
   if (!userId) return infoScreen(t('common.loading'));
 
   if (showWizard) {
+    if (recoveryOpen) return <VaultRecovery userId={userId} onClose={closeRecovery} />;
     if (gate.k === 'none' && gate.legacyCount > 0) {
       return rootKey
         ? <VaultMigrate userId={userId} rootKey={rootKey} renderKit={renderKit} onDone={finishWizard} />
@@ -471,7 +530,7 @@ export default function VaultPage() {
       case 'unavailable': return infoScreen(t('errors.vault.unavailable'), true);
       case 'setupDisabled': return infoScreen(t(gate.legacyCount > 0 ? 'vault.setupDisabledLegacy' : 'errors.vault.setupDisabled'), true);
       case 'resetPending': return infoScreen(t('vault.resetPending'));
-      case 'ready': return <VaultUnlock notice={alreadySetup ? 'alreadySetup' : undefined} onUnlocked={() => setAlreadySetup(false)} />;
+      case 'ready': return <VaultUnlock notice={alreadySetup ? 'alreadySetup' : undefined} onUnlocked={() => setAlreadySetup(false)} onForgot={() => setRecoveryFlag(true)} />;
       default: return infoScreen(t('common.loading'));
     }
   }
@@ -769,7 +828,13 @@ export default function VaultPage() {
   return (
     <>
       {body}
-      <VaultSettingsSheet isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onLegacyLeft={setLegacyLeft} />
+      <VaultSettingsSheet
+        isOpen={settingsOpen || forceKit}
+        forceKit={forceKit}
+        onKitDone={() => { rotSeqRef.current++; setKitRotation(false); if (userId) void refreshKeyringCache(userId); }}
+        onClose={() => setSettingsOpen(false)}
+        onLegacyLeft={setLegacyLeft}
+      />
     </>
   );
 }

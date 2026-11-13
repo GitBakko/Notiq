@@ -1,7 +1,7 @@
 // Vault v3 (T17): VaultPage come macchina a stati. Figli, rete, codec e Dexie finti; si verifica quale schermata esce e cosa si scrive.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -104,10 +104,21 @@ vi.mock('../VaultSetup', () => ({
   ),
 }));
 vi.mock('../VaultUnlock', () => ({
-  default: (p: any) => <div data-testid="unlock" data-notice={p.notice ?? ''}><button onClick={p.onUnlocked}>unlocked</button></div>,
+  default: (p: any) => <div data-testid="unlock" data-notice={p.notice ?? ''}><button onClick={p.onUnlocked}>unlocked</button><button onClick={p.onForgot}>forgot</button></div>,
+}));
+vi.mock('../VaultRecovery', () => ({
+  default: (p: any) => (
+    <div data-testid="recovery">
+      <button onClick={() => p.onClose('unlock')}>rec-unlock</button>
+      <button onClick={() => p.onClose('regenerate')}>rec-regen</button>
+      <button onClick={() => p.onClose('none')}>rec-none</button>
+    </div>
+  ),
 }));
 vi.mock('../VaultMigrate', () => ({ default: (p: any) => { h.migrateProps.push(p); return <div data-testid="migrate" />; } }));
-vi.mock('../VaultSettingsSheet', () => ({ default: (p: any) => (p.isOpen ? <div data-testid="settings" /> : null) }));
+vi.mock('../VaultSettingsSheet', () => ({
+  default: (p: any) => (p.isOpen ? <div data-testid="settings" data-force={p.forceKit ? '1' : ''}><button onClick={p.onKitDone}>kit-done</button></div> : null),
+}));
 vi.mock('../VaultNoteEditor', () => ({
   default: (p: any) => {
     h.editorProps.push(p);
@@ -135,11 +146,12 @@ const res = (o: Record<string, unknown> = {}) => ({
 });
 const notifyLive = () => act(async () => { h.liveSubs.forEach((f) => f()); await Promise.resolve(); });
 
-const mount = () => {
+function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname + l.search}</div>; }
+const mount = (url = '/') => {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter><VaultPage /></MemoryRouter>
+      <MemoryRouter initialEntries={[url]}><VaultPage /><Where /></MemoryRouter>
     </QueryClientProvider>,
   );
 };
@@ -916,5 +928,299 @@ describe('VaultPage: sorgente', () => {
     const src = readFileSync(resolve(__dirname, '../VaultPage.tsx'), 'utf8');
     expect(src).not.toMatch(/importFile/);
     expect(src).not.toMatch(/useVaultHydration/);
+  });
+});
+
+describe('VaultPage: recupero con il Kit (Fase 4, T6)', () => {
+  it('"PIN dimenticato" (onForgot) apre VaultRecovery al posto dello sblocco', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    mount();
+    fireEvent.click(await within(await screen.findByTestId('unlock')).findByText('forgot'));
+    await screen.findByTestId('recovery');
+    expect(screen.queryByTestId('unlock')).toBeNull();
+  });
+
+  it('?recovery=1 apre VaultRecovery; chiudere con "unlock" torna allo sblocco e toglie il parametro dall URL', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    mount('/vault?recovery=1&x=1');
+    await screen.findByTestId('recovery');
+    expect(screen.getByTestId('where').textContent).toContain('recovery=1');
+    fireEvent.click(screen.getByText('rec-unlock'));
+    await screen.findByTestId('unlock');
+    expect(screen.getByTestId('where').textContent).toBe('/vault?x=1');
+  });
+
+  it('con recoveryOpen e store sbloccato (dopo il 200) non gira checkPendingOnStart, ne il reconcile, ne compare il banner kitUnconfirmed', async () => {
+    unlock();
+    h.checkPending.mockResolvedValue('kitUnconfirmed');
+    mount('/vault?recovery=1');
+    await screen.findByTestId('recovery');
+    await act(async () => { await Promise.resolve(); });
+    expect(h.checkPending).not.toHaveBeenCalled();
+    expect(h.reconcile).not.toHaveBeenCalled();
+    expect(screen.queryByText('vault.kitUnconfirmed')).toBeNull();
+  });
+
+  it('onClose("none") con il vault sbloccato: pagina normale; a quel punto il controllo dei marker parte', async () => {
+    unlock();
+    mount('/vault?recovery=1');
+    fireEvent.click(await screen.findByText('rec-none'));
+    await screen.findByLabelText('vault.settings.title');
+    expect(screen.queryByTestId('recovery')).toBeNull();
+    await waitFor(() => expect(h.checkPending).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('where').textContent).toBe('/vault');
+  });
+
+  it('onClose("regenerate") con il vault sbloccato: si apre VaultSettingsSheet', async () => {
+    unlock();
+    mount('/vault?recovery=1');
+    fireEvent.click(await screen.findByText('rec-regen'));
+    await screen.findByTestId('settings');
+  });
+});
+
+describe('VaultPage: cerimonia aperta da ?recovery=1, tenuta e cronologia', () => {
+  it('aperta dal parametro su pagina sbloccata, l auto-lock non la smonta (gate ancora in caricamento)', async () => {
+    unlock();
+    h.getKeyring.mockReturnValue(new Promise(() => {})); // il gate resta 'loading' dopo il blocco
+    mount('/vault?recovery=1');
+    await screen.findByTestId('recovery');
+    act(() => { useVaultStore.setState({ unlockedUserId: null, keys: null }); });
+    expect(screen.getByTestId('recovery')).toBeTruthy();
+  });
+
+  it('chiudere la cerimonia sostituisce la voce di cronologia: Indietro non la riapre', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    function Back() { const n = useNavigate(); return <button onClick={() => n(-1)}>nav-back</button>; }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/vault', '/vault?recovery=1']} initialIndex={1}><VaultPage /><Where /><Back /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByText('rec-unlock'));
+    await screen.findByTestId('unlock');
+    fireEvent.click(screen.getByText('nav-back'));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('where').textContent).toBe('/vault');
+    expect(screen.queryByTestId('recovery')).toBeNull();
+  });
+});
+
+describe('VaultPage: rotazione obbligatoria del Kit (Fase 4, T7)', () => {
+  const READY = { status: 'READY', legacyCount: 0 };
+  // sblocca dopo che la GET da bloccato ha letto il keyring
+  const mountAndUnlock = async (kr: Record<string, unknown>, url = '/') => {
+    h.getKeyring.mockResolvedValue({ ...READY, ...kr });
+    mount(url);
+    await screen.findByTestId(url.includes('recovery') ? 'recovery' : 'unlock');
+    await waitFor(() => expect(h.getKeyring).toHaveBeenCalled());
+    act(() => { unlock(); });
+  };
+
+  it('kitRotationRequired e nessuna richiesta RELEASED: foglio in forceKit dopo lo sblocco', async () => {
+    await mountAndUnlock({ kitRotationRequired: true, openRecovery: null });
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('kitRotationRequired con una richiesta aperta non RELEASED: il foglio compare lo stesso', async () => {
+    await mountAndUnlock({ kitRotationRequired: true, openRecovery: { id: 'r', status: 'WAITING' } });
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('F10: con openRecovery RELEASED il foglio non compare', async () => {
+    await mountAndUnlock({ kitRotationRequired: true, openRecovery: { id: 'r', status: 'RELEASED' } });
+    await screen.findByLabelText('vault.settings.title');
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('flag falso o assente: nessun foglio', async () => {
+    await mountAndUnlock({ kitRotationRequired: false });
+    await screen.findByLabelText('vault.settings.title');
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('con la cerimonia del recupero aperta il foglio non compare', async () => {
+    await mountAndUnlock({ kitRotationRequired: true }, '/vault?recovery=1');
+    await screen.findByTestId('recovery');
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('onKitDone: il foglio sparisce e la cache del keyring si riallinea', async () => {
+    await mountAndUnlock({ kitRotationRequired: true });
+    await screen.findByTestId('settings');
+    h.refreshCache.mockClear();
+    fireEvent.click(screen.getByText('kit-done'));
+    await waitFor(() => expect(screen.queryByTestId('settings')).toBeNull());
+    expect(h.refreshCache).toHaveBeenCalledWith('u1');
+  });
+
+  it('dopo il blocco e un nuovo sblocco il flag si rilegge dal keyring', async () => {
+    await mountAndUnlock({ kitRotationRequired: true });
+    await screen.findByTestId('settings');
+    h.getKeyring.mockResolvedValue({ ...READY, kitRotationRequired: false });
+    act(() => { useVaultStore.setState({ unlockedUserId: null, keys: null }); });
+    await screen.findByTestId('unlock');
+    act(() => { unlock(); });
+    await screen.findByLabelText('vault.settings.title');
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+});
+
+describe('VaultPage: rotazione del Kit, giro di correzioni', () => {
+  const READY = { status: 'READY', legacyCount: 0 };
+  const settings = () => screen.queryByTestId('settings');
+
+  // 1: il flag letto prima della cerimonia non deve sopravvivere a un recupero
+  it.each([['none', 'rec-none'], ['regenerate', 'rec-regen']])(
+    'chiusura del recupero con "%s" da sbloccato: il flag vecchio non apre il foglio forzato (rilettura del keyring)',
+    async (_n, btn) => {
+      h.getKeyring.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: { id: 'r', status: 'WAITING' } });
+      mount();
+      fireEvent.click(await within(await screen.findByTestId('unlock')).findByText('forgot'));
+      await screen.findByTestId('recovery');
+      act(() => { unlock(); }); // il 200 del complete sblocca lo store
+      h.getKeyring.mockResolvedValue({ ...READY, kitRotationRequired: false, openRecovery: null }); // escrow nuovo: il flag e' spento
+      fireEvent.click(screen.getByText(btn));
+      await waitFor(() => expect(h.getKeyring).toHaveBeenCalledTimes(2));
+      await act(async () => { await Promise.resolve(); });
+      // 'regenerate' apre il foglio perche' lo chiede l'utente, mai forzato
+      expect(settings()?.getAttribute('data-force') ?? '').toBe('');
+    },
+  );
+
+  it('chiusura del recupero: la rilettura puo\' riaccendere il flag (richiesta aperta non RELEASED)', async () => {
+    h.getKeyring.mockResolvedValue({ ...READY, kitRotationRequired: false });
+    mount();
+    fireEvent.click(await within(await screen.findByTestId('unlock')).findByText('forgot'));
+    await screen.findByTestId('recovery');
+    act(() => { unlock(); });
+    h.getKeyring.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: { id: 'r', status: 'WAITING' } });
+    fireEvent.click(screen.getByText('rec-none'));
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  // 2: pagina montata gia' sbloccata (NoteEditor -> VaultUnlockDialog -> /vault) o sblocco offline: loadKeyring non gira
+  it('montata gia\' sbloccata con flag vero sul server e nessuna richiesta RELEASED: foglio forzato', async () => {
+    unlock();
+    h.refreshCache.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: null });
+    mount();
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+    expect(h.getKeyring).not.toHaveBeenCalled();
+  });
+
+  it('montata gia\' sbloccata con richiesta RELEASED aperta (F10) o flag falso: nessun foglio', async () => {
+    unlock();
+    h.refreshCache.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: { id: 'r', status: 'RELEASED' } });
+    mount();
+    await screen.findByLabelText('vault.settings.title');
+    await waitFor(() => expect(h.refreshCache).toHaveBeenCalled());
+    expect(settings()).toBeNull();
+  });
+
+  // 3
+  it('senza chiave root attiva nel bundle il foglio non viene forzato', async () => {
+    h.rootKey.v = null;
+    unlock();
+    h.refreshCache.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: null });
+    mount();
+    await screen.findByLabelText('vault.settings.title');
+    await waitFor(() => expect(h.refreshCache).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(settings()).toBeNull();
+  });
+
+  it('offline il foglio non e\' forzato; al ritorno online si rilegge il flag (spento: resta chiuso)', async () => {
+    unlock();
+    h.refreshCache.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: null });
+    mount();
+    await screen.findByTestId('settings');
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    act(() => { window.dispatchEvent(new Event('offline')); });
+    await waitFor(() => expect(settings()).toBeNull());
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    h.refreshCache.mockResolvedValue({ ...READY, kitRotationRequired: false, openRecovery: null });
+    act(() => { window.dispatchEvent(new Event('online')); });
+    await waitFor(() => expect(h.refreshCache).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect(settings()).toBeNull();
+  });
+
+  it('offline poi di nuovo online con il flag ancora vero: il foglio torna', async () => {
+    unlock();
+    h.refreshCache.mockResolvedValue({ ...READY, kitRotationRequired: true, openRecovery: null });
+    mount();
+    await screen.findByTestId('settings');
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    act(() => { window.dispatchEvent(new Event('offline')); });
+    await waitFor(() => expect(settings()).toBeNull());
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    act(() => { window.dispatchEvent(new Event('online')); });
+    await screen.findByTestId('settings');
+  });
+
+  // 6
+  it('?recovery=1 non apre la cerimonia sopra il setup (keyring NONE) e il parametro cade', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'NONE', legacyCount: 0 });
+    mount('/vault?recovery=1');
+    await screen.findByTestId('setup');
+    expect(screen.queryByTestId('recovery')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/vault'));
+    // a setup finito (store sbloccato, gate ready) il recupero non salta fuori da solo
+    act(() => { unlock(); });
+    fireEvent.click(screen.getByText('setup-done'));
+    expect(screen.queryByTestId('recovery')).toBeNull();
+  });
+
+  it('?recovery=1 non apre la cerimonia sopra la migrazione (NONE con note legacy)', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'NONE', legacyCount: 3 });
+    mount('/vault?recovery=1');
+    await screen.findByTestId('migrate');
+    expect(screen.queryByTestId('recovery')).toBeNull();
+  });
+});
+
+describe('VaultPage: guardie rotSeqRef sul flag di rotazione del Kit', () => {
+  const READY = { status: 'READY', legacyCount: 0 };
+  const settings = () => screen.queryByTestId('settings');
+  const deferred = () => { let resolve!: (v: unknown) => void; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; };
+
+  it('una lettura da sbloccato arrivata DOPO una cerimonia chiusa (GET: flag falso) non riaccende il foglio', async () => {
+    unlock();
+    const slow = deferred();
+    h.refreshCache.mockReturnValueOnce(slow.p); // la lettura del mount resta in volo
+    h.getKeyring.mockResolvedValue({ ...READY, kitRotationRequired: false, openRecovery: null });
+    mount('/vault?recovery=1');
+    fireEvent.click(await screen.findByText('rec-none'));
+    await waitFor(() => expect(h.getKeyring).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { slow.resolve({ ...READY, kitRotationRequired: true, openRecovery: null }); await Promise.resolve(); });
+    await screen.findByLabelText('vault.settings.title');
+    expect(settings()).toBeNull();
+  });
+
+  it('onKitDone con una lettura ancora in volo: la risposta vecchia (flag vero) non riapre il foglio', async () => {
+    unlock();
+    const slow = deferred();
+    h.refreshCache.mockResolvedValueOnce({ ...READY, kitRotationRequired: true, openRecovery: null }).mockReturnValueOnce(slow.p);
+    mount();
+    await screen.findByTestId('settings');
+    act(() => { window.dispatchEvent(new Event('online')); }); // seconda lettura, in volo
+    await waitFor(() => expect(h.refreshCache).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByText('kit-done'));
+    await waitFor(() => expect(settings()).toBeNull());
+    await act(async () => { slow.resolve({ ...READY, kitRotationRequired: true, openRecovery: null }); await Promise.resolve(); });
+    expect(settings()).toBeNull();
+  });
+});
+
+describe('VaultPage: chiusura della cerimonia e banner (Fase 4, T8)', () => {
+  it('la chiusura del recupero emette l\'evento che fa rileggere il banner', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    const seen = vi.fn();
+    window.addEventListener('notiq:vault-recovery-closed', seen);
+    mount('/vault?recovery=1');
+    fireEvent.click(await screen.findByText('rec-none'));
+    expect(seen).toHaveBeenCalledTimes(1);
+    window.removeEventListener('notiq:vault-recovery-closed', seen);
   });
 });

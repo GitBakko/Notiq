@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../store/authStore', () => ({ useAuthStore: (sel: (s: unknown) => unknown) => sel(h.auth) }));
 vi.mock('../../../store/vaultStore', () => ({ useVaultStore: (sel: (s: unknown) => unknown) => sel(h.vault) }));
 vi.mock('../../../lib/vaultSession', () => ({ setOfflineUnlock: vi.fn(async () => {}), removeFromDevice: vi.fn(async () => {}) }));
+vi.mock('../../../lib/vaultRecovery', () => ({ localRecovery: vi.fn(async () => null) }));
+vi.mock('../../../lib/vaultApi', () => ({ cancelRecovery: vi.fn(async () => ({})) }));
 vi.mock('../../../lib/db', () => {
   const table = (rows: () => Row[]) => ({
     filter: (f: (r: never) => boolean) => ({ primaryKeys: async () => rows().filter((r) => f(r as never)).map((r) => r.id) }),
@@ -44,6 +46,8 @@ vi.mock('../../../lib/db', () => {
 
 import VaultSettingsSection from '../VaultSettingsSection';
 import { removeFromDevice, setOfflineUnlock } from '../../../lib/vaultSession';
+import { localRecovery } from '../../../lib/vaultRecovery';
+import { cancelRecovery } from '../../../lib/vaultApi';
 
 const cache = (over: object = {}) => ({ status: 'READY', epoch: 1, offlineUnlock: false, ...over });
 const renderIt = () => render(<MemoryRouter><VaultSettingsSection /></MemoryRouter>);
@@ -155,5 +159,30 @@ describe('VaultSettingsSection', () => {
     await waitFor(() => expect(screen.getByText('vault.settings.removeBlocked:1')).toBeTruthy());
     expect(removeFromDevice).not.toHaveBeenCalled();
     expect(h.notes.map((n) => n.id)).toEqual(['v1', 'n1']);
+  });
+
+  it('F9: senza chiave di recupero su questo dispositivo la conferma non ha un avviso della richiesta aperta', async () => {
+    renderIt();
+    fireEvent.click(screen.getByText('vault.settings.removeButton'));
+    await waitFor(() => expect(screen.getByText('vault.settings.removeConfirmTitle')).toBeTruthy());
+    expect(screen.queryByText(/removeOpenRecovery/)).toBeNull();
+  });
+
+  it('F9: con una chiave di recupero effimera la conferma avvisa; la richiesta NON viene annullata', async () => {
+    vi.mocked(localRecovery).mockResolvedValueOnce({ requestId: 'r1', fingerprint: 'ABCD-1234' });
+    renderIt();
+    fireEvent.click(screen.getByText('vault.settings.removeButton'));
+    await waitFor(() => expect(screen.getByText(/removeOpenRecovery/)).toBeTruthy());
+    expect(localRecovery).toHaveBeenCalledWith('u1');
+    fireEvent.click(screen.getAllByText('vault.settings.removeButton')[1]);
+    await waitFor(() => expect(removeFromDevice).toHaveBeenCalledWith('u1')); // e' removeDevice a cancellare la chiave
+    expect(cancelRecovery).not.toHaveBeenCalled();
+  });
+
+  it('F9: se la lettura della chiave locale fallisce, la conferma si apre comunque', async () => {
+    vi.mocked(localRecovery).mockRejectedValueOnce(new Error('idb'));
+    renderIt();
+    fireEvent.click(screen.getByText('vault.settings.removeButton'));
+    await waitFor(() => expect(screen.getByText('vault.settings.removeConfirmTitle')).toBeTruthy());
   });
 });

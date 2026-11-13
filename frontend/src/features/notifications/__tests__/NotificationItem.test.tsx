@@ -32,9 +32,9 @@ describe('NotificationItem VAULT_RECOVERY', () => {
     expect(screen.queryByText('SERVER_MESSAGE_IT')).toBeNull();
   });
 
-  it('il click porta a /vault', () => {
+  it('il click porta a /vault?recovery=1 (la cerimonia di recupero)', () => {
     renderItem(notif({ localizationKey: 'notifications.vaultRecovery.requested', localizationArgs: { fingerprint: 'ABCD-1234' } }));
     fireEvent.click(screen.getByText('Vault recovery requested'));
-    expect(nav).toHaveBeenCalledWith('/vault');
+    expect(nav).toHaveBeenCalledWith('/vault?recovery=1');
   });
 });

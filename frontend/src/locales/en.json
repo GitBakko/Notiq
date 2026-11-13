@@ -325,8 +325,90 @@
   "vault": {
     "title": "Secure Vault",
     "recovery": {
+      "intro": {
+        "title": "Recover access with your Recovery Kit",
+        "warning": "Without the Recovery Kit, the only option left is to reset the vault.",
+        "body": "An administrator has to approve the recovery, and there is a waiting period. You will need the Recovery Kit and a new PIN.",
+        "reasonLabel": "Reason (optional)",
+        "reasonPlaceholder": "Why do you need to recover access?",
+        "start": "I have the Kit, start the recovery",
+        "starting": "Starting..."
+      },
+      "loading": "Loading...",
+      "status": {
+        "title": "Recovery in progress",
+        "fingerprint": "Request code: {{fingerprint}}",
+        "pendingApproval": "Waiting for an administrator to approve it. This can take up to 7 days: come back to this page later.",
+        "pendingCode": "Approved. Enter the two halves of the code below.",
+        "waiting": "The waiting period ends on {{date}}. If it was not you, cancel the request.",
+        "waitingDue": "The waiting period is over. The administrator will release the recovery shortly.",
+        "released": "The recovery was released. You can complete it now.",
+        "rejected": "The request was rejected.",
+        "rejectedReason": "Reason: {{reason}}",
+        "expired": "The request expired.",
+        "cancelled": "The request was cancelled.",
+        "completed": "The recovery was already completed. Unlock the vault.",
+        "loadError": "Could not read the status of the request. Try again."
+      },
+      "code": {
+        "title": "Enter the recovery code",
+        "help": "The code has two halves of 8 characters: half A is shown here, half B arrived by email.",
+        "halfA": "Half A",
+        "halfB": "Half B (from the email)",
+        "invalidFormat": "8 letters and digits, without O, I, L or U.",
+        "attemptsLeft": "Attempts left: {{n}}",
+        "expiresAt": "Expires on {{date}}",
+        "notThisDevice": "The code is visible only on the device that made the request (request code {{fingerprint}}). Continue there, or cancel and start again here.",
+        "submit": "Confirm the code",
+        "tooMany": "Too many attempts. Try again in 15 minutes."
+      },
+      "complete": {
+        "title": "Complete the recovery",
+        "help": "Enter your Recovery Kit and choose a new PIN. The old PIN will stop working.",
+        "kit": "Recovery Kit",
+        "kitHelp": "34 symbols, with or without dashes and spaces.",
+        "newPin": "New PIN",
+        "submit": "Recover access",
+        "working": "Working, this can take a few seconds."
+      },
+      "foreign": {
+        "title": "A recovery is open elsewhere",
+        "text": "A recovery request is open on your account, but this device did not make it, or its data was cleared. You can cancel it and start a new one here, or only cancel it."
+      },
+      "actions": {
+        "close": "Close",
+        "retry": "Retry",
+        "newRequest": "New request",
+        "goUnlock": "Go to unlock",
+        "regenerateKit": "Regenerate the Kit",
+        "update": "Update the app",
+        "reload": "Reload",
+        "cancelRequest": "Cancel request",
+        "cancelAndRedo": "Cancel and redo here",
+        "backToStatus": "Back to the status",
+        "restart": "Reload the status"
+      },
+      "cancel": {
+        "title": "Cancel the recovery?",
+        "message": "The request will be cancelled and its codes will stop working. Your vault stays as it is.",
+        "confirm": "Cancel recovery",
+        "keep": "Keep it"
+      },
+      "redo": {
+        "title": "Cancel and start again?",
+        "message": "The current request will be cancelled and a new one started on this device.",
+        "releasedMessage": "This request has already been released and can be completed only on the device that made it. If you cancel it and start again here, the release is lost: a new approval and a new 72-hour wait will be needed, and at the next unlock you will have to create a new Recovery Kit.",
+        "confirm": "Cancel and redo"
+      },
+      "outcome": {
+        "applied": "Recovery completed. Save your new Recovery Kit now."
+      },
+      "cancelReleasedWarning": "The recovery has already been released. If you cancel it, it is lost: to recover the vault you will need a new request, a new approval and a new 72-hour wait. At the next unlock you will also have to create a new Recovery Kit.",
+      "noOpenRequest": "There is no open recovery request.",
       "errors": {
-        "releaseInvalid": "The recovery release could not be verified. Nothing was changed. Cancel the request and start a new one.",
+        "updateRequired": "This app version cannot verify the recovery. Update the app (reload the page) and try again. Do not cancel the request.",
+        "sessionChanged": "Your session changed. Reload the page.",
+        "releaseInvalid": "The recovery release could not be verified on this device. Nothing was changed. Cancel the request and start a new one; if it happens again, contact the administrator.",
         "kitInvalid": "The Recovery Kit is not correct. Check it and try again.",
         "notThisDevice": "This recovery was started on another device or browser. Continue there, or cancel it and start a new one here.",
         "keyringChanged": "The vault changed while the recovery was being prepared. Try again.",
@@ -341,6 +423,12 @@
         "unknown": "The outcome is unknown. When you are online, try the new PIN: if it works, we will ask you to regenerate the Recovery Kit; if it does not, your previous Kit still applies and you can repeat the recovery.",
         "retryLater": "A previous request is still being verified. Try again in a few minutes."
       }
+    },
+    "kitRotation": {
+      "title": "Replace your Recovery Kit",
+      "warning": "A recovery of this vault was released and then cancelled or expired. Your current Recovery Kit is no longer safe: create a new one to keep using the vault.",
+      "destroyOld": "After creating the new Recovery Kit, destroy every copy of the previous one (downloaded PDF, prints, notes): together with the released recovery it could still open your vault.",
+      "lock": "Lock vault"
     },
     "recoveryBanner": {
       "states": {
@@ -362,6 +450,7 @@
           "text": "Recovery request {{fingerprint}} was released and can be completed. If it was not you, cancel it now."
         }
       },
+      "details": "Details",
       "cancel": "Cancel recovery",
       "confirmTitle": "Cancel the recovery?",
       "confirmMessage": "The open recovery request will be cancelled and its codes will stop working. Your vault stays as it is.",
@@ -474,7 +563,7 @@
     "kitUnconfirmed": "The Recovery Kit was not confirmed: generate it again.",
     "kitUnconfirmedAction": "Regenerate",
     "pendingPinApplied": "Your new PIN is active.",
-    "pendingPinNotApplied": "Your previous PIN is still valid.",
+    "pendingPinNotApplied": "A PIN change started earlier on this device never reached the server. The PIN you unlocked with is still valid.",
     "migrateTooLarge": "{{n}} items are too large to be encrypted and remain read-only. Use \"Remove from vault\" to move them.",
     "offline": {
       "title": "You're offline",
@@ -502,8 +591,9 @@
     },
     "unlock": {
       "lockedFor": "Too many attempts. Try again in {{time}}.",
-      "forgotTitle": "There is no PIN recovery yet",
-      "forgotBody": "In this version the vault cannot be reset or recovered if you forget the PIN. Keep trying the PIN you set and look for your Recovery Kit. PIN recovery will arrive in a later release."
+      "forgotTitle": "Forgot your PIN?",
+      "forgotBody": "You can recover access with your Recovery Kit. Without the Kit, the only option left is to reset the vault.",
+      "forgotAction": "Recover with the Recovery Kit"
     },
     "kit": {
       "title": "Recovery Kit",
@@ -603,10 +693,11 @@
       "pinChanged": "PIN changed",
       "pinOfflineNote": "A device that stays offline keeps accepting the old PIN until it reconnects.",
       "kitTitle": "Recovery Kit",
-      "kitBody": "Generate a new Recovery Kit. Keep it somewhere safe: PIN recovery with the Kit will arrive in a later release.",
+      "kitBody": "Generate a new Recovery Kit. Keep it somewhere safe and offline: if you forget the PIN, the Kit is what lets you recover the vault with the administrator's help. The previous Kit stops working.",
       "kitPin": "PIN to confirm",
       "kitButton": "Generate new Kit",
       "kitDone": "Recovery Kit confirmed",
+      "removeOpenRecovery": "A recovery request is open from this device. Removing the vault deletes the key that ties that request to this device, so the request can no longer be completed here. It is NOT cancelled on the server: cancel it, or start a new one, from another device.",
       "section": "Vault",
       "offlineUnlock": "Offline unlock",
       "offlineUnlockDesc": "Unlock the vault on this device without a connection.",
@@ -640,7 +731,7 @@
       "howTitle": "How the vault works",
       "how": {
         "pin": "Your PIN protects the vault keys: the server never sees your content.",
-        "kit": "Keep the Recovery Kit safe: PIN recovery with the Kit will arrive in a later release. Until then, without the PIN the data cannot be recovered.",
+        "kit": "Keep the Recovery Kit safe: if you forget the PIN, the Kit lets you recover the vault with the administrator's help. Without the PIN and the Kit the data cannot be recovered.",
         "offline": "Offline unlock lets you open the vault without a connection on this device.",
         "device": "Removing the vault from a device deletes only the local copy."
       },
@@ -1682,6 +1773,74 @@
     }
   },
   "admin": {
+    "vaultRecovery": {
+      "tab": "Vault recovery",
+      "title": "Vault recovery requests",
+      "filterLabel": "Show",
+      "filterOpen": "Open requests",
+      "filterAll": "All requests",
+      "status": {
+        "PENDING_APPROVAL": "Awaiting approval",
+        "PENDING_CODE": "Awaiting codes",
+        "WAITING": "Waiting period",
+        "RELEASED": "Released",
+        "COMPLETED": "Completed",
+        "CANCELLED": "Cancelled",
+        "EXPIRED": "Expired",
+        "REJECTED": "Rejected"
+      },
+      "userIdLabel": "Filter by user ID (history)",
+      "userIdInvalid": "Not a valid user ID.",
+      "empty": "No requests.",
+      "loadFailed": "Could not load the data. Try again.",
+      "detail": {
+        "title": "Recovery request",
+        "email": "Account",
+        "status": "Status",
+        "created": "Created",
+        "expires": "Expires",
+        "ip": "Request IP",
+        "ua": "Request browser",
+        "fingerprint": "Request code",
+        "reason": "Reason",
+        "noReason": "None given",
+        "attempts": "Code attempts",
+        "notBefore": "Available from",
+        "rejectReason": "Rejection reason",
+        "keyring": "Vault state",
+        "rootKey": "Root key",
+        "history": "Show this user's requests",
+        "audit": "Audit trail",
+        "noAudit": "No events."
+      },
+      "approve": "Approve",
+      "approved": "Request approved",
+      "rejectReason": "Reason for rejection",
+      "rejectHint": "Required, up to {{max}} characters. The user sees it.",
+      "reject": "Reject",
+      "rejected": "Request rejected",
+      "rejectConfirmTitle": "Reject this request?",
+      "rejectConfirmMessage": "The user is told it was rejected, with your reason. This cannot be undone.",
+      "rejectConfirm": "Reject request",
+      "releaseTitle": "Release",
+      "passphrase": "Root key passphrase",
+      "release": "Release",
+      "releasedOk": "Request released",
+      "releaseConfirmTitle": "Release this recovery?",
+      "releaseConfirmMessage": "The user will be able to reopen the vault with the Recovery Kit. Make sure the request really comes from the owner.",
+      "releaseConfirmSelf": "You are releasing YOUR OWN recovery. It is recorded in the audit trail and the other superadmins are notified. Continue only if you are sure.",
+      "releaseConfirm": "Release",
+      "selfWarning": "This is your own recovery request: releasing it is audited and notified to the other superadmins.",
+      "availableFrom": "Available from {{date}} (in about {{hours}} h).",
+      "errors": {
+        "invalidPassphrase": "The passphrase is not valid.",
+        "rateLimited": "Too many release attempts. Try again in 15 minutes.",
+        "rootKeyUnavailable": "The root key is not available on the server.",
+        "keyringChanged": "The user's vault changed during the release. Nothing was released: try again.",
+        "stateConflict": "The request changed. The data was reloaded: check it and try again.",
+        "generic": "The operation failed. The data was reloaded."
+      }
+    },
     "dashboard": "Admin Dashboard",
     "manageSettings": "Manage system settings",
     "registrationSettings": "Registration Settings",

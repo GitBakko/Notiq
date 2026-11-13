@@ -9,7 +9,7 @@ const h = vi.hoisted(() => {
     localStorage: { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) },
   });
   (globalThis as unknown as { window: unknown }).window = win;
-  return { server: null as unknown as FakeServer, apiRequest: vi.fn() };
+  return { server: null as unknown as FakeServer, apiRequest: vi.fn(), noActiveRoot: false };
 });
 
 vi.mock('../vaultApi', () => ({
@@ -42,7 +42,7 @@ vi.mock('../../utils/vaultRootKeys', async () => {
     '3076301006072a8648ce3d020106052b8104002203620004e6bc0a30815d358c204c38b0aa265f5ae73c053fc6bea50c435c7a094804f14065e4efa35f49019198bc9f3955201bbfa426a9f126b532c127c90c8241bda6490352a8dc8550b2f41f5d1bf26775bc67a1ed05aaee9d690ef83375910eab9315', 'hex'));
   return {
     VAULT_ROOT_KEYS: { [f.rootKeyId]: { ecdhSpki: Buffer.from(ecdh).toString('base64url'), ecdsaSpki: f.ecdsaSpki } },
-    getActiveRootKey: () => ({ id: f.rootKeyId, ecdhSpki: ecdh }),
+    getActiveRootKey: () => (h.noActiveRoot ? null : { id: f.rootKeyId, ecdhSpki: ecdh }),
   };
 });
 vi.mock('../../utils/vaultCrypto', async (orig) => {
@@ -246,6 +246,7 @@ beforeEach(async () => {
   await st().lockVault();
   useVaultStore.setState({ byUser: {}, isSetup: false, pinHash: null });
   useAuthStore.setState({ user: { id: U, email: 'a@b.c' } });
+  h.noActiveRoot = false;
   vi.stubGlobal('navigator', {}); // Node ha navigator.locks vero: senza stub un lock di un test resterebbe tenuto nei successivi (i test con i lock usano fakeLocks)
   vi.mocked(purgeApiCache).mockClear();
   vi.mocked(deriveS).mockClear();
@@ -978,8 +979,6 @@ describe('completeRecovery', () => {
       h.server.r!.fingerprint = 'AAAAAAAA';
       await expect(complete(w)).rejects.toMatchObject({ code: 'releaseInvalid' });
       h.server.r!.fingerprint = F.fingerprint;
-      h.server.kr.rootKeyId = 'rk_sconosciuta000000';
-      await expect(complete(w)).rejects.toMatchObject({ code: 'releaseInvalid' });
       h.server.kr.rootKeyId = F.rootKeyId;
       const other = await generateRecoveryKeyPair();
       await device.deleteRecoveryKeyIf(U, { requestId: RID });
@@ -989,6 +988,19 @@ describe('completeRecovery', () => {
       await expect(complete(w)).rejects.toMatchObject({ code: 'releaseInvalid' });
       expect(MARKER()).toBeUndefined();
       expect(deriveS).not.toHaveBeenCalled();
+      expect(h.server.posts).toHaveLength(0);
+    });
+
+    it('rootKeyId fuori dal bundle o nessuna chiave root attiva: updateRequired, nessun marker, 0 POST (F8)', async () => {
+      const w = await prepared();
+      h.server.kr.rootKeyId = 'rk_sconosciuta000000';
+      await expect(complete(w)).rejects.toMatchObject({ code: 'updateRequired', key: 'vault.recovery.errors.updateRequired' });
+      expect(MARKER()).toBeUndefined();
+      expect(h.server.posts).toHaveLength(0);
+      h.server.kr.rootKeyId = F.rootKeyId;
+      h.noActiveRoot = true;
+      await expect(complete(w)).rejects.toMatchObject({ code: 'updateRequired' });
+      expect(MARKER()).toBeUndefined();
       expect(h.server.posts).toHaveLength(0);
     });
 

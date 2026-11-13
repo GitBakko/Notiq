@@ -78,7 +78,11 @@ const isUint = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v
 const KEYRING_STATUSES = ['NONE', 'READY', 'RESET_PENDING'];
 const RECOVERY_STATUSES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
 const okKeyring = (d: unknown) => isObj(d) && KEYRING_STATUSES.includes(d.status as string) && isUint(d.epoch) && isUint(d.rev);
-const okRecovery = (d: unknown) => isObj(d) && RECOVERY_STATUSES.includes(d.status as string);
+// attemptsLeft/expiresAt/rejectReason: assenti con un server vecchio, null fuori dallo stato che li riguarda.
+const optOf = (v: unknown, ok: (x: unknown) => boolean) => v === undefined || v === null || ok(v);
+const okRecovery = (d: unknown) =>
+  isObj(d) && RECOVERY_STATUSES.includes(d.status as string)
+  && optOf(d.attemptsLeft, isUint) && optOf(d.expiresAt, (x) => typeof x === 'string') && optOf(d.rejectReason, (x) => typeof x === 'string');
 const okCompleted = (d: unknown) => isObj(d) && d.status === 'COMPLETED';
 const okRev = (d: unknown) => isObj(d) && isUint(d.rev);
 const okCreated = (d: unknown) => isObj(d) && typeof d.id === 'string' && d.id !== '' && typeof d.fingerprint === 'string';
@@ -209,6 +213,11 @@ export interface RecoveryDto {
   rootShareForClient: string | null;
   rootSignature: string | null;
   escrowBlob: string | null;
+  /** Solo in PENDING_CODE (assenti con un server vecchio). */
+  attemptsLeft?: number | null;
+  expiresAt?: string | null;
+  /** Solo in REJECTED. */
+  rejectReason?: string | null;
 }
 
 export const createRecovery = (clientEphPub: string, reason?: string) =>

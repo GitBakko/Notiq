@@ -19,7 +19,7 @@ import { parseKit } from '../utils/vaultKit';
 
 export type VaultRecoveryCode =
   | 'releaseInvalid' | 'kitInvalid' | 'notThisDevice' | 'keyringChanged' | 'busy' | 'alreadyOpen' | 'retryLater'
-  | 'requestClosed' | 'rejected' | 'completedElsewhere' | 'appliedWithoutKit' | 'appliedKitReplaced' | 'completedUnverified' | 'notReleased' | 'unknown';
+  | 'updateRequired' | 'requestClosed' | 'rejected' | 'completedElsewhere' | 'appliedWithoutKit' | 'appliedKitReplaced' | 'completedUnverified' | 'notReleased' | 'unknown';
 
 /** `key` e' una chiave i18n: `vault.recovery.errors.<code>`, tranne alreadyOpen che riusa `errors.vault.recoveryAlreadyOpen`. */
 const errorKey = (code: VaultRecoveryCode) => (code === 'alreadyOpen' ? 'errors.vault.recoveryAlreadyOpen' : `vault.recovery.errors.${code}`);
@@ -326,7 +326,7 @@ async function afterCommit(userId: string, requestId: string, keys: VaultKeys, e
  * round-trip, vkProof. Poi marker `kit` {origin:'recovery', requestId, epoch, rev} (uno per tentativo: nessun altro flusso lo tocca, e questo codice non lo cancella mai)
  * PRIMA della POST; POST con 3 tentativi sui transitori (stesso body). Solo sul 200 sblocca, aggiorna cache e share dal server, cancella la chiave effimera e restituisce il Kit
  * (se il keyring non ha piu' il nostro escrow: appliedKitReplaced; commit di un tentativo precedente: appliedWithoutKit). Ogni altro esito: Kit azzerato e nulla scritto in IDB oltre al marker.
- * Errori di preparazione (nessuna POST): VaultRecoveryError releaseInvalid | kitInvalid | notThisDevice | keyringChanged | busy.
+ * Errori di preparazione (nessuna POST): VaultRecoveryError releaseInvalid | updateRequired | kitInvalid | notThisDevice | keyringChanged | busy.
  * 200 ma utente cambiato: nessuno sblocco, Kit azzerato, VaultSessionError notReady (il marker resta).
  */
 export function completeRecovery(args: { userId: string; requestId: string; kit: string; newPin: string; retryDelaysMs?: readonly number[] }): Promise<CompleteResult> {
@@ -360,7 +360,8 @@ async function runComplete(args: { userId: string; requestId: string; kit: strin
   if (!r.escrowBlob) throw rerr('keyringChanged'); // RELEASED senza escrow: il keyring non e' READY
   const kr = await fetchKeyring();
   if (kr.status !== 'READY' || !kr.rootKeyId || !kr.wrappedVkSigKey) throw rerr('keyringChanged');
-  if (!Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, kr.rootKeyId)) throw rerr('releaseInvalid');
+  // Bundle vecchio che non conosce la chiave root: serve aggiornare l'app, mai annullare (dopo il rilascio il recupero andrebbe perso).
+  if (!Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, kr.rootKeyId)) throw rerr('updateRequired');
   const rootShareForClient = await or('releaseInvalid', () => b64uDecode(r.rootShareForClient!));
   const escrowBlob = await or('releaseInvalid', () => b64uDecode(r.escrowBlob!));
   const rootSignature = await or('releaseInvalid', () => b64uDecode(r.rootSignature!));
@@ -371,7 +372,7 @@ async function runComplete(args: { userId: string; requestId: string; kit: strin
   if (!ok) throw rerr('releaseInvalid');
   if ((await sha256hexBytes(escrowBlob)) !== kr.escrowHash) throw rerr('keyringChanged'); // richiesta e keyring non sono piu' lo stesso istante
   const rootKey = getActiveRootKey();
-  if (!rootKey) throw notReady();
+  if (!rootKey) throw rerr('updateRequired');
 
   let sRoot: Uint8Array | null = null;
   let kitBytes: Uint8Array | null = null;

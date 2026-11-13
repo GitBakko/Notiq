@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useOpenRecovery } from '../../hooks/useOpenRecovery';
 import { cancelRecovery, VaultApiError, type OpenRecovery } from '../../lib/vaultApi';
+import { RECOVERY_CEREMONY_EVENT, RECOVERY_CHANGED_EVENT, RECOVERY_CLOSED_EVENT, isCeremonyOpen } from '../../lib/vaultEvents';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Button } from '../ui/Button';
 
@@ -29,6 +31,7 @@ export default function RecoveryBanner() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ id: string; status: string; key: string } | null>(null);
+  const navigate = useNavigate();
   const [, setTick] = useState(0);
   const waiting = openRecovery?.status === 'WAITING';
 
@@ -39,7 +42,23 @@ export default function RecoveryBanner() {
     return () => clearInterval(timer);
   }, [waiting]);
 
-  if (!openRecovery) return null;
+  // la cerimonia di recupero (VaultPage) ha cambiato la richiesta (stato nuovo, esito, chiusura): si rilegge
+  useEffect(() => {
+    const on = () => { void refresh(); };
+    window.addEventListener(RECOVERY_CLOSED_EVENT, on);
+    window.addEventListener(RECOVERY_CHANGED_EVENT, on);
+    return () => { window.removeEventListener(RECOVERY_CLOSED_EVENT, on); window.removeEventListener(RECOVERY_CHANGED_EVENT, on); };
+  }, [refresh]);
+
+  // con la cerimonia montata la pagina mostra gia' stato e annullo: il banner (spesso piu' vecchio) sta nascosto
+  const [ceremony, setCeremony] = useState(isCeremonyOpen);
+  useEffect(() => {
+    const on = () => setCeremony(isCeremonyOpen());
+    window.addEventListener(RECOVERY_CEREMONY_EVENT, on);
+    return () => window.removeEventListener(RECOVERY_CEREMONY_EVENT, on);
+  }, []);
+
+  if (!openRecovery || ceremony) return null;
 
   const key = `vault.recoveryBanner.states.${STATE_KEY[openRecovery.status]}`;
   const args: Record<string, string | number> = { fingerprint: openRecovery.fingerprint };
@@ -84,15 +103,20 @@ export default function RecoveryBanner() {
           {errorKey && <p className="mt-1 text-red-700 dark:text-red-400">{t(errorKey)}</p>}
         </div>
       </div>
-      <Button variant="secondary" className="min-h-[44px] w-full flex-shrink-0 sm:w-auto" disabled={busy} onClick={() => setConfirming(true)}>
-        {t('vault.recoveryBanner.cancel')}
-      </Button>
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
+        <Button variant="primary" className="min-h-[44px] w-full sm:w-auto" onClick={() => navigate('/vault?recovery=1')}>
+          {t('vault.recoveryBanner.details')}
+        </Button>
+        <Button variant="secondary" className="min-h-[44px] w-full sm:w-auto" disabled={busy} onClick={() => setConfirming(true)}>
+          {t('vault.recoveryBanner.cancel')}
+        </Button>
+      </div>
       <ConfirmDialog
         isOpen={confirming}
         onClose={() => setConfirming(false)}
         onConfirm={onConfirm}
         title={t('vault.recoveryBanner.confirmTitle')}
-        message={t('vault.recoveryBanner.confirmMessage')}
+        message={openRecovery.status === 'RELEASED' ? t('vault.recovery.cancelReleasedWarning') : t('vault.recoveryBanner.confirmMessage')} // calcolato al render: un poll che porta a RELEASED aggiorna il dialogo aperto
         confirmText={t('vault.recoveryBanner.confirmAction')}
         cancelText={t('vault.recoveryBanner.keep')}
         variant="danger"

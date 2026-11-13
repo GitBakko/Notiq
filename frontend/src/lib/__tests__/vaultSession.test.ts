@@ -665,9 +665,10 @@ describe('allineamento cache al keyring del server (J.6)', () => {
     expect(st().unlockedUserId).toBe(U);
   });
 
-  it('refreshKeyringCache fa GET + sync', async () => {
-    await session.refreshKeyringCache(U);
+  it('refreshKeyringCache fa GET + sync e restituisce il keyring letto', async () => {
+    const kr = await session.refreshKeyringCache(U);
     expect(st().byUser[U].rev).toBe(1);
+    expect(kr).toMatchObject({ status: 'READY', rev: 1 });
   });
 
   it('rev uguale o piu\' bassa: cache invariata (mai indietro)', async () => {

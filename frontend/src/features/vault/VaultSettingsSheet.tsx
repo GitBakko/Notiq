@@ -19,6 +19,10 @@ interface Props {
   onClose: () => void;
   /** Esito del controllo: la pagina aggiorna il proprio banner "da aggiornare" prima che il foglio si chiuda. */
   onLegacyLeft?: (n: number) => void;
+  /** Rotazione obbligatoria del Kit (recupero rilasciato e poi annullato o scaduto): non chiudibile, solo la sezione Kit, uscita "Blocca vault". */
+  forceKit?: boolean;
+  /** Kit rigenerato e confermato (cerimonia finita). */
+  onKitDone?: () => void;
 }
 
 const INPUT =
@@ -51,7 +55,7 @@ function useOnline() {
  * elementi da aggiornare (reconcile, con banner legacyLeft e motivi unresolved).
  * Il Kit esiste solo nello stato di questo componente, e solo dopo il PUT riuscito (lo mostra RecoveryKitSheet).
  */
-export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Props) {
+export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forceKit = false, onKitDone }: Props) {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const unlocked = useVaultStore((s) => !!user && s.unlockedUserId === user.id);
@@ -87,10 +91,10 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
 
   useEffect(() => {
     if (!isOpen || kit) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy && !forceKit) onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, kit, busy, onClose]);
+  }, [isOpen, kit, busy, forceKit, onClose]);
 
   // Prima del guard su isOpen: una chiusura del padre durante la cerimonia non smonta RecoveryKitSheet (smontare azzera il buffer del Kit).
   // Il keep-alive dell'auto-lock durante la cerimonia sta dentro RecoveryKitSheet.
@@ -103,6 +107,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
         onDone={() => {
           setKit(null);
           toast.success(t('vault.settings.kitDone'));
+          onKitDone?.();
         }}
       />
     );
@@ -167,7 +172,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
   const err = (k: string | null) => k && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{t(k)}</p>;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 dark:bg-black/70" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 dark:bg-black/70" onClick={() => !busy && !forceKit && onClose()}>
       <div
         ref={ref}
         role="dialog"
@@ -178,17 +183,26 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
       >
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-neutral-300 dark:bg-neutral-600 sm:hidden" aria-hidden="true" />
         <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 id="vault-settings-title" className="text-xl font-bold text-neutral-900 dark:text-white">{t('vault.settings.title')}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            aria-label={t('common.close')}
-            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
+          <h2 id="vault-settings-title" className="text-xl font-bold text-neutral-900 dark:text-white">{t(forceKit ? 'vault.kitRotation.title' : 'vault.settings.title')}</h2>
+          {!forceKit && (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              aria-label={t('common.close')}
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
+            >
+              <X size={20} aria-hidden="true" />
+            </button>
+          )}
         </div>
+        {forceKit && (
+          <div role="alert" className={`${ALERT} mb-4 space-y-2`}>
+            <p>{t('vault.kitRotation.warning')}</p>
+            {/* il vecchio Kit + la share rilasciata aprono ancora il vault: la rotazione non cambia la VK */}
+            <p className="font-medium">{t('vault.kitRotation.destroyOld')}</p>
+          </div>
+        )}
 
         {!unlocked ? (
           <p role="alert" className="text-sm text-neutral-600 dark:text-neutral-400">{t('errors.vault.locked')}</p>
@@ -201,6 +215,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
               </div>
             )}
 
+            {!forceKit && (
             <form onSubmit={submitPin} className="space-y-3">
               <h3 className="flex items-center gap-2 font-semibold text-neutral-900 dark:text-white">
                 <Lock size={18} aria-hidden="true" />
@@ -216,8 +231,9 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
                 {t('vault.settings.changePinButton')}
               </Button>
             </form>
+            )}
 
-            <form onSubmit={submitKit} className="space-y-3 border-t border-neutral-200 dark:border-neutral-700 pt-6">
+            <form onSubmit={submitKit} className={forceKit ? 'space-y-3' : 'space-y-3 border-t border-neutral-200 dark:border-neutral-700 pt-6'}>
               <h3 className="flex items-center gap-2 font-semibold text-neutral-900 dark:text-white">
                 <KeyRound size={18} aria-hidden="true" />
                 {t('vault.settings.kitTitle')}
@@ -231,6 +247,11 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
               </Button>
             </form>
 
+            {forceKit ? (
+              <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={() => { void useVaultStore.getState().lockVault(); }}>
+                {t('vault.kitRotation.lock')}
+              </Button>
+            ) : (
             <div className="space-y-3 border-t border-neutral-200 dark:border-neutral-700 pt-6">
               <h3 className="flex items-center gap-2 font-semibold text-neutral-900 dark:text-white">
                 <RefreshCw size={18} aria-hidden="true" />
@@ -274,6 +295,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </div>

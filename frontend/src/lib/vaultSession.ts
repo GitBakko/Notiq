@@ -36,6 +36,8 @@ export interface KeyringDto {
   escrowHash: string | null;
   legacyCount: number;
   openRecovery?: OpenRecovery | null;
+  /** Un recupero rilasciato e poi annullato o scaduto: il Kit attuale va sostituito (Fase 4, F2). */
+  kitRotationRequired?: boolean;
 }
 
 export type VaultSessionCode =
@@ -106,9 +108,13 @@ export function syncKeyringCache(userId: string, kr: KeyringDto): void {
   try { cacheKeyring(userId, kr, c.offlineUnlock); } catch { /* keyring incompleto: cache invariata */ }
 }
 
-/** GET del keyring + `syncKeyringCache`; errori di rete o server ignorati (best effort). */
-export async function refreshKeyringCache(userId: string): Promise<void> {
-  try { syncKeyringCache(userId, await fetchKeyring()); } catch { /* offline o server giu': cache invariata */ }
+/** GET del keyring + `syncKeyringCache`; errori di rete o server ignorati (best effort). Restituisce il keyring letto (undefined se la GET e' fallita). */
+export async function refreshKeyringCache(userId: string): Promise<KeyringDto | undefined> {
+  try {
+    const kr = await fetchKeyring();
+    syncKeyringCache(userId, kr);
+    return kr;
+  } catch { /* offline o server giu': cache invariata */ }
 }
 
 const wrappedHash = (b64: string) => sha256hexBytes(b64uDecode(b64));

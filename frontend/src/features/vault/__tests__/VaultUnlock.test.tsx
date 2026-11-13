@@ -175,12 +175,22 @@ describe('VaultUnlock', () => {
     expect(toast.error).toHaveBeenCalledWith('vault.setup.offlineNotSaved');
   });
 
-  it('PIN dimenticato: spiega che non c e recupero; nessun reset locale', () => {
+  it('PIN dimenticato: avviso "senza Kit resta solo il reset"; nessun reset locale; senza onForgot niente pulsante di recupero', () => {
     render(<VaultUnlock />);
     expect(screen.queryByText('vault.unlock.forgotBody')).toBeNull();
     fireEvent.click(screen.getByText('vault.forgotPin'));
     expect(screen.getByText('vault.unlock.forgotBody')).toBeTruthy();
+    expect(screen.queryByText('vault.unlock.forgotAction')).toBeNull();
     expect(screen.queryByText('vault.resetVaultButton')).toBeNull();
     expect(screen.queryByPlaceholderText('vault.resetVaultPlaceholder')).toBeNull();
+  });
+
+  it('PIN dimenticato con onForgot: il pulsante di recupero lo richiama', () => {
+    const onForgot = vi.fn();
+    render(<VaultUnlock onForgot={onForgot} />);
+    fireEvent.click(screen.getByText('vault.forgotPin'));
+    expect(screen.getByText('vault.unlock.forgotBody')).toBeTruthy(); // l'avviso resta
+    fireEvent.click(screen.getByRole('button', { name: 'vault.unlock.forgotAction' }));
+    expect(onForgot).toHaveBeenCalledTimes(1);
   });
 });

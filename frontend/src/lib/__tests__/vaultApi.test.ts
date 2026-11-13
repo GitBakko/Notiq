@@ -311,9 +311,22 @@ describe('valori legittimi del backend (guardia di forma)', () => {
     ['REJECTED', rec('REJECTED')],
     ['EXPIRED', rec('EXPIRED', { notBefore: ISO })],
     ['fingerprint null', rec('PENDING_APPROVAL', { fingerprint: null })],
+    ['PENDING_CODE con attemptsLeft e expiresAt', rec('PENDING_CODE', { attemptsLeft: 4, expiresAt: ISO, rejectReason: null })],
+    ['PENDING_CODE con campi null', rec('PENDING_CODE', { attemptsLeft: null, expiresAt: null })],
+    ['REJECTED con rejectReason', rec('REJECTED', { rejectReason: 'motivo', attemptsLeft: null, expiresAt: null })],
   ])('getRecovery: %s', async (_n, body) => {
     request.mockResolvedValue({ data: body });
     await expect(vaultApi.getRecovery('r1')).resolves.toEqual(body);
+  });
+
+  it.each([
+    ['attemptsLeft stringa', { attemptsLeft: '4' }],
+    ['attemptsLeft non intero', { attemptsLeft: 1.5 }],
+    ['expiresAt numero', { expiresAt: 5 }],
+    ['rejectReason numero', { rejectReason: 5 }],
+  ])('getRecovery rifiuta tipi sbagliati: %s', async (_n, over) => {
+    request.mockResolvedValue({ data: rec('PENDING_CODE', over) });
+    await expect(fail(vaultApi.getRecovery('r1'))).resolves.toMatchObject({ kind: 'network' });
   });
 
   it.each([

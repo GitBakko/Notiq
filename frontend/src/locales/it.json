@@ -424,8 +424,90 @@
   "vault": {
     "title": "Vault Sicuro",
     "recovery": {
+      "intro": {
+        "title": "Recupera l'accesso con il Kit di recupero",
+        "warning": "Senza il Kit di recupero resta solo il reset del vault.",
+        "body": "Un amministratore deve approvare il recupero e c'è un periodo di attesa. Ti servono il Kit di recupero e un nuovo PIN.",
+        "reasonLabel": "Motivo (facoltativo)",
+        "reasonPlaceholder": "Perché devi recuperare l'accesso?",
+        "start": "Ho il Kit, avvia il recupero",
+        "starting": "Avvio..."
+      },
+      "loading": "Caricamento...",
+      "status": {
+        "title": "Recupero in corso",
+        "fingerprint": "Codice richiesta: {{fingerprint}}",
+        "pendingApproval": "In attesa che un amministratore lo approvi. Può richiedere fino a 7 giorni: torna su questa pagina più tardi.",
+        "pendingCode": "Approvato. Inserisci le due metà del codice qui sotto.",
+        "waiting": "L'attesa termina il {{date}}. Se non sei stato tu, annulla la richiesta.",
+        "waitingDue": "L'attesa è finita. L'amministratore rilascerà il recupero a breve.",
+        "released": "Il recupero è stato rilasciato. Ora puoi completarlo.",
+        "rejected": "La richiesta è stata rifiutata.",
+        "rejectedReason": "Motivo: {{reason}}",
+        "expired": "La richiesta è scaduta.",
+        "cancelled": "La richiesta è stata annullata.",
+        "completed": "Il recupero è già stato completato. Sblocca il vault.",
+        "loadError": "Non è stato possibile leggere lo stato della richiesta. Riprova."
+      },
+      "code": {
+        "title": "Inserisci il codice di recupero",
+        "help": "Il codice ha due metà di 8 caratteri: la metà A è mostrata qui, la metà B è arrivata per email.",
+        "halfA": "Metà A",
+        "halfB": "Metà B (dall'email)",
+        "invalidFormat": "8 lettere e cifre, senza O, I, L o U.",
+        "attemptsLeft": "Tentativi rimasti: {{n}}",
+        "expiresAt": "Scade il {{date}}",
+        "notThisDevice": "Il codice è visibile solo sul dispositivo che ha fatto la richiesta (codice richiesta {{fingerprint}}). Continua da lì, oppure annulla e ricomincia qui.",
+        "submit": "Conferma il codice",
+        "tooMany": "Troppi tentativi. Riprova tra 15 minuti."
+      },
+      "complete": {
+        "title": "Completa il recupero",
+        "help": "Inserisci il Kit di recupero e scegli un nuovo PIN. Il vecchio PIN smetterà di funzionare.",
+        "kit": "Kit di recupero",
+        "kitHelp": "34 simboli, con o senza trattini e spazi.",
+        "newPin": "Nuovo PIN",
+        "submit": "Recupera l'accesso",
+        "working": "Elaborazione in corso, può richiedere qualche secondo."
+      },
+      "foreign": {
+        "title": "C'è un recupero aperto altrove",
+        "text": "Sul tuo account c'è una richiesta di recupero aperta, ma non l'ha fatta questo dispositivo, oppure i suoi dati sono stati cancellati. Puoi annullarla e farne una nuova qui, oppure solo annullarla."
+      },
+      "actions": {
+        "close": "Chiudi",
+        "retry": "Riprova",
+        "newRequest": "Nuova richiesta",
+        "goUnlock": "Vai allo sblocco",
+        "regenerateKit": "Rigenera il Kit",
+        "update": "Aggiorna l'app",
+        "reload": "Ricarica",
+        "cancelRequest": "Annulla richiesta",
+        "cancelAndRedo": "Annulla e rifai qui",
+        "backToStatus": "Torna allo stato",
+        "restart": "Ricarica lo stato"
+      },
+      "cancel": {
+        "title": "Annullare il recupero?",
+        "message": "La richiesta sarà annullata e i suoi codici smetteranno di funzionare. Il vault resta com'è.",
+        "confirm": "Annulla recupero",
+        "keep": "Tienila"
+      },
+      "redo": {
+        "title": "Annullare e ricominciare?",
+        "message": "La richiesta attuale sarà annullata e ne sarà avviata una nuova su questo dispositivo.",
+        "releasedMessage": "Questa richiesta è già stata rilasciata e si può completare solo sul dispositivo che l'ha fatta. Se la annulli e ricominci qui, il rilascio va perso: serviranno una nuova approvazione e altre 72 ore di attesa, e al prossimo sblocco dovrai creare un nuovo Kit di recupero.",
+        "confirm": "Annulla e rifai"
+      },
+      "outcome": {
+        "applied": "Recupero completato. Salva subito il tuo nuovo Kit di recupero."
+      },
+      "cancelReleasedWarning": "Il recupero è già stato rilasciato. Se lo annulli va perso: per recuperare il vault serviranno una nuova richiesta, una nuova approvazione e altre 72 ore di attesa. Al prossimo sblocco dovrai anche creare un nuovo Kit di recupero.",
+      "noOpenRequest": "Non ci sono richieste di recupero aperte.",
       "errors": {
-        "releaseInvalid": "Non è stato possibile verificare il rilascio del recupero. Non è stato modificato nulla. Annulla la richiesta e avviane una nuova.",
+        "updateRequired": "Questa versione dell'app non può verificare il recupero. Aggiorna l'app (ricarica la pagina) e riprova. Non annullare la richiesta.",
+        "sessionChanged": "La sessione è cambiata. Ricarica la pagina.",
+        "releaseInvalid": "Non è stato possibile verificare il rilascio su questo dispositivo. Non è cambiato nulla. Annulla la richiesta e rifalla; se succede di nuovo, contatta l'amministratore.",
         "kitInvalid": "Il Kit di recupero non è corretto. Controllalo e riprova.",
         "notThisDevice": "Questo recupero è stato avviato su un altro dispositivo o browser. Continua da lì, oppure annullalo e avviane uno nuovo qui.",
         "keyringChanged": "Il vault è cambiato mentre il recupero era in preparazione. Riprova.",
@@ -440,6 +522,12 @@
         "unknown": "L'esito è sconosciuto. Quando sei online prova il nuovo PIN: se funziona ti chiederemo di rigenerare il Kit di recupero; se non funziona vale il Kit precedente e puoi ripetere il recupero.",
         "retryLater": "Una richiesta precedente è ancora in verifica. Riprova tra qualche minuto."
       }
+    },
+    "kitRotation": {
+      "title": "Sostituisci il Kit di recupero",
+      "warning": "Un recupero di questo vault è stato rilasciato e poi annullato o scaduto. Il Kit di recupero attuale non è più sicuro: creane uno nuovo per continuare a usare il vault.",
+      "destroyOld": "Dopo aver creato il nuovo Kit di recupero, distruggi ogni copia del precedente (PDF scaricati, stampe, appunti): insieme al recupero rilasciato potrebbe ancora aprire il vault.",
+      "lock": "Blocca vault"
     },
     "recoveryBanner": {
       "states": {
@@ -461,6 +549,7 @@
           "text": "La richiesta di recupero {{fingerprint}} è stata rilasciata e può essere completata. Se non sei stato tu, annullala subito."
         }
       },
+      "details": "Dettagli",
       "cancel": "Annulla recupero",
       "confirmTitle": "Annullare il recupero?",
       "confirmMessage": "La richiesta di recupero aperta sarà annullata e i suoi codici smetteranno di funzionare. Il vault resta com'è.",
@@ -573,7 +662,7 @@
     "kitUnconfirmed": "Il Kit di recupero non è stato confermato: rigeneralo.",
     "kitUnconfirmedAction": "Rigenera",
     "pendingPinApplied": "Il nuovo PIN è attivo.",
-    "pendingPinNotApplied": "Vale ancora il PIN precedente.",
+    "pendingPinNotApplied": "Un cambio del PIN avviato in precedenza su questo dispositivo non è mai arrivato al server. Resta valido il PIN con cui hai sbloccato.",
     "migrateTooLarge": "{{n}} elementi sono troppo grandi per essere cifrati e restano in sola lettura. Usa \"Togli dal vault\" per spostarli.",
     "offline": {
       "title": "Sei offline",
@@ -601,8 +690,9 @@
     },
     "unlock": {
       "lockedFor": "Troppi tentativi. Riprova tra {{time}}.",
-      "forgotTitle": "Per ora il PIN non è recuperabile",
-      "forgotBody": "In questa versione, se dimentichi il PIN il vault non può essere reimpostato né recuperato. Continua a provare il PIN che hai scelto e cerca il tuo Kit di recupero. Il recupero del PIN arriverà in un rilascio successivo."
+      "forgotTitle": "PIN dimenticato?",
+      "forgotBody": "Puoi recuperare l'accesso con il Kit di recupero. Senza il Kit resta solo il reset del vault.",
+      "forgotAction": "Recupera con il Kit di recupero"
     },
     "kit": {
       "title": "Kit di recupero",
@@ -702,10 +792,11 @@
       "pinChanged": "PIN cambiato",
       "pinOfflineNote": "Un dispositivo che resta offline accetta il vecchio PIN finché non torna online.",
       "kitTitle": "Kit di recupero",
-      "kitBody": "Genera un nuovo Kit di recupero. Conservalo in un posto sicuro: il recupero del PIN con il Kit arriverà in un rilascio successivo.",
+      "kitBody": "Genera un nuovo Kit di recupero. Conservalo in un posto sicuro e non in linea: se dimentichi il PIN, è il Kit che ti permette di recuperare il vault con l'aiuto dell'amministratore. Il Kit precedente smette di funzionare.",
       "kitPin": "PIN per confermare",
       "kitButton": "Genera nuovo Kit",
       "kitDone": "Kit di recupero confermato",
+      "removeOpenRecovery": "Da questo dispositivo c'è una richiesta di recupero aperta. Rimuovendo il vault si cancella la chiave che lega quella richiesta a questo dispositivo, quindi qui non potrà più essere completata. NON viene annullata sul server: annullala, o avviane una nuova, da un altro dispositivo.",
       "section": "Vault",
       "offlineUnlock": "Sblocco offline",
       "offlineUnlockDesc": "Sblocca il vault su questo dispositivo anche senza connessione.",
@@ -739,7 +830,7 @@
       "howTitle": "Come funziona il vault",
       "how": {
         "pin": "Il PIN protegge le chiavi del vault: il server non vede mai i tuoi contenuti.",
-        "kit": "Conserva il Kit di recupero: il recupero del PIN con il Kit arriverà in un rilascio successivo. Fino ad allora, senza il PIN i dati non sono recuperabili.",
+        "kit": "Conserva il Kit di recupero: se dimentichi il PIN, il Kit ti permette di recuperare il vault con l'aiuto dell'amministratore. Senza il PIN e senza il Kit i dati non sono recuperabili.",
         "offline": "Lo sblocco offline permette di aprire il vault senza connessione su questo dispositivo.",
         "device": "Rimuovere il vault da un dispositivo cancella solo la copia locale."
       },
@@ -1682,6 +1773,74 @@
     }
   },
   "admin": {
+    "vaultRecovery": {
+      "tab": "Recupero vault",
+      "title": "Richieste di recupero del vault",
+      "filterLabel": "Mostra",
+      "filterOpen": "Richieste aperte",
+      "filterAll": "Tutte le richieste",
+      "status": {
+        "PENDING_APPROVAL": "In attesa di approvazione",
+        "PENDING_CODE": "In attesa dei codici",
+        "WAITING": "Periodo di attesa",
+        "RELEASED": "Rilasciata",
+        "COMPLETED": "Completata",
+        "CANCELLED": "Annullata",
+        "EXPIRED": "Scaduta",
+        "REJECTED": "Rifiutata"
+      },
+      "userIdLabel": "Filtra per ID utente (cronologia)",
+      "userIdInvalid": "ID utente non valido.",
+      "empty": "Nessuna richiesta.",
+      "loadFailed": "Impossibile caricare i dati. Riprova.",
+      "detail": {
+        "title": "Richiesta di recupero",
+        "email": "Account",
+        "status": "Stato",
+        "created": "Creata il",
+        "expires": "Scade il",
+        "ip": "IP della richiesta",
+        "ua": "Browser della richiesta",
+        "fingerprint": "Codice richiesta",
+        "reason": "Motivo",
+        "noReason": "Non indicato",
+        "attempts": "Tentativi sul codice",
+        "notBefore": "Disponibile da",
+        "rejectReason": "Motivo del rifiuto",
+        "keyring": "Stato del vault",
+        "rootKey": "Chiave root",
+        "history": "Mostra le richieste di questo utente",
+        "audit": "Registro eventi",
+        "noAudit": "Nessun evento."
+      },
+      "approve": "Approva",
+      "approved": "Richiesta approvata",
+      "rejectReason": "Motivo del rifiuto",
+      "rejectHint": "Obbligatorio, fino a {{max}} caratteri. L'utente lo vede.",
+      "reject": "Rifiuta",
+      "rejected": "Richiesta rifiutata",
+      "rejectConfirmTitle": "Rifiutare la richiesta?",
+      "rejectConfirmMessage": "L'utente riceve la notifica del rifiuto, con il tuo motivo. L'azione non si può annullare.",
+      "rejectConfirm": "Rifiuta richiesta",
+      "releaseTitle": "Rilascio",
+      "passphrase": "Passphrase della chiave root",
+      "release": "Rilascia",
+      "releasedOk": "Richiesta rilasciata",
+      "releaseConfirmTitle": "Rilasciare questo recupero?",
+      "releaseConfirmMessage": "L'utente potrà riaprire il vault con il Kit di recupero. Verifica che la richiesta arrivi davvero dal proprietario.",
+      "releaseConfirmSelf": "Stai rilasciando il TUO recupero. Resta nel registro eventi e gli altri superadmin ricevono una notifica. Continua solo se sei sicuro.",
+      "releaseConfirm": "Rilascia",
+      "selfWarning": "È la tua richiesta di recupero: il rilascio viene registrato e notificato agli altri superadmin.",
+      "availableFrom": "Disponibile da {{date}} (tra circa {{hours}} h).",
+      "errors": {
+        "invalidPassphrase": "La passphrase non è valida.",
+        "rateLimited": "Troppi tentativi di rilascio. Riprova tra 15 minuti.",
+        "rootKeyUnavailable": "La chiave root non è disponibile sul server.",
+        "keyringChanged": "Il vault dell'utente è cambiato durante il rilascio. Non è stato rilasciato nulla: riprova.",
+        "stateConflict": "La richiesta è cambiata. I dati sono stati ricaricati: controlla e riprova.",
+        "generic": "Operazione non riuscita. I dati sono stati ricaricati."
+      }
+    },
     "dashboard": "Pannello Amministratore",
     "manageSettings": "Gestisci impostazioni di sistema",
     "registrationSettings": "Impostazioni Registrazione",

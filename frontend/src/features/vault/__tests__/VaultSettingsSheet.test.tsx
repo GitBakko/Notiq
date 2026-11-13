@@ -4,12 +4,12 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 
-const h = vi.hoisted(() => ({ unlockedUserId: 'u1' as string | null, touch: vi.fn() }));
+const h = vi.hoisted(() => ({ unlockedUserId: 'u1' as string | null, touch: vi.fn(), lock: vi.fn() }));
 vi.mock('../../../store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: { id: 'u1', email: 'a@b.it', name: 'A', surname: 'B' } }),
 }));
 vi.mock('../../../store/vaultStore', () => ({
-  useVaultStore: Object.assign((sel: (s: unknown) => unknown) => sel({ unlockedUserId: h.unlockedUserId }), { getState: () => ({ touchVault: h.touch }) }),
+  useVaultStore: Object.assign((sel: (s: unknown) => unknown) => sel({ unlockedUserId: h.unlockedUserId }), { getState: () => ({ touchVault: h.touch, lockVault: h.lock }) }),
 }));
 vi.mock('../../../lib/vaultReconcile', () => ({ vaultReconcile: vi.fn() }));
 vi.mock('../../sync/syncService', () => ({ syncPush: vi.fn(async () => true) }));
@@ -280,6 +280,55 @@ describe('VaultSettingsSheet', () => {
     const onClose = vi.fn();
     render(<VaultSettingsSheet isOpen onClose={onClose} />);
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+// T7 (F2): foglio di rotazione obbligatorio, non chiudibile, solo sezione Kit, uscita "Blocca vault"
+describe('VaultSettingsSheet: forceKit', () => {
+  it('non chiudibile: Esc e click sullo sfondo non chiudono, il pulsante di chiusura non esiste', () => {
+    const onClose = vi.fn();
+    render(<VaultSettingsSheet isOpen forceKit onClose={onClose} />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('dialog').parentElement as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('common.close')).toBeNull();
+  });
+
+  it('mostra titolo e avviso di rotazione e solo la sezione Kit', () => {
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
+    expect(screen.getByText('vault.kitRotation.title')).toBeTruthy();
+    expect(screen.getByText('vault.kitRotation.warning')).toBeTruthy();
+    expect(screen.getByText('vault.kitRotation.destroyOld')).toBeTruthy();
+    expect(screen.getByText('vault.settings.kitButton')).toBeTruthy();
+    expect(screen.queryByText('vault.settings.changePinButton')).toBeNull();
+    expect(screen.queryByText('vault.settings.checkButton')).toBeNull();
+  });
+
+  it('"Blocca vault" blocca il vault', () => {
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
+    fireEvent.click(screen.getByText('vault.kitRotation.lock'));
+    expect(h.lock).toHaveBeenCalled();
+  });
+
+  it('dopo la conferma del Kit chiama onKitDone', async () => {
+    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h' });
+    const onKitDone = vi.fn();
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} onKitDone={onKitDone} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('vault.kit.title')).toBeTruthy());
+    expect(onKitDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('vault.kit.title'));
+    expect(onKitDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('senza forceKit il comportamento resta quello di sempre (Esc chiude, pulsante di chiusura presente)', () => {
+    const onClose = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={onClose} />);
+    expect(screen.getByLabelText('common.close')).toBeTruthy();
+    expect(screen.queryByText('vault.kitRotation.title')).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });

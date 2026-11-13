@@ -42,7 +42,7 @@ function getNotificationUrl(notification: Notification): string | null {
     case 'KANBAN_CARD_MOVED':
       return data.boardId ? `/kanban?boardId=${data.boardId}` : '/kanban';
     case 'VAULT_RECOVERY':
-      return '/vault';
+      return '/vault?recovery=1';
     case 'SYSTEM': {
       // Friend requests → Chat page
       if (data.localizationKey?.includes('friendRequest')) return '/shared?tab=friends';

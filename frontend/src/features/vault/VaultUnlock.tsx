@@ -11,6 +11,8 @@ interface Props {
   onUnlocked?: () => void;
   /** "alreadySetup": il vault esisteva gia' (creato da un altro dispositivo), mostrato sopra il form. */
   notice?: 'alreadySetup';
+  /** Avvia il recupero con il Kit di recupero (VaultRecovery). Senza, il pannello "PIN dimenticato" resta solo informativo. */
+  onForgot?: () => void;
 }
 
 /** Rete assente o server non raggiungibile (VaultApiError status 0 / 503): si puo' ripiegare sullo sblocco offline. */
@@ -30,7 +32,7 @@ const fmt = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-export default function VaultUnlock({ onUnlocked, notice }: Props = {}) {
+export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}) {
   const { t } = useTranslation();
   const userId = useAuthStore((s) => s.user?.id);
   const cache = useVaultStore((s) => (userId ? s.byUser[userId] : undefined));
@@ -152,7 +154,7 @@ export default function VaultUnlock({ onUnlocked, notice }: Props = {}) {
           </Button>
         </form>
 
-        {/* D5: in P2 nessun recupero del PIN e nessun reset locale. */}
+        {/* Il recupero passa dal Kit (onForgot); senza Kit resta solo il reset, mai un reset locale da qui. */}
         <button
           type="button"
           onClick={() => setShowForgot((v) => !v)}
@@ -167,6 +169,11 @@ export default function VaultUnlock({ onUnlocked, notice }: Props = {}) {
             <div>
               <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mb-1">{t('vault.unlock.forgotTitle')}</p>
               <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('vault.unlock.forgotBody')}</p>
+              {onForgot && (
+                <Button type="button" variant="secondary" className="w-full min-h-[44px] mt-3" onClick={onForgot}>
+                  {t('vault.unlock.forgotAction')}
+                </Button>
+              )}
             </div>
           </div>
         )}

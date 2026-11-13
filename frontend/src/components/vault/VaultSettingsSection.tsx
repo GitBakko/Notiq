@@ -8,6 +8,7 @@ import { Card } from '../ui/Card';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { db } from '../../lib/db';
 import { removeFromDevice, setOfflineUnlock } from '../../lib/vaultSession';
+import { localRecovery } from '../../lib/vaultRecovery';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
 
@@ -47,6 +48,7 @@ export default function VaultSettingsSection() {
   const cache = useVaultStore((s) => (userId ? s.byUser[userId] : undefined));
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [blocked, setBlocked] = useState(0);
+  const [openRecovery, setOpenRecovery] = useState(false); // su questo dispositivo c'e' la chiave effimera di un recupero aperto
 
   if (!userId) return null;
   const offline = !!cache?.offlineUnlock;
@@ -59,8 +61,10 @@ export default function VaultSettingsSection() {
     setBlocked(0);
     try {
       const n = await vaultRows(userId, false);
-      if (n > 0) setBlocked(n);
-      else setConfirmOpen(true);
+      if (n > 0) return setBlocked(n);
+      // F9: solo un avviso. removeFromDevice cancella la chiave, la richiesta sul server resta (si annulla altrove)
+      setOpenRecovery(!!(await localRecovery(userId).catch(() => null)));
+      setConfirmOpen(true);
     } catch {
       toast.error(t('errors.common.unknownError'));
     }
@@ -135,7 +139,7 @@ export default function VaultSettingsSection() {
         onClose={() => setConfirmOpen(false)}
         onConfirm={doRemove}
         title={t('vault.settings.removeConfirmTitle')}
-        message={t('vault.settings.removeConfirmBody')}
+        message={openRecovery ? `${t('vault.settings.removeConfirmBody')} ${t('vault.settings.removeOpenRecovery')}` : t('vault.settings.removeConfirmBody')}
         confirmText={t('vault.settings.removeButton')}
         cancelText={t('common.cancel')}
         variant="danger"
