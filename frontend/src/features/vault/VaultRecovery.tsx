@@ -139,8 +139,10 @@ function CompleteForm({ userId, requestId, onResult, onAction, onCancel, onClose
       <Button type="submit" variant="primary" className="w-full min-h-[44px]" isLoading={busy} disabled={!ready || busy}>
         {error?.action === 'retry' ? t('vault.recovery.actions.retry') : t('vault.recovery.complete.submit')}
       </Button>
-      <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={onCancel} disabled={busy}>{t('vault.recovery.actions.cancelRequest')}</Button>
-      <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={onClose} disabled={busy}>{t('vault.recovery.actions.close')}</Button>
+      <div className="flex flex-col pt-1.5">
+        <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={onCancel} disabled={busy}>{t('vault.recovery.actions.cancelRequest')}</Button>
+        <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={onClose} disabled={busy}>{t('vault.recovery.actions.close')}</Button>
+      </div>
     </form>
   );
 }
@@ -363,8 +365,10 @@ export default function VaultRecovery({ userId, onClose }: Props) {
             <h2 className="text-xl font-bold text-neutral-900 dark:text-white">{t('vault.recovery.foreign.title')}</h2>
             <p className={TEXT}>{t('vault.recovery.foreign.text')}</p>
             <Button type="button" variant="primary" className="w-full min-h-[44px]" onClick={() => setConfirm({ kind: 'redo', id: view.openId })}>{t('vault.recovery.actions.cancelAndRedo')}</Button>
-            {cancelBtn(view.openId)}
-            {closeBtn}
+            <div className="flex flex-col pt-1.5">
+              {cancelBtn(view.openId)}
+              {closeBtn}
+            </div>
           </div>
         );
       case 'status': {
@@ -412,14 +416,19 @@ export default function VaultRecovery({ userId, onClose }: Props) {
             {st === 'EXPIRED' && <p role="status" className={TEXT}>{t('vault.recovery.status.expired')}</p>}
             {st === 'CANCELLED' && <p role="status" className={TEXT}>{t('vault.recovery.status.cancelled')}</p>}
             {st === 'COMPLETED' && <p role="status" className={TEXT}>{t('vault.recovery.status.completed')}</p>}
-            {open && cancelBtn(view.id)}
             {st === 'COMPLETED' && (
               <Button type="button" variant="primary" className="w-full min-h-[44px]" onClick={() => onClose('unlock')}>{t('vault.recovery.actions.goUnlock')}</Button>
             )}
             {!open && st !== 'COMPLETED' && (
               <Button type="button" variant="primary" className="w-full min-h-[44px]" onClick={() => void newRequest()}>{t('vault.recovery.actions.newRequest')}</Button>
             )}
-            {st !== 'COMPLETED' && closeBtn}
+            {/* I due ghost sono senza bordo: pt-1.5 li porta a 44px (centro a centro) dal bottone primario sopra, se c'e (PENDING_CODE, nuova richiesta) */}
+            {(open || st !== 'COMPLETED') && (
+              <div className={st === 'PENDING_CODE' || !open ? 'flex flex-col pt-1.5' : 'flex flex-col'}>
+                {open && cancelBtn(view.id)}
+                {st !== 'COMPLETED' && closeBtn}
+              </div>
+            )}
           </div>
         );
       }

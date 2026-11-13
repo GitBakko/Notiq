@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { createPortal } from 'react-dom';
 import { toast } from 'react-hot-toast';
 import { KeyRound, X } from 'lucide-react';
 import api from '../../../lib/api';
@@ -99,6 +100,11 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
     void reload();
   }, [reload]);
 
+  // Blocco scroll del body (come Dialog). Senza dipendenze di proposito: il cleanup dei Dialog annidati (ConfirmDialog)
+  // imposta overflow='unset' a ogni render, quindi il lock si riapplica a ogni commit; si rilascia solo allo smontaggio.
+  useEffect(() => { document.body.style.overflow = 'hidden'; });
+  useEffect(() => () => { document.body.style.overflow = 'unset'; }, []);
+
   useEffect(() => {
     if (confirm) return; // l'Esc del ConfirmDialog chiude solo lui
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
@@ -151,7 +157,9 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
 
   return (
     <>
-    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/50 dark:bg-black/70" onClick={() => !busy && onClose()}>
+    {/* Portal come Dialog: dentro AppLayout (safe-area-top) il fixed non copre l'intero viewport */}
+    {createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 dark:bg-black/70" onClick={() => !busy && onClose()}>
       <div
         ref={ref}
         role="dialog"
@@ -280,7 +288,9 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
+    )}
 
       <ConfirmDialog
         isOpen={confirm === 'reject'}

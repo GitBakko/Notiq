@@ -199,6 +199,24 @@ describe('VaultRecovery: status', () => {
     expect(h.syncLocalRecovery).toHaveBeenCalledWith('u1');
   });
 
+  it('pt-1.5 sui ghost solo con un primario sopra: non in PENDING_APPROVAL/WAITING, si in PENDING_CODE', async () => {
+    bound();
+    h.getRecovery.mockResolvedValue(rec('PENDING_APPROVAL'));
+    const first = mount();
+    await screen.findByText(L('status.pendingApproval'));
+    expect(btn(L('actions.cancelRequest')).parentElement?.className).not.toContain('pt-1.5');
+    first.unmount();
+    h.getRecovery.mockResolvedValue(rec('WAITING', { notBefore: '2999-01-01T00:00:00.000Z' }));
+    const second = mount();
+    await screen.findByText(/status\.waiting\|/);
+    expect(btn(L('actions.cancelRequest')).parentElement?.className).not.toContain('pt-1.5');
+    second.unmount();
+    h.getRecovery.mockResolvedValue(rec('PENDING_CODE'));
+    mount();
+    await screen.findByTestId('codeform');
+    expect(btn(L('actions.cancelRequest')).parentElement?.className).toContain('pt-1.5');
+  });
+
   it('annulla e poi "Tienila": nessuna chiamata', async () => {
     bound();
     h.getRecovery.mockResolvedValue(rec('PENDING_APPROVAL'));

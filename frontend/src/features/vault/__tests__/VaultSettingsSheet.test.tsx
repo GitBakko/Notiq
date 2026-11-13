@@ -296,6 +296,15 @@ describe('VaultSettingsSheet: forceKit', () => {
     expect(screen.queryByLabelText('common.close')).toBeNull();
   });
 
+  it('non mostra la maniglia del bottom sheet (che non si puo trascinare via), senza forceKit si', () => {
+    const handle = () => screen.getByRole('dialog').querySelector('[aria-hidden="true"].rounded-full');
+    const { unmount } = render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
+    expect(handle()).toBeNull();
+    unmount();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+    expect(handle()).not.toBeNull();
+  });
+
   it('mostra titolo e avviso di rotazione e solo la sezione Kit', () => {
     render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
     expect(screen.getByText('vault.kitRotation.title')).toBeTruthy();

@@ -181,7 +181,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
         onClick={(e) => e.stopPropagation()}
         className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-700/40 shadow-xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
       >
-        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-neutral-300 dark:bg-neutral-600 sm:hidden" aria-hidden="true" />
+        {!forceKit && <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-neutral-300 dark:bg-neutral-600 sm:hidden" aria-hidden="true" />}
         <div className="flex items-center justify-between gap-3 mb-4">
           <h2 id="vault-settings-title" className="text-xl font-bold text-neutral-900 dark:text-white">{t(forceKit ? 'vault.kitRotation.title' : 'vault.settings.title')}</h2>
           {!forceKit && (

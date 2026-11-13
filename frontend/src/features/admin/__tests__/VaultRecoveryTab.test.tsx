@@ -96,6 +96,8 @@ describe('VaultRecoveryTab: dettaglio e azioni', () => {
   it('il dettaglio e un dialog modale con i campi della richiesta e l\'audit', async () => {
     const d = await openDetail();
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true');
+    // in portale su body: dentro AppLayout (safe-area-top) il fixed non coprirebbe tutto il viewport
+    expect(screen.getByRole('dialog').parentElement?.parentElement).toBe(document.body);
     expect(d.getByText('1.2.3.4')).toBeTruthy();
     expect(d.getByText('UA/1')).toBeTruthy();
     expect(d.getByText('ABCD-1234')).toBeTruthy();
@@ -103,6 +105,26 @@ describe('VaultRecoveryTab: dettaglio e azioni', () => {
     expect(d.getByText('rk_x')).toBeTruthy();
     expect(d.getByText('vault.recovery.requested')).toBeTruthy();
     expect(h.get).toHaveBeenCalledWith('/admin/vault-recovery/r1');
+  });
+
+  it('il backdrop sta a z-50, non sotto la sidebar desktop (z-50 in AppLayout)', async () => {
+    await openDetail();
+    expect(screen.getByRole('dialog').parentElement?.className).toContain('z-50');
+  });
+
+  it('scroll del body bloccato col dettaglio aperto, anche dopo il ConfirmDialog annidato, e rilasciato alla chiusura', async () => {
+    const d = await openDetail();
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.change(d.getByLabelText('admin.vaultRecovery.rejectReason'), { target: { value: 'sospetto' } });
+    fireEvent.click(d.getByText('admin.vaultRecovery.reject'));
+    await screen.findByText('admin.vaultRecovery.rejectConfirm');
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(screen.getByText('common.cancel')); // il cleanup del ConfirmDialog mette 'unset'
+    await waitFor(() => expect(screen.queryByText('admin.vaultRecovery.rejectConfirm')).toBeNull());
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(screen.getByLabelText('common.close'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.body.style.overflow).not.toBe('hidden');
   });
 
   it('approva: POST approve poi il dettaglio si rilegge', async () => {
