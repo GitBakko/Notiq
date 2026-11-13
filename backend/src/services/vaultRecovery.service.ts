@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import prisma from '../plugins/prisma';
 import { AppError } from '../utils/errors';
 import { VAULT_ROOT_KEYS } from '../utils/vaultRootKeys';
+import { putE2eCodeB } from '../utils/vaultE2e';
 import { logEvent } from './audit.service';
 import { notifyRecovery, notifySuperadmins, type RecoveryEvent } from './vaultRecoveryNotify';
 import { assertPointOnCurve, releaseRootShare, sealRecoveryCode } from './vaultRootKey.service';
@@ -13,6 +14,7 @@ const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const TIMED_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING'] as const; // scadono su expiresAt; RELEASED su releaseExpiresAt
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5; // stesso limite di confirmRecovery
 
 // FP = primi 40 bit di SHA-256(clientEphPub) in 8 cifre Crockford, bit piu' significativi per primi (spec §3.2.2).
 export function fingerprintOf(pub: Uint8Array): string {
@@ -113,7 +115,7 @@ export async function createRecoveryRequest(userId: string, clientEphPub: Uint8A
     if (open) throw new AppError(409, 'errors.vault.recoveryAlreadyOpen');
     // Quota: non contano annullate, rifiutate ed EXPIRED per tentativi esauriti (attempts >= 5); contano le EXPIRED per tempo.
     const recent = await tx.vaultRequest.count({
-      where: { userId, type: 'RECOVERY', status: { notIn: ['CANCELLED', 'REJECTED'] }, NOT: { status: 'EXPIRED', attempts: { gte: 5 } }, createdAt: { gte: new Date(Date.now() - 30 * DAY_MS) } },
+      where: { userId, type: 'RECOVERY', status: { notIn: ['CANCELLED', 'REJECTED'] }, NOT: { status: 'EXPIRED', attempts: { gte: MAX_CODE_ATTEMPTS } }, createdAt: { gte: new Date(Date.now() - 30 * DAY_MS) } },
     });
     if (recent >= 3) throw new AppError(429, 'errors.vault.recoveryRateLimited');
     return tx.vaultRequest.create({
@@ -155,6 +157,8 @@ export async function approveRecovery(adminId: string, requestId: string) {
     },
   });
   if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  // Sincrono, prima del notify in background: l'E2E legge l'outbox subito dopo il 200 (no-op fuori dai test E2E).
+  putE2eCodeB(requestId, codeB);
   const self = adminId === row.userId;
   await logEvent(adminId, 'vault.recovery.approved', self ? { requestId, self: true } : { requestId });
   if (self) notifyAdminsInBackground('selfAction', requestId, adminId);
@@ -177,14 +181,14 @@ export async function rejectRecovery(adminId: string, requestId: string, reason:
 
 export async function confirmRecovery(userId: string, requestId: string, codeA: string, codeB: string) {
   const updated = await prisma.vaultRequest.updateMany({
-    where: { id: requestId, userId, type: 'RECOVERY', status: 'PENDING_CODE', attempts: { lt: 5 }, expiresAt: { gt: new Date() } },
+    where: { id: requestId, userId, type: 'RECOVERY', status: 'PENDING_CODE', attempts: { lt: MAX_CODE_ATTEMPTS }, expiresAt: { gt: new Date() } },
     data: { attempts: { increment: 1 } },
   });
   if (updated.count !== 1) {
     // Non tutti i conteggi 0 sono una scadenza: un retry dopo una risposta persa trova la richiesta gia' avanzata.
     const current = await prisma.vaultRequest.findFirst({ where: { id: requestId, userId, type: 'RECOVERY' }, select: { status: true, attempts: true, expiresAt: true } });
     if (!current) throw new AppError(404, 'errors.vault.recoveryNotFound');
-    const expired = current.status === 'EXPIRED' || (current.status === 'PENDING_CODE' && (current.attempts >= 5 || !current.expiresAt || current.expiresAt <= new Date()));
+    const expired = current.status === 'EXPIRED' || (current.status === 'PENDING_CODE' && (current.attempts >= MAX_CODE_ATTEMPTS || !current.expiresAt || current.expiresAt <= new Date()));
     throw expired ? new AppError(410, 'errors.vault.recoveryExpired') : new AppError(409, 'errors.vault.recoveryStateConflict');
   }
   const row = await prisma.vaultRequest.findUnique({ where: { id: requestId } });
@@ -193,7 +197,7 @@ export async function confirmRecovery(userId: string, requestId: string, codeA: 
   const validB = safeEqual(row.codeBHash, codeHash(requestId, 'B', codeB));
   if (!validA || !validB) {
     // Condizionata a PENDING_CODE: un confirm concorrente gia' arrivato a WAITING non va riportato a EXPIRED.
-    const exhausted = row.attempts >= 5 ? await prisma.vaultRequest.updateMany({ where: { id: requestId, status: 'PENDING_CODE' }, data: { status: 'EXPIRED' } }) : null;
+    const exhausted = row.attempts >= MAX_CODE_ATTEMPTS ? await prisma.vaultRequest.updateMany({ where: { id: requestId, status: 'PENDING_CODE' }, data: { status: 'EXPIRED' } }) : null;
     await logEvent(userId, 'vault.recovery.code_failed', { requestId, attempts: row.attempts });
     notify(userId, 'codeFailed', { requestId });
     if (exhausted?.count === 1) {
@@ -249,6 +253,11 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
   }
   // La firma copre row.fingerprint: va ricalcolato dalla chiave salvata prima di spendere Argon2id sul file root.
   if (fingerprintOf(row.clientEphPub) !== row.fingerprint) throw new AppError(409, 'errors.vault.recoveryFingerprintMismatch');
+  // Un keyring READY con share root sigillata ha sempre l'escrow: senza, il segnale di rotazione del Kit non si puo' scrivere.
+  const escrowBlob = row.user.vaultKeyring.escrowBlob;
+  if (!escrowBlob) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  // Stesso calcolo di getKeyring (vault.service.ts): l'hash dei byte grezzi dell'escrow corrente (il CAS sul rev lo garantisce).
+  const releasedEscrowHash = crypto.createHash('sha256').update(Buffer.from(escrowBlob)).digest('hex');
   let released: { rootShareForClient: Buffer; rootSignature: Buffer };
   try {
     released = await releaseRootShare({
@@ -283,6 +292,7 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
           releasedById: adminId,
           releasedAt: new Date(),
           releaseExpiresAt: new Date(Date.now() + 7 * DAY_MS),
+          releasedEscrowHash,
           rootShareForClient: Buffer.from(released.rootShareForClient),
           rootSignature: Buffer.from(released.rootSignature),
         },
@@ -306,12 +316,28 @@ function isLapsed(row: { status: string; expiresAt?: Date | null; releaseExpires
   return (TIMED_STATES as readonly string[]).includes(row.status) && !!row.expiresAt && row.expiresAt <= now;
 }
 
-export async function getRecovery(userId: string, requestId: string) {
-  // Richiesta e keyring in UNA lettura: due query separate potevano accoppiare il seal vecchio con l'escrowBlob nuovo se un complete o un annullo cadeva in mezzo.
+/** Vero se il Kit va ruotato: l'escrow corrente fu rilasciato in una richiesta poi annullata/scaduta (o RELEASED con finestra chiusa). Si spegne da solo quando l'escrow cambia. */
+export async function kitRotationRequired(userId: string, escrowHash: string | null): Promise<boolean> {
+  if (!escrowHash) return false;
   const row = await prisma.vaultRequest.findFirst({
-    where: { id: requestId, userId, type: 'RECOVERY' },
-    include: { user: { select: { vaultKeyring: { select: { status: true, escrowBlob: true } } } } },
+    where: {
+      userId, type: 'RECOVERY', releasedEscrowHash: escrowHash,
+      OR: [{ status: { in: ['CANCELLED', 'EXPIRED'] } }, { status: 'RELEASED', releaseExpiresAt: { lte: new Date() } }],
+    },
+    select: { id: true },
   });
+  return !!row;
+}
+
+export async function getRecovery(userId: string, requestId: string) {
+  // Richiesta e keyring nello stesso snapshot: l'include fa due statement, e un complete in mezzo accoppierebbe il seal vecchio con l'escrowBlob nuovo (falso kitInvalid nel client).
+  const row = await prisma.$transaction(
+    (tx: Prisma.TransactionClient) => tx.vaultRequest.findFirst({
+      where: { id: requestId, userId, type: 'RECOVERY' },
+      include: { user: { select: { vaultKeyring: { select: { status: true, escrowBlob: true } } } } },
+    }),
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+  );
   if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
   // Scaduta per tempo ma non ancora marcata dal job: si presenta gia' come EXPIRED, senza seal ne' codice (G7).
   const now = new Date();
@@ -340,6 +366,9 @@ export async function getRecovery(userId: string, requestId: string) {
     rootShareForClient: sealable ? row.rootShareForClient : null,
     rootSignature: sealable ? row.rootSignature : null,
     escrowBlob,
+    attemptsLeft: status === 'PENDING_CODE' ? Math.max(0, MAX_CODE_ATTEMPTS - row.attempts) : null,
+    expiresAt: status === 'PENDING_CODE' && row.expiresAt ? row.expiresAt.toISOString() : null,
+    rejectReason: status === 'REJECTED' ? row.rejectReason : null,
   };
 }
 
@@ -379,6 +408,7 @@ function adminView(row: AdminRow, now = new Date()) {
     notBefore: row.notBefore,
     approvedById: row.approvedById,
     approvedAt: row.approvedAt,
+    attempts: row.attempts,
     rejectReason: row.rejectReason,
     releasedById: row.releasedById,
     releasedAt: row.releasedAt,

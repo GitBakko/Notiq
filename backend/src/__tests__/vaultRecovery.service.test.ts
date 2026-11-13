@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import crypto from 'crypto';
 
 vi.mock('../services/audit.service', () => ({ logEvent: vi.fn().mockResolvedValue(undefined) }));
@@ -11,10 +11,11 @@ import { AppError } from '../utils/errors';
 import { logEvent } from '../services/audit.service';
 import { notifyRecovery, notifySuperadmins } from '../services/vaultRecoveryNotify';
 import { releaseRootShare } from '../services/vaultRootKey.service';
+import { getE2eCodeB } from '../utils/vaultE2e';
 import { openServerShare, pepperStatus, verifierKey } from '../services/vault.service';
 import {
   approveRecovery, cancelRecovery, completeRecovery, confirmRecovery, createRecoveryRequest, expireRecoveryRequests, fingerprintOf,
-  getOpenRecovery, getRecovery, getRecoveryForAdmin, listRecoveriesForAdmin, rejectRecovery, releaseRecovery,
+  getOpenRecovery, getRecovery, getRecoveryForAdmin, kitRotationRequired, listRecoveriesForAdmin, rejectRecovery, releaseRecovery,
   runRecoveryJobs, sendRecoveryReminders,
 } from '../services/vaultRecovery.service';
 
@@ -217,6 +218,28 @@ describe('richiesta e approvazione', () => {
     expect(() => openSealedCodeA(args.sealedCodeA, client().privateKey)).toThrow();
   });
 
+  describe('outbox E2E di codeB', () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it('con NODE_ENV=test e VAULT_E2E=1 codeB e nell outbox appena approve risolve (prima di notify); mai senza i flag', async () => {
+      vi.stubEnv('NODE_ENV', 'test');
+      vi.stubEnv('VAULT_E2E', '');
+      mp.vaultRequest.findFirst.mockResolvedValue(pendingApprovalRow(client()));
+      await approveRecovery(ADMIN, 'req-off');
+      expect(getE2eCodeB('req-off')).toBeUndefined();
+
+      vi.stubEnv('VAULT_E2E', '1');
+      let seenAtNotify: string | undefined;
+      vi.mocked(notifyRecovery).mockImplementationOnce(async () => { seenAtNotify = getE2eCodeB('req-on'); });
+      mp.vaultRequest.findFirst.mockResolvedValue(pendingApprovalRow(client()));
+      await approveRecovery(ADMIN, 'req-on');
+      const codeB = (vi.mocked(notifyRecovery).mock.calls.at(-1) as any)[2].codeB;
+      expect(getE2eCodeB('req-on')).toBe(codeB);
+      expect(seenAtNotify).toBe(codeB);
+      expect(JSON.stringify(vi.mocked(logEvent).mock.calls)).not.toContain(codeB);
+    });
+  });
+
   it('approve: richiesta non in PENDING_APPROVAL o transizione persa -> 409, nessuna notify', async () => {
     await expect(approveRecovery(ADMIN, RID)).rejects.toMatchObject({ statusCode: 409 });
     mp.vaultRequest.findFirst.mockResolvedValue(pendingApprovalRow(client()));
@@ -242,7 +265,7 @@ describe('richiesta e approvazione', () => {
     await expect(confirmRecovery(U, RID, 'AAAAAAAA', 'BBBBBBBB')).resolves.toMatchObject({ status: 'WAITING' });
     await expect(cancelRecovery(U, RID)).resolves.toEqual({ status: 'CANCELLED' });
     const clientPub = pub();
-    mp.vaultRequest.findFirst.mockResolvedValue({ userId: U, clientEphPub: clientPub, fingerprint: fingerprintOf(clientPub), notBefore: new Date(Date.now() - 1000), user: { vaultKeyring: { epoch: 2, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1) } } });
+    mp.vaultRequest.findFirst.mockResolvedValue({ userId: U, clientEphPub: clientPub, fingerprint: fingerprintOf(clientPub), notBefore: new Date(Date.now() - 1000), user: { vaultKeyring: { epoch: 2, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1), escrowBlob: Buffer.alloc(60, 4) } } });
     (releaseRootShare as any).mockResolvedValue({ rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) });
     await expect(releaseRecovery(ADMIN, RID, 'p')).resolves.toEqual({ status: 'RELEASED' });
     expect(notifyRecovery).toHaveBeenCalledTimes(5);
@@ -347,6 +370,8 @@ describe('conferma e annullamento', () => {
     const data = mp.vaultRequest.updateMany.mock.calls[0][0].data;
     expect(data.rootShareForClient).toBeNull();
     expect(data.rootSignature).toBeNull();
+    // Il flag di rotazione Kit dipende dall'hash scritto al rilascio: nessuna transizione successiva lo tocca.
+    expect(data).not.toHaveProperty('releasedEscrowHash');
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'cancelled', { requestId: RID });
   });
 
@@ -405,6 +430,8 @@ describe('rifiuto', () => {
   });
 });
 
+const ESCROW = Buffer.alloc(60, 4);
+
 describe('rilascio', () => {
   function waitingRow(userId = U) {
     const clientPub = pub();
@@ -413,7 +440,7 @@ describe('rilascio', () => {
       clientEphPub: clientPub,
       fingerprint: fingerprintOf(clientPub),
       notBefore: new Date(Date.now() - 1000),
-      user: { vaultKeyring: { epoch: 2, rev: 5, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1) } },
+      user: { vaultKeyring: { epoch: 2, rev: 5, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1), escrowBlob: ESCROW } },
     };
   }
 
@@ -464,6 +491,30 @@ describe('rilascio', () => {
     expect(data.rootSignature).toHaveLength(64);
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'released', { requestId: RID });
     expect(notifySuperadmins).not.toHaveBeenCalled();
+  });
+
+  it('T1: il flip scrive releasedEscrowHash = sha256 hex dell escrowBlob del keyring, dentro la transazione (su tx, non su prisma)', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(waitingRow());
+    (releaseRootShare as any).mockResolvedValue({ rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) });
+    // tx separato dal mock globale: se il codice usasse prisma.* dentro la callback, tx non vedrebbe le chiamate.
+    const tx = { vaultKeyring: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) }, vaultRequest: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
+    mp.$transaction.mockImplementation(async (fn: any) => fn(tx));
+    mp.vaultRequest.updateMany.mockClear();
+    mp.vaultKeyring.updateMany.mockClear();
+    await releaseRecovery(ADMIN, RID, 'passphrase');
+    expect(tx.vaultKeyring.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.vaultRequest.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.vaultRequest.updateMany.mock.calls[0][0].data.releasedEscrowHash).toBe(crypto.createHash('sha256').update(ESCROW).digest('hex'));
+    expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('T1: escrowBlob null -> 409 recoveryStateConflict prima di releaseRootShare', async () => {
+    const row = waitingRow();
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...row, user: { vaultKeyring: { ...row.user.vaultKeyring, escrowBlob: null } } });
+    await expect(releaseRecovery(ADMIN, RID, 'p')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryStateConflict' });
+    expect(releaseRootShare).not.toHaveBeenCalled();
+    expect(mp.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('M4: release cerca e aggiorna solo richieste di tipo RECOVERY', async () => {
@@ -574,6 +625,38 @@ describe('lettura per l\'utente', () => {
     }
   });
 
+  it('T1: getRecovery legge richiesta e keyring in una transazione RepeatableRead', async () => {
+    // tx separato: la lettura deve avvenire su tx, non sul mock globale.
+    const tx = { vaultRequest: { findFirst: vi.fn().mockResolvedValue({ ...base, status: 'WAITING' }) }, vaultKeyring: { findUnique: vi.fn() } };
+    mp.$transaction.mockImplementation(async (fn: any) => fn(tx));
+    mp.vaultRequest.findFirst.mockClear();
+    mp.vaultKeyring.findUnique.mockClear();
+    await getRecovery(U, RID);
+    expect(tx.vaultRequest.findFirst).toHaveBeenCalledTimes(1);
+    expect(mp.vaultRequest.findFirst).not.toHaveBeenCalled();
+    expect(mp.vaultKeyring.findUnique).not.toHaveBeenCalled();
+    expect(mp.$transaction).toHaveBeenCalledTimes(1);
+    expect(mp.$transaction.mock.calls[0][1]).toEqual({ isolationLevel: 'RepeatableRead' });
+  });
+
+  it('T1: attemptsLeft ed expiresAt solo in PENDING_CODE, rejectReason solo in REJECTED', async () => {
+    const expiresAt = new Date(Date.now() + 3_600_000);
+    mp.notification.findFirst.mockResolvedValue(null);
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'PENDING_CODE', attempts: 2, expiresAt, rejectReason: 'x' });
+    expect(await getRecovery(U, RID)).toMatchObject({ attemptsLeft: 3, expiresAt: expiresAt.toISOString(), rejectReason: null });
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'PENDING_CODE', attempts: 9, expiresAt });
+    expect((await getRecovery(U, RID)).attemptsLeft).toBe(0);
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'REJECTED', attempts: 2, expiresAt, rejectReason: 'no grazie' });
+    expect(await getRecovery(U, RID)).toMatchObject({ attemptsLeft: null, expiresAt: null, rejectReason: 'no grazie' });
+    for (const status of ['PENDING_APPROVAL', 'WAITING', 'RELEASED', 'COMPLETED', 'CANCELLED', 'EXPIRED']) {
+      mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status, attempts: 2, expiresAt, rejectReason: 'x' });
+      expect(await getRecovery(U, RID)).toMatchObject({ attemptsLeft: null, expiresAt: null, rejectReason: null });
+    }
+    // PENDING_CODE scaduta per tempo si presenta come EXPIRED: niente campi del codice
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'PENDING_CODE', attempts: 2, expiresAt: new Date(Date.now() - 1000) });
+    expect(await getRecovery(U, RID)).toMatchObject({ status: 'EXPIRED', attemptsLeft: null, expiresAt: null });
+  });
+
   it('G9: sealedCodeA solo in PENDING_CODE, letto dalla notifica code della richiesta (filtro JSON path)', async () => {
     mp.vaultRequest.findFirst.mockResolvedValue({ ...base, status: 'PENDING_CODE' });
     mp.notification.findFirst.mockResolvedValue({ data: { event: 'code', requestId: RID, sealedCodeA: 'SEALED' } });
@@ -611,7 +694,7 @@ describe('lettura per l\'utente', () => {
 
 describe('lettura admin (nessun segreto)', () => {
   const FORBIDDEN = ['codeAHash', 'codeBHash', 'clientEphPub', 'rootShareForClient', 'rootSignature', 'codeHash', 'completedPayloadHash'];
-  const LIST_KEYS = ['approvedAt', 'approvedById', 'cancelledAt', 'completedAt', 'createdAt', 'expiresAt', 'fingerprint', 'id', 'keyringStatus', 'notBefore', 'readyForRelease', 'reason', 'rejectReason', 'releaseExpiresAt', 'releasedAt', 'releasedById', 'requestIp', 'requestUserAgent', 'rootKeyId', 'status', 'userEmail', 'userId'];
+  const LIST_KEYS = ['approvedAt', 'approvedById', 'attempts', 'cancelledAt', 'completedAt', 'createdAt', 'expiresAt', 'fingerprint', 'id', 'keyringStatus', 'notBefore', 'readyForRelease', 'reason', 'rejectReason', 'releaseExpiresAt', 'releasedAt', 'releasedById', 'requestIp', 'requestUserAgent', 'rootKeyId', 'status', 'userEmail', 'userId'];
   const secretRow = (over: Record<string, unknown> = {}) => ({
     id: RID, userId: U, type: 'RECOVERY', status: 'WAITING', fingerprint: 'FP', reason: 'forgot', requestIp: '192.0.2.1', requestUserAgent: 'ua',
     createdAt: new Date(), expiresAt: new Date(Date.now() + 7 * 24 * 3600_000), notBefore: new Date(Date.now() - 1000), approvedById: ADMIN, approvedAt: new Date(), rejectReason: null,
@@ -631,6 +714,7 @@ describe('lettura admin (nessun segreto)', () => {
     for (const k of FORBIDDEN) expect(item).not.toHaveProperty(k);
     expect(JSON.stringify(res)).not.toContain('h1');
     expect(item.readyForRelease).toBe(true);
+    expect(item.attempts).toBe(1);
     expect(item.userEmail).toBe('a@example.com');
     expect(item.keyringStatus).toBe('READY');
     expect(item.rootKeyId).toBe('rk_test');
@@ -703,6 +787,7 @@ describe('completamento', () => {
     const keyringData = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
     expect(keyringData.failedAttempts).toBe(0);
     expect(keyringData.lockedUntil).toBeNull();
+    expect(mp.vaultRequest.updateMany.mock.calls[0][0].data).not.toHaveProperty('releasedEscrowHash');
     expect(notifyRecovery).toHaveBeenCalledTimes(1);
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'completed', { requestId: RID });
 
@@ -803,6 +888,7 @@ describe('scadenze (T7)', () => {
       ['u-d', 'vault.recovery.expired', { requestId: 'd', reason: 'release' }],
     ]);
     expect(notifyRecovery).toHaveBeenCalledWith('u-a', 'expired', { requestId: 'a' });
+    for (const [arg] of mp.vaultRequest.updateMany.mock.calls) expect(arg.data).not.toHaveProperty('releasedEscrowHash');
   });
 
   it('la transizione e\' condizionata per riga (stato e scadenza letti); WAITING oltre notBefore+7g scade', async () => {
@@ -964,5 +1050,33 @@ describe('scadenza di WAITING e lettura (B2)', () => {
     mp.vaultRequest.findFirst.mockResolvedValue(null);
     await expect(releaseRecovery(ADMIN, RID, 'p')).rejects.toMatchObject({ statusCode: 409 });
     expect(mp.vaultRequest.findFirst.mock.calls[0][0].where).toMatchObject({ status: 'WAITING', expiresAt: { gt: expect.any(Date) } });
+  });
+});
+
+describe('kitRotationRequired (T1)', () => {
+  const H = 'a'.repeat(64);
+
+  it('hash null -> false senza query', async () => {
+    expect(await kitRotationRequired(U, null)).toBe(false);
+    expect(mp.vaultRequest.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('una sola findFirst con select {id} e filtro su utente, tipo, hash e stati', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue({ id: RID });
+    expect(await kitRotationRequired(U, H)).toBe(true);
+    expect(mp.vaultRequest.findFirst).toHaveBeenCalledTimes(1);
+    const q = mp.vaultRequest.findFirst.mock.calls[0][0];
+    expect(q.select).toEqual({ id: true });
+    expect(q.where).toMatchObject({ userId: U, type: 'RECOVERY', releasedEscrowHash: H });
+    const or = q.where.OR as any[];
+    expect(or).toHaveLength(2);
+    expect(or[0]).toEqual({ status: { in: ['CANCELLED', 'EXPIRED'] } });
+    expect(or[1].status).toBe('RELEASED');
+    expect(or[1].releaseExpiresAt.lte).toBeInstanceOf(Date);
+  });
+
+  it('nessuna riga corrispondente (COMPLETED, RELEASED non scaduta, hash diverso) -> false', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(null);
+    expect(await kitRotationRequired(U, H)).toBe(false);
   });
 });

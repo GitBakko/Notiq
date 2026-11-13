@@ -22,6 +22,7 @@ vi.mock('../../services/vault.service', async () => {
 
 vi.mock('../../services/vaultRecovery.service', () => ({
   getOpenRecovery: vi.fn().mockResolvedValue(null),
+  kitRotationRequired: vi.fn().mockResolvedValue(false),
   createRecoveryRequest: vi.fn(),
   getRecovery: vi.fn(),
   confirmRecovery: vi.fn(),

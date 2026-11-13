@@ -26,6 +26,7 @@ vi.mock('../../services/vaultRecovery.service', () => ({
   cancelRecovery: vi.fn(),
   completeRecovery: vi.fn(),
   getOpenRecovery: vi.fn(),
+  kitRotationRequired: vi.fn().mockResolvedValue(false),
 }));
 
 import * as vaultService from '../../services/vault.service';
@@ -119,14 +120,22 @@ describe('GET /keyring con openRecovery', () => {
     rs.getOpenRecovery.mockResolvedValue(open);
     const res = await call('GET', '/keyring');
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: 'READY', epoch: 1, openRecovery: open });
+    expect(res.json()).toEqual({ status: 'READY', epoch: 1, openRecovery: open, kitRotationRequired: false });
     expect(rs.getOpenRecovery).toHaveBeenCalledWith('user-1');
   });
 
   it('senza richiesta aperta openRecovery e null', async () => {
     vs.getKeyring.mockResolvedValue({ status: 'NONE' });
     rs.getOpenRecovery.mockResolvedValue(null);
-    expect((await call('GET', '/keyring')).json()).toEqual({ status: 'NONE', openRecovery: null });
+    expect((await call('GET', '/keyring')).json()).toEqual({ status: 'NONE', openRecovery: null, kitRotationRequired: false });
+  });
+
+  it('T1: kitRotationRequired dal service con utente ed escrowHash del keyring', async () => {
+    vs.getKeyring.mockResolvedValue({ status: 'READY', escrowHash: 'h'.repeat(64) });
+    rs.getOpenRecovery.mockResolvedValue(null);
+    rs.kitRotationRequired.mockResolvedValueOnce(true);
+    expect((await call('GET', '/keyring')).json().kitRotationRequired).toBe(true);
+    expect(rs.kitRotationRequired).toHaveBeenCalledWith('user-1', 'h'.repeat(64));
   });
 });
 
@@ -440,6 +449,32 @@ describe('H1: keyring e cancel limitati per utente+IP (un JWT rubato non azzera 
     for (let i = 0; i < 10; i++) expect(await withSid('DELETE', `/recovery/${UUID}`, 'sid-a')).toBe(200);
     expect(await withSid('DELETE', `/recovery/${UUID}`, 'sid-a')).toBe(429);
     expect(await withSid('DELETE', `/recovery/${UUID}`, 'sid-b')).toBe(200);
+  });
+  // Un JWT rubato non deve poter esaurire il limite di rotazione Kit (PUT /keyring) e di completamento: bucket per utente+sessione+IP.
+  const postSid = (method: 'PUT' | 'POST', url: string, sid: string, payload: unknown) =>
+    rl
+      .inject({
+        method,
+        url: `/api/vault${url}`,
+        headers: { authorization: `Bearer ${app.jwt.sign({ ...TEST_USER, sid })}`, 'x-forwarded-for': '203.0.113.1' },
+        payload: payload as any,
+      })
+      .then((r) => r.statusCode);
+
+  it('PUT /keyring: stesso utente e IP, sid diversi -> bucket separati (10/ora)', async () => {
+    vs.updateKeyring.mockResolvedValue({ rev: 2 });
+    const body = { payload: '{}', vkProof: b(64) };
+    for (let i = 0; i < 10; i++) expect(await postSid('PUT', '/keyring', 'sid-a', body)).toBe(200);
+    expect(await postSid('PUT', '/keyring', 'sid-a', body)).toBe(429);
+    expect(await postSid('PUT', '/keyring', 'sid-b', body)).toBe(200);
+  });
+
+  it('POST /recovery/:id/complete: stesso utente e IP, sid diversi -> bucket separati (10/ora)', async () => {
+    rs.completeRecovery.mockResolvedValue({ status: 'COMPLETED', idempotent: false });
+    const body = { payload: '{}', vkProof: b(64) };
+    for (let i = 0; i < 10; i++) expect(await postSid('POST', `/recovery/${UUID}/complete`, 'sid-a', body)).toBe(200);
+    expect(await postSid('POST', `/recovery/${UUID}/complete`, 'sid-a', body)).toBe(429);
+    expect(await postSid('POST', `/recovery/${UUID}/complete`, 'sid-b', body)).toBe(200);
   });
 });
 

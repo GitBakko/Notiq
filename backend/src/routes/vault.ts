@@ -6,6 +6,8 @@ import { clientIpKey } from '../utils/clientIpKey';
 import * as vaultService from '../services/vault.service';
 import { b64url, pepperStatus, KDF_T_MIN } from '../services/vault.service';
 import * as recoveryService from '../services/vaultRecovery.service';
+import { isVaultE2E } from '../utils/vaultE2e';
+import vaultE2eRoutes from './vaultE2e';
 
 const bytes = (v: string) => Buffer.from(v, 'base64url');
 
@@ -73,7 +75,7 @@ function assertP256(der: Buffer) {
 }
 
 // Per-utente (non per IP spoofabile via X-Forwarded-For); fase onRequest di default: dopo authenticate (hook di istanza), prima del parsing del body.
-// perIp: chiave utente+sessione(sid del JWT)+IP per le sole route che la vittima di un JWT rubato deve poter usare (banner, annullo): un bucket condiviso le farebbe esaurire da fuori.
+// perIp: chiave utente+sessione(sid del JWT)+IP per le sole route che la vittima di un JWT rubato deve poter usare (banner, annullo, rotazione Kit, completamento): un bucket condiviso le farebbe esaurire da fuori.
 const limit = (max: number, timeWindow: string, perIp = false) => ({
   config: {
     rateLimit: { max, timeWindow, keyGenerator: (req: FastifyRequest) => (perIp ? `${req.user.id}:${req.user.sid ?? ''}:${clientIpKey(req)}` : req.user.id) },
@@ -101,7 +103,11 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
 
   fastify.get('/keyring', limit(60, '1 minute', true), async (request) => {
     const keyring = await vaultService.getKeyring(request.user.id);
-    return { ...keyring, openRecovery: await recoveryService.getOpenRecovery(request.user.id) };
+    return {
+      ...keyring,
+      openRecovery: await recoveryService.getOpenRecovery(request.user.id),
+      kitRotationRequired: await recoveryService.kitRotationRequired(request.user.id, keyring.escrowHash),
+    };
   });
 
   fastify.post('/keyring', limit(5, '1 hour'), async (request, reply) => {
@@ -133,7 +139,7 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
     return { serverShare: serverShare.toString('base64url') };
   });
 
-  fastify.put('/keyring', limit(10, '1 hour'), async (request) => {
+  fastify.put('/keyring', limit(10, '1 hour', true), async (request) => {
     const b = parse(updateSchema, request.body);
     return vaultService.updateKeyring(request.user.id, b.payload, bytes(b.vkProof));
   });
@@ -177,9 +183,14 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
     return recoveryService.cancelRecovery(request.user.id, id);
   });
 
-  fastify.post('/recovery/:id/complete', limit(10, '1 hour'), async (request) => {
+  fastify.post('/recovery/:id/complete', limit(10, '1 hour', true), async (request) => {
     const { id } = parse(recoveryIdSchema, request.params);
     const b = parse(recoveryCompleteSchema, request.body);
     return recoveryService.completeRecovery(request.user.id, id, b.payload, bytes(b.vkProof));
   });
+
+  if (isVaultE2E()) {
+    fastify.log.warn('vault E2E hooks enabled: never in production');
+    await fastify.register(vaultE2eRoutes);
+  }
 }

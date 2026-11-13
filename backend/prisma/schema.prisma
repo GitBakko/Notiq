@@ -854,6 +854,7 @@ model VaultRequest {
   releasedById         String?
   releasedAt           DateTime?
   releaseExpiresAt     DateTime?
+  releasedEscrowHash   String?   // hash dell'escrow al rilascio: segnale di rotazione del Kit dopo CANCELLED/EXPIRED
   rootShareForClient   Bytes?
   rootSignature        Bytes?
   reason               String?
