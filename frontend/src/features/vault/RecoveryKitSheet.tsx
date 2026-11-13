@@ -14,6 +14,8 @@ interface Props {
   /** S_user (20 B), restituito da setup/regenerateKit DOPO la risposta 2xx. Questo componente lo azzera con fill(0). */
   kit: Uint8Array;
   userId: string;
+  /** escrowHash restituito da setup/regenerateKit/completeRecovery: chiave del marker `kit` che confirmKit cancella (ne esiste uno per escrow). */
+  escrowHash: string;
   /** Chiamato dopo la conferma dei 2 gruppi (marker `pending{kit}` cancellato). */
   onDone: () => void;
 }
@@ -33,7 +35,7 @@ function pickGroups(): [number, number] {
  * Cerimonia del Kit (piano 5.4): mostra il Kit, PDF e copia, e chiede di riscrivere 2 gruppi a caso.
  * Non si chiude senza: niente Esc, niente click sullo sfondo. Il Kit vive solo nello stato del componente.
  */
-export default function RecoveryKitSheet({ kit, userId, onDone }: Props) {
+export default function RecoveryKitSheet({ kit, userId, escrowHash, onDone }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const pdfUrl = useRef<string | null>(null);
@@ -91,7 +93,7 @@ export default function RecoveryKitSheet({ kit, userId, onDone }: Props) {
     if (!allOk || busy) return;
     setBusy(true);
     try {
-      await confirmKit(userId);
+      await confirmKit(userId, escrowHash);
     } catch {
       // Il marker pending{kit} sopravvive: restare aperti permette di riprovare invece di dichiarare confermato un Kit che non lo e'.
       toast.error(t('errors.common.unknownError'));

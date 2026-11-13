@@ -26,7 +26,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe('RecoveryKitSheet', () => {
   it('dialog modale; mostra il Kit; Fine disabilitato finche i 2 gruppi non sono corretti', () => {
     const kit = mkKit();
-    render(<RecoveryKitSheet kit={kit} userId="u1" onDone={() => {}} />);
+    render(<RecoveryKitSheet escrowHash="h1" kit={kit} userId="u1" onDone={() => {}} />);
     const dlg = screen.getByRole('dialog');
     expect(dlg.getAttribute('aria-modal')).toBe('true');
     expect(screen.getByLabelText('vault.kit.codeLabel').textContent).toBe(formatKit(kit));
@@ -46,7 +46,7 @@ describe('RecoveryKitSheet', () => {
 
   it('Esc e click sullo sfondo non chiudono (nessuna onDone)', () => {
     const onDone = vi.fn();
-    const { container } = render(<RecoveryKitSheet kit={mkKit()} userId="u1" onDone={onDone} />);
+    const { container } = render(<RecoveryKitSheet escrowHash="h1" kit={mkKit()} userId="u1" onDone={onDone} />);
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(container.firstChild as Element);
     expect(onDone).not.toHaveBeenCalled();
@@ -55,7 +55,7 @@ describe('RecoveryKitSheet', () => {
   it('Fine: confirmKit(userId), fill(0) del Kit, revoke dell URL del PDF, poi onDone', async () => {
     const kit = mkKit();
     const onDone = vi.fn();
-    render(<RecoveryKitSheet kit={kit} userId="u1" onDone={onDone} />);
+    render(<RecoveryKitSheet escrowHash="h1" kit={kit} userId="u1" onDone={onDone} />);
     fireEvent.click(screen.getByText('vault.kit.downloadPdf'));
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     const [g0, g1] = groupsOf(kit);
@@ -64,14 +64,14 @@ describe('RecoveryKitSheet', () => {
     fireEvent.change(i1, { target: { value: g1 } });
     fireEvent.click(screen.getByText('vault.kit.done'));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(confirmKit).toHaveBeenCalledWith('u1');
+    expect(confirmKit).toHaveBeenCalledWith('u1', 'h1'); // solo il marker di quell'escrow
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:kit');
     expect(kit.every((b) => b === 0)).toBe(true);
   });
 
   it('unmount senza conferma: URL revocato, Kit azzerato, confirmKit NON chiamato (il marker resta)', () => {
     const kit = mkKit();
-    const { unmount } = render(<RecoveryKitSheet kit={kit} userId="u1" onDone={() => {}} />);
+    const { unmount } = render(<RecoveryKitSheet escrowHash="h1" kit={kit} userId="u1" onDone={() => {}} />);
     fireEvent.click(screen.getByText('vault.kit.downloadPdf'));
     unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:kit');
@@ -83,7 +83,7 @@ describe('RecoveryKitSheet', () => {
     const kit = mkKit();
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    render(<RecoveryKitSheet kit={kit} userId="u1" onDone={() => {}} />);
+    render(<RecoveryKitSheet escrowHash="h1" kit={kit} userId="u1" onDone={() => {}} />);
     fireEvent.click(screen.getByText('vault.kit.copy'));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(formatKit(kit)));
   });
@@ -92,7 +92,7 @@ describe('RecoveryKitSheet', () => {
     vi.mocked(confirmKit).mockRejectedValueOnce(new Error('idb'));
     const kit = mkKit();
     const onDone = vi.fn();
-    render(<RecoveryKitSheet kit={kit} userId="u1" onDone={onDone} />);
+    render(<RecoveryKitSheet escrowHash="h1" kit={kit} userId="u1" onDone={onDone} />);
     const [g0, g1] = groupsOf(kit);
     const [i0, i1] = screen.getAllByRole('textbox') as HTMLInputElement[];
     fireEvent.change(i0, { target: { value: g0 } });
@@ -108,7 +108,7 @@ describe('RecoveryKitSheet', () => {
   it('keep-alive: touchVault ogni 60 s; stop allo smontaggio', () => {
     vi.useFakeTimers();
     const touchVault = vi.spyOn(useVaultStore.getState(), 'touchVault'); // vault bloccato: state stabile, touch e no-op
-    const { unmount } = render(<RecoveryKitSheet kit={mkKit()} userId="u1" onDone={() => {}} />);
+    const { unmount } = render(<RecoveryKitSheet escrowHash="h1" kit={mkKit()} userId="u1" onDone={() => {}} />);
     act(() => { vi.advanceTimersByTime(61_000); });
     expect(touchVault).toHaveBeenCalledTimes(1);
     unmount();
@@ -122,7 +122,7 @@ describe('RecoveryKitSheet', () => {
     const kit = mkKit();
     function Parent() { // come in VaultPage: il foglio si smonta quando il vault si blocca
       const unlocked = useVaultStore((s) => s.isUnlocked);
-      return unlocked ? <RecoveryKitSheet kit={kit} userId="u1" onDone={() => {}} /> : null;
+      return unlocked ? <RecoveryKitSheet escrowHash="h1" kit={kit} userId="u1" onDone={() => {}} /> : null;
     }
     act(() => { useVaultStore.getState().unlock('u1', {} as VaultKeys, 1); });
     render(<Parent />);

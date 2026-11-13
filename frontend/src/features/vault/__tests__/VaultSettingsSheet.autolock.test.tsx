@@ -32,7 +32,7 @@ describe('VaultSettingsSheet: cerimonia del Kit e auto-lock', () => {
   });
 
   const startCeremony = async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7) });
+    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText('vault.settings.kitPin'), { target: { value: 'old111' } });
     await act(async () => { fireEvent.click(screen.getByText('vault.settings.kitButton')); });

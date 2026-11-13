@@ -13,6 +13,10 @@ export function reset() {
 type Handler = (() => void) | null;
 interface Req<T> { result: T; error: Error | null; onsuccess: Handler; onerror: Handler }
 
+interface Range { lower: string; upper: string }
+const keysIn = (data: Map<string, unknown>, k: string | Range) =>
+  typeof k === 'string' ? (data.has(k) ? [k] : []) : [...data.keys()].filter((key) => key >= k.lower && key <= k.upper);
+
 function makeDb() {
   const db = {
     objectStoreNames: { contains: (n: string) => stores.has(n) },
@@ -62,7 +66,9 @@ function makeDb() {
             data.set(k, structuredClone(v));
             return k;
           }, true),
-          delete: (k: string) => op(() => { data.delete(k); return undefined; }, true),
+          // `k` puo' essere un range (come IDBKeyRange.bound): cancella tutte le chiavi comprese
+          delete: (k: string | Range) => op(() => { for (const key of keysIn(data, k)) data.delete(key); return undefined; }, true),
+          getAll: (range: Range) => op(() => keysIn(data, range).map((key) => structuredClone(data.get(key)))),
         }),
       };
     },
@@ -71,6 +77,7 @@ function makeDb() {
 }
 
 export function installFakeIndexedDb() {
+  (globalThis as unknown as { IDBKeyRange: unknown }).IDBKeyRange = { bound: (lower: string, upper: string) => ({ lower, upper }) };
   (globalThis as unknown as { indexedDB: unknown }).indexedDB = {
     open() {
       const db = makeDb();

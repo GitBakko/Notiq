@@ -26,8 +26,8 @@ interface Props {
   resume?: boolean;
   /** Serve solo al setup: il resume (keyring gia' READY) non lo usa. */
   rootKey?: RootKeyInfo;
-  /** Cerimonia del Kit (RecoveryKitSheet, T16). Il wizard chiama confirmKit() e azzera il Kit quando riceve onConfirmed. */
-  renderKit: (kit: Uint8Array, onConfirmed: () => void) => ReactNode;
+  /** Cerimonia del Kit (RecoveryKitSheet, T16). Il wizard chiama confirmKit(userId, escrowHash) e azzera il Kit quando riceve onConfirmed. */
+  renderKit: (kit: Uint8Array, escrowHash: string, onConfirmed: () => void) => ReactNode;
   onDone: () => void;
 }
 
@@ -100,6 +100,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
   const [step, setStep] = useState<Stage>('flush');
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
   const [kit, setKit] = useState<Uint8Array | null>(null);
+  const [kitHash, setKitHash] = useState('');
   const [result, setResult] = useState<MigrationResult | null>(null);
   const [closeRes, setCloseRes] = useState<ReconcileResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -230,6 +231,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
           return;
         }
         setPin(''); setPin2(''); setPassword('');
+        setKitHash(r.escrowHash);
         setKit(r.kit);
         setPhase('kit');
       } catch (err) {
@@ -243,7 +245,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
   };
 
   const onKitConfirmed = async () => {
-    await confirmKit(userId).catch(() => {});
+    await confirmKit(userId, kitHash).catch(() => {});
     kit?.fill(0);
     setKit(null);
     void runMigrate();
@@ -353,7 +355,7 @@ export default function VaultMigrate({ userId, resume = false, rootKey, renderKi
           </form>
         )}
 
-        {phase === 'kit' && kit && renderKit(kit, onKitConfirmed)}
+        {phase === 'kit' && kit && renderKit(kit, kitHash, onKitConfirmed)}
 
         {phase === 'error' && (
           <div className="space-y-4 text-center">

@@ -11,7 +11,7 @@ const h = vi.hoisted(() => {
     localStorage: { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) },
   });
   (globalThis as unknown as { window: unknown }).window = win;
-  return { server: null as unknown as FakeServer };
+  return { server: null as unknown as FakeServer, apiRequest: vi.fn() };
 });
 
 // ---- mock: rete, cache SW, Argon2 (veloce e deterministico), authStore
@@ -21,6 +21,8 @@ vi.mock('../vaultApi', () => ({
   unlock: (a: string) => h.server.unlock(a),
   updateKeyring: (p: string, v: string) => h.server.updateKeyring(p, v),
 }));
+// rete vera sotto la vaultApi VERA (importActual): serve ai test sulla guardia di forma delle risposte 2xx
+vi.mock('../api', () => ({ default: { request: (...a: unknown[]) => h.apiRequest(...a) } }));
 vi.mock('../apiCache', () => ({ purgeApiCache: vi.fn(async () => {}), purgeVaultCache: vi.fn(async () => {}) }));
 vi.mock('../../utils/argon2', async (orig) => {
   const real = await orig<typeof import('../../utils/argon2')>();
@@ -40,7 +42,7 @@ import { useVaultStore } from '../../store/vaultStore';
 import { useAuthStore } from '../../store/authStore';
 import { purgeApiCache } from '../apiCache';
 import { DEFAULT_KDF, deriveS } from '../../utils/argon2';
-import { getPending, getShare } from '../deviceKeyStore';
+import { getShare } from '../deviceKeyStore';
 import { b64uDecode, b64uEncode, deriveAuthKey, deriveKekPin, sha256hex, sha256hexBytes, unwrapVkPin } from '../../utils/vaultCrypto';
 
 const U = 'u1';
@@ -57,15 +59,17 @@ interface CreateBody {
   serverShare: string; vkSigPub: string; wrappedVkSigKey: string; escrowBlob: string; rootKeyId: string; sealedRootShare: string;
   userShareUnderVk: string; password: string; kdf: string;
 }
-const apiErr = (status: number, key = 'errors.vault.x') =>
-  Object.assign(new Error(key), { name: 'VaultApiError', status, key, kind: 'x' });
+/** `fromServer` false = risposta senza body errors.* (proxy IIS/ARR): un 503 cosi' non e' un rifiuto del vault. */
+const apiErr = (status: number, key = 'errors.vault.x', fromServer = true) =>
+  Object.assign(new Error(key), { name: 'VaultApiError', status, key, kind: 'x', fromServer });
 
 class FakeServer {
   row: (CreateBody & { epoch: number; rev: number }) | null = null;
   lockedUntil: string | null = null;
   createError: unknown = null;
-  /** 'applyThen409': applica e poi risponde 409; 'bumpThen409': un altro device alza rev, 409 una volta; 'plain409': 409 senza applicare */
-  putMode: 'ok' | 'applyThen409' | 'bumpThen409' | 'plain409' = 'ok';
+  /** 'applyThen409': applica e poi risponde 409; 'bumpThen409': un altro device alza rev, 409 una volta; 'plain409': 409 senza applicare;
+   *  'recoveryThen409': un recupero completato altrove ruota serverShare e authKey, alza rev, 409 */
+  putMode: 'ok' | 'applyThen409' | 'bumpThen409' | 'plain409' | 'recoveryThen409' = 'ok';
   unlockError: unknown = null;
   unlockCalls = 0;
   puts: string[] = [];
@@ -104,6 +108,10 @@ class FakeServer {
     const ok = verify('sha256', Buffer.from(msg), { key: Buffer.from(r.vkSigPub, 'base64url'), format: 'der', type: 'spki', dsaEncoding: 'ieee-p1363' }, Buffer.from(proof, 'base64url'));
     if (!ok) throw apiErr(400, 'errors.vault.invalidProof');
     if (this.putMode === 'plain409') throw apiErr(409, 'errors.vault.staleRev');
+    if (this.putMode === 'recoveryThen409') {
+      r.rev++; r.serverShare = b64uEncode(new Uint8Array(32).fill(7)); r.authKey = b64uEncode(new Uint8Array(32).fill(9)); r.wrappedVkPin = b64uEncode(new Uint8Array(60).fill(5)); this.putMode = 'ok';
+      throw apiErr(409, 'errors.vault.staleRev');
+    }
     if (this.putMode === 'bumpThen409') { r.rev++; this.putMode = 'ok'; throw apiErr(409, 'errors.vault.staleRev'); }
     if (p.rev !== r.rev) throw apiErr(409, 'errors.vault.staleRev');
     Object.assign(r, p.wrap ?? {}, p.escrow ?? {});
@@ -132,18 +140,27 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+/** escrowHash dell'ultimo setup riuscito: serve a confirmKit(userId, escrowHash). */
+let lastHash = '';
 async function doSetup(over: Partial<Parameters<typeof session.setup>[0]> = {}) {
   const r = await session.setup({ ...baseArgs, offlineUnlock: true, ...over });
   if (!r.ok) throw new Error('setup non riuscito');
+  lastHash = r.escrowHash;
   return r.kit;
 }
+/** Marker kit (uno per escrow, chiave <userId>:kit:<hash>) letti dallo store raw. */
+const kitMarkers = () => [...raw('pending').entries()].filter(([k]) => k.startsWith(U + ':kit:')).map(([, v]) => v as Record<string, unknown>);
+const putKit = (hash: string, o: Record<string, unknown> = {}) =>
+  raw('pending').set(`${U}:kit:${hash}`, { kind: 'kit', escrowHash: hash, epoch: 0, rev: 0, origin: 'regenerate', ...o });
+const putPin = (hash: string) => raw('pending').set(U + ':pin', { kind: 'pin', rev: 0, wrappedVkPinHash: hash });
 
 describe('setup', () => {
   it('marker salvato prima della POST; 201 -> cache, share, unlock, purge, Kit dopo il 201', async () => {
     let markerAtPost: unknown = null;
-    h.server.onCreate = () => { markerAtPost = raw('pending').get(U + ':kit'); };
+    h.server.onCreate = () => { markerAtPost = kitMarkers()[0]; };
     const kit = await doSetup();
-    expect(markerAtPost).toMatchObject({ kind: 'kit', confirmed: false });
+    // setup: rev null (committa solo da NONE), nessun createdAt/confirmed
+    expect(markerAtPost).toEqual({ kind: 'kit', escrowHash: lastHash, epoch: 0, rev: null, origin: 'setup' });
     expect(kit).toHaveLength(20);
     expect(st().byUser[U]).toMatchObject({ status: 'READY', epoch: 0, rev: 0, offlineUnlock: true, rootKeyId: ROOT.id });
     expect(st().byUser[U].wrappedVkPin).toBeDefined();
@@ -152,8 +169,8 @@ describe('setup', () => {
     expect(await getShare(U)).toMatchObject({ epoch: 0 });
     expect(purgeApiCache).toHaveBeenCalled();
     // il marker resta finche' l'utente non conferma i 2 gruppi
-    expect(await getPending(U, 'kit')).toMatchObject({ kind: 'kit' });
-    await session.confirmKit(U);
+    expect(kitMarkers()).toHaveLength(1);
+    await session.confirmKit(U, lastHash);
     expect(raw('pending').size).toBe(0);
   });
 
@@ -161,7 +178,8 @@ describe('setup', () => {
     await doSetup();
     const blob = Buffer.from(h.server.row!.escrowBlob, 'base64url');
     expect(blob).toHaveLength(60);
-    expect(raw('pending').get(U + ':kit')).toMatchObject({ escrowHash: createHash('sha256').update(blob).digest('hex') });
+    expect(kitMarkers()[0]).toMatchObject({ escrowHash: createHash('sha256').update(blob).digest('hex') });
+    expect(lastHash).toBe(createHash('sha256').update(blob).digest('hex')); // setup restituisce anche l'hash
   });
 
   it('vettore escrowHash condiviso col backend', async () => {
@@ -209,6 +227,46 @@ describe('setup', () => {
     expect(n).toBeGreaterThanOrEqual(2);
     expect(raw('pending').size).toBe(0);
     expect(st().keys).toBeNull();
+  });
+
+  it('409 con keyring gia\' il NOSTRO (POST committata, risposta persa, ritentata): il marker resta e il setup riesce con Kit (item 6)', async () => {
+    const apply = h.server.createKeyring.bind(h.server);
+    h.server.createKeyring = async (b: CreateBody) => { await apply(b); throw apiErr(409, 'errors.vault.alreadySetup'); };
+    const r = await session.setup({ ...baseArgs });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(kitMarkers().map((m) => m.escrowHash)).toEqual([r.escrowHash]);
+    expect(st().byUser[U].rev).toBe(h.server.row!.rev);
+    expect(st().keys).not.toBeNull();
+    expect(await session.checkPendingOnStart(U)).toBe('kitUnconfirmed');
+  });
+
+  it('409 con keyring di un ALTRO escrow: il marker si cancella e non c\'e\' Kit (item 6)', async () => {
+    h.server.createKeyring = async (b: CreateBody) => {
+      h.server.row = { ...b, epoch: b.expectedEpoch, rev: 0, escrowBlob: b64uEncode(new Uint8Array(60).fill(3)) };
+      throw apiErr(409, 'errors.vault.alreadySetup');
+    };
+    const r = await session.setup({ ...baseArgs });
+    expect(r).toEqual({ ok: false, reason: 'alreadySetup' });
+    expect(kitMarkers()).toHaveLength(0);
+  });
+
+  it('409 con la GET del keyring fallita: il marker NON si cancella senza confronto; al riavvio col keyring nostro -> kitUnconfirmed', async () => {
+    const apply = h.server.createKeyring.bind(h.server);
+    h.server.createKeyring = async (b: CreateBody) => { await apply(b); throw apiErr(409, 'errors.vault.alreadySetup'); };
+    const get = h.server.getKeyring.bind(h.server);
+    h.server.onCreate = () => { h.server.getKeyring = async () => { throw new Error('network'); }; }; // dopo la POST ogni GET fallisce
+    const r = await session.setup({ ...baseArgs });
+    expect(r).toEqual({ ok: false, reason: 'alreadySetup' });
+    expect(kitMarkers()).toHaveLength(1);
+    h.server.getKeyring = get;
+    expect(await session.checkPendingOnStart(U)).toBe('kitUnconfirmed');
+  });
+
+  it('503 senza body del vault (proxy) al setup: ambiguo, il marker resta (item 5)', async () => {
+    h.server.createError = apiErr(503, 'errors.common.unknownError', false);
+    await expect(session.setup({ ...baseArgs })).rejects.toMatchObject({ status: 503 });
+    expect(kitMarkers()).toHaveLength(1);
   });
 
   it.each([[400], [403], [503]])('%i -> marker pending{kit} cancellato subito (store raw)', async (status) => {
@@ -409,7 +467,7 @@ describe('sblocco offline e interruttore', () => {
 describe('cambio PIN', () => {
   beforeEach(async () => {
     await doSetup();
-    await session.confirmKit(U);
+    await session.confirmKit(U, lastHash);
   });
 
   it('nuovo PIN attivo, vecchio no; wrap con DEFAULT_KDF; pending senza authKey ne\' payload; firma valida', async () => {
@@ -435,7 +493,8 @@ describe('cambio PIN', () => {
     let marker: Record<string, unknown> = {};
     h.server.onPut = () => { marker = raw('pending').get(U + ':pin') as Record<string, unknown>; };
     await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 });
-    expect(Object.keys(marker).sort()).toEqual(['kind', 'rev', 'wrappedVkPinHash']);
+    expect(Object.keys(marker).sort()).toEqual(['epoch', 'kind', 'rev', 'wrappedVkPinHash']);
+    expect(marker).toMatchObject({ epoch: 0, rev: 0 });
     const sent = JSON.parse(h.server.puts[0]).wrap.wrappedVkPin as string;
     expect(marker.wrappedVkPinHash).toBe(createHash('sha256').update(Buffer.from(sent, 'base64url')).digest('hex'));
   });
@@ -450,9 +509,9 @@ describe('cambio PIN', () => {
   });
 
   it('Kit non confermato + changePin: il marker kit resta, quello pin si cancella', async () => {
-    raw('pending').set(U + ':kit', { kind: 'kit', escrowHash: 'aa', confirmed: false });
+    putKit('aa');
     await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 });
-    expect(raw('pending').has(U + ':kit')).toBe(true);
+    expect(raw('pending').has(U + ':kit:aa')).toBe(true);
     expect(raw('pending').has(U + ':pin')).toBe(false);
   });
 
@@ -496,6 +555,34 @@ describe('cambio PIN', () => {
     await session.unlockOnline(U, PIN2);
   });
 
+  it('409 staleRev (epoch e wrappedVkPin invariati): il wrap si ricostruisce col serverShare in memoria, senza un secondo /unlock', async () => {
+    h.server.putMode = 'bumpThen409';
+    const before = h.server.unlockCalls;
+    await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 });
+    expect(h.server.unlockCalls - before).toBe(1); // solo l'apertura iniziale: un tentativo in meno contro il lockout
+    await st().lockVault();
+    await session.unlockOnline(U, PIN2); // il wrap ricostruito vale
+    expect(h.server.puts.map((p) => JSON.parse(p).rev)).toEqual([0, 1]);
+    expect(st().byUser[U].rev).toBe(2);
+    expect(raw('pending').size).toBe(0);
+  });
+
+  it('409 staleRev dopo un recupero altrove (wrappedVkPin cambiato): pinChangedElsewhere, 0 chiamate /unlock dopo il 409, nulla scritto', async () => {
+    h.server.putMode = 'recoveryThen409';
+    const rowBefore = { ...h.server.row! };
+    const before = h.server.unlockCalls;
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({
+      code: 'pinChangedElsewhere', key: 'errors.vault.pinChangedElsewhere',
+    });
+    expect(h.server.unlockCalls - before).toBe(1); // solo l'apertura iniziale
+    expect(h.server.puts).toHaveLength(1); // solo la PUT che ha ricevuto il 409
+    const r = h.server.row!;
+    expect(r.wrappedVkPin).toBe(b64uEncode(new Uint8Array(60).fill(5))); // quello del recupero, non toccato da noi
+    expect(r.pinSalt).toBe(rowBefore.pinSalt);
+    expect(raw('pending').size).toBe(0);
+    expect(st().byUser[U].rev).toBe(0);
+  });
+
   it('409 persistente: errore, pending cancellato (rifiuto definitivo)', async () => {
     h.server.putMode = 'plain409';
     await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ status: 409 });
@@ -507,6 +594,43 @@ describe('cambio PIN', () => {
     h.server.updateKeyring = async () => { throw apiErr(503, 'errors.vault.pepperMismatch'); };
     await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ key: 'errors.vault.pepperMismatch' });
     expect(raw('pending').size).toBe(0);
+  });
+
+  // item 4: il marker pin e' a slot unico, si cancella solo se e' ancora il nostro (compare-and-delete per hash)
+  describe('un changePin concorrente (altra scheda) non perde il suo marker', () => {
+    const OTHER_PIN_HASH = 'cd'.repeat(32);
+    const steal = () => { h.server.onPut = () => putPin(OTHER_PIN_HASH); }; // l'altra scheda scrive il proprio marker dopo il nostro
+    const otherIntact = () => expect(raw('pending').get(U + ':pin')).toMatchObject({ wrappedVkPinHash: OTHER_PIN_HASH });
+
+    it('200', async () => {
+      steal();
+      await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 });
+      otherIntact();
+    });
+    it('409 con il nostro wrap gia\' applicato', async () => {
+      steal();
+      h.server.putMode = 'applyThen409';
+      await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 });
+      otherIntact();
+    });
+    it('409 con wrap cambiato altrove (pinChangedElsewhere)', async () => {
+      steal();
+      h.server.putMode = 'recoveryThen409';
+      await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ code: 'pinChangedElsewhere' });
+      otherIntact();
+    });
+    it('rifiuto definitivo (400)', async () => {
+      steal();
+      h.server.updateKeyring = async () => { h.server.onPut?.(); throw apiErr(400); };
+      await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ status: 400 });
+      otherIntact();
+    });
+  });
+
+  it('503 senza body del vault (proxy): ambiguo, il marker pin resta (item 5)', async () => {
+    h.server.updateKeyring = async () => { throw apiErr(503, 'errors.common.unknownError', false); };
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ status: 503 });
+    expect(raw('pending').has(U + ':pin')).toBe(true);
   });
 
   it('PIN attuale errato -> wrongPin, nessun PUT; da bloccato -> vaultLocked', async () => {
@@ -522,7 +646,7 @@ describe('allineamento cache al keyring del server (J.6)', () => {
   let stale: Cache;
   beforeEach(async () => {
     await doSetup();
-    await session.confirmKit(U);
+    await session.confirmKit(U, lastHash);
     stale = structuredClone(st().byUser[U]);
     await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 }); // "altro dispositivo": il server ha il nuovo wrap
     await st().lockVault();
@@ -568,18 +692,21 @@ describe('allineamento cache al keyring del server (J.6)', () => {
 describe('rigenerazione del Kit', () => {
   beforeEach(async () => {
     await doSetup();
-    await session.confirmKit(U);
+    await session.confirmKit(U, lastHash);
   });
 
   it('PUT prima: il Kit esce solo dopo il 200; marker con il nuovo escrowHash', async () => {
     const before = h.server.row!.escrowBlob;
     let markerAtPut: unknown = null;
-    h.server.onPut = () => { markerAtPut = raw('pending').get(U + ':kit'); };
-    const { kit } = await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT });
+    h.server.onPut = () => { markerAtPut = kitMarkers()[0]; };
+    const { kit, escrowHash } = await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT });
     expect(kit).toHaveLength(20);
     expect(h.server.puts).toHaveLength(1);
     expect(h.server.row!.escrowBlob).not.toBe(before);
-    expect(markerAtPut).toMatchObject({ kind: 'kit', escrowHash: createHash('sha256').update(Buffer.from(h.server.row!.escrowBlob, 'base64url')).digest('hex') });
+    const hash = createHash('sha256').update(Buffer.from(h.server.row!.escrowBlob, 'base64url')).digest('hex');
+    expect(escrowHash).toBe(hash);
+    // (epoch, rev) del keyring su cui e' costruita la richiesta: dopo il PUT il server li supera
+    expect(markerAtPut).toEqual({ kind: 'kit', escrowHash: hash, epoch: 0, rev: 0, origin: 'regenerate' });
     expect(st().byUser[U].rev).toBe(1);
   });
 
@@ -597,6 +724,52 @@ describe('rigenerazione del Kit', () => {
     expect(raw('pending').size).toBe(0);
   });
 
+  // MAJOR 1 (§10.2): un marker `recovery` di un altro escrow (H1) non e' di nessuno di questi flussi
+  describe('non toccano il marker recovery di un altro escrow', () => {
+    const H1 = 'a1'.repeat(32);
+    beforeEach(() => putKit(H1, { origin: 'recovery', requestId: 'r1', rev: 0 }));
+    const intact = () => expect(kitMarkers().map((m) => m.escrowHash)).toContain(H1);
+
+    it('200', async () => {
+      await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT });
+      intact();
+      expect(kitMarkers()).toHaveLength(2); // H1 + il proprio, ancora non confermato
+    });
+    it('409 con hash diverso', async () => {
+      h.server.putMode = 'plain409';
+      await expect(session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject({ code: 'kitNotUpdated' });
+      intact();
+      expect(kitMarkers()).toHaveLength(1); // solo il proprio e' stato cancellato
+    });
+    it('rifiuto definitivo (400)', async () => {
+      h.server.updateKeyring = async () => { throw apiErr(400); };
+      await expect(session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject({ status: 400 });
+      intact();
+      expect(kitMarkers()).toHaveLength(1);
+    });
+    it('errore di rete: il proprio marker resta, H1 pure', async () => {
+      h.server.updateKeyring = async () => { throw apiErr(0); };
+      await expect(session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject({ status: 0 });
+      intact();
+      expect(kitMarkers()).toHaveLength(2);
+    });
+    it('confirmKit(u, h2) cancella solo h2', async () => {
+      const { escrowHash } = await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT });
+      await session.confirmKit(U, escrowHash);
+      intact();
+      expect(kitMarkers()).toHaveLength(1);
+    });
+  });
+
+  // N5 (item 5): PUT committato + 503 di proxy (senza body del vault) = esito ambiguo, il marker resta
+  it('N5: PUT committato e 503 senza body: il marker resta e al riavvio compare kitUnconfirmed', async () => {
+    const orig = h.server.updateKeyring.bind(h.server);
+    h.server.updateKeyring = async (p: string, v: string) => { await orig(p, v); throw apiErr(503, 'errors.common.unknownError', false); };
+    await expect(session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject({ status: 503 });
+    expect(kitMarkers()).toHaveLength(1);
+    expect(await session.checkPendingOnStart(U)).toBe('kitUnconfirmed');
+  });
+
   it('da bloccato non esiste; PIN errato -> wrongPin, nessun PUT', async () => {
     await expect(session.regenerateKit({ userId: U, pin: PIN2, rootKey: ROOT })).rejects.toMatchObject({ code: 'wrongPin' });
     expect(h.server.puts).toHaveLength(0);
@@ -605,45 +778,242 @@ describe('rigenerazione del Kit', () => {
   });
 });
 
-describe('marker al riavvio', () => {
-  it('kit non confermato + GET uguale -> banner, il marker resta; diverso -> cancellato in silenzio', async () => {
+describe('marker al riavvio (resolver: una GET /keyring, morte decisa da (epoch, rev))', () => {
+  const HX = 'ee'.repeat(32); // un hash che non e' mai quello del keyring
+  const outcome = () => session.checkPendingOnStart(U);
+
+  it('kit nuovo: hash uguale -> kitUnconfirmed e il marker resta; il banner non cambia dopo regenerateKit', async () => {
     await doSetup();
-    expect(await session.checkPendingOnStart(U)).toBe('kitUnconfirmed');
-    expect(raw('pending').size).toBe(1);
-    h.server.escrowOverride = 'ff'.repeat(32);
-    expect(await session.checkPendingOnStart(U)).toBe('none');
-    expect(raw('pending').size).toBe(0);
+    expect(await outcome()).toBe('kitUnconfirmed');
+    expect(kitMarkers()).toHaveLength(1);
+    await session.confirmKit(U, lastHash);
+    await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT });
+    expect(await outcome()).toBe('kitUnconfirmed');
+    expect(kitMarkers()).toHaveLength(1);
   });
 
-  it('nessun marker -> none, nessuna GET; GET fallita -> unknown e il marker resta', async () => {
+  describe('kit nuovo con rev (regenerate / recovery), hash diverso dal keyring', () => {
+    beforeEach(async () => { await doSetup(); await session.confirmKit(U, lastHash); }); // keyring: epoch 0, rev 0
+
+    it('epoch diversa -> cancellato', async () => {
+      putKit(HX, { epoch: 1, rev: 5 });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(0);
+    });
+    it('kr.rev > m.rev -> cancellato', async () => {
+      h.server.row!.rev = 3;
+      putKit(HX, { rev: 2 });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(0);
+    });
+    it('stesso rev e hash diverso (F1): resta, nessun banner', async () => {
+      putKit(HX, { rev: 0 });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(1);
+    });
+    it('rev del keyring piu\' basso del marker: resta (il commit puo\' ancora arrivare)', async () => {
+      putKit(HX, { rev: 1 });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(1);
+    });
+    it('origin recovery: stessa regola', async () => {
+      putKit(HX, { origin: 'recovery', requestId: 'r1', rev: 0 });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(1);
+      h.server.row!.rev = 1;
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(0);
+    });
+  });
+
+  describe('kit nuovo del setup (rev null), hash diverso dal keyring', () => {
+    it('keyring ancora NONE, stessa epoch: resta (il setup puo\' essere in volo)', async () => {
+      putKit(HX, { origin: 'setup', rev: null });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(1);
+    });
+    it('keyring non NONE -> cancellato', async () => {
+      await doSetup();
+      await session.confirmKit(U, lastHash);
+      putKit(HX, { origin: 'setup', rev: null });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(0);
+    });
+    it('epoch diversa (anche con keyring NONE) -> cancellato', async () => {
+      putKit(HX, { origin: 'setup', rev: null, epoch: 0 });
+      const first = h.server.getKeyring.bind(h.server);
+      h.server.getKeyring = async () => ({ ...(await first()), epoch: 1 });
+      expect(await outcome()).toBe('none');
+      expect(kitMarkers()).toHaveLength(0);
+    });
+  });
+
+  it('slot legacy P2 (<userId>:kit): hash uguale -> kitUnconfirmed e resta; diverso -> cancellato; mai riscritto', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    raw('pending').set(U + ':kit', { kind: 'kit', escrowHash: lastHash, confirmed: false });
+    expect(await outcome()).toBe('kitUnconfirmed');
+    expect(raw('pending').has(U + ':kit')).toBe(true);
+    raw('pending').set(U + ':kit', { kind: 'kit', escrowHash: HX, confirmed: false });
+    expect(await outcome()).toBe('none');
+    expect(raw('pending').has(U + ':kit')).toBe(false);
+  });
+
+  it('kit dopo una regenerateKit con rev oltre il marker di un altro escrow: solo quello superato muore', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    putKit(HX, { rev: 0 }); // costruito sullo stesso keyring (rev 0)
+    const { escrowHash } = await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT }); // rev -> 1: HX non puo' piu' committare
+    expect(await outcome()).toBe('kitUnconfirmed');
+    expect(kitMarkers().map((m) => m.escrowHash)).toEqual([escrowHash]);
+  });
+
+  it('nessun marker -> none, nessuna GET; GET fallita -> unknown e i marker restano (tutti i tipi)', async () => {
     const spy = vi.spyOn(h.server, 'getKeyring');
-    expect(await session.checkPendingOnStart(U)).toBe('none');
+    expect(await outcome()).toBe('none');
     expect(spy).not.toHaveBeenCalled();
-    raw('pending').set(U + ':kit', { kind: 'kit', escrowHash: 'aa', confirmed: false });
+    putKit('aa');
+    putPin('bb');
+    raw('pending').set(U + ':kit', { kind: 'kit', escrowHash: 'cc', confirmed: false });
     h.server.getKeyring = async () => { throw apiErr(0); };
-    expect(await session.checkPendingOnStart(U)).toBe('unknown');
-    expect(raw('pending').size).toBe(1);
+    expect(await outcome()).toBe('unknown');
+    expect(raw('pending').size).toBe(3);
+  });
+
+  // N1 (item 7): il token cambia utente durante la GET, la risposta e' di B
+  it('N1: utente del token cambiato prima o durante la GET -> unknown, nessuna scrittura ne\' cancellazione, cache intatta', async () => {
+    await doSetup();
+    const cacheBefore = JSON.stringify(st().byUser[U]);
+    putKit(HX, { rev: 0 });
+    putPin('dd');
+    const g = h.server.getKeyring.bind(h.server);
+    h.server.getKeyring = async () => {
+      useAuthStore.setState({ user: { id: 'u2', email: 'b@b.c' } });
+      return { ...(await g()), rev: 9, escrowHash: 'bb'.repeat(32), pinSalt: 'SALT_OF_B' };
+    };
+    const before = raw('pending').size;
+    expect(await outcome()).toBe('unknown');
+    expect(raw('pending').size).toBe(before);
+    expect(JSON.stringify(st().byUser[U])).toBe(cacheBefore);
+    // utente gia' diverso prima della GET: nessuna GET
+    h.server.getKeyring = g;
+    const spy = vi.spyOn(h.server, 'getKeyring');
+    expect(await outcome()).toBe('unknown');
+    expect(spy).not.toHaveBeenCalled();
+    useAuthStore.setState({ user: { id: U, email: 'a@b.c' } });
+    expect(await outcome()).toBe('kitUnconfirmed');
+  });
+
+  it('una sola GET /keyring per tutti i marker', async () => {
+    await doSetup();
+    putKit(HX, { rev: 0 });
+    putPin('bb');
+    const spy = vi.spyOn(h.server, 'getKeyring');
+    await outcome();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('entrambi i marker: kit non confermato vince, il marker pin viene risolto e cancellato', async () => {
     await doSetup();
-    const hash = await sha256hexBytes(b64uDecode(h.server.row!.wrappedVkPin));
-    raw('pending').set(U + ':pin', { kind: 'pin', rev: 0, wrappedVkPinHash: hash });
-    expect(await session.checkPendingOnStart(U)).toBe('kitUnconfirmed');
+    putPin(await sha256hexBytes(b64uDecode(h.server.row!.wrappedVkPin)));
+    expect(await outcome()).toBe('kitUnconfirmed');
     expect(raw('pending').has(U + ':pin')).toBe(false);
-    expect(raw('pending').has(U + ':kit')).toBe(true);
+    expect(kitMarkers()).toHaveLength(1);
   });
 
   it('pin: applicato vs non applicato', async () => {
     await doSetup();
-    await session.confirmKit(U);
-    const hash = await sha256hexBytes(b64uDecode(h.server.row!.wrappedVkPin));
-    raw('pending').set(U + ':pin', { kind: 'pin', rev: 0, wrappedVkPinHash: hash });
+    await session.confirmKit(U, lastHash);
+    putPin(await sha256hexBytes(b64uDecode(h.server.row!.wrappedVkPin)));
+    expect(await outcome()).toBe('pinApplied');
+    expect(raw('pending').size).toBe(0);
+    putPin('ab'.repeat(32));
+    h.server.row!.rev++; // il keyring ha superato la rev del marker con un altro wrap: il PUT non e' passato e non puo' piu' passare
+    expect(await outcome()).toBe('pinNotApplied');
+    expect(raw('pending').size).toBe(0);
+  });
+
+  // Q20 (giro 3): a parita' di rev l'hash diverso puo' essere un cambio PIN ancora in volo in un'altra scheda
+  it('pin: hash diverso a parita\' di rev -> marker intatto, nessun esito (none)', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    putPin('ab'.repeat(32)); // rev 0, come il keyring
+    expect(await outcome()).toBe('none');
+    expect(raw('pending').get(U + ':pin')).toMatchObject({ wrappedVkPinHash: 'ab'.repeat(32) });
+  });
+
+  // regola unica col kit: contano solo (epoch, rev); uno status diverso da READY a parita' di rev non cancella il marker (PUT forse in volo)
+  it('pin: hash diverso, keyring non READY con (epoch, rev) invariati -> marker intatto, nessun esito', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    putPin('ab'.repeat(32)); // epoch non indicato, rev 0
+    h.server.getKeyring = async () => ({ status: 'RESET_PENDING', epoch: 0, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: null, lockedUntil: null, escrowHash: null, legacyCount: 0 });
+    expect(await outcome()).toBe('none');
+    expect(raw('pending').has(U + ':pin')).toBe(true);
+    h.server.getKeyring = async () => ({ status: 'RESET_PENDING', epoch: 0, rev: 1, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: null, lockedUntil: null, escrowHash: null, legacyCount: 0 });
+    expect(await outcome()).toBe('pinNotApplied'); // rev superata: ora si
+    expect(raw('pending').has(U + ':pin')).toBe(false);
+  });
+
+  it('pin: hash diverso con epoch diversa a parita\' di rev -> pinNotApplied e marker cancellato; senza epoch (marker vecchio) vale solo la rev', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    raw('pending').set(U + ':pin', { kind: 'pin', rev: 0, epoch: 7, wrappedVkPinHash: 'ab'.repeat(32) });
+    expect(await outcome()).toBe('pinNotApplied');
+    expect(raw('pending').size).toBe(0);
+    raw('pending').set(U + ':pin', { kind: 'pin', rev: 0, wrappedVkPinHash: 'ab'.repeat(32) }); // marker P2 senza epoch
+    expect(await outcome()).toBe('none');
+    expect(raw('pending').has(U + ':pin')).toBe(true);
+  });
+
+  it('Q20 scheda B fa checkPendingOnStart mentre il PUT di A e in volo, poi la risposta si perde: B non dice "non applicato", il riavvio dice pinApplied', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    const orig = h.server.updateKeyring.bind(h.server);
+    let tabB = '';
+    h.server.updateKeyring = async (p: string, v: string) => {
+      tabB = await session.checkPendingOnStart(U);
+      await orig(p, v);
+      throw apiErr(0, 'errors.common.networkError', false);
+    };
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ status: 0 });
+    expect(tabB).toBe('none');
+    expect(raw('pending').has(U + ':pin')).toBe(true);
     expect(await session.checkPendingOnStart(U)).toBe('pinApplied');
     expect(raw('pending').size).toBe(0);
-    raw('pending').set(U + ':pin', { kind: 'pin', rev: 0, wrappedVkPinHash: 'ab'.repeat(32) });
-    expect(await session.checkPendingOnStart(U)).toBe('pinNotApplied');
-    expect(raw('pending').size).toBe(0);
+  });
+
+  it('pin: se un\'altra scheda ha gia\' cancellato il marker (compare-and-delete false) -> none, niente toast doppio', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    putPin(await sha256hexBytes(b64uDecode(h.server.row!.wrappedVkPin)));
+    const first = h.server.getKeyring.bind(h.server);
+    h.server.getKeyring = async () => { raw('pending').delete(U + ':pin'); return first(); }; // l'altra scheda vince la corsa durante la GET
+    expect(await outcome()).toBe('none');
+  });
+
+  // Regressione StrictMode (P2 del red-team): due esecuzioni dell'effect, anche con navigator.locks occupato, ricevono lo stesso esito
+  it('due checkPendingOnStart concorrenti -> entrambe pinApplied, una sola GET, anche con navigator.locks occupato', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    putPin(await sha256hexBytes(b64uDecode(h.server.row!.wrappedVkPin)));
+    vi.stubGlobal('navigator', { locks: { request: async (_n: string, _o: unknown, cb: (l: null) => unknown) => cb(null) } });
+    const spy = vi.spyOn(h.server, 'getKeyring');
+    try {
+      const [a, b] = await Promise.all([outcome(), outcome()]);
+      expect([a, b]).toEqual(['pinApplied', 'pinApplied']);
+      expect(spy).toHaveBeenCalledTimes(1);
+      // la promise in volo si toglie al settle: una chiamata successiva rifa la lettura
+      expect(await outcome()).toBe('none');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('due chiamate concorrenti, kit non confermato: entrambe kitUnconfirmed', async () => {
+    await doSetup();
+    const [a, b] = await Promise.all([outcome(), outcome()]);
+    expect([a, b]).toEqual(['kitUnconfirmed', 'kitUnconfirmed']);
   });
 });
 
@@ -685,5 +1055,71 @@ describe('autoconsistenza dei test', () => {
     await doSetup();
     const S = await vi.mocked(deriveS)(PIN, b64uDecode(h.server.row!.pinSalt), DEFAULT_KDF);
     expect(b64uEncode(await deriveAuthKey(S, U))).toBe(h.server.row!.authKey);
+  });
+});
+
+// Un 2xx con un body che non e' del vault (portale, proxy, errore IIS con 200) passa dalla guardia di forma di vaultApi (VERA, via importActual): errore di rete, mai un fatto.
+describe('risposta 2xx non del vault (guardia di forma)', () => {
+  const BODIES: [string, unknown][] = [['html', '<html>portal</html>'], ['vuoto', {}], ['rev stringa', { status: 'READY', epoch: 0, rev: 'x' }]];
+  const realApi = async (body: unknown) => {
+    const real = await vi.importActual<typeof import('../vaultApi')>('../vaultApi');
+    h.apiRequest.mockReset();
+    h.apiRequest.mockResolvedValue({ data: body });
+    return real;
+  };
+
+  it.each(BODIES)('X3 marker kit di un setup committato + GET /keyring (%s): unknown, il marker resta (non si cancella come "superato")', async (_n, body) => {
+    await doSetup();
+    const real = await realApi(body);
+    h.server.getKeyring = () => real.getKeyring();
+    expect(await session.checkPendingOnStart(U)).toBe('unknown');
+    expect(kitMarkers()).toHaveLength(1);
+  });
+
+  it.each(BODIES)('X4 marker pin + GET /keyring (%s): unknown, il marker pin resta', async (_n, body) => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    putPin('ab'.repeat(32));
+    const real = await realApi(body);
+    h.server.getKeyring = () => real.getKeyring();
+    expect(await session.checkPendingOnStart(U)).toBe('unknown');
+    expect(raw('pending').get(U + ':pin')).toMatchObject({ wrappedVkPinHash: 'ab'.repeat(32) });
+  });
+
+  it.each(BODIES)('X8 regenerateKit e changePin con PUT 200 (%s): errore di rete, nessun Kit, nessun ok, cache e marker non avanzano', async (_n, body) => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    const real = await realApi(body);
+    h.server.updateKeyring = (p: string, v: string) => real.updateKeyring(p, v);
+    const rev = st().byUser[U].rev;
+    const escrow = h.server.row!.escrowBlob;
+    const regen = await session.regenerateKit({ userId: U, pin: PIN, rootKey: ROOT }).then(() => 'ok', (e: unknown) => e);
+    expect(regen).not.toBe('ok');
+    expect(regen).toMatchObject({ status: 0 });
+    const cp = await session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 }).then(() => 'ok', (e: unknown) => e);
+    expect(cp).not.toBe('ok');
+    expect(cp).toMatchObject({ status: 0 });
+    expect(st().byUser[U].rev).toBe(rev);
+    expect(h.server.row!.escrowBlob).toBe(escrow);
+    expect(h.server.puts).toHaveLength(0); // il server non ha visto nulla: la risposta spazzatura era di un intermediario
+  });
+});
+
+describe('Y2 PUT del cambio PIN in timeout, committata dopo; secondo tentativo con lo stesso PIN', () => {
+  it('il secondo tentativo trova il wrap cambiato (409): pinChangedElsewhere, che il testo spiega come "forse un tuo tentativo precedente"; il nuovo PIN apre', async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    const orig = h.server.updateKeyring.bind(h.server);
+    let first: [string, string] | null = null;
+    let n = 0;
+    h.server.updateKeyring = async (p: string, v: string) => {
+      if (++n === 1) { first = [p, v]; throw apiErr(0, 'errors.common.networkError', false); } // timeout lato client: il server la elabora piu' tardi
+      if (n === 2) await orig(...first!);
+      return orig(p, v);
+    };
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ status: 0 });
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ code: 'pinChangedElsewhere', key: 'errors.vault.pinChangedElsewhere' });
+    await st().lockVault();
+    await expect(session.unlockOnline(U, PIN2)).resolves.toBeDefined(); // il PIN del primo tentativo vale
   });
 });

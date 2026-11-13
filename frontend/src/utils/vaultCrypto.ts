@@ -193,11 +193,12 @@ export async function unwrapVkSigKey(vk: VaultKey, wrapped: Uint8Array, userId: 
   }
 }
 
-/** vkProof, 64 B (r||s, IEEE P1363 come richiede il backend). Path costante, rev <= 2147483646. */
-export async function signVkProof(sigKey: CryptoKey, userId: string, epoch: number, rev: number, payloadRaw: string) {
+/** vkProof, 64 B (r||s, IEEE P1363 come richiede il backend). `endpoint` = "METHOD path" firmato (default PUT del keyring); rev <= 2147483646. */
+export async function signVkProof(sigKey: CryptoKey, userId: string, epoch: number, rev: number, payloadRaw: string, endpoint = 'PUT /api/vault/keyring') {
   checkAad(userId, epoch);
   if (!Number.isInteger(rev) || rev < 0 || rev > 2147483646) throw fail('invalidInput');
-  const msg = `${P}proof|PUT /api/vault/keyring|${userId}|${epoch}|${rev}|${await sha256hex(payloadRaw)}`;
+  if (!/^(PUT|POST) \/api\/vault\/[A-Za-z0-9/_-]+$/.test(endpoint)) throw fail('invalidInput');
+  const msg = `${P}proof|${endpoint}|${userId}|${epoch}|${rev}|${await sha256hex(payloadRaw)}`;
   return new Uint8Array(await subtle().sign({ name: 'ECDSA', hash: 'SHA-256' }, sigKey, utf8(msg)));
 }
 

@@ -70,6 +70,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
   const [kitError, setKitError] = useState<string | null>(null);
   const [kitBusy, setKitBusy] = useState(false);
   const [kit, setKit] = useState<Uint8Array | null>(null);
+  const [kitHash, setKitHash] = useState('');
 
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<ReconcileResult | null>(null);
@@ -98,6 +99,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
       <RecoveryKitSheet
         kit={kit}
         userId={user.id}
+        escrowHash={kitHash}
         onDone={() => {
           setKit(null);
           toast.success(t('vault.settings.kitDone'));
@@ -138,6 +140,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft }: Pr
     try {
       const res = await regenerateKit({ userId: user.id, pin: kitPin, rootKey });
       useVaultStore.getState().touchVault();
+      setKitHash(res.escrowHash);
       setKit(res.kit); // PUT riuscito: solo ora esiste un Kit da mostrare
     } catch (err) {
       setKitError(errKey(err));

@@ -29,7 +29,7 @@ import { useVaultStore, type VaultKeys } from '../../../store/vaultStore';
 const U = 'u1';
 const result = (o = {}) => ({ migrated: 3, locked: [], tooLarge: [], conflicts: [], unverified: [], failed: [], notFound: 0, withAttachments: 0, ...o });
 let kit: Uint8Array;
-const renderKit = vi.fn((k: Uint8Array, onConfirmed: () => void) => <button onClick={onConfirmed}>kit-done{k.length}</button>);
+const renderKit = vi.fn((k: Uint8Array, _escrowHash: string, onConfirmed: () => void) => <button onClick={onConfirmed}>kit-done{k.length}</button>);
 const onDone = vi.fn();
 const rootKey = { id: 'rk_x', ecdhSpki: new Uint8Array(1) };
 
@@ -46,7 +46,7 @@ beforeEach(() => {
   m.pinReject = false;
   kit = new Uint8Array([1, 2, 3]);
   m.flush.mockResolvedValue(undefined);
-  m.setup.mockResolvedValue({ ok: true, kit, offlineSaved: true });
+  m.setup.mockResolvedValue({ ok: true, kit, offlineSaved: true, escrowHash: 'h-setup' });
   m.migrate.mockResolvedValue(result());
   m.close.mockResolvedValue({});
   m.confirmKit.mockResolvedValue(undefined);
@@ -90,7 +90,8 @@ describe('VaultMigrate', () => {
     expect(m.flush).toHaveBeenCalledWith(U, expect.anything());
     expect(m.setup).toHaveBeenCalledWith({ userId: U, pin: 'k7Rq2x', password: 'account-pw', rootKey });
     await waitFor(() => expect(screen.getByText('vault.migrate.finish')).toBeTruthy());
-    expect(m.confirmKit).toHaveBeenCalledWith(U);
+    expect(m.confirmKit).toHaveBeenCalledWith(U, 'h-setup');
+    expect(renderKit.mock.calls[0][1]).toBe('h-setup');
     expect(Array.from(kit)).toEqual([0, 0, 0]); // Kit azzerato dopo la conferma
     expect(m.migrate.mock.calls[0][0].pins).toEqual(['old111']);
     expect(m.close.mock.calls[0][0].pins).toEqual(['old111']);
@@ -233,7 +234,7 @@ describe('VaultMigrate', () => {
     submit();
     await waitFor(() => expect(m.setup).toHaveBeenCalled());
     unmount();
-    await act(async () => { done({ ok: true, kit, offlineSaved: true }); });
+    await act(async () => { done({ ok: true, kit, offlineSaved: true, escrowHash: 'h-setup' }); });
     expect(lock).toHaveBeenCalledTimes(1);
     expect(Array.from(kit)).toEqual([0, 0, 0]);
   });

@@ -49,12 +49,12 @@ describe('VaultSetup', () => {
     submit();
     await waitFor(() => expect(setup).toHaveBeenCalled());
     expect(screen.queryByRole('dialog')).toBeNull();
-    resolve({ ok: true, kit: new Uint8Array(20).fill(5), offlineSaved: true });
+    resolve({ ok: true, kit: new Uint8Array(20).fill(5), offlineSaved: true, escrowHash: 'h-setup' });
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
   });
 
   it('passa PIN, password, root key e offlineUnlock a setup', async () => {
-    vi.mocked(setup).mockResolvedValue({ ok: true, kit: new Uint8Array(20), offlineSaved: true });
+    vi.mocked(setup).mockResolvedValue({ ok: true, kit: new Uint8Array(20), offlineSaved: true, escrowHash: 'h-setup' });
     render(<VaultSetup />);
     fill();
     fireEvent.click(screen.getByLabelText('vault.setup.offlineUnlock'));
@@ -133,7 +133,7 @@ describe('VaultSetup', () => {
       fireEvent.submit(form);
     });
     await waitFor(() => expect(setup).toHaveBeenCalledTimes(1));
-    resolve({ ok: true, kit: new Uint8Array(20).fill(5), offlineSaved: true });
+    resolve({ ok: true, kit: new Uint8Array(20).fill(5), offlineSaved: true, escrowHash: 'h-setup' });
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
     expect(setup).toHaveBeenCalledTimes(1);
   });

@@ -45,6 +45,7 @@ export type VaultSessionCode =
   | 'vaultLocked' // operazione che richiede il vault sbloccato
   | 'offlineUnavailable'
   | 'kitNotUpdated'
+  | 'pinChangedElsewhere' // changePin al 409: il wrap e' cambiato altrove (recupero o altro cambio PIN), niente da rimandare
   | 'keyringInvalid';
 
 /** `key` e' una chiave i18n; `lockedUntil` solo per pinLocked. */
@@ -66,13 +67,15 @@ const rnd = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const plainKdf = (k: KdfParams): KdfParams => ({ m: k.m, t: k.t, p: k.p });
 const vaultKdf = (k: KdfParams) => ({ m: k.m, t: k.t, p: 1 as const });
 const isApiError = (e: unknown): e is VaultApiError => !!e && typeof e === 'object' && (e as VaultApiError).name === 'VaultApiError';
-/** Il server ha risposto con un rifiuto: la richiesta NON e' stata applicata. 5xx diversi da 503 e rete restano ambigui. */
-const isDefiniteReject = (e: unknown) => isApiError(e) && ((e.status >= 400 && e.status < 500) || e.status === 503);
+/** Il server ha risposto con un rifiuto: la richiesta NON e' stata applicata. 5xx diversi da 503 e rete restano ambigui; un 503 conta solo se viene dal vault (body errors.*), non da un proxy (U10). */
+const isDefiniteReject = (e: unknown) => isApiError(e) && ((e.status >= 400 && e.status < 500) || (e.status === 503 && e.fromServer === true));
+/** Il token e' ancora dell'utente dell'operazione: va controllato prima di ogni GET e dopo ogni risposta. */
+const isCurrent = (userId: string) => useAuthStore.getState().user?.id === userId;
 const zero = (...bufs: (Uint8Array | null | undefined)[]) => { for (const b of bufs) b?.fill(0); };
 
 const fetchKeyring = () => vaultApi.getKeyring<KeyringDto>();
 
-function cacheKeyring(userId: string, kr: KeyringDto, offlineUnlock: boolean) {
+export function cacheKeyring(userId: string, kr: KeyringDto, offlineUnlock: boolean) {
   if (kr.status !== 'READY' || !kr.kdfParams || !kr.pinSalt || !kr.wrappedVkPin || !kr.wrappedVkSigKey || !kr.rootKeyId) {
     throw new VaultSessionError('keyringInvalid', 'errors.common.unknownError');
   }
@@ -110,7 +113,7 @@ export async function refreshKeyringCache(userId: string): Promise<void> {
 const wrappedHash = (b64: string) => sha256hexBytes(b64uDecode(b64));
 
 /** Share cifrato col device key (+ wrappedVkSigKey per lo sblocco offline). Un errore IDB spegne lo sblocco offline (false), non blocca il flusso. */
-async function saveDeviceShare(userId: string, serverShare: Uint8Array, epoch: number, wrappedVkSigKey: Uint8Array): Promise<boolean> {
+export async function saveDeviceShare(userId: string, serverShare: Uint8Array, epoch: number, wrappedVkSigKey: Uint8Array): Promise<boolean> {
   try {
     const devKey = await device.getOrCreateDeviceKey(userId);
     const shareEnc = await encryptShare(devKey, serverShare, userId, epoch);
@@ -184,11 +187,11 @@ async function openKeyring(userId: string, pin: string, kr: KeyringDto): Promise
 
 // ---------------------------------------------------------------- setup
 
-/** offlineSaved: false solo se lo sblocco offline era richiesto e lo share non e' stato salvato (la UI lo segnala). */
-export type SetupResult = { ok: true; kit: Uint8Array; offlineSaved: boolean } | { ok: false; reason: 'alreadySetup' };
+/** offlineSaved: false solo se lo sblocco offline era richiesto e lo share non e' stato salvato (la UI lo segnala). escrowHash: chiave del marker `kit`, da passare a confirmKit. */
+export type SetupResult = { ok: true; kit: Uint8Array; offlineSaved: boolean; escrowHash: string } | { ok: false; reason: 'alreadySetup' };
 
 /**
- * Setup (solo online). Il Kit si restituisce SOLO dopo il 201. Marker `pending{kit}` salvato prima della POST e cancellato
+ * Setup (solo online). Il Kit si restituisce SOLO dopo il 201. Marker `kit` {origin:'setup', rev:null} (uno per escrow) salvato prima della POST e cancellato
  * subito su 400/403/503 (e su ogni altro rifiuto definitivo); resta su errori ambigui (rete, 5xx) per il controllo al riavvio.
  */
 export async function setup(args: { userId: string; pin: string; password: string; rootKey: RootKeyInfo; offlineUnlock?: boolean }): Promise<SetupResult> {
@@ -211,6 +214,7 @@ export async function setup(args: { userId: string; pin: string; password: strin
   let authKey: Uint8Array | null = null;
   let pkcs8: Uint8Array | null = null;
   let sent = false;
+  let escrowHash: string | null = null;
   try {
     S = await deriveS(pin, pinSalt, kdf);
     authKey = await deriveAuthKey(S, userId);
@@ -226,7 +230,8 @@ export async function setup(args: { userId: string; pin: string; password: strin
     const userShareUnderVk = await wrapUserShare(vk, sUser, userId, epoch);
 
     // marker PRIMA della POST: se non si salva, nessun Kit puo' andare perso, quindi si abbandona
-    await device.setPending(userId, { kind: 'kit', escrowHash: await sha256hexBytes(escrowBlob), confirmed: false });
+    escrowHash = await sha256hexBytes(escrowBlob);
+    await device.addKitMarker(userId, { kind: 'kit', escrowHash, epoch, rev: null, origin: 'setup' });
     sent = true;
     let created: { epoch: number; rev: number };
     try {
@@ -248,14 +253,21 @@ export async function setup(args: { userId: string; pin: string; password: strin
       });
     } catch (e) {
       if (isApiError(e) && e.status === 409) {
-        // alreadySetup: nessun Kit, il locale non si mostra mai
-        await device.clearPending(userId, 'kit').catch(() => {});
-        try { const fresh = await fetchKeyring(); if (fresh.status === 'READY') cacheKeyring(userId, fresh, false); } catch { /* ignora */ }
-        zero(sUser);
-        return { ok: false, reason: 'alreadySetup' };
+        // alreadySetup, salvo che il keyring sia il NOSTRO (POST committata e risposta persa, poi ritentata): il marker resta e si prosegue come dopo un 201
+        let fresh: KeyringDto | null = null;
+        try { fresh = await fetchKeyring(); } catch { /* ignora */ }
+        if (!(fresh && fresh.status === 'READY' && fresh.escrowHash === escrowHash)) {
+          // GET fallita: senza confronto il marker resta, lo risolve checkPending con la regola di morte
+          if (fresh) await device.deleteKitMarker(userId, escrowHash).catch(() => {});
+          try { if (fresh?.status === 'READY') cacheKeyring(userId, fresh, false); } catch { /* ignora */ }
+          zero(sUser);
+          return { ok: false, reason: 'alreadySetup' };
+        }
+        created = { epoch: fresh.epoch, rev: fresh.rev };
+      } else {
+        if (isDefiniteReject(e)) await device.deleteKitMarker(userId, escrowHash).catch(() => {});
+        throw e;
       }
-      if (isDefiniteReject(e)) await device.clearPending(userId, 'kit').catch(() => {});
-      throw e;
     }
 
     // 201: cache, share, unlock, purge, poi (chi chiama) il Kit
@@ -274,19 +286,19 @@ export async function setup(args: { userId: string; pin: string; password: strin
     const keys: VaultKeys = { vkHkdf: vk.hkdf, vkAes: vk.aes, sigKey: sig.privateKey };
     store().unlock(userId, keys, epoch);
     await purgeApiCache();
-    return { ok: true, kit: sUser, offlineSaved };
+    return { ok: true, kit: sUser, offlineSaved, escrowHash };
   } catch (e) {
     zero(sUser);
     // errore prima della POST: nessun marker residuo
-    if (!sent) await device.clearPending(userId, 'kit').catch(() => {});
+    if (!sent && escrowHash) await device.deleteKitMarker(userId, escrowHash).catch(() => {});
     throw e;
   } finally {
     zero(S, authKey, pkcs8, vkRaw, sRoot, serverShare);
   }
 }
 
-/** L'utente ha confermato i 2 gruppi del Kit: il marker si cancella. */
-export const confirmKit = (userId: string) => device.clearPending(userId, 'kit');
+/** L'utente ha confermato i 2 gruppi del Kit: si cancella SOLO il marker di quell'escrow (ne esistono uno per escrow, anche di altri flussi). */
+export const confirmKit = (userId: string, escrowHash: string) => device.deleteKitMarker(userId, escrowHash);
 
 // ---------------------------------------------------------------- sblocco
 
@@ -374,11 +386,14 @@ const requireUnlocked = (userId: string) => {
 /**
  * Cambio PIN (online, vault sbloccato). `currentPin` riconferma e da' VK grezza per il nuovo wrap.
  * kdfParams del nuovo wrap = DEFAULT_KDF. serverShare non cambia. Marker `pending{pin}` senza authKey ne' payload.
+ * Al 409 si rilegge il keyring: stessa epoch e stesso wrappedVkPin di quando e' stato aperto (cambia solo rev) -> serverShare e VK in memoria valgono ancora, il wrap
+ * si ricostruisce con la nuova rev SENZA un secondo POST /unlock (ogni /unlock conta nel lockout). Wrap o epoch cambiati (recupero o altro cambio PIN altrove):
+ * pinChangedElsewhere, nulla scritto.
  */
 export async function changePin(args: { userId: string; currentPin: string; newPin: string }): Promise<void> {
   const { userId, currentPin, newPin } = args;
   requireUnlocked(userId);
-  const kr = await fetchKeyring();
+  let kr = await fetchKeyring();
   const o = await openKeyring(userId, currentPin, kr);
   const kdf = plainKdf(DEFAULT_KDF);
   const newSalt = rnd(16);
@@ -387,17 +402,19 @@ export async function changePin(args: { userId: string; currentPin: string; newP
   try {
     newS = await deriveS(newPin, newSalt, kdf);
     authKey = await deriveAuthKey(newS, userId);
-    const kek = await deriveKekPin(newS, o.serverShare, newSalt, userId);
-    const wrappedVkPin = await wrapVkPin(kek, o.vkRaw, userId, kr.epoch, kdf);
-    const wrapB64 = b64uEncode(wrappedVkPin);
-    const hash = await sha256hexBytes(wrappedVkPin);
-    const wrap = {
-      kdf: 'argon2id',
-      kdfParams: vaultKdf(kdf),
-      pinSalt: b64uEncode(newSalt),
-      wrappedVkPin: wrapB64,
-      authKey: b64uEncode(authKey),
+    const S = newS;
+    const authB64 = b64uEncode(authKey);
+    const buildWrap = async () => {
+      const kek = await deriveKekPin(S, o.serverShare, newSalt, userId);
+      const wrappedVkPin = await wrapVkPin(kek, o.vkRaw, userId, kr.epoch, kdf);
+      const wrapB64 = b64uEncode(wrappedVkPin);
+      return {
+        wrapB64,
+        hash: await sha256hexBytes(wrappedVkPin),
+        wrap: { kdf: 'argon2id', kdfParams: vaultKdf(kdf), pinSalt: b64uEncode(newSalt), wrappedVkPin: wrapB64, authKey: authB64 },
+      };
     };
+    let { wrapB64, hash, wrap } = await buildWrap();
     const offline = store().byUser[userId]?.offlineUnlock ?? false;
     const apply = (rev: number) => store().setKeyringCache(userId, {
       status: 'READY', epoch: kr.epoch, rev, kdf: 'argon2id', kdfParams: kdf, pinSalt: wrap.pinSalt,
@@ -408,23 +425,32 @@ export async function changePin(args: { userId: string; currentPin: string; newP
     for (let attempt = 0; ; attempt++) {
       const payload = JSON.stringify({ rev, wrap }); // firmato solo in memoria
       const proof = await signVkProof(o.sigKey, userId, kr.epoch, rev, payload);
-      await device.setPending(userId, { kind: 'pin', rev, wrappedVkPinHash: hash });
+      await device.setPending(userId, { kind: 'pin', rev, epoch: kr.epoch, wrappedVkPinHash: hash });
       try {
         const res = await vaultApi.updateKeyring<{ rev: number }>(payload, b64uEncode(proof));
         apply(res?.rev ?? rev + 1);
-        await device.clearPending(userId, 'pin');
+        await device.clearPinMarkerIf(userId, hash);
         return;
       } catch (e) {
         if (isApiError(e) && e.status === 409) {
           const fresh = await fetchKeyring();
           if (fresh.status === 'READY' && fresh.wrappedVkPin && (await wrappedHash(fresh.wrappedVkPin)) === hash) {
             apply(fresh.rev); // il PUT era gia' passato
-            await device.clearPending(userId, 'pin');
+            await device.clearPinMarkerIf(userId, hash);
             return;
           }
-          if (attempt === 0 && fresh.status === 'READY') { rev = fresh.rev; continue; } // ricostruisce dal nuovo PIN ancora in memoria
+          if (attempt === 0 && fresh.status === 'READY') {
+            if (fresh.epoch !== kr.epoch || fresh.wrappedVkPin !== kr.wrappedVkPin) {
+              await device.clearPinMarkerIf(userId, hash).catch(() => {}); // nulla e' stato scritto
+              throw new VaultSessionError('pinChangedElsewhere', 'errors.vault.pinChangedElsewhere');
+            }
+            kr = fresh;
+            ({ wrapB64, hash, wrap } = await buildWrap());
+            rev = fresh.rev;
+            continue;
+          }
         }
-        if (isDefiniteReject(e)) await device.clearPending(userId, 'pin').catch(() => {});
+        if (isDefiniteReject(e)) await device.clearPinMarkerIf(userId, hash).catch(() => {});
         throw e;
       }
     }
@@ -437,7 +463,7 @@ export async function changePin(args: { userId: string; currentPin: string; newP
  * Rigenerazione del Kit (vault sbloccato + PIN riconfermato). PUT PRIMA, cerimonia dopo: il Kit nuovo si restituisce solo
  * dopo 200 (o 409 con escrowHash uguale). 409 con hash diverso -> `kitNotUpdated`.
  */
-export async function regenerateKit(args: { userId: string; pin: string; rootKey: RootKeyInfo }): Promise<{ kit: Uint8Array }> {
+export async function regenerateKit(args: { userId: string; pin: string; rootKey: RootKeyInfo }): Promise<{ kit: Uint8Array; escrowHash: string }> {
   const { userId, pin, rootKey } = args;
   requireUnlocked(userId);
   const kr = await fetchKeyring();
@@ -460,7 +486,8 @@ export async function regenerateKit(args: { userId: string; pin: string; rootKey
     });
     const proof = await signVkProof(o.sigKey, userId, kr.epoch, kr.rev, payload);
     const escrowHash = await sha256hexBytes(escrowBlob);
-    await device.setPending(userId, { kind: 'kit', escrowHash, confirmed: false });
+    // marker di QUESTO escrow, costruito sul keyring (epoch, rev) appena letto: il resolver lo cancella solo quando il keyring lo ha superato
+    await device.addKitMarker(userId, { kind: 'kit', escrowHash, epoch: kr.epoch, rev: kr.rev, origin: 'regenerate' });
     const offline = store().byUser[userId]?.offlineUnlock ?? false;
     try {
       const res = await vaultApi.updateKeyring<{ rev: number }>(payload, b64uEncode(proof));
@@ -468,18 +495,18 @@ export async function regenerateKit(args: { userId: string; pin: string; rootKey
         status: 'READY', epoch: kr.epoch, rev: res?.rev ?? kr.rev + 1, kdf: kr.kdf ?? 'argon2id', kdfParams: kr.kdfParams!,
         pinSalt: kr.pinSalt!, wrappedVkPin: kr.wrappedVkPin!, rootKeyId: rootKey.id, offlineUnlock: offline,
       });
-      return { kit: sUser };
+      return { kit: sUser, escrowHash };
     } catch (e) {
       if (isApiError(e) && e.status === 409) {
         const fresh = await fetchKeyring();
         if (fresh.status === 'READY' && fresh.escrowHash === escrowHash) {
           cacheKeyring(userId, fresh, offline);
-          return { kit: sUser };
+          return { kit: sUser, escrowHash };
         }
-        await device.clearPending(userId, 'kit').catch(() => {});
+        await device.deleteKitMarker(userId, escrowHash).catch(() => {});
         throw new VaultSessionError('kitNotUpdated', 'errors.vault.kitNotUpdated');
       }
-      if (isDefiniteReject(e)) await device.clearPending(userId, 'kit').catch(() => {});
+      if (isDefiniteReject(e)) await device.deleteKitMarker(userId, escrowHash).catch(() => {});
       throw e;
     }
   } catch (e) {
@@ -494,30 +521,56 @@ export async function regenerateKit(args: { userId: string; pin: string; rootKey
 
 export type PendingOutcome = 'none' | 'kitUnconfirmed' | 'pinApplied' | 'pinNotApplied' | 'unknown';
 
+const inFlight = new Map<string, Promise<PendingOutcome>>();
+
 /**
- * Al riavvio con marker (uno per tipo): GET e confronto. kit: escrowHash uguale -> 'kitUnconfirmed' (banner, il Kit NON si ri-mostra;
- * il marker resta finche' non si rigenera e conferma), diverso -> cancellato in silenzio. pin: confronto e poi cancellato.
- * Con entrambi i marker vince 'kitUnconfirmed'. GET fallita -> 'unknown' e i marker restano.
+ * Al riavvio con marker: UNA GET /keyring e una tabella di azioni, senza Web Lock (nessun flusso tocca il marker di un altro, quindi non serve).
+ * Marker `kit` (uno per escrow): hash uguale al keyring -> 'kitUnconfirmed' (banner; il Kit NON si ri-mostra, il marker resta finche' non si rigenera e conferma);
+ * hash diverso -> si cancella SOLO quando il keyring ha superato il suo (epoch, rev): da li' il server non puo' piu' committare quella richiesta
+ * (PUT /keyring e complete fanno il CAS su rev). Setup (rev null): epoch diversa o status non NONE. Stesso rev: resta (puo' essere in volo), senza banner.
+ * Slot legacy P2: come prima (uguale -> banner, diverso -> cancellato). Marker pin: hash uguale -> pinApplied; diverso -> pinNotApplied solo se (epoch, rev) del keyring hanno superato il marker, altrimenti resta (PUT forse in volo); compare-and-delete per hash, false (lo ha risolto un'altra scheda) -> 'none'.
+ * 'kitUnconfirmed' vince sul pin. GET fallita -> 'unknown' e nulla si tocca.
+ * Dedupe nella scheda: due chiamate concorrenti (StrictMode, effect doppi) condividono la promise in volo, tolta al settle.
  */
-export async function checkPendingOnStart(userId: string): Promise<PendingOutcome> {
-  let kit: device.PendingMarker | null = null;
-  let pin: device.PendingMarker | null = null;
-  try { [kit, pin] = await Promise.all([device.getPending(userId, 'kit'), device.getPending(userId, 'pin')]); } catch { return 'none'; }
-  if (!kit && !pin) return 'none';
+export function checkPendingOnStart(userId: string): Promise<PendingOutcome> {
+  const cur = inFlight.get(userId);
+  if (cur) return cur;
+  const p = checkPending(userId).finally(() => { if (inFlight.get(userId) === p) inFlight.delete(userId); });
+  inFlight.set(userId, p);
+  return p;
+}
+
+async function checkPending(userId: string): Promise<PendingOutcome> {
+  let kits: device.KitMarker[] = [];
+  let legacy: device.KitMarker | null = null;
+  let pin: device.PinMarker | null = null;
+  try { [kits, legacy, pin] = await Promise.all([device.listKitMarkers(userId), device.getLegacyKitMarker(userId), device.getPending(userId, 'pin')]); } catch { return 'none'; }
+  if (!kits.length && !legacy && !pin) return 'none';
+  if (!isCurrent(userId)) return 'unknown';
   let kr: KeyringDto;
   try { kr = await fetchKeyring(); } catch { return 'unknown'; }
+  if (!isCurrent(userId)) return 'unknown'; // risposta del token di un altro utente: ne' scritture ne' cancellazioni
+
+  let unconfirmed = false;
+  for (const m of kits) {
+    if (kr.escrowHash && kr.escrowHash === m.escrowHash) { unconfirmed = true; continue; }
+    const superseded = m.rev === null ? kr.epoch !== m.epoch || kr.status !== 'NONE' : kr.epoch !== m.epoch || kr.rev > m.rev;
+    if (superseded) await device.deleteKitMarker(userId, m.escrowHash).catch(() => {});
+  }
+  if (legacy) {
+    if (kr.escrowHash && kr.escrowHash === legacy.escrowHash) unconfirmed = true;
+    else await device.deleteLegacyKitMarkerIf(userId, legacy.escrowHash).catch(() => {});
+  }
+
   let outcome: PendingOutcome = 'none';
-  if (pin?.kind === 'pin') {
+  if (pin) {
     const applied = kr.status === 'READY' && !!kr.wrappedVkPin && (await wrappedHash(kr.wrappedVkPin)) === pin.wrappedVkPinHash;
     if (kr.status === 'READY') cacheKeyring(userId, kr, store().byUser[userId]?.offlineUnlock ?? false);
-    await device.clearPending(userId, 'pin');
-    outcome = applied ? 'pinApplied' : 'pinNotApplied';
+    // hash diverso: come per il kit, "non applicato" solo se il keyring ha superato il marker (epoch o rev); a parita' di rev il PUT puo' essere ancora in volo in un'altra scheda
+    const superseded = (pin.epoch !== undefined && kr.epoch !== pin.epoch) || kr.rev > pin.rev; // solo (epoch, rev), come per il kit: lo status non decide
+    if ((applied || superseded) && await device.clearPinMarkerIf(userId, pin.wrappedVkPinHash)) outcome = applied ? 'pinApplied' : 'pinNotApplied';
   }
-  if (kit?.kind === 'kit') {
-    if (kr.escrowHash && kr.escrowHash === kit.escrowHash) return 'kitUnconfirmed';
-    await device.clearPending(userId, 'kit');
-  }
-  return outcome;
+  return unconfirmed ? 'kitUnconfirmed' : outcome;
 }
 
 // ---------------------------------------------------------------- cambio utente senza logout

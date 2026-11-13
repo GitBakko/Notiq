@@ -166,7 +166,7 @@ describe('migrateLegacy', () => {
     expect(apiSpy.request).not.toHaveBeenCalled();
     // la lista del server si legge per pagine di /items (nessun ids senza motivo): solo `after` o {}
     expect(srv.calls.items.filter((b) => b.ids)).toHaveLength(2); // solo la verifica dei due batch
-  });
+  }, 60000); // 250 note cifrate (CPU-bound): oltre i 5 s di default sotto carico (5064 ms osservati, e oltre 15 s a suite piena)
 
   it('envelope oltre 2 MiB: escluso, lasciato in chiaro, non inviato ne finalizzato', async () => {
     put('big', 'NOTE', 'Grande', 'x'.repeat(MAX_ENVELOPE_LEN + 10));

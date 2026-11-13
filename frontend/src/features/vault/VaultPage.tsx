@@ -450,8 +450,8 @@ export default function VaultPage() {
     </div>
   );
 
-  const renderKit = (kit: Uint8Array, onConfirmed: () => void) => (
-    <RecoveryKitSheet kit={kit} userId={userId ?? ''} onDone={onConfirmed} />
+  const renderKit = (kit: Uint8Array, escrowHash: string, onConfirmed: () => void) => (
+    <RecoveryKitSheet kit={kit} userId={userId ?? ''} escrowHash={escrowHash} onDone={onConfirmed} />
   );
 
   if (!userId) return infoScreen(t('common.loading'));

@@ -248,6 +248,40 @@ describe('vaultCrypto', () => {
     await expect(signVkProof(sig.privateKey, U, EPOCH, -1, payload)).rejects.toThrow('invalidInput');
   });
 
+  it('vkProof con endpoint esplicito (complete del recupero) verificato con node:crypto', async () => {
+    const sig = await generateSigKey();
+    const payload = '{"rev":7,"wrap":{},"escrow":{}}';
+    const ep = 'POST /api/vault/recovery/0b6f1c2e-1111-4222-8333-444455556666/complete';
+    const proof = await signVkProof(sig.privateKey, U, EPOCH, 7, payload, ep);
+    const msg = `notiq/vault/v3/proof|${ep}|${U}|${EPOCH}|7|${createHash('sha256').update(payload, 'utf8').digest('hex')}`;
+    const key = { key: Buffer.from(sig.spki), format: 'der' as const, type: 'spki' as const, dsaEncoding: 'ieee-p1363' as const };
+    expect(proof.length).toBe(64);
+    expect(verify('sha256', Buffer.from(msg), key, Buffer.from(proof))).toBe(true);
+    // il default resta il PUT del keyring: la stessa firma non vale per l'endpoint del complete
+    const putProof = await signVkProof(sig.privateKey, U, EPOCH, 7, payload);
+    expect(verify('sha256', Buffer.from(msg), key, Buffer.from(putProof))).toBe(false);
+    const putMsg = `notiq/vault/v3/proof|PUT /api/vault/keyring|${U}|${EPOCH}|7|${createHash('sha256').update(payload, 'utf8').digest('hex')}`;
+    expect(verify('sha256', Buffer.from(putMsg), key, Buffer.from(putProof))).toBe(true);
+  });
+
+  it('signVkProof: endpoint con "|", spazi in piu o fuori pattern -> invalidInput', async () => {
+    const sig = await generateSigKey();
+    for (const bad of [
+      'POST /api/vault/recovery/x|y/complete',
+      'POST  /api/vault/recovery/x/complete',
+      'POST /api/vault/recovery/x/complete ',
+      ' POST /api/vault/recovery/x/complete',
+      'DELETE /api/vault/recovery/x',
+      'POST /api/other/x',
+      'POST /api/vault/',
+      'POST /api/vault/a b',
+      'POST /api/vault/a\n',
+      '',
+    ]) {
+      await expect(signVkProof(sig.privateKey, U, EPOCH, 1, '{}', bad)).rejects.toThrow('invalidInput');
+    }
+  });
+
   it('contentHash / escrowHash = sha256 hex come il backend', async () => {
     const s = 'nv3.2.AAAAAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBB àè';
     expect(await sha256hex(s)).toBe(createHash('sha256').update(s, 'utf8').digest('hex')); // sha256hex del BE

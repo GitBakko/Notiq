@@ -423,6 +423,24 @@
   },
   "vault": {
     "title": "Vault Sicuro",
+    "recovery": {
+      "errors": {
+        "releaseInvalid": "Non è stato possibile verificare il rilascio del recupero. Non è stato modificato nulla. Annulla la richiesta e avviane una nuova.",
+        "kitInvalid": "Il Kit di recupero non è corretto. Controllalo e riprova.",
+        "notThisDevice": "Questo recupero è stato avviato su un altro dispositivo o browser. Continua da lì, oppure annullalo e avviane uno nuovo qui.",
+        "keyringChanged": "Il vault è cambiato mentre il recupero era in preparazione. Riprova.",
+        "busy": "Un'altra scheda sta già lavorando a questo recupero. Chiudila o attendi, poi riprova.",
+        "requestClosed": "La richiesta di recupero è chiusa e ne serve una nuova. Vale tutto quello che avevi prima: il Kit di recupero e il PIN precedenti non sono cambiati.",
+        "rejected": "Il server ha rifiutato la richiesta. Non è cambiato nulla. Riprova più tardi.",
+        "completedElsewhere": "Il recupero risulta già completato. Sblocca il vault con il PIN scelto quando è stato completato, anche se è stato da questo dispositivo.",
+        "appliedWithoutKit": "Il recupero è già stato applicato da un tentativo precedente, quindi il Kit di recupero creato in questo tentativo non vale. Sblocca il vault con il PIN scelto in quel tentativo e rigenera il Kit di recupero dalle impostazioni.",
+        "appliedKitReplaced": "Il recupero è stato applicato con il PIN che hai appena scelto e il vault è sbloccato. Il Kit di recupero creato in questo tentativo è stato sostituito da un'altra sessione, quindi non vale: rigenera il Kit di recupero dalle impostazioni.",
+        "completedUnverified": "Il recupero risulta completato. Sblocca il vault con il PIN dell'ultimo tentativo fatto da questo dispositivo. Se non funziona, il recupero è stato completato da un'altra sessione: usa il PIN impostato lì. Il Kit di recupero precedente non vale più.",
+        "notReleased": "La richiesta non è ancora stata rilasciata dall'amministratore: attendi la fine dell'attesa e riprova.",
+        "unknown": "L'esito è sconosciuto. Quando sei online prova il nuovo PIN: se funziona ti chiederemo di rigenerare il Kit di recupero; se non funziona vale il Kit precedente e puoi ripetere il recupero.",
+        "retryLater": "Una richiesta precedente è ancora in verifica. Riprova tra qualche minuto."
+      }
+    },
     "recoveryBanner": {
       "states": {
         "pendingApproval": {
@@ -1847,6 +1865,7 @@
       "invalidSeal": "Impossibile verificare le chiavi del vault.",
       "invalidSealInput": "Impossibile verificare le chiavi del vault.",
       "kitNotUpdated": "Il Kit di recupero non è stato aggiornato. Riprova.",
+      "pinChangedElsewhere": "Il PIN risulta già cambiato, forse da un tuo tentativo precedente o da un altro dispositivo, quindi qui non è cambiato nulla. Prova il nuovo PIN.",
       "locked": "Il vault è bloccato. Sbloccalo con il PIN; dopo troppi tentativi errati attendi prima di riprovare.",
       "notReady": "Il vault non è ancora pronto. Riprova tra poco.",
       "offlineUnavailable": "Lo sblocco offline non è disponibile su questo dispositivo. Connettiti a internet e riprova.",

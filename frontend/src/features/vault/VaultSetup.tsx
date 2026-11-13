@@ -55,6 +55,7 @@ export default function VaultSetup({ onAlreadySetup, onDone }: Props = {}) {
   const [alreadySetup, setAlreadySetup] = useState(false);
   // Il Kit esiste solo qui, dopo il 201, e solo in questo stato.
   const [kit, setKit] = useState<Uint8Array | null>(null);
+  const [kitHash, setKitHash] = useState('');
 
   // Guardia sincrona: due submit nello stesso tick passerebbero entrambi `busy` (lo stato React non e' ancora aggiornato).
   const submitting = useRef(false);
@@ -77,6 +78,7 @@ export default function VaultSetup({ onAlreadySetup, onDone }: Props = {}) {
         onAlreadySetup?.();
       } else {
         if (!res.offlineSaved) toast.error(t('vault.setup.offlineNotSaved'));
+        setKitHash(res.escrowHash);
         setKit(res.kit);
       }
     } catch (err) {
@@ -188,7 +190,7 @@ export default function VaultSetup({ onAlreadySetup, onDone }: Props = {}) {
         </div>
       </div>
 
-      {kit && user && <RecoveryKitSheet kit={kit} userId={user.id} onDone={finished} />}
+      {kit && user && <RecoveryKitSheet kit={kit} userId={user.id} escrowHash={kitHash} onDone={finished} />}
     </div>
   );
 }

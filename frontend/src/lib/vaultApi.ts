@@ -38,12 +38,15 @@ export class VaultApiError extends Error {
   status: number;
   key: string;
   kind: VaultErrorKind;
-  constructor(status: number, key: string, kind: VaultErrorKind) {
+  /** Vero se il body ha un `message` errors.*: la risposta viene dal vault, non da un proxy o da un layer intermedio (un 503 senza e' ambiguo). */
+  fromServer: boolean;
+  constructor(status: number, key: string, kind: VaultErrorKind, fromServer = false) {
     super(key);
     this.name = 'VaultApiError';
     this.status = status;
     this.key = key;
     this.kind = kind;
+    this.fromServer = fromServer;
   }
 }
 
@@ -53,8 +56,9 @@ function toVaultError(err: unknown): VaultApiError {
   const { status, data } = err.response;
   const kind = KIND_BY_STATUS[status] ?? 'unknown';
   const msg = (data as { message?: unknown } | undefined)?.message;
-  const key = typeof msg === 'string' && msg.startsWith('errors.') ? msg : (FALLBACK_KEY[kind] ?? 'errors.common.unknownError');
-  return new VaultApiError(status, key, kind);
+  const fromServer = typeof msg === 'string' && msg.startsWith('errors.');
+  const key = fromServer ? msg : (FALLBACK_KEY[kind] ?? 'errors.common.unknownError');
+  return new VaultApiError(status, key, kind, fromServer);
 }
 
 const MIGRATE_TIMEOUT_MS = 120000;
@@ -67,9 +71,22 @@ function retryDelay(err: unknown): number {
   return Number.isFinite(h) && h > 0 ? Math.min(h * 1000, RETRY_MAX_MS) : RETRY_DEFAULT_MS;
 }
 
-async function call<T>(method: 'get' | 'post' | 'put' | 'delete', url: string, body?: unknown, retryOn429 = false, timeout?: number): Promise<T> {
+// Forma minima delle risposte 2xx che i chiamanti leggono come fatti. Un 2xx con un body che non e' del vault (proxy, portale, errore IIS con 200)
+// e' un esito ambiguo (errore di rete), mai un successo ne' un rifiuto: i campi mancanti non devono diventare "niente da fare".
+const isObj = (d: unknown): d is Record<string, unknown> => !!d && typeof d === 'object' && !Array.isArray(d);
+const isUint = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+const KEYRING_STATUSES = ['NONE', 'READY', 'RESET_PENDING'];
+const RECOVERY_STATUSES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+const okKeyring = (d: unknown) => isObj(d) && KEYRING_STATUSES.includes(d.status as string) && isUint(d.epoch) && isUint(d.rev);
+const okRecovery = (d: unknown) => isObj(d) && RECOVERY_STATUSES.includes(d.status as string);
+const okCompleted = (d: unknown) => isObj(d) && d.status === 'COMPLETED';
+const okRev = (d: unknown) => isObj(d) && isUint(d.rev);
+const okCreated = (d: unknown) => isObj(d) && typeof d.id === 'string' && d.id !== '' && typeof d.fingerprint === 'string';
+
+async function call<T>(method: 'get' | 'post' | 'put' | 'delete', url: string, body?: unknown, retryOn429 = false, timeout?: number, shape?: (d: unknown) => boolean): Promise<T> {
   const run = async (): Promise<T> => {
     const res = await api.request<T>({ method, url, data: body, ...(timeout ? { timeout } : {}) });
+    if (shape && !shape(res.data)) throw new VaultApiError(0, 'errors.common.networkError', 'network');
     return res.data;
   };
   try {
@@ -142,23 +159,55 @@ export interface MigrateItem {
 // Forma delle risposte definita dal service backend: i chiamanti (vaultSession) le restringono.
 export async function getKeyring<T = unknown>(): Promise<T> {
   try {
-    return await call<T>('get', '/vault/keyring');
+    return await call<T>('get', '/vault/keyring', undefined, false, undefined, okKeyring);
   } finally {
     await purgeVaultCache();
   }
 }
 
-export const createKeyring = <T = unknown>(body: CreateKeyringBody) => call<T>('post', '/vault/keyring', body);
+export const createKeyring = <T = unknown>(body: CreateKeyringBody) => call<T>('post', '/vault/keyring', body, false, undefined, okRev);
 
 export const unlock = (authKey: string) => call<{ serverShare: string }>('post', '/vault/unlock', { authKey });
 
 export const updateKeyring = <T = unknown>(payload: string, vkProof: string) =>
-  call<T>('put', '/vault/keyring', { payload, vkProof });
+  call<T>('put', '/vault/keyring', { payload, vkProof }, false, undefined, okRev);
 
 export const getItems = <T = unknown>(body: VaultItemsBody = {}) => call<T>('post', '/vault/items', body, true);
 
 export const migrateItems = <T = unknown>(items: MigrateItem[]) => call<T>('post', '/vault/migrate', { items }, true, MIGRATE_TIMEOUT_MS);
 
 export const cancelRecovery = (id: string) => call<{ status: 'CANCELLED' }>('delete', `/vault/recovery/${encodeURIComponent(id)}`);
+
+/** Stati di una richiesta di recupero come li restituisce GET /recovery/:id (EXPIRED anche per scadenza non ancora marcata dal job). */
+export type RecoveryStatus = 'PENDING_APPROVAL' | 'PENDING_CODE' | 'WAITING' | 'RELEASED' | 'COMPLETED' | 'CANCELLED' | 'REJECTED' | 'EXPIRED';
+
+export interface RecoveryDto {
+  status: RecoveryStatus;
+  fingerprint: string;
+  notBefore: string | null;
+  releaseExpiresAt: string | null;
+  sealedCodeA: string | null;
+  /** Solo in RELEASED non scaduta: busta (157 B), firma root (96 B) ed escrowBlob (60 B), tutti b64url. */
+  rootShareForClient: string | null;
+  rootSignature: string | null;
+  escrowBlob: string | null;
+}
+
+export const createRecovery = (clientEphPub: string, reason?: string) =>
+  call<{ id: string; fingerprint: string }>('post', '/vault/recovery', reason ? { clientEphPub, reason } : { clientEphPub }, false, undefined, okCreated);
+
+export async function getRecovery(id: string): Promise<RecoveryDto> {
+  try {
+    return await call<RecoveryDto>('get', `/vault/recovery/${encodeURIComponent(id)}`, undefined, false, undefined, okRecovery);
+  } finally {
+    await purgeVaultCache();
+  }
+}
+
+export const confirmRecovery = (id: string, codeA: string, codeB: string) =>
+  call<{ status: 'WAITING'; notBefore: string }>('post', `/vault/recovery/${encodeURIComponent(id)}/confirm`, { codeA, codeB });
+
+export const completeRecovery = (id: string, payload: string, vkProof: string) =>
+  call<{ status: 'COMPLETED' }>('post', `/vault/recovery/${encodeURIComponent(id)}/complete`, { payload, vkProof }, false, undefined, okCompleted);
 
 export const finalizeItems = <T = unknown>(ids: string[]) => call<T>('post', '/vault/finalize', { ids });

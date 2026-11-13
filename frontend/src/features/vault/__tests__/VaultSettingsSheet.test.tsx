@@ -113,14 +113,14 @@ describe('VaultSettingsSheet', () => {
   });
 
   it('Kit: nessuna cerimonia prima del PUT; dopo il PUT compare RecoveryKitSheet', async () => {
-    let resolve!: (v: { kit: Uint8Array }) => void;
+    let resolve!: (v: { kit: Uint8Array; escrowHash: string }) => void;
     vi.mocked(regenerateKit).mockReturnValue(new Promise((r) => { resolve = r; }));
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
     await waitFor(() => expect(regenerateKit).toHaveBeenCalledWith({ userId: 'u1', pin: 'old111', rootKey: ROOT }));
     expect(screen.queryByText('vault.kit.title')).toBeNull();
-    resolve({ kit: new Uint8Array(20).fill(7) });
+    resolve({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     await waitFor(() => expect(screen.getByText('vault.kit.title')).toBeTruthy());
   });
 
@@ -150,7 +150,7 @@ describe('VaultSettingsSheet', () => {
   });
 
   it('Kit: touchVault al submit; onDone chiude la cerimonia con il toast', async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7) });
+    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
@@ -163,7 +163,7 @@ describe('VaultSettingsSheet', () => {
   });
 
   it('Kit: la chiusura del padre durante la cerimonia non la smonta', async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7) });
+    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     const { rerender } = render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
