@@ -1322,7 +1322,8 @@ describe('T6-T9 righe e item legacy', () => {
 
     expect(r.unresolved).toBe(1);
     expect(st.notes.get('n1').content).toBe(local);
-    expect(r.legacyLeft).toBe(1);
+    expect(r.staleLeft).toBe(1); // Addendum 7 §3: una SX non e' legacyLeft
+    expect(r.legacyLeft).toBe(0);
   });
 
   it('copia oltre 2 MiB: saltata, nota invariata (unresolved)', async () => {
@@ -1589,7 +1590,7 @@ describe('finalize', () => {
     expect(h.server.finalized.map((c: string[]) => c.length)).toEqual([500, 1]);
     // 501 cifrature e 501 decifrature WebCrypto vere (serve superare il limite di 500): ~0.2 s in locale, ma oltre i 5 s di default su CI o
     // macchine cariche. Il test resta significativo (nessun mock del limite): si allarga solo il timeout.
-  }, 30_000);
+  }, 60_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -1779,6 +1780,450 @@ describe('guardie del giro', () => {
     expect(r2.copies).toBe(1);
     expect(lockLog.find(l => l.name === noteLockName('n1'))).toEqual({ name: noteLockName('n1'), mode: 'exclusive', ifAvailable: true });
     expect(lockLog.find(l => l.name === RECONCILE_LOCK)).toMatchObject({ mode: 'exclusive', ifAvailable: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rotazione della VK (P4 Fase 5): Addendum 5 (prevEpoch) e Addendum 6 (righe illeggibili, server re-incapsulato)
+// ---------------------------------------------------------------------------
+describe('decide: rotazione VK (Addendum 5 e 6)', () => {
+  const PREV = EPOCH - 1;
+  const E2 = `nv3.${EPOCH}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`;
+  const E1 = `nv3.${PREV}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`;
+  const E0 = `nv3.${EPOCH - 2}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`;
+  const PLAIN = '{"type":"doc"}';
+  const dRow = (o: any = {}): any => ({
+    id: 'n1', userId: U, notebookId: 'nb-1', title: '', content: E2, isTrashed: false, createdAt: T0, updatedAt: T0, tags: [], attachments: [],
+    syncStatus: 'updated', isVault: true, isEncrypted: true, noteType: 'NOTE', vaultBaseHash: 'hb', ...o,
+  });
+  let n = 0;
+  const dItem = (type: string, data: any = {}, extra: any = {}): any => ({ id: ++n, type, entity: 'NOTE', entityId: 'n1', userId: U, data, createdAt: 1, ...extra });
+  const fl = (e: string) => ({ status: 'failed', lastError: e });
+  const srvItem = (content = E2): any => ({
+    k: 'item', item: { id: 'n1', noteType: 'NOTE', title: '', hasPlaintextVersions: false, content, contentHash: '', updatedAt: T1, isTrashed: false },
+  });
+  const S0: any = { k: 'S0' };
+  const P = { t: 'T', c: 'C' };
+  const dec = (o: Partial<Snapshot>) => {
+    const d = decide({ id: 'n1', userId: U, epoch: EPOCH, prevEpoch: PREV, k: true, lock: 'held', items: [], srv: S0, ...o } as Snapshot);
+    return `${d.rule}:${d.op}${d.copy ? `+${d.copy}` : ''}${d.why ? `(${d.why})` : ''}`;
+  };
+  const stale = (content: string) => [dItem('UPDATE', { content }, fl('vault:stale'))];
+  const create = (content: string, extra: any = {}) => dItem('CREATE', { id: 'n1', title: '', content, isEncrypted: true, isVault: true, notebookId: 'nb-1' }, extra);
+
+  it('T5 con riga in prevEpoch: payload uguale al server ADOPT, diverso COPY(P)+ADOPT, P non ottenibile LEAVE; senza prevEpoch e con epoch-2 LEAVE(epoch)', () => {
+    const row = dRow({ content: E1 });
+    const base = { row, items: stale(E1), srv: srvItem(), hs: 'x', hl: 'y' };
+    expect(dec({ ...base, P, same: true })).toBe('T5:ADOPT');
+    expect(dec({ ...base, P })).toBe('T5:ADOPT+vault');
+    expect(dec({ ...base, P: 'decrypt' })).toBe('T5:LEAVE(decrypt)');
+    expect(dec({ ...base, prevEpoch: undefined, P, same: true })).toBe('T5:LEAVE(epoch)');
+    expect(dec({ ...base, row: dRow({ content: E0 }), P: 'epoch' })).toBe('T5:LEAVE(epoch)');
+    // item in prevEpoch ma riga corrente: regole di prima (riattivazione, la riga e' gia' ricifrata)
+    expect(dec({ row: dRow(), items: stale(E1), srv: srvItem(), hs: 'x', hl: 'y' })).toBe('T5:STRIP_REQUEUE');
+  });
+
+  it('T9 con riga e CREATE in prevEpoch: REENCRYPT_CREATE; P non ottenibile LEAVE; senza prevEpoch e con epoch-2 LEAVE(epoch)', () => {
+    const row = dRow({ syncStatus: 'created', content: E1 });
+    const base = { row, items: [create(E1)], srv: S0 };
+    expect(dec({ ...base, P })).toBe('T9:REENCRYPT_CREATE');
+    expect(dec({ ...base, P: 'decrypt' })).toBe('T9:LEAVE(decrypt)');
+    expect(dec({ ...base, prevEpoch: undefined })).toBe('T9:LEAVE(epoch)');
+    expect(dec({ ...base, row: dRow({ syncStatus: 'created', content: E0 }) })).toBe('T9:LEAVE(epoch)');
+    // riga corrente: invariata
+    expect(dec({ row: dRow({ syncStatus: 'created' }), items: [create(E2)], srv: S0 })).toBe('T9:NONE');
+  });
+
+  it('T8 e T14 con server SX: in prevEpoch LEAVE(stale) (la ricifra finishRotation), epoch-2 o senza prevEpoch LEAVE(epoch)', () => {
+    expect(dec({ row: dRow(), srv: srvItem(E1), hs: 'x', hl: 'y', P })).toBe('T8:LEAVE(stale)');
+    expect(dec({ row: dRow(), srv: srvItem(E0), hs: 'x', hl: 'y', P })).toBe('T8:LEAVE(epoch)');
+    expect(dec({ row: dRow(), srv: srvItem(E1), hs: 'x', hl: 'y', P, prevEpoch: undefined })).toBe('T8:LEAVE(epoch)');
+    const ln = dRow({ isVault: false, content: PLAIN });
+    expect(dec({ row: ln, srv: srvItem(E1), P })).toBe('T14:LEAVE(stale)');
+    expect(dec({ row: ln, srv: srvItem(E0), P })).toBe('T14:LEAVE(epoch)');
+    expect(dec({ row: ln, srv: srvItem(E1), P, prevEpoch: undefined })).toBe('T14:LEAVE(epoch)');
+  });
+
+  it('Addendum 6/7: riga che nessuna chiave apre + server SE che contiene la riga (srvWraps) -> HYDRATE (mai copia, mai DROP); altrimenti regole di prima', () => {
+    const base = { row: dRow(), items: stale(E1), srv: srvItem(), hs: 'x', hl: 'y' };
+    expect(dec({ ...base, P: 'decrypt', srvOk: true, srvWraps: true })).toBe('A6:HYDRATE');
+    expect(dec({ ...base, row: dRow({ content: E1 }), P: 'decrypt', srvOk: true, srvWraps: true })).toBe('A6:HYDRATE');
+    expect(dec({ ...base, items: [], P: 'decrypt', srvOk: true, srvWraps: true })).toBe('A6:HYDRATE');
+    // Addendum 7 §1: server decifrabile ma che non contiene la riga: niente A6, riga illeggibile con lavoro locale -> LEAVE(decrypt)
+    const unread = { ...base, row: dRow({ content: E1 }) };
+    expect(dec({ ...unread, P: 'decrypt', srvOk: true })).toBe('T5:LEAVE(decrypt)');
+    expect(dec({ ...unread, P: 'decrypt', srvOk: true, srvWraps: false })).toBe('T5:LEAVE(decrypt)');
+    expect(dec({ ...unread, items: [], P: 'decrypt', srvOk: true })).toBe('T4:LEAVE(decrypt)');
+    // server non decifrabile: non si sostituisce una riga illeggibile con un'altra illeggibile
+    expect(dec({ ...base, P: 'decrypt' })).not.toMatch(/^A6/);
+    expect(dec({ ...base, P: 'decrypt', srvOk: false })).not.toMatch(/^A6/);
+    // riga gia' uguale al server: niente da sostituire
+    expect(dec({ ...base, P: 'decrypt', srvOk: true, srvWraps: true, hl: 'x' })).not.toMatch(/^A6/);
+    // riga leggibile (P ottenuto): niente HYDRATE, conserva T5 / T3
+    expect(dec({ ...base, P, srvOk: true, srvWraps: true })).toBe('T5:STRIP_REQUEUE');
+    expect(dec({ ...base, row: dRow({ content: E1 }), P, srvOk: true })).toBe('T5:ADOPT+vault');
+    expect(dec({ ...base, items: [dItem('UPDATE', { content: E2 }, fl('vault:conflict'))], P, srvOk: true })).toBe('T3:ADOPT+vault');
+    // epoch-2 (P 'epoch'): resta LEAVE(epoch), non e' il caso dell'Addendum 6
+    expect(dec({ ...base, row: dRow({ content: E0 }), P: 'epoch', srvOk: true, srvWraps: true })).toBe('T5:LEAVE(epoch)');
+    // PIN legacy mancante: non e' una riga illeggibile
+    expect(dec({ ...base, P: 'legacyPin', srvOk: true, srvWraps: true })).not.toMatch(/^A6/);
+  });
+
+  it('Addendum 7 §4: T3 e T4 con riga in prevEpoch: payload uguale ADOPT senza copia, diverso COPY(P)+ADOPT; riga corrente invariata', () => {
+    const row = dRow({ content: E1 });
+    const t3 = { row, items: [dItem('UPDATE', { content: E1 }, fl('vault:conflict'))], srv: srvItem(), hs: 'x', hl: 'y' };
+    expect(dec({ ...t3, P, same: true })).toBe('T3:ADOPT');
+    expect(dec({ ...t3, P })).toBe('T3:ADOPT+vault');
+    expect(dec({ ...t3, P: 'decrypt' })).toBe('T3:LEAVE(decrypt)');
+    const t4 = { row, items: [], srv: srvItem(), hs: 'x', hl: 'y' };
+    expect(dec({ ...t4, P, same: true })).toBe('T4:ADOPT');
+    expect(dec({ ...t4, P })).toBe('T4:ADOPT+vault');
+    expect(dec({ ...t4, P: 'decrypt' })).toBe('T4:LEAVE(decrypt)');
+    // riga in epoch corrente: copia come prima
+    expect(dec({ ...t4, row: dRow(), P })).toBe('T4:ADOPT+vault');
+  });
+});
+
+describe('rotazione VK: giro con keys.prev (Addendum 5 e 6)', () => {
+  let oldCtx: VaultCodecCtx;
+  const encOld = (id: string, t: string, c: string, type: 'NOTE' | 'CREDENTIAL' = 'NOTE') => encryptItem(id, type, { t, c }, oldCtx);
+  const BAD_PREV = `nv3.${EPOCH - 1}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`;
+  const BAD_PREV2 = `nv3.${EPOCH - 1}.AAAAAAAAAAAAAAAA.${'C'.repeat(22)}`;
+  const BAD_CUR = `nv3.${EPOCH}.AAAAAAAAAAAAAAAA.${'B'.repeat(22)}`;
+  const snap = () => JSON.stringify([...st.notes.values(), ...st.queue]);
+  const createData = (id: string, content: string) => ({ id, title: '', content, isEncrypted: true, isVault: true, notebookId: 'nb-1', noteType: 'NOTE' });
+  /** Envelope di un epoch oltre prev (epoch-2), con una VK che il giro non ha: illeggibile. */
+  const encFar = async (id: string, t: string, c: string) => {
+    const vk = await importVk(generateVkRaw());
+    return encryptItem(id, 'NOTE', { t, c }, { keys: { vkHkdf: vk.hkdf, vkAes: vk.aes, sigKey: ctx.keys.sigKey }, userId: U, epoch: EPOCH - 2 });
+  };
+  const withoutPrev = () => useVaultStore.setState({ keys: { ...ctx.keys, prev: undefined } });
+
+  beforeEach(async () => {
+    // L'utente ha ruotato: le chiavi correnti sono dell'epoch 2, `prev` e' la VK dell'epoch 1.
+    const old = await importVk(generateVkRaw());
+    oldCtx = { keys: { vkHkdf: old.hkdf, vkAes: old.aes, sigKey: ctx.keys.sigKey }, userId: U, epoch: EPOCH - 1 };
+    const keys: VaultKeys = { ...ctx.keys, prev: { epoch: EPOCH - 1, vkHkdf: old.hkdf, vkAes: old.aes } };
+    useVaultStore.setState({ keys });
+    ctx = { ...ctx, keys };
+  });
+
+  it('T5: riga in prevEpoch con payload uguale al server -> ADOPT, 0 copie, item di coda via', async () => {
+    const srv = await enc('n1', 'T', doc('SEGRETO x'));
+    h.server.put('n1', srv);
+    const old = await encOld('n1', 'T', doc('SEGRETO x'));
+    putRow({ id: 'n1', content: old, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const it = item('UPDATE', 'n1', { content: old }, failed('vault:stale'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ conflictsResolved: 1, copies: 0, unresolved: 0, later: 0 });
+    expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced', vaultBaseHash: await sha256hex(srv) });
+    expect(st.queue.find(i => i.id === it.id)).toBeUndefined();
+    expect(copies(['n1'])).toHaveLength(0);
+  });
+
+  it('T5: riga in prevEpoch con payload diverso -> copia cifrata nell\'epoch corrente + ADOPT, il testo locale non si perde', async () => {
+    const srv = await enc('n1', 'T', doc('server'));
+    h.server.put('n1', srv);
+    const old = await encOld('n1', 'T', doc('SEGRETO mio'));
+    putRow({ id: 'n1', content: old, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    item('UPDATE', 'n1', { content: old }, failed('vault:stale'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ conflictsResolved: 1, copies: 1, unresolved: 0 });
+    expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced' });
+    const [copy] = copies(['n1']);
+    expect(copy.content.startsWith(`nv3.${EPOCH}.`)).toBe(true);
+    expect(await decryptItem(copy.id, 'NOTE', copy.content, ctx)).toEqual({ t: 'T (conflict)', c: doc('SEGRETO mio') });
+    expect(st.queue.filter(i => i.entityId === 'n1')).toHaveLength(0);
+    expect(st.queue.find(i => i.entityId === copy.id)).toMatchObject({ type: 'CREATE', data: { content: copy.content, isVault: true } });
+  });
+
+  it('T5: riga corrente con item in prevEpoch: riattivazione come prima, anche con keys.prev', async () => {
+    const content = await enc('n1', 'T', doc('x'));
+    h.server.put('n1', content);
+    putRow({ id: 'n1', content, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const a = item('UPDATE', 'n1', { content: await encOld('n1', 'T', doc('old')) }, failed('vault:stale'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ reactivated: 1, copies: 0 });
+    expect(st.queue.find(i => i.id === a.id)).toMatchObject({ status: 'pending', attempts: 0, data: { content } });
+  });
+
+  it('T9: CREATE con envelope in prevEpoch (S0) -> REENCRYPT_CREATE nell\'epoch corrente, poi canonica (secondo giro a zero)', async () => {
+    const old = await encOld('n1', 'T', doc('SEGRETO x'));
+    putRow({ id: 'n1', content: old, syncStatus: 'created' });
+    const c = item('CREATE', 'n1', createData('n1', old), failed('vault:stale'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ legacyResolved: 1, copies: 0, unresolved: 0 });
+    const row = st.notes.get('n1');
+    expect(row.content.startsWith(`nv3.${EPOCH}.`)).toBe(true);
+    expect(await decryptItem('n1', 'NOTE', row.content, ctx)).toEqual({ t: 'T', c: doc('SEGRETO x') });
+    expect(st.queue.find(i => i.id === c.id)).toMatchObject({ status: 'pending', data: createData('n1', row.content) });
+    expect(copies(['n1'])).toHaveLength(0);
+    expect(await vaultReconcile()).toMatchObject(zero);
+  });
+
+  it('T15: riga assente, item vault:stale con envelope in prevEpoch -> copia cifrata nell\'epoch corrente e item via; senza prev resta LEAVE(epoch)', async () => {
+    const old = await encOld('n1', 'T', doc('SEGRETO x'));
+    item('CREATE', 'n1', createData('n1', old), failed('vault:stale'));
+
+    withoutPrev();
+    const r0 = await vaultReconcile();
+    expect(r0).toMatchObject({ copies: 0, unresolved: 1 });
+    expect(st.queue).toHaveLength(1);
+    expect(copies([])).toHaveLength(0);
+
+    useVaultStore.setState({ keys: ctx.keys }); // di nuovo con prev
+    const r = await vaultReconcile();
+    expect(r).toMatchObject({ copies: 1, unresolved: 0 });
+    const [copy] = copies([]);
+    expect(copy.content.startsWith(`nv3.${EPOCH}.`)).toBe(true);
+    expect(await decryptItem(copy.id, 'NOTE', copy.content, ctx)).toEqual({ t: 'T (conflict)', c: doc('SEGRETO x') });
+    expect(st.queue.filter(i => i.entityId === 'n1')).toHaveLength(0);
+  });
+
+  it('epoch-2 (oltre prev): T5 e T9 restano LEAVE(epoch), riga e coda intatte', async () => {
+    scan = false;
+    const far = await encFar('n1', 'T', doc('vecchissimo'));
+    h.server.put('n1', await enc('n1', 'T', doc('server')));
+    putRow({ id: 'n1', content: far, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    item('UPDATE', 'n1', { content: far }, failed('vault:stale'));
+    const far2 = await encFar('n2', 'T', doc('vecchissimo2'));
+    putRow({ id: 'n2', content: far2, syncStatus: 'created' });
+    item('CREATE', 'n2', createData('n2', far2), failed('vault:stale'));
+    const before = snap();
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ copies: 0, reactivated: 0, hydrated: 0, unresolved: 2, later: 0 });
+    expect(snap()).toBe(before);
+  });
+
+  it('staleLeft (ogni SX) e legacyLeft (solo SL) sono contatori separati; T8 lascia la riga com\'e\'; senza prev non cambia nulla', async () => {
+    h.server.put('a', await enc('a', 'T', doc('a')));
+    h.server.put('b', await encOld('b', 'T', doc('b')));
+    h.server.put('c', doc('legacy in chiaro'));
+    h.server.put('d', await encFar('d', 'T', doc('d')));
+    const local = await encOld('b', 'T', doc('b locale'));
+    putRow({ id: 'b', content: local, syncStatus: 'updated', vaultBaseHash: 'v0' });
+    const pending = item('UPDATE', 'b', { isPinned: true });
+    const before = snap();
+
+    const r = await vaultReconcile();
+
+    expect(r.staleLeft).toBe(2); // Addendum 7 §3: ogni SX (prevEpoch o piu' vecchio) e' staleLeft
+    expect(r.legacyLeft).toBe(1); // solo SL
+    expect(r).toMatchObject({ copies: 0, hydrated: 0, unresolved: 1 }); // 'b' T8 LEAVE
+    expect(snap()).toBe(before);
+    expect(st.queue.find(i => i.id === pending.id)).toMatchObject({ data: { isPinned: true } });
+
+    withoutPrev();
+    const r2 = await vaultReconcile();
+    expect(r2.staleLeft).toBe(2); // senza prev le SX restano staleLeft, mai legacyLeft
+    expect(r2.legacyLeft).toBe(1);
+  });
+
+  describe('Addendum 6/7: riga illeggibile, server re-incapsulato', () => {
+    const para = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+    /** Contenuto come lo costruisce rewrapUnreadable: paragrafo i18n + paragrafo con l'envelope illeggibile. */
+    const wrapNote = (old: string) => JSON.stringify({ type: 'doc', content: [para('testo re-incapsulato'), para(old)] });
+    const wrapCred = (old: string) => JSON.stringify({ title: '', username: '', password: '', notes: old });
+
+    it('HYDRATE senza copia: gli item con l\'envelope della riga o del server escono, gli altri si tengono (REQUEUE) e nessuno viene DROPpato', async () => {
+      const srv = await enc('n1', 'T', wrapNote(BAD_PREV));
+      h.server.put('n1', srv);
+      putRow({ id: 'n1', content: BAD_PREV, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      const same = item('UPDATE', 'n1', { content: srv }, failed('vault:stale'));
+      const old = item('UPDATE', 'n1', { content: BAD_PREV }, failed('vault:stale'));
+      const diff = item('UPDATE', 'n1', { content: BAD_PREV2 }, failed('vault:stale'));
+      const pinned = item('UPDATE', 'n1', { content: BAD_PREV2, isPinned: true });
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 1, copies: 0, unresolved: 0, later: 0 });
+      expect(st.notes.get('n1')).toMatchObject({ content: srv, title: '', vaultBaseHash: await sha256hex(srv), vaultSentHashes: [], syncStatus: 'updated' });
+      expect(st.queue.find(i => i.id === same.id)).toBeUndefined();
+      expect(st.queue.find(i => i.id === old.id)).toBeUndefined(); // Addendum 7 §2: lo stesso envelope illeggibile della riga
+      expect(st.queue.find(i => i.id === diff.id)).toMatchObject({ status: 'pending', attempts: 0, data: { content: BAD_PREV2 } });
+      expect(st.queue.find(i => i.id === diff.id).lastError).toBeUndefined();
+      expect(st.queue.find(i => i.id === pinned.id)).toMatchObject({ data: { content: BAD_PREV2, isPinned: true } });
+      expect(copies(['n1'])).toHaveLength(0);
+    });
+
+    it('item con l\'envelope della riga e altri campi: si toglie solo il content, l\'edit resta', async () => {
+      const srv = await enc('n1', 'T', wrapNote(BAD_PREV));
+      h.server.put('n1', srv);
+      putRow({ id: 'n1', content: BAD_PREV, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      const it = item('UPDATE', 'n1', { content: BAD_PREV, isPinned: true });
+
+      await vaultReconcile();
+
+      expect(st.queue.find(i => i.id === it.id)).toMatchObject({ data: { isPinned: true } });
+      expect(st.queue.find(i => i.id === it.id).data).not.toHaveProperty('content');
+    });
+
+    it('CREDENTIAL: il server contiene la riga in `notes` -> A6 HYDRATE, 0 copie', async () => {
+      const srv = await enc('n1', 'T', wrapCred(BAD_PREV), 'CREDENTIAL');
+      h.server.put('n1', srv, { noteType: 'CREDENTIAL' });
+      putRow({ id: 'n1', content: BAD_PREV, noteType: 'CREDENTIAL', syncStatus: 'updated', vaultBaseHash: 'v0' });
+      const it = item('UPDATE', 'n1', { content: BAD_PREV }, failed('vault:stale'));
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 1, copies: 0, unresolved: 0 });
+      expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced', vaultBaseHash: await sha256hex(srv) });
+      expect(st.queue.find(i => i.id === it.id)).toBeUndefined();
+    });
+
+    it('server decifrabile che NON contiene la riga (NOTE): LEAVE(decrypt), riga e coda intatte', async () => {
+      h.server.put('n1', await enc('n1', 'T', doc('server, altro testo')));
+      putRow({ id: 'n1', content: BAD_PREV, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      item('UPDATE', 'n1', { content: BAD_PREV }, failed('vault:stale'));
+      const before = snap();
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 0, copies: 0, unresolved: 1, later: 0 });
+      expect(snap()).toBe(before);
+    });
+
+    it('server decifrabile con un\'altra envelope nel paragrafo, o con la riga solo in parte: niente A6', async () => {
+      h.server.put('n1', await enc('n1', 'T', wrapNote(BAD_PREV2)));
+      h.server.put('n2', await enc('n2', 'T', JSON.stringify({ type: 'doc', content: [para(`prefisso ${BAD_PREV}`)] })));
+      putRow({ id: 'n1', content: BAD_PREV, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      putRow({ id: 'n2', content: BAD_PREV, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      item('UPDATE', 'n1', { content: BAD_PREV }, failed('vault:stale'));
+      item('UPDATE', 'n2', { content: BAD_PREV }, failed('vault:stale'));
+      const before = snap();
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 0, copies: 0, unresolved: 2 });
+      expect(snap()).toBe(before);
+    });
+
+    it('CREDENTIAL: server decifrabile con `notes` diverso: LEAVE(decrypt), riga e coda intatte', async () => {
+      h.server.put('n1', await enc('n1', 'T', wrapCred(BAD_PREV2), 'CREDENTIAL'), { noteType: 'CREDENTIAL' });
+      putRow({ id: 'n1', content: BAD_PREV, noteType: 'CREDENTIAL', syncStatus: 'updated', vaultBaseHash: 'v0' });
+      item('UPDATE', 'n1', { content: BAD_PREV }, failed('vault:stale'));
+      const before = snap();
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 0, copies: 0, unresolved: 1 });
+      expect(snap()).toBe(before);
+    });
+
+    it('riga corrente illeggibile con il solo item identico al server: HYDRATE e riga synced', async () => {
+      const srv = await enc('n1', 'T', wrapNote(BAD_CUR));
+      h.server.put('n1', srv);
+      putRow({ id: 'n1', content: BAD_CUR, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      item('UPDATE', 'n1', { content: srv });
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 1, copies: 0, unresolved: 0 });
+      expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced', vaultBaseHash: await sha256hex(srv) });
+      expect(st.queue.filter(i => i.entityId === 'n1')).toHaveLength(0);
+    });
+
+    it('riga synced illeggibile senza item: HYDRATE (T1), 0 copie', async () => {
+      const srv = await enc('n1', 'T', doc('SEGRETO re-incapsulato'));
+      h.server.put('n1', srv);
+      putRow({ id: 'n1', content: BAD_PREV, syncStatus: 'synced', vaultBaseHash: 'v0' });
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 1, copies: 0, unresolved: 0 });
+      expect(st.notes.get('n1')).toMatchObject({ content: srv, vaultBaseHash: await sha256hex(srv) });
+    });
+
+    it('server SE che non si decifra: la riga illeggibile non si sostituisce (LEAVE), riga e coda intatte', async () => {
+      scan = false;
+      const foreign = await importVk(generateVkRaw());
+      const srv = await encryptItem('n1', 'NOTE', { t: 'T', c: doc('altrui') }, { keys: { vkHkdf: foreign.hkdf, vkAes: foreign.aes, sigKey: ctx.keys.sigKey }, userId: U, epoch: EPOCH });
+      h.server.put('n1', srv);
+      putRow({ id: 'n1', content: BAD_PREV, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      item('UPDATE', 'n1', { content: BAD_PREV }, failed('vault:stale'));
+      const before = snap();
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 0, copies: 0, unresolved: 1 });
+      expect(snap()).toBe(before);
+    });
+
+    it('riga leggibile: nessun HYDRATE, le regole di prima (T5 con prev: copia del testo locale + ADOPT)', async () => {
+      const srv = await enc('n1', 'T', doc('server'));
+      h.server.put('n1', srv);
+      const mine = await encOld('n1', 'T', doc('SEGRETO leggibile'));
+      putRow({ id: 'n1', content: mine, syncStatus: 'updated', vaultBaseHash: 'v0' });
+      item('UPDATE', 'n1', { content: mine }, failed('vault:stale'));
+
+      const r = await vaultReconcile();
+
+      expect(r).toMatchObject({ hydrated: 0, copies: 1, conflictsResolved: 1 });
+    });
+  });
+
+  it('T3 con riga in prevEpoch: payload uguale al server -> ADOPT senza copia; diverso -> copia + ADOPT', async () => {
+    const srv = await enc('n1', 'T', doc('uguale'));
+    h.server.put('n1', srv);
+    const oldSame = await encOld('n1', 'T', doc('uguale'));
+    putRow({ id: 'n1', content: oldSame, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    const it = item('UPDATE', 'n1', { content: oldSame }, failed('vault:conflict'));
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ conflictsResolved: 1, copies: 0, unresolved: 0 });
+    expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced' });
+    expect(st.queue.find(i => i.id === it.id)).toBeUndefined();
+    expect(copies(['n1'])).toHaveLength(0);
+
+    const oldMine = await encOld('n2', 'T', doc('SEGRETO mio'));
+    putRow({ id: 'n2', content: oldMine, syncStatus: 'updated', vaultBaseHash: await sha256hex('v0') });
+    h.server.put('n2', await enc('n2', 'T', doc('server')));
+    item('UPDATE', 'n2', { content: oldMine }, failed('vault:conflict'));
+    const r2 = await vaultReconcile();
+    expect(r2).toMatchObject({ conflictsResolved: 1, copies: 1 });
+    expect(copies(['n1', 'n2'])).toHaveLength(1);
+  });
+
+  it('T4 con riga in prevEpoch (coda pulita): payload uguale -> ADOPT senza copia; diverso -> copia + ADOPT', async () => {
+    const srv = await enc('n1', 'T', doc('uguale'));
+    h.server.put('n1', srv);
+    putRow({ id: 'n1', content: await encOld('n1', 'T', doc('uguale')), syncStatus: 'updated', vaultBaseHash: await sha256hex('altra base') });
+
+    const r = await vaultReconcile();
+
+    expect(r).toMatchObject({ conflictsResolved: 1, copies: 0, unresolved: 0 });
+    expect(st.notes.get('n1')).toMatchObject({ content: srv, syncStatus: 'synced', vaultBaseHash: await sha256hex(srv) });
+    expect(copies(['n1'])).toHaveLength(0);
+
+    putRow({ id: 'n2', content: await encOld('n2', 'T', doc('SEGRETO mio')), syncStatus: 'updated', vaultBaseHash: await sha256hex('altra base') });
+    h.server.put('n2', await enc('n2', 'T', doc('server')));
+    const r2 = await vaultReconcile();
+    expect(r2).toMatchObject({ conflictsResolved: 1, copies: 1 });
+    expect(copies(['n1', 'n2'])).toHaveLength(1);
+  });
+
+  it('legacyLeft solo SL: SX senza keys.prev (epoch-1 o epoch-2) -> staleLeft, legacyLeft 0; un SL -> legacyLeft', async () => {
+    h.server.put('x1', await encOld('x1', 'T', doc('a')));
+    h.server.put('x2', await encFar('x2', 'T', doc('b')));
+    withoutPrev();
+
+    const r = await vaultReconcile();
+    expect(r).toMatchObject({ staleLeft: 2, legacyLeft: 0 });
+
+    h.server.put('l1', doc('legacy in chiaro'));
+    const r2 = await vaultReconcile();
+    expect(r2).toMatchObject({ staleLeft: 2, legacyLeft: 1 });
   });
 });
 

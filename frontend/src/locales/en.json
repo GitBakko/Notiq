@@ -427,7 +427,7 @@
     "kitRotation": {
       "title": "Replace your Recovery Kit",
       "warning": "A recovery of this vault was released and then cancelled or expired. Your current Recovery Kit is no longer safe: create a new one to keep using the vault.",
-      "destroyOld": "After creating the new Recovery Kit, destroy every copy of the previous one (downloaded PDF, prints, notes): together with the released recovery it could still open your vault.",
+      "destroyOld": "Your previous Recovery Kit no longer opens the vault. You can destroy every copy of it (downloaded PDF, prints, notes).",
       "lock": "Lock vault"
     },
     "recoveryBanner": {
@@ -593,7 +593,10 @@
       "lockedFor": "Too many attempts. Try again in {{time}}.",
       "forgotTitle": "Forgot your PIN?",
       "forgotBody": "You can recover access with your Recovery Kit. Without the Kit, the only option left is to reset the vault.",
-      "forgotAction": "Recover with the Recovery Kit"
+      "forgotAction": "Recover with the Recovery Kit",
+      "removeFromDevice": "Remove the vault from this device",
+      "removeFromDeviceTitle": "Remove the vault from this device?",
+      "removeFromDeviceBody": "Vault changes made on this device that are not synced yet will be lost. The vault on the server is not touched: afterwards you can unlock it again with your PIN."
     },
     "kit": {
       "title": "Recovery Kit",
@@ -641,6 +644,37 @@
       "failedQueued": "Some changes to this note could not be synced. Resolve them and try again.",
       "attachmentsBlocked": "Notes with attachments cannot be moved."
     },
+    "rotation": {
+      "unreadableNote": "This content could not be decrypted after a key change. The original encrypted data is kept below.",
+      "dialogTitle": "Some notes cannot be opened",
+      "damaged": "{{count}} notes are damaged and cannot be decrypted.",
+      "damaged_one": "{{count}} note is damaged and cannot be decrypted.",
+      "keyMissingWarning": "{{count}} notes need the previous key, which is missing on the server. If you think this is an error, cancel and contact the administrator. If you continue, the encrypted data stays inside each note, but it will become permanently unreadable at the next key change.",
+      "keyMissingWarning_one": "{{count}} note needs the previous key, which is missing on the server. If you think this is an error, cancel and contact the administrator. If you continue, the encrypted data stays inside the note, but it will become permanently unreadable at the next key change.",
+      "confirmRewrap": "Keep as unreadable notes",
+      "residue": "Some notes are still not updated. They are listed again below.",
+      "tooLarge": "{{count}} notes are too large to be kept as unreadable notes. Their data can no longer be read: delete them.",
+      "tooLarge_one": "{{count}} note is too large to be kept as an unreadable note. Its data can no longer be read: delete it.",
+      "deleteTooLarge": "Delete these {{count}} notes",
+      "deleteTooLarge_one": "Delete this note",
+      "deleteTooLargeTitle": "Delete unreadable notes?",
+      "deleteTooLargeConfirm": "The data of these {{count}} notes can no longer be read. They will be permanently deleted. This cannot be undone.",
+      "deleteTooLargeConfirm_one": "The data of this note can no longer be read. It will be permanently deleted. This cannot be undone.",
+      "deletedTooLarge": "{{count}} unreadable notes deleted.",
+      "deletedTooLarge_one": "{{count}} unreadable note deleted.",
+      "keyMissingTooLarge": "{{count}} notes need the previous key, which is missing on the server, and are too large to be repaired or deleted from here. They block the next key change until the administrator restores the previous key. Contact the administrator.",
+      "keyMissingTooLarge_one": "{{count}} note needs the previous key, which is missing on the server, and is too large to be repaired or deleted from here. It blocks the next key change until the administrator restores the previous key. Contact the administrator.",
+      "rewrapDone": "{{count}} notes kept as unreadable notes.",
+      "rewrapDone_one": "{{count}} note kept as an unreadable note.",
+      "unverifiableWarning": "{{count}} notes could not be verified: they are malformed or come from an unrecognized key version. This may be a server error. If you think so, cancel and contact the administrator. If you continue, the encrypted data stays inside each note, but it will become permanently unreadable at the next key change.",
+      "unverifiableWarning_one": "{{count}} note could not be verified: it is malformed or comes from an unrecognized key version. This may be a server error. If you think so, cancel and contact the administrator. If you continue, the encrypted data stays inside the note, but it will become permanently unreadable at the next key change.",
+      "unverifiableTooLarge": "{{count}} notes could not be verified and are too large to be kept as unreadable notes. They cannot be repaired or deleted from here. Contact the administrator.",
+      "unverifiableTooLarge_one": "{{count}} note could not be verified and is too large to be kept as an unreadable note. It cannot be repaired or deleted from here. Contact the administrator.",
+      "banner": "{{count}} notes need your attention after the key change.",
+      "banner_one": "{{count}} note needs your attention after the key change.",
+      "bannerAction": "Review",
+      "finishFailed": "Some notes could not be updated to the new key. We will try again the next time you unlock the vault."
+    },
     "migrate": {
       "title": "Upgrade your vault",
       "intro": "Your vault will be re-encrypted with a new PIN. Every item is checked after encryption before the old version is removed.",
@@ -680,7 +714,8 @@
         "invalid": "The server refused an item. Nothing was removed. Try again later.",
         "busy": "Another tab is still working on the vault. Try again.",
         "aborted": "Interrupted.",
-        "notReady": "Vault keys are not ready on this device. Reload the page, unlock the vault and try again."
+        "notReady": "Vault keys are not ready on this device. Reload the page, unlock the vault and try again.",
+        "epochChanged": "The vault was updated on another device. Unlock it again, then retry."
       }
     },
     "settings": {
@@ -2033,7 +2068,10 @@
       "plaintextRejected": "This content can't be saved in plain text in the vault.",
       "rateLimited": "Too many requests. Try again in a moment.",
       "rotateNotSupported": "Rotating the vault keys is not supported yet.",
-      "rotationPending": "Some vault notes still use the previous key. Open the vault to finish updating them, then try again.",
+      "rotationPending": "Some vault notes still use the previous key. The update has started: if some notes need your attention, a dialog or a banner in the vault will tell you. Then try again.",
+      "epochChanged": "The vault was updated on another device. Unlock it again, then retry.",
+      "localPending": "Some vault changes on this device are not synced yet. Open the vault online to finish syncing, then retry.",
+      "keyringRollback": "The vault data from the server is older than the one on this device. Remove the vault from this device, then unlock again.",
       "setupDisabled": "The vault is not available yet.",
       "stale": "The vault was updated on another device. Unlock it again and retry.",
       "staleRev": "The vault changed on another device. Reload and try again.",

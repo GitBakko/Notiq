@@ -328,6 +328,29 @@ export async function wrapUserShare(vk: VaultKey, sUser: Uint8Array, userId: str
   return seal(vk.aes, sUser, shareAad(userId, epoch));
 }
 
+const prevAad = (userId: string, epochNew: number, epochOld: number) => {
+  checkAad(userId, epochNew);
+  checkAad(userId, epochOld);
+  return `${P}vkprev|${userId}|${epochNew}|${epochOld}`;
+};
+
+/** prevVkWrap (60 B) = AES-GCM(VK_new, VK_old, AAD vkprev|userId|epochNew|epochOld). La rotazione tiene un solo slot. */
+export async function wrapPrevVk(vkNew: VaultKey, vkOldRaw: Uint8Array, userId: string, epochNew: number, epochOld: number) {
+  const aad = prevAad(userId, epochNew, epochOld);
+  if (vkOldRaw.length !== 32) throw fail('invalidInput');
+  return seal(vkNew.aes, vkOldRaw, aad);
+}
+
+/** VK_old non-extractable (come importVk); i byte grezzi non escono da qui. */
+export async function unwrapPrevVk(vkNew: VaultKey, wrapped: Uint8Array, userId: string, epochNew: number, epochOld: number): Promise<VaultKey> {
+  const raw = await open(vkNew.aes, wrapped, prevAad(userId, epochNew, epochOld));
+  try {
+    return await importVk(raw);
+  } finally {
+    raw.fill(0);
+  }
+}
+
 // ---------------------------------------------------------------- dispositivo
 
 export function generateDeviceKey(): Promise<CryptoKey> {

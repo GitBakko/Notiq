@@ -18,12 +18,12 @@ vi.mock('../../../lib/vaultSession', () => {
       this.lockedUntil = lockedUntil;
     }
   }
-  return { unlockOnline: vi.fn(), unlockOffline: vi.fn(), VaultSessionError };
+  return { unlockOnline: vi.fn(), unlockOffline: vi.fn(), removeFromDevice: vi.fn(), VaultSessionError };
 });
 
 import VaultUnlock from '../VaultUnlock';
 import toast from 'react-hot-toast';
-import { unlockOnline, unlockOffline, VaultSessionError } from '../../../lib/vaultSession';
+import { unlockOnline, unlockOffline, removeFromDevice, VaultSessionError } from '../../../lib/vaultSession';
 
 const setOnline = (v: boolean) => Object.defineProperty(navigator, 'onLine', { value: v, configurable: true });
 const type = (v = 'k7Rq2x') => fireEvent.change(screen.getByLabelText('vault.enterPin'), { target: { value: v } });
@@ -33,6 +33,8 @@ const netErr = () => Object.assign(new Error('n'), { name: 'VaultApiError', stat
 beforeEach(() => {
   vi.mocked(unlockOnline).mockReset().mockResolvedValue({ offlineSaved: true });
   vi.mocked(unlockOffline).mockReset().mockResolvedValue();
+  vi.mocked(removeFromDevice).mockReset().mockResolvedValue();
+  vi.mocked(toast.success).mockClear();
   cache.value = { status: 'READY', offlineUnlock: true, wrappedVkPin: 'x' };
   setOnline(true);
 });
@@ -106,6 +108,54 @@ describe('VaultUnlock', () => {
     submit();
     expect(await screen.findByText('errors.vault.invalidPin')).toBeTruthy();
     expect((screen.getByLabelText('vault.enterPin') as HTMLInputElement).value).toBe('');
+  });
+
+  describe('keyringRollback: unica uscita "Rimuovi dal dispositivo"', () => {
+    const rollback = () => vi.mocked(unlockOnline).mockRejectedValue(new VaultSessionError('keyringRollback', 'errors.vault.keyringRollback'));
+    const fail = async () => { type(); submit(); await screen.findByText('errors.vault.keyringRollback'); };
+
+    it('con keyringRollback compare azione; con altri errori no', async () => {
+      vi.mocked(unlockOnline).mockRejectedValue(new VaultSessionError('wrongPin', 'errors.vault.invalidPin'));
+      render(<VaultUnlock />);
+      type();
+      submit();
+      await screen.findByText('errors.vault.invalidPin');
+      expect(screen.queryByText('vault.unlock.removeFromDevice')).toBeNull();
+    });
+
+    it('il ConfirmDialog avvisa che le modifiche non sincronizzate andranno perse (annulla non rimuove)', async () => {
+      rollback();
+      render(<VaultUnlock />);
+      await fail();
+      fireEvent.click(screen.getByText('vault.unlock.removeFromDevice'));
+      expect(await screen.findByText('vault.unlock.removeFromDeviceBody')).toBeTruthy();
+      expect(removeFromDevice).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByText('common.cancel'));
+      expect(removeFromDevice).not.toHaveBeenCalled();
+    });
+
+    it('conferma -> removeFromDevice(userId, { force: true }), toast e errore azzerato', async () => {
+      rollback();
+      render(<VaultUnlock />);
+      await fail();
+      fireEvent.click(screen.getByText('vault.unlock.removeFromDevice'));
+      fireEvent.click(await screen.findByText('vault.settings.removeButton'));
+      await waitFor(() => expect(removeFromDevice).toHaveBeenCalledWith('u1', { force: true }));
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith('vault.settings.removed'));
+      expect(screen.queryByText('errors.vault.keyringRollback')).toBeNull();
+      expect(screen.queryByText('vault.unlock.removeFromDevice')).toBeNull();
+    });
+
+    it('rimozione fallita: toast di errore, azione resta', async () => {
+      rollback();
+      vi.mocked(removeFromDevice).mockRejectedValue(new Error('idb'));
+      render(<VaultUnlock />);
+      await fail();
+      fireEvent.click(screen.getByText('vault.unlock.removeFromDevice'));
+      fireEvent.click(await screen.findByText('vault.settings.removeButton'));
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.common.unknownError'));
+      expect(screen.getByText('vault.unlock.removeFromDevice')).toBeTruthy();
+    });
   });
 
   it('pinLocked: conto alla rovescia, form disabilitato, poi si sblocca', async () => {

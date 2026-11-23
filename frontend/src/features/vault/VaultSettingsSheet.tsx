@@ -6,10 +6,11 @@ import { Button } from '../../components/ui/Button';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
-import { changePin, regenerateKit } from '../../lib/vaultSession';
+import { changePin, rotateVault } from '../../lib/vaultSession';
 import { vaultReconcile, type ReconcileResult } from '../../lib/vaultReconcile';
 import { syncPush } from '../sync/syncService';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
+import { flushPending } from './vaultMigration';
 import { checkPin } from './PinPolicy';
 import PinInput from './PinInput';
 import RecoveryKitSheet from './RecoveryKitSheet';
@@ -23,6 +24,12 @@ interface Props {
   forceKit?: boolean;
   /** Kit rigenerato e confermato (cerimonia finita). */
   onKitDone?: () => void;
+  /** 409 rotationPending: note ancora all'epoch precedente. La pagina chiude il foglio, avvisa e porta a termine la rotazione (finishRotation e dialog delle note illeggibili). */
+  onRotationPending?: () => void;
+  /** rotateVault rifiutata con `localPending` (envelope locali non sincronizzati di e-1): la pagina li porta fuori con una push e, con il foglio forzato, lo rinvia. */
+  onLocalPending?: () => void;
+  /** La cerimonia del Kit e' partita (PUT riuscito): la pagina non apre il dialog delle note sopra di essa, qualunque cosa succeda al flag di rotazione. */
+  onKitStart?: () => void;
 }
 
 const INPUT =
@@ -31,8 +38,11 @@ const INPUT =
 const ALERT = 'rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300';
 
 const errKey = (e: unknown) => {
-  const k = (e as { key?: unknown } | null)?.key;
-  return typeof k === 'string' && k.startsWith('errors.') ? k : 'errors.common.unknownError';
+  const { key, name, code } = (e ?? {}) as { key?: unknown; name?: unknown; code?: unknown };
+  if (typeof key === 'string' && key.startsWith('errors.')) return key;
+  // MigrationError (flushPending, finishRotation): stesse chiavi del wizard di migrazione
+  if (name === 'MigrationError' && typeof code === 'string') return `vault.migrate.errors.${code}`;
+  return 'errors.common.unknownError';
 };
 
 function useOnline() {
@@ -55,7 +65,7 @@ function useOnline() {
  * elementi da aggiornare (reconcile, con banner legacyLeft e motivi unresolved).
  * Il Kit esiste solo nello stato di questo componente, e solo dopo il PUT riuscito (lo mostra RecoveryKitSheet).
  */
-export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forceKit = false, onKitDone }: Props) {
+export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forceKit = false, onKitDone, onRotationPending, onLocalPending, onKitStart }: Props) {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const unlocked = useVaultStore((s) => !!user && s.unlockedUserId === user.id);
@@ -107,7 +117,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
         onDone={() => {
           setKit(null);
           toast.success(t('vault.settings.kitDone'));
-          onKitDone?.();
+          onKitDone?.(); // la pagina chiude il foglio e porta a termine la rotazione (finishRotation + dialog delle note illeggibili)
         }}
       />
     );
@@ -143,12 +153,18 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
     setKitBusy(true);
     useVaultStore.getState().touchVault();
     try {
-      const res = await regenerateKit({ userId: user.id, pin: kitPin, rootKey });
+      await flushPending(user.id); // la coda vault parte con l'epoch corrente prima di cambiarla
+      const res = await rotateVault({ userId: user.id, pin: kitPin, rootKey });
       useVaultStore.getState().touchVault();
       setKitHash(res.escrowHash);
       setKit(res.kit); // PUT riuscito: solo ora esiste un Kit da mostrare
+      onKitStart?.();
     } catch (err) {
-      setKitError(errKey(err));
+      const key = errKey(err);
+      setKitError(key);
+      // note ancora all'epoch precedente: la pagina finisce quella rotazione (e il dialog/banner dice cosa serve), poi l'utente riprova
+      if (key === 'errors.vault.rotationPending') onRotationPending?.();
+      if (key === 'errors.vault.localPending') onLocalPending?.();
     } finally {
       setKitBusy(false);
       setKitPin('');
@@ -199,7 +215,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
         {forceKit && (
           <div role="alert" className={`${ALERT} mb-4 space-y-2`}>
             <p>{t('vault.kitRotation.warning')}</p>
-            {/* il vecchio Kit + la share rilasciata aprono ancora il vault: la rotazione non cambia la VK */}
+            {/* ogni nuovo Kit ruota la VK (Fase 5): il vecchio Kit non apre il nuovo escrow, il testo lo dice */}
             <p className="font-medium">{t('vault.kitRotation.destroyOld')}</p>
           </div>
         )}

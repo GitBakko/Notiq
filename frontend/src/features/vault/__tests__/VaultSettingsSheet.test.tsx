@@ -4,30 +4,32 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 
-const h = vi.hoisted(() => ({ unlockedUserId: 'u1' as string | null, touch: vi.fn(), lock: vi.fn() }));
+const h = vi.hoisted(() => ({ unlockedUserId: 'u1' as string | null, touch: vi.fn(), lock: vi.fn(), keys: { k: 1 } as object | null }));
 vi.mock('../../../store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: { id: 'u1', email: 'a@b.it', name: 'A', surname: 'B' } }),
 }));
 vi.mock('../../../store/vaultStore', () => ({
-  useVaultStore: Object.assign((sel: (s: unknown) => unknown) => sel({ unlockedUserId: h.unlockedUserId }), { getState: () => ({ touchVault: h.touch, lockVault: h.lock }) }),
+  useVaultStore: Object.assign((sel: (s: unknown) => unknown) => sel({ unlockedUserId: h.unlockedUserId }), { getState: () => ({ touchVault: h.touch, lockVault: h.lock, keys: h.keys, unlockedUserId: 'u1', epoch: 2 }) }),
 }));
 vi.mock('../../../lib/vaultReconcile', () => ({ vaultReconcile: vi.fn() }));
 vi.mock('../../sync/syncService', () => ({ syncPush: vi.fn(async () => true) }));
+vi.mock('../vaultMigration', () => ({ flushPending: vi.fn(async () => {}), finishRotation: vi.fn(async () => ({ unreadable: [] })) }));
 vi.mock('../RecoveryKitSheet', () => ({ default: ({ onDone }: { onDone: () => void }) => <button onClick={onDone}>vault.kit.title</button> }));
-vi.mock('../../../lib/vaultSession', () => ({ changePin: vi.fn(), regenerateKit: vi.fn(), confirmKit: vi.fn(async () => {}) }));
+vi.mock('../../../lib/vaultSession', () => ({ changePin: vi.fn(), rotateVault: vi.fn(), confirmKit: vi.fn(async () => {}) }));
 vi.mock('../../../utils/vaultRootKeys', () => ({ getActiveRootKey: vi.fn() }));
 vi.mock('../PinPolicy', () => ({ checkPin: vi.fn(async () => ({ ok: true })) }));
 
 import VaultSettingsSheet from '../VaultSettingsSheet';
-import { changePin, regenerateKit } from '../../../lib/vaultSession';
+import { changePin, rotateVault } from '../../../lib/vaultSession';
 import { vaultReconcile } from '../../../lib/vaultReconcile';
+import { finishRotation, flushPending } from '../vaultMigration';
 import { syncPush } from '../../sync/syncService';
 import toast from 'react-hot-toast';
 import { getActiveRootKey } from '../../../utils/vaultRootKeys';
 import { checkPin } from '../PinPolicy';
 
 const ROOT = { id: 'rk_x', ecdhSpki: new Uint8Array([1]) };
-const result = (o: object) => ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0, legacyPin: 0, ...o });
+const result = (o: object) => ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, staleLeft: 0, unresolved: 0, later: 0, legacyPin: 0, ...o });
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 beforeEach(() => {
@@ -35,6 +37,10 @@ beforeEach(() => {
   h.unlockedUserId = 'u1';
   vi.mocked(getActiveRootKey).mockReturnValue(ROOT);
   vi.mocked(checkPin).mockResolvedValue({ ok: true });
+  vi.mocked(flushPending).mockResolvedValue(undefined);
+  vi.mocked(finishRotation).mockResolvedValue({ unreadable: [] } as never);
+  vi.mocked(vaultReconcile).mockResolvedValue(result({}) as never);
+  h.keys = { k: 1 };
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 });
 
@@ -114,18 +120,80 @@ describe('VaultSettingsSheet', () => {
 
   it('Kit: nessuna cerimonia prima del PUT; dopo il PUT compare RecoveryKitSheet', async () => {
     let resolve!: (v: { kit: Uint8Array; escrowHash: string }) => void;
-    vi.mocked(regenerateKit).mockReturnValue(new Promise((r) => { resolve = r; }));
+    vi.mocked(rotateVault).mockReturnValue(new Promise((r) => { resolve = r; }));
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
-    await waitFor(() => expect(regenerateKit).toHaveBeenCalledWith({ userId: 'u1', pin: 'old111', rootKey: ROOT }));
+    await waitFor(() => expect(rotateVault).toHaveBeenCalledWith({ userId: 'u1', pin: 'old111', rootKey: ROOT }));
     expect(screen.queryByText('vault.kit.title')).toBeNull();
     resolve({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     await waitFor(() => expect(screen.getByText('vault.kit.title')).toBeTruthy());
   });
 
+  it('localPending (rotateVault): onLocalPending una volta, nessuna cerimonia', async () => {
+    vi.mocked(rotateVault).mockRejectedValue({ name: 'VaultSessionError', code: 'localPending', key: 'errors.vault.localPending' });
+    const onLocalPending = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} onLocalPending={onLocalPending} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(onLocalPending).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('vault.kit.title')).toBeNull();
+  });
+
+  it('onKitStart: dopo il PUT riuscito, una volta, prima che la cerimonia finisca', async () => {
+    vi.mocked(rotateVault).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h' });
+    const onKitStart = vi.fn();
+    const onKitDone = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} onKitStart={onKitStart} onKitDone={onKitDone} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('vault.kit.title')).toBeTruthy());
+    expect(onKitStart).toHaveBeenCalledTimes(1);
+    expect(onKitDone).not.toHaveBeenCalled();
+  });
+
+  it('(m) Kit: ordine flush -> rotate -> Kit mostrato; il foglio non chiama finishRotation ne il reconcile; onKitDone dopo la cerimonia', async () => {
+    const order: string[] = [];
+    vi.mocked(flushPending).mockImplementation(async () => { order.push('flush'); });
+    vi.mocked(rotateVault).mockImplementation(async () => { order.push('rotate'); return { kit: new Uint8Array(20).fill(7), escrowHash: 'h' }; });
+    const onKitDone = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} onKitDone={onKitDone} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('vault.kit.title')).toBeTruthy());
+    expect(order).toEqual(['flush', 'rotate']);
+    expect(flushPending).toHaveBeenCalledWith('u1');
+    expect(onKitDone).not.toHaveBeenCalled(); // la cerimonia e' ancora aperta
+    fireEvent.click(screen.getByText('vault.kit.title')); // il mock chiama onDone
+    await waitFor(() => expect(onKitDone).toHaveBeenCalledTimes(1));
+    expect(finishRotation).toHaveBeenCalledTimes(0);
+    expect(vaultReconcile).not.toHaveBeenCalled();
+  });
+
+  it('flushTimeout: testo i18n del codice, non unknownError; rotateVault non parte', async () => {
+    vi.mocked(flushPending).mockRejectedValue(Object.assign(new Error('vault.migrate.flushTimeout'), { name: 'MigrationError', code: 'flushTimeout' }));
+    render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('vault.migrate.errors.flushTimeout')).toBeTruthy());
+    expect(screen.queryByText('errors.common.unknownError')).toBeNull();
+    expect(rotateVault).not.toHaveBeenCalled();
+  });
+
+  it('(n) rotationPending (409): il foglio chiama onRotationPending una volta e non lancia finishRotation ne il reconcile', async () => {
+    vi.mocked(rotateVault).mockRejectedValue({ name: 'VaultSessionError', code: 'rotationPending', key: 'errors.vault.rotationPending' });
+    const onRotationPending = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} onRotationPending={onRotationPending} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(onRotationPending).toHaveBeenCalledTimes(1));
+    expect(finishRotation).not.toHaveBeenCalled();
+    expect(vaultReconcile).not.toHaveBeenCalled();
+    expect(screen.queryByText('vault.kit.title')).toBeNull();
+  });
+
   it('Kit: kitNotUpdated mostrato, nessun Kit', async () => {
-    vi.mocked(regenerateKit).mockRejectedValue({ key: 'errors.vault.kitNotUpdated' });
+    vi.mocked(rotateVault).mockRejectedValue({ key: 'errors.vault.kitNotUpdated' });
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
@@ -133,12 +201,12 @@ describe('VaultSettingsSheet', () => {
     expect(screen.queryByText('vault.kit.title')).toBeNull();
   });
 
-  it('senza root key il bottone Kit e disabilitato e regenerateKit non parte', () => {
+  it('senza root key il bottone Kit e disabilitato e rotateVault non parte', () => {
     vi.mocked(getActiveRootKey).mockReturnValue(null);
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     expect((screen.getByText('vault.settings.kitButton').closest('button') as HTMLButtonElement).disabled).toBe(true);
-    expect(regenerateKit).not.toHaveBeenCalled();
+    expect(rotateVault).not.toHaveBeenCalled();
   });
 
   it('offline: i due pulsanti sono disabilitati', () => {
@@ -150,7 +218,7 @@ describe('VaultSettingsSheet', () => {
   });
 
   it('Kit: touchVault al submit; onDone chiude la cerimonia con il toast', async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
+    vi.mocked(rotateVault).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
@@ -163,7 +231,7 @@ describe('VaultSettingsSheet', () => {
   });
 
   it('Kit: la chiusura del padre durante la cerimonia non la smonta', async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
+    vi.mocked(rotateVault).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     const { rerender } = render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
@@ -173,12 +241,12 @@ describe('VaultSettingsSheet', () => {
   });
 
   it('Esc ignorato mentre il Kit e in corso (busy)', async () => {
-    vi.mocked(regenerateKit).mockReturnValue(new Promise(() => {}));
+    vi.mocked(rotateVault).mockReturnValue(new Promise(() => {}));
     const onClose = vi.fn();
     render(<VaultSettingsSheet isOpen onClose={onClose} />);
     type('vault.settings.kitPin', 'old111');
     fireEvent.click(screen.getByText('vault.settings.kitButton'));
-    await waitFor(() => expect(regenerateKit).toHaveBeenCalled());
+    await waitFor(() => expect(rotateVault).toHaveBeenCalled());
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -315,6 +383,15 @@ describe('VaultSettingsSheet: forceKit', () => {
     expect(screen.queryByText('vault.settings.checkButton')).toBeNull();
   });
 
+  it('"Blocca vault" resta visibile anche con un errore nella sezione Kit', async () => {
+    vi.mocked(rotateVault).mockRejectedValue({ key: 'errors.vault.kitNotUpdated' });
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('errors.vault.kitNotUpdated')).toBeTruthy());
+    expect(screen.getByText('vault.kitRotation.lock')).toBeTruthy();
+  });
+
   it('"Blocca vault" blocca il vault', () => {
     render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
     fireEvent.click(screen.getByText('vault.kitRotation.lock'));
@@ -322,7 +399,7 @@ describe('VaultSettingsSheet: forceKit', () => {
   });
 
   it('dopo la conferma del Kit chiama onKitDone', async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h' });
+    vi.mocked(rotateVault).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h' });
     const onKitDone = vi.fn();
     render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} onKitDone={onKitDone} />);
     type('vault.settings.kitPin', 'old111');

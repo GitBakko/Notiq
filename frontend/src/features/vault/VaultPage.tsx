@@ -21,11 +21,11 @@ import { getKeyring } from '../../lib/vaultApi';
 import { RECOVERY_CLOSED_EVENT } from '../../lib/vaultEvents';
 import { decryptItem, encryptItem, type VaultNoteType } from '../../lib/vaultCodec';
 import { hydrateVaultNote, vaultReconcile } from '../../lib/vaultReconcile';
-import { checkPendingOnStart, refreshKeyringCache, syncKeyringCache, type KeyringDto } from '../../lib/vaultSession';
+import { checkPendingOnStart, hasForeignEpochPending, refreshKeyringCache, syncKeyringCache, type KeyringDto } from '../../lib/vaultSession';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
 import { syncPush } from '../sync/syncService';
-import type { Note } from '../notes/noteService';
+import { permanentlyDeleteNote, type Note } from '../notes/noteService';
 import TagList from '../tags/TagList';
 import CredentialCard from './CredentialCard';
 import CredentialForm from './CredentialForm';
@@ -35,8 +35,10 @@ import VaultNoteEditor from './VaultNoteEditor';
 import VaultOfflineNotice from './VaultOfflineNotice';
 import VaultRecovery, { type RecoveryNext } from './VaultRecovery';
 import VaultSettingsSheet from './VaultSettingsSheet';
+import StaleNotesDialog, { type StaleItem } from './StaleNotesDialog';
 import VaultSetup from './VaultSetup';
 import VaultUnlock from './VaultUnlock';
+import { finishRotation, MAX_REWRAP_LEN, rewrapUnreadable, type RotationResult, type UnreadableItem } from './vaultMigration';
 import { EMPTY_CREDENTIAL, parseCredential } from './credentialTypes';
 
 type TypeFilter = 'all' | 'note' | 'credential';
@@ -53,6 +55,18 @@ type Gate =
 
 // F10: con un rilascio aperto il PUT con l'escrow darebbe 409 recoveryInProgress, il foglio non serve (e non si puo' completare)
 const rotationOf = (kr: KeyringDto) => kr.kitRotationRequired === true && kr.openRecovery?.status !== 'RELEASED';
+
+// Note che nessuna chiave apre dopo una rotazione (Fase 5): UN solo proprietario dello stato. `items` = tutte quelle ancora da risolvere (`tooLarge` = envelope oltre
+// MAX_REWRAP_LEN o rifiutato dal rewrap: D7), `open` = dialog visibile (chiuso: resta il banner), `last` = esito del tentativo che ha lasciato un residuo.
+// Solo per la sessione (`keys`) che le ha trovate.
+interface StaleState { keys: unknown; items: StaleItem[]; open: boolean; last?: { rewrapped: number } }
+const markStale = (u: UnreadableItem, rewrapRefused: string[] = []): StaleItem => ({ ...u, tooLarge: u.size > MAX_REWRAP_LEN || rewrapRefused.includes(u.id) });
+
+// Contesto di cifratura della sessione sbloccata (per finishRotation / rewrapUnreadable), null se bloccato
+const sessionCtx = () => {
+  const { keys, unlockedUserId, epoch } = useVaultStore.getState();
+  return keys && unlockedUserId && epoch != null ? { keys, userId: unlockedUserId, epoch } : null;
+};
 
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const MAX_ENVELOPE_LEN = 2 * 1024 * 1024; // oltre non passa il limite del server
@@ -106,6 +120,21 @@ export default function VaultPage() {
   const [kitRotation, setKitRotation] = useState(false); // letto dal GET /keyring fatto da bloccato (nessun polling)
   const [showResume, setShowResume] = useState(false);
   const [legacyLeft, setLegacyLeft] = useState(0);
+  const [keyringStale, setKeyringStale] = useState(false); // il keyring riletto da sbloccato ha staleCount > 0
+  const [stale, setStale] = useState<StaleState | null>(null);
+  // Il foglio forzato cede il posto al dialog delle note (409 rotationPending: 'stale') o al giro di sincronizzazione (localPending: 'local'), altrimenti l'utente resta
+  // bloccato. Vale solo per le chiavi con cui e' stato deciso (un nuovo sblocco lo azzera). 'stale' finisce quando il residuo si chiude, 'local' al prossimo giro del reconcile.
+  const [deferKit, setDeferKit] = useState<{ why: 'stale' | 'local'; keys: unknown } | null>(null);
+  const [incompleteKeys, setIncompleteKeys] = useState<unknown>(null); // keys per cui finishRotation e' chiuso senza illeggibili ma con un residuo (tooLarge, failed, conflicts): a chiavi diverse non vale
+  const deferRef = useRef(deferKit); // letto dal reconcile senza ricrearlo
+  useEffect(() => { deferRef.current = deferKit; }, [deferKit]);
+  const [kitCeremony, setKitCeremony] = useState(false); // la cerimonia del Kit e' montata nel foglio (anche se il flag di rotazione e' stato azzerato nel frattempo)
+  const showStale = useCallback((staleKeys: unknown, items: StaleItem[], last?: { rewrapped: number }) => {
+    if (items.length === 0) setDeferKit((d) => (d?.why === 'stale' ? null : d));
+    setStale(items.length > 0 ? { keys: staleKeys, items, open: true, last } : null);
+  }, []);
+  const [staleBusy, setStaleBusy] = useState(false); // rewrap o eliminazione in corso: il dialog disabilita i pulsanti
+  const busyRef = useRef(false); // single-flight di rewrap ed eliminazione
   const [legacyPinLeft, setLegacyPinLeft] = useState(0); // note con riga lasciate per un PIN precedente (B.13)
   const [kitBanner, setKitBanner] = useState(false);
   const [plain, setPlain] = useState<Map<string, Plain>>(() => new Map());
@@ -144,7 +173,7 @@ export default function VaultPage() {
     window.addEventListener('offline', off);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
-  const forceKit = unlocked && kitRotation && !recoveryOpen && online && !!rootKey;
+  const forceKit = unlocked && kitRotation && !recoveryOpen && online && !!rootKey && !(deferKit && deferKit.keys === keys);
 
   // --- keyring: UNKNOWN / NONE / READY (piano 5.3) -------------------------------------------------
   const seqRef = useRef(0);
@@ -198,7 +227,10 @@ export default function VaultPage() {
     const refresh = () => {
       const rs = ++rotSeqRef.current;
       // anche da sbloccato (pagina montata gia' sbloccata, sblocco offline) il flag di rotazione si legge qui
-      void refreshKeyringCache(userId).then((kr) => { if (kr && rs === rotSeqRef.current) setKitRotation(rotationOf(kr)); });
+      void refreshKeyringCache(userId).then((kr) => {
+        if (kr && rs === rotSeqRef.current) setKitRotation(rotationOf(kr));
+        if (kr) setKeyringStale((kr.staleCount ?? 0) > 0); // note ancora all'epoch precedente: si finisce la rotazione
+      });
     };
     if (navigator.onLine) refresh();
     window.addEventListener('online', refresh);
@@ -237,11 +269,60 @@ export default function VaultPage() {
   const laterTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const needTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const runRef = useRef<(retry?: boolean) => void>(() => {});
+  const rotatedFor = useRef<unknown>(null); // keys per cui finishRotation e' gia' partito
+  const rotating = useRef(false); // un finishRotation e' in corso (anche con force non se ne lancia un secondo)
+  const rotateRef = useRef<() => Promise<void>>(async () => {}); // rotateStale senza opzioni, per rilanciarsi da dentro
   const seenRef = useRef<{ keys: unknown; ids: Set<string> } | null>(null); // memo di T-d/T-h, per sessione sbloccata
   useEffect(() => {
     aliveRef.current = true;
     return () => { aliveRef.current = false; clearTimeout(laterTimer.current); clearTimeout(needTimer.current); };
   }, []);
+  // Esito di un finishRotation: le illeggibili vanno al dialog; senza illeggibili ma con un residuo (tooLarge, failed, conflicts, unverified) la rotazione e'
+  // incompleta: banner (e il rinvio del foglio forzato resta), non un silenzio. `refused` = id che il rewrap ha rifiutato come troppo grandi.
+  const applyResult = useCallback((staleKeys: unknown, r: RotationResult, last?: { rewrapped: number }, refused: string[] = []) => {
+    // `unverified` non conta: sono note gia' all'epoch corrente (staleCount 0), non restano da ruotare
+    const residue = [r.tooLarge, r.failed, r.conflicts].some((a) => (a?.length ?? 0) > 0);
+    const incomplete = r.unreadable.length === 0 && residue;
+    setIncompleteKeys(incomplete ? staleKeys : null);
+    if (incomplete) setStale(null);
+    else showStale(staleKeys, r.unreadable.map((u) => markStale(u, refused)), last);
+  }, [showStale]);
+  // Fine della rotazione della VK (Fase 5): al piu' UNA volta per sessione sbloccata (keys), da online, salvo `force` (409 rotationPending dal foglio). Poi il giro del reconcile.
+  // E' l'UNICO punto che lancia finishRotation oltre a confirmRewrap: il foglio impostazioni non lo fa piu'.
+  const rotateStale = useCallback(async (o: { force?: boolean } = {}) => {
+    const ctx = sessionCtx();
+    if (!ctx || !navigator.onLine || rotating.current || (!o.force && rotatedFor.current === ctx.keys)) return;
+    rotating.current = true;
+    rotatedFor.current = ctx.keys; // niente loop: se restano stale, riprova al prossimo sblocco
+    try {
+      const r = await finishRotation({ ctx });
+      rotating.current = false;
+      if (!aliveRef.current) return;
+      applyResult(ctx.keys, r);
+      runRef.current();
+    } catch (err) {
+      rotating.current = false;
+      const code = (err as { name?: string; code?: string } | null)?.name === 'MigrationError' ? (err as { code?: string }).code : undefined;
+      if (code !== 'busy') rotatedFor.current = null; // ripresa fallita (rete, 429, ...): un altro trigger puo' riprovare; con busy un altro giro sta gia' lavorando
+      if (code === 'busy') return;
+      setDeferKit((d) => (d?.why === 'stale' ? null : d)); // fallita: il foglio forzato deve poter ricomparire; un rinvio local aspetta la sua condizione
+      if (!aliveRef.current) return;
+      if (code === 'locked') {
+        // il giro era partito con chiavi vecchie e una rotazione le ha cambiate nel frattempo: con le nuove si rilancia (onKitDone, nel mentre, era un no-op)
+        const cur = sessionCtx();
+        if (cur && cur.keys !== ctx.keys) void rotateRef.current();
+        return;
+      }
+      if (code === 'aborted') return; // al prossimo sblocco
+      toast.error(tRef.current(code === 'epochChanged' ? 'errors.vault.epochChanged' : 'vault.rotation.finishFailed'));
+    }
+  }, [applyResult]);
+  useEffect(() => { rotateRef.current = () => rotateStale(); }, [rotateStale]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- setStale parte dopo un await (finishRotation), non in modo sincrono
+    if (keyringStale && reconcileEnabled) void rotateStale(); // staleCount > 0 nel keyring riletto da sbloccato
+  }, [keyringStale, reconcileEnabled, rotateStale]);
+
   // `retry` = giro di recupero T-f; ogni altro trigger azzera il contatore dei tentativi.
   const runReconcile = useCallback((retry = false) => {
     clearTimeout(laterTimer.current);
@@ -249,8 +330,16 @@ export default function VaultPage() {
     vaultReconcile()
       .then((r) => {
         if (!aliveRef.current || r.skipped) return;
-        setLegacyLeft(r.legacyLeft);
+        setLegacyLeft(r.legacyLeft); // solo le SL: le stale (staleLeft) le chiude finishRotation, non il banner
         setLegacyPinLeft(r.legacyPin ?? 0);
+        if (deferRef.current?.why === 'local') {
+          // il rinvio finisce solo quando le righe locali e-1 sono uscite (rotateVault darebbe di nuovo localPending): stessa verifica di rotateVault
+          const c = sessionCtx();
+          void (c ? hasForeignEpochPending(c.userId, c.epoch) : Promise.resolve(true)).catch(() => true).then((still) => {
+            if (!still && aliveRef.current) setDeferKit((d) => (d?.why === 'local' ? null : d));
+          });
+        }
+        if (r.staleLeft > 0) void rotateStale();
         if (r.conflictsResolved + r.reactivated > 0) void syncPush().catch(() => false); // T-g: ACK e REQUEUE non svegliano la push reattiva
         if (!r.later) { laterTry.current = 0; return; }
         if (r.aborted || openNoteRef.current || laterTry.current >= LATER_RETRY_MS.length) return; // T-f
@@ -258,8 +347,68 @@ export default function VaultPage() {
         laterTimer.current = setTimeout(() => { if (aliveRef.current && !openNoteRef.current) runRef.current(true); }, LATER_RETRY_MS[laterTry.current++]);
       })
       .catch(() => { /* il prossimo trigger riprova */ });
-  }, []);
+  }, [rotateStale]);
   useEffect(() => { runRef.current = runReconcile; }, [runReconcile]);
+
+
+  // Rewrap ed eliminazione sono mutuamente esclusivi (busyRef): un secondo avvio mentre il primo e' in volo non fa nulla.
+  const exclusive = async (fn: () => Promise<void>) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setStaleBusy(true);
+    try { await fn(); } catch { /* fn gestisce i propri errori */ }
+    busyRef.current = false;
+    if (aliveRef.current) setStaleBusy(false);
+  };
+
+  const confirmRewrap = () => exclusive(async () => {
+    const cur = stale;
+    const ctx = sessionCtx();
+    if (!cur || !ctx || cur.keys !== ctx.keys) return;
+    const todo = cur.items.filter((i) => !i.tooLarge); // le tooLarge: D si eliminano (D7), K non si toccano (D16)
+    if (todo.length === 0) return;
+    setStale({ ...cur, open: false }); // chiuso ma non perso: se qualcosa va storto il banner riapre il dialog
+    try {
+      // consenso per nota: solo le K e U (non verificabili) mostrate nel dialog si re-incapsulano senza una chiave che le apra
+      const rw = await rewrapUnreadable(todo.map((i) => i.id), ctx, { allowKeyMissingIds: todo.filter((i) => i.reason !== 'damaged').map((i) => i.id) });
+      const fin = await finishRotation({ ctx }); // il residuo e' la verita' del server: comprende conflitti, failed e unverified, che restano stale
+      if (!aliveRef.current) return;
+      if (fin.unreadable.length === 0) toast.success(tRef.current('vault.rotation.rewrapDone', { count: rw.rewrapped.length }));
+      applyResult(ctx.keys, fin, { rewrapped: rw.rewrapped.length }, rw.tooLarge);
+      runRef.current();
+    } catch (err) {
+      if ((err as { name?: string } | null)?.name === 'MigrationError' && (err as { code?: string }).code === 'epochChanged') toast.error(tRef.current('errors.vault.epochChanged'));
+      else if (aliveRef.current) toast.error(tRef.current('vault.rotation.finishFailed'));
+    }
+  });
+
+  // D7: le D oltre ~1,5 MiB non si re-incapsulano; si eliminano (stesso percorso dell'editor del vault: cancellazione definitiva locale + DELETE in coda). Il cestino non basta:
+  // staleCount del server conta anche le note nel cestino. Le K oltre il limite NON si eliminano mai (D16): servono la chiave precedente e l'amministratore.
+  const deleteDamaged = () => exclusive(async () => {
+    const cur = stale;
+    const ctx = sessionCtx();
+    if (!cur || !ctx || cur.keys !== ctx.keys) return;
+    const ids = cur.items.filter((i) => i.tooLarge && i.reason === 'damaged').map((i) => i.id);
+    if (ids.length === 0) return;
+    const gone = new Set<string>();
+    try {
+      // l'eliminazione e' irreversibile: si riclassifica ORA (non lo snapshot) e si elimina solo cio' che il server riconferma troppo grande e senza chiave che lo apra
+      const rw = await rewrapUnreadable(ids, ctx);
+      for (const id of rw.tooLarge) { await permanentlyDeleteNote(id); gone.add(id); }
+      if (gone.size > 0) {
+        await syncPush().catch(() => false); // il DELETE deve arrivare al server prima di rileggerne lo stato
+        toast.success(tRef.current('vault.rotation.deletedTooLarge', { count: gone.size }));
+      }
+      // il server e' la fonte di verita': una nota riclassificata (K, U, failed) esce dal gruppo eliminabile; quelle appena eliminate si tolgono comunque (push fallita)
+      const fin = await finishRotation({ ctx });
+      if (!aliveRef.current) return;
+      applyResult(ctx.keys, { ...fin, unreadable: fin.unreadable.filter((u) => !gone.has(u.id)) });
+      runRef.current();
+    } catch (err) {
+      if ((err as { name?: string } | null)?.name === 'MigrationError' && (err as { code?: string }).code === 'epochChanged') toast.error(tRef.current('errors.vault.epochChanged'));
+      else if (aliveRef.current) toast.error(tRef.current('errors.common.unknownError'));
+    }
+  });
 
   useEffect(() => {
     if (!reconcileEnabled) return;
@@ -544,7 +693,7 @@ export default function VaultPage() {
 
   const openLegacyPin = () => { setSelectedNoteId(null); setShowResume(true); };
 
-  const BANNER = 'mx-2 mt-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300 text-sm flex items-center justify-between gap-2';
+  const BANNER = 'mx-4 mt-2p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300 text-sm flex items-center justify-between gap-2';
   const BANNER_ACTION = 'min-h-[44px] px-2 font-medium underline flex-shrink-0';
 
   const renderBanners = () => (
@@ -559,6 +708,17 @@ export default function VaultPage() {
         <div role="status" className={BANNER}>
           <span>{t('vault.legacyPinLeft', { n: legacyPinLeft })}</span>
           <button type="button" onClick={openLegacyPin} className={BANNER_ACTION}>{t('vault.legacyPinLeftAction')}</button>
+        </div>
+      )}
+      {stale && stale.keys === keys && !stale.open && (
+        <div role="status" className={BANNER}>
+          <span>{t('vault.rotation.banner', { count: stale.items.length })}</span>
+          <button type="button" onClick={() => setStale({ ...stale, open: true })} className={BANNER_ACTION}>{t('vault.rotation.bannerAction')}</button>
+        </div>
+      )}
+      {incompleteKeys !== null && incompleteKeys === keys && (
+        <div role="status" className={BANNER}>
+          <span>{t('vault.rotation.finishFailed')}</span>
         </div>
       )}
       {kitBanner && (
@@ -831,10 +991,29 @@ export default function VaultPage() {
       <VaultSettingsSheet
         isOpen={settingsOpen || forceKit}
         forceKit={forceKit}
-        onKitDone={() => { rotSeqRef.current++; setKitRotation(false); if (userId) void refreshKeyringCache(userId); }}
+        onKitStart={() => setKitCeremony(true)}
+        onKitDone={() => { rotSeqRef.current++; setKitCeremony(false); setKitRotation(false); setSettingsOpen(false); void rotateStale(); if (userId) void refreshKeyringCache(userId); }}
         onClose={() => setSettingsOpen(false)}
         onLegacyLeft={setLegacyLeft}
+        onRotationPending={() => { setSettingsOpen(false); if (forceKit) setDeferKit({ why: 'stale', keys }); toast.error(tRef.current('errors.vault.rotationPending')); void rotateStale({ force: true }); }}
+        onLocalPending={() => {
+          setSettingsOpen(false);
+          if (forceKit) setDeferKit({ why: 'local', keys });
+          toast.error(tRef.current('errors.vault.localPending'));
+          void syncPush().catch(() => false).then(() => { if (aliveRef.current) runRef.current(); }); // porta fuori le righe locali, poi il giro: il foglio forzato ricompare dopo
+        }}
       />
+      {/* Il dialog sta sotto ogni modale (foglio, Kit, ripresa): un solo focus trap alla volta. Il risultato arrivato nel frattempo resta nello stato. */}
+      {stale && stale.open && stale.keys === keys && !(settingsOpen || forceKit || showResume || (kitCeremony && unlocked)) && (
+        <StaleNotesDialog
+          items={stale.items}
+          last={stale.last}
+          busy={staleBusy}
+          onConfirm={() => { void confirmRewrap(); }}
+          onDeleteDamaged={() => { void deleteDamaged(); }}
+          onCancel={() => setStale({ ...stale, open: false })}
+        />
+      )}
     </>
   );
 }

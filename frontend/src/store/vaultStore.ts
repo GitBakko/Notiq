@@ -22,6 +22,8 @@ export interface VaultKeys {
   vkHkdf: CryptoKey;
   vkAes: CryptoKey;
   sigKey: CryptoKey;
+  /** Dopo una rotazione: VK dell'epoch precedente (un solo slot), per leggere le note non ancora ricifrate. Azzerata con le altre chiavi dal lock. */
+  prev?: { epoch: number; vkHkdf: CryptoKey; vkAes: CryptoKey };
 }
 
 /** Cache locale del keyring di un utente (nessun segreto in chiaro: wrappedVkPin e' cifrato). */

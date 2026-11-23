@@ -53,7 +53,7 @@ const MOVE_CODES = ['offline', 'conflict', 'notReady', 'failed', 'locked', 'pend
 const DYNAMIC = [
   ...family('vault.moveIn', MOVE_CODES), // NoteEditor: attachmentsBlocked va su errors.vault.attachmentsBlocked
   ...family('vault.moveOut', [...MOVE_CODES, 'attachmentsBlocked']), // VaultNoteEditor: t(`vault.moveOut.${code}`)
-  ...family('vault.migrate.errors', ['flushTimeout', 'locked', 'invalid', 'aborted', 'busy', 'notReady']), // MigrationErrorCode
+  ...family('vault.migrate.errors', ['flushTimeout', 'locked', 'invalid', 'aborted', 'busy', 'notReady', 'epochChanged']), // MigrationErrorCode
   ...family('vault.migrate.step', ['flush', 'setup', 'migrate', 'close']),
   ...family('vault.pinPolicy', ['format', 'date', 'sequence', 'repetition', 'common', 'personal']), // PinRejection
   ...family('vault.kit.errors', ['invalidLength', 'invalidChar', 'checksum', 'pdfOverflow']),
@@ -70,7 +70,7 @@ const BACKEND_ERRORS = [
     'invalidRootKey', 'invalidSeal', 'invalidSealInput', 'locked', 'notReady', 'pepperMismatch', 'plaintextRejected', 'plaintextRequired',
     'rotateNotSupported', 'rotationPending', 'setupDisabled', 'stale', 'staleRev', 'unavailable',
   ]),
-  ...family('errors.vault', ['rateLimited', 'offlineUnavailable', 'kitNotUpdated']), // generate lato client
+  ...family('errors.vault', ['rateLimited', 'offlineUnavailable', 'kitNotUpdated', 'keyringRollback', 'epochChanged', 'localPending']), // generate lato client
   ...family('errors.common', ['networkError', 'unknownError']),
   'errors.notes.restoreConflict',
   'errors.notes.restoreUnsupportedLive',

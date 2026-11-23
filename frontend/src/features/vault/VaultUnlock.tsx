@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Lock, Unlock, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
-import { unlockOffline, unlockOnline, VaultSessionError } from '../../lib/vaultSession';
+import { removeFromDevice, unlockOffline, unlockOnline, VaultSessionError } from '../../lib/vaultSession';
 
 interface Props {
   onUnlocked?: () => void;
@@ -42,6 +43,8 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [showForgot, setShowForgot] = useState(false);
+  const [rollback, setRollback] = useState(false); // keyringRollback: lo sblocco e' rifiutato, resta solo la rimozione dal dispositivo
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const submitting = useRef(false); // doppio submit nello stesso tick: `busy` (stato) non fa in tempo
 
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -80,6 +83,7 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
     submitting.current = true;
     setBusy(true);
     setError(null);
+    setRollback(false);
     try {
       if (!navigator.onLine) await unlockOffline(userId, pin);
       else {
@@ -100,11 +104,25 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
         setNow(Date.now());
         setLockedUntil(Number.isFinite(until) ? until : null);
       }
+      setRollback(err instanceof VaultSessionError && err.code === 'keyringRollback');
       setError(errKey(err));
       setPin('');
     } finally {
       submitting.current = false;
       setBusy(false);
+    }
+  };
+
+  // Le modifiche vault non sincronizzate di questo dispositivo si perdono (force): il ConfirmDialog lo dice. Poi lo sblocco online riparte da zero.
+  const doRemove = async () => {
+    if (!userId) return;
+    try {
+      await removeFromDevice(userId, { force: true });
+      toast.success(t('vault.settings.removed'));
+      setRollback(false);
+      setError(null);
+    } catch {
+      toast.error(t('errors.common.unknownError'));
     }
   };
 
@@ -153,6 +171,22 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
             {t('vault.unlockButton')}
           </Button>
         </form>
+
+        {rollback && (
+          <Button type="button" variant="danger" className="w-full min-h-[44px] mt-3" onClick={() => setConfirmRemove(true)}>
+            {t('vault.unlock.removeFromDevice')}
+          </Button>
+        )}
+        <ConfirmDialog
+          isOpen={confirmRemove}
+          onClose={() => setConfirmRemove(false)}
+          onConfirm={() => { void doRemove(); }}
+          title={t('vault.unlock.removeFromDeviceTitle')}
+          message={t('vault.unlock.removeFromDeviceBody')}
+          confirmText={t('vault.settings.removeButton')}
+          cancelText={t('common.cancel')}
+          variant="danger"
+        />
 
         {/* Il recupero passa dal Kit (onForgot); senza Kit resta solo il reset, mai un reset locale da qui. */}
         <button

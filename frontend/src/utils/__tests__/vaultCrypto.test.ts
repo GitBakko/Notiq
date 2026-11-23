@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { createHash, verify, createPublicKey } from 'node:crypto';
+import { createHash, verify, createPublicKey, createCipheriv, createDecipheriv } from 'node:crypto';
 import {
   ENVELOPE_RE, SEALED_ROOT_SHARE_LEN, b64uDecode, b64uEncode, kdfCanon, sha256hex, sha256hexBytes,
   deriveAuthKey, deriveKekPin, generateVkRaw, importVk, wrapVkPin, unwrapVkPin,
   generateSigKey, wrapVkSigKey, unwrapVkSigKey, signVkProof,
   deriveNoteKey, encryptItem, decryptItem, sealRootShare, openRootShare,
   deriveRk, wrapEscrow, unwrapEscrow, wrapUserShare, generateDeviceKey, encryptShare, decryptShare,
+  wrapPrevVk, unwrapPrevVk,
 } from '../vaultCrypto';
 import { DEFAULT_KDF } from '../argon2';
 
@@ -342,5 +343,97 @@ describe('vaultCrypto', () => {
       await expect(sealRootShare(hex(V1.sRoot), hex(V1.rootEcdhSpki), 'u|1', EPOCH, 'rk_a')).rejects.toThrow('invalidInput');
       await expect(openRootShare(new Uint8Array(156), await rootPriv(), U, EPOCH, 'rk_a')).rejects.toThrow('decryptFailed');
     });
+  });
+});
+
+// P4 Fase 5: prevVkWrap = AES-GCM(VK_new, VK_old), AAD `notiq/vault/v3/vkprev|userId|epochNew|epochOld`.
+describe('vaultCrypto: prevVkWrap (rotazione della VK)', () => {
+  const U5 = 'user-v5';
+  const NEW = 5;
+  const OLD = 4;
+  const AAD = 'notiq/vault/v3/vkprev|user-v5|5|4';
+  const vkNewRaw = new Uint8Array(32).fill(0xa5);
+  const vkOldRaw = new Uint8Array(Array.from({ length: 32 }, (_, i) => i));
+  // KAT congelato: CONTRATTO col dato gia' scritto in VaultKeyring.prevVkWrap. Non si rigenera: se questo test
+  // fallisce e' cambiato il formato (AAD, IV||ct||tag, chiave) e le righe esistenti diventano illeggibili.
+  // Calcolato con node:crypto (aes-256-gcm), IV = 10..1b, chiavi e AAD di questo describe.
+  const KAT = '101112131415161718191a1b41f6f2d2d85e29b44a2b9ff915bcbbd99489f786242812b332fcc2f4a032102a336c99a6179c18a6d73c0377d1c61a81';
+
+  /** Un envelope cifrato con VK_old: serve a provare che le chiavi sbustate sono davvero VK_old. */
+  const sameVk = async (a: { hkdf: CryptoKey; aes: CryptoKey }, b: { hkdf: CryptoKey; aes: CryptoKey }) => {
+    const ctx = { userId: U5, noteId: 'n1', noteType: 'NOTE', epoch: OLD };
+    const env = await encryptItem(await deriveNoteKey(a, 'n1'), ctx, { t: 't', c: 'c' });
+    expect(await decryptItem(await deriveNoteKey(b, 'n1'), ctx, env)).toEqual({ t: 't', c: 'c' });
+  };
+
+  it('round-trip: 60 byte; sbusta VK_old non-extractable (stessa forma di importVk)', async () => {
+    const vkNew = await importVk(generateVkRaw());
+    const old = generateVkRaw();
+    const w = await wrapPrevVk(vkNew, old, U5, NEW, OLD);
+    expect(w.length).toBe(60);
+    const back = await unwrapPrevVk(vkNew, w, U5, NEW, OLD);
+    for (const k of [back.hkdf, back.aes]) expect(k.extractable).toBe(false);
+    expect(back.hkdf.usages).toEqual(['deriveKey']);
+    await sameVk(await importVk(old), back);
+  });
+
+  it('IV casuale: due wrap dello stesso dato differiscono', async () => {
+    const vkNew = await importVk(vkNewRaw);
+    const a = await wrapPrevVk(vkNew, vkOldRaw, U5, NEW, OLD);
+    const b = await wrapPrevVk(vkNew, vkOldRaw, U5, NEW, OLD);
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false);
+  });
+
+  it('AAD esatto: il blob di wrapPrevVk si apre con node:crypto e la stringa letterale', async () => {
+    const w = await wrapPrevVk(await importVk(vkNewRaw), vkOldRaw, U5, NEW, OLD);
+    const d = createDecipheriv('aes-256-gcm', vkNewRaw, w.subarray(0, 12));
+    d.setAAD(Buffer.from(AAD));
+    d.setAuthTag(Buffer.from(w.subarray(44)));
+    expect(new Uint8Array(Buffer.concat([d.update(w.subarray(12, 44)), d.final()]))).toEqual(vkOldRaw);
+  });
+
+  it('KAT: il blob congelato si ricostruisce con IV fisso e si sbusta', async () => {
+    const iv = Buffer.from(KAT.slice(0, 24), 'hex');
+    const c = createCipheriv('aes-256-gcm', vkNewRaw, iv);
+    c.setAAD(Buffer.from(AAD));
+    const ct = Buffer.concat([c.update(vkOldRaw), c.final()]);
+    expect(Buffer.concat([iv, ct, c.getAuthTag()]).toString('hex')).toBe(KAT);
+    const back = await unwrapPrevVk(await importVk(vkNewRaw), hex(KAT), U5, NEW, OLD);
+    await sameVk(await importVk(vkOldRaw), back);
+  });
+
+  it('userId, epochNew o epochOld sbagliati, o VK_new sbagliata -> decryptFailed', async () => {
+    const vkNew = await importVk(vkNewRaw);
+    const w = hex(KAT);
+    await expect(unwrapPrevVk(vkNew, w, 'user-2', NEW, OLD)).rejects.toThrow('decryptFailed');
+    await expect(unwrapPrevVk(vkNew, w, U5, NEW + 1, OLD)).rejects.toThrow('decryptFailed');
+    await expect(unwrapPrevVk(vkNew, w, U5, NEW, OLD - 1)).rejects.toThrow('decryptFailed');
+    // epoch scambiate: l'AAD e' ordinato
+    await expect(unwrapPrevVk(vkNew, w, U5, OLD, NEW)).rejects.toThrow('decryptFailed');
+    await expect(unwrapPrevVk(await importVk(generateVkRaw()), w, U5, NEW, OLD)).rejects.toThrow('decryptFailed');
+    const t = new Uint8Array(w);
+    t[30] ^= 1;
+    await expect(unwrapPrevVk(vkNew, t, U5, NEW, OLD)).rejects.toThrow('decryptFailed');
+  });
+
+  it('lunghezza diversa da 60 -> errore', async () => {
+    const vkNew = await importVk(vkNewRaw);
+    const w = hex(KAT);
+    await expect(unwrapPrevVk(vkNew, w.subarray(0, 59), U5, NEW, OLD)).rejects.toThrow();
+    await expect(unwrapPrevVk(vkNew, new Uint8Array([...w, 0]), U5, NEW, OLD)).rejects.toThrow();
+    await expect(unwrapPrevVk(vkNew, new Uint8Array(0), U5, NEW, OLD)).rejects.toThrow();
+  });
+
+  it('validatore unico: epoch non valide, "|" nello userId, VK_old non da 32 byte -> invalidInput', async () => {
+    const vkNew = await importVk(vkNewRaw);
+    for (const e of [-1, 1.5, Number.NaN, undefined as unknown as number]) {
+      await expect(wrapPrevVk(vkNew, vkOldRaw, U5, e, OLD)).rejects.toThrow('invalidInput');
+      await expect(wrapPrevVk(vkNew, vkOldRaw, U5, NEW, e)).rejects.toThrow('invalidInput');
+      await expect(unwrapPrevVk(vkNew, hex(KAT), U5, e, OLD)).rejects.toThrow('invalidInput');
+      await expect(unwrapPrevVk(vkNew, hex(KAT), U5, NEW, e)).rejects.toThrow('invalidInput');
+    }
+    await expect(wrapPrevVk(vkNew, vkOldRaw, 'a|b', NEW, OLD)).rejects.toThrow('invalidInput');
+    await expect(unwrapPrevVk(vkNew, hex(KAT), 'a|b', NEW, OLD)).rejects.toThrow('invalidInput');
+    await expect(wrapPrevVk(vkNew, new Uint8Array(31), U5, NEW, OLD)).rejects.toThrow('invalidInput');
   });
 });

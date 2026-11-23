@@ -70,7 +70,7 @@ describe('vaultCodec', () => {
     expect(spy).toHaveBeenCalledTimes(1); // la prima e' stata espulsa
     // 501 cifrature e 501 decifrature WebCrypto vere (serve superare il tetto di 500 voci): ~0.2 s in locale, ma oltre i 5 s di default su CI o
     // macchine cariche. Il test resta significativo (nessun mock del tetto): si allarga solo il timeout.
-  }, 30_000);
+  }, 60_000);
 
   it('flusher pre-lock: con il contesto catturato cifra anche a store gia\' azzerato, senza ripopolare la cache', async () => {
     let flushed = '';
@@ -106,5 +106,85 @@ describe('vaultCodec cache: chiave noteId|noteType con controllo dell envelope e
     expect(spy).toHaveBeenCalledTimes(0); // l ultima e in cache
     await decryptItem('b0', 'NOTE', envs[0]);
     expect(spy).toHaveBeenCalledTimes(1); // la prima e stata espulsa dal tetto in byte
+  }, 60_000);
+});
+
+describe('vaultCodec: rotazione della VK (keys.prev)', () => {
+  const E = 5; // epoch corrente; prev = E-1
+  let cur: VaultKeys;
+  let withPrev: VaultKeys;
+  let old: VaultKeys;
+  let older: VaultKeys; // VK dell'epoch E-2: nessuna chiave la apre
+  const mk = async () => {
+    const vk = await importVk(generateVkRaw());
+    return { vkHkdf: vk.hkdf, vkAes: vk.aes, sigKey: (await generateSigKey()).privateKey } as VaultKeys;
+  };
+  // Cifra con chiavi catturate (come un flusher): non passa dallo store e non tocca la cache.
+  const encAt = (k: VaultKeys, epoch: number, noteId: string, c = 'x') => encryptItem(noteId, 'NOTE', { t: 't', c }, { keys: k, userId: U, epoch });
+
+  beforeEach(async () => {
+    cur = await mk();
+    old = await mk();
+    older = await mk();
+    withPrev = { ...cur, prev: { epoch: E - 1, vkHkdf: old.vkHkdf, vkAes: old.vkAes } };
+    useVaultStore.setState({ keys: withPrev, unlockedUserId: U, epoch: E, isUnlocked: true });
+  });
+
+  it('decifra nv3.<e-1>. con prev e nv3.<e>. con la corrente', async () => {
+    const eOld = await encAt(old, E - 1, 'n1', 'vecchio');
+    const eCur = await encAt(cur, E, 'n1', 'nuovo');
+    expect(eOld).toMatch(/^nv3\.4\./);
+    expect(eCur).toMatch(/^nv3\.5\./);
+    expect(await decryptItem('n1', 'NOTE', eOld)).toEqual({ t: 't', c: 'vecchio' });
+    expect(await decryptItem('n1', 'NOTE', eCur)).toEqual({ t: 't', c: 'nuovo' });
+  });
+
+  it('envelope e-2 (o futuro) -> stale; envelope e-1 senza prev -> stale', async () => {
+    const e2 = await encAt(older, E - 2, 'n1');
+    await expect(decryptItem('n1', 'NOTE', e2)).rejects.toThrow('stale');
+    const future = await encAt(cur, E + 1, 'n1');
+    await expect(decryptItem('n1', 'NOTE', future)).rejects.toThrow('stale');
+    const eOld = await encAt(old, E - 1, 'n1');
+    useVaultStore.setState({ keys: cur }); // senza prev
+    await expect(decryptItem('n1', 'NOTE', eOld)).rejects.toThrow('stale');
+  });
+
+  it('formato non valido -> invalidEnvelope (non stale)', async () => {
+    await expect(decryptItem('n1', 'NOTE', 'nv3.x.y')).rejects.toThrow('invalidEnvelope');
+    await expect(decryptItem('n1', 'NOTE', 'pippo')).rejects.toThrow('invalidEnvelope');
+  });
+
+  it('encrypt cifra sempre all epoch corrente con la VK corrente, anche con prev presente', async () => {
+    const e = await encryptItem('n1', 'NOTE', { t: 'T', c: doc });
+    expect(e).toMatch(/^nv3\.5\./);
+    // la apre la sola VK corrente
+    expect(await decryptItem('n1', 'NOTE', e, { keys: cur, userId: U, epoch: E })).toEqual({ t: 'T', c: doc });
+    await expect(decryptItem('n1', 'NOTE', e, { keys: old, userId: U, epoch: E })).rejects.toThrow('decryptFailed');
+  });
+
+  it('cache K_note per epoch|noteId: stesso noteId in due epoch non si confonde (in entrambi gli ordini)', async () => {
+    const eOld = await encAt(old, E - 1, 'n1', 'a');
+    const eCur = await encAt(cur, E, 'n1', 'b');
+    for (const [x, ax] of [[eOld, 'a'], [eCur, 'b'], [eOld, 'a'], [eCur, 'b']] as const) {
+      expect((await decryptItem('n1', 'NOTE', x)).c).toBe(ax);
+    }
+    clearVaultCodecCache();
+    expect((await decryptItem('n1', 'NOTE', eCur)).c).toBe('b');
+    expect((await decryptItem('n1', 'NOTE', eOld)).c).toBe('a');
+  });
+
+  it('K_note per lo stesso noteId e epoch e derivata una sola volta', async () => {
+    const eOld = await encAt(old, E - 1, 'n1');
+    const eOld2 = await encAt(old, E - 1, 'n1', 'altro');
+    const spy = vi.spyOn(globalThis.crypto.subtle, 'deriveKey');
+    await decryptItem('n1', 'NOTE', eOld);
+    await decryptItem('n1', 'NOTE', eOld2);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('lock azzera anche prev: il codec risponde VaultLockedError', async () => {
+    const eOld = await encAt(old, E - 1, 'n1');
+    await useVaultStore.getState().lockVault();
+    await expect(decryptItem('n1', 'NOTE', eOld)).rejects.toBeInstanceOf(VaultLockedError);
   });
 });

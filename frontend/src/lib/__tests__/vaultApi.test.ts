@@ -89,6 +89,22 @@ describe('vaultApi errori', () => {
   });
 });
 
+describe('unlock con rev, 409 della rotazione', () => {
+  it('rev opzionale: inviato se dato (anche 0), assente altrimenti', async () => {
+    request.mockResolvedValue({ data: { serverShare: 'A'.repeat(43) } });
+    await vaultApi.unlock('a', 5);
+    expect(request.mock.calls[0][0].data).toEqual({ authKey: 'a', rev: 5 });
+    await vaultApi.unlock('a', 0);
+    expect(request.mock.calls[1][0].data).toEqual({ authKey: 'a', rev: 0 });
+    await vaultApi.unlock('a');
+    expect(request.mock.calls[2][0].data).toEqual({ authKey: 'a' });
+  });
+  it.each(['errors.vault.staleRev', 'errors.vault.rotationPending'])('409 %s: conflict con la chiave del server', async (key) => {
+    request.mockRejectedValue(axErr(409, key));
+    expect(await fail(vaultApi.updateKeyring('{}', 'p'))).toMatchObject({ status: 409, kind: 'conflict', key, fromServer: true });
+  });
+});
+
 describe('retry 429', () => {
   it('getItems ritenta una volta dopo il backoff', async () => {
     vi.useFakeTimers();
@@ -231,10 +247,12 @@ describe('forma delle risposte 2xx', () => {
   const GARBAGE = ['<html>portal</html>', '', null, undefined, 42, [], {}, { message: 'ok' }];
 
   const cases: [string, () => Promise<unknown>, unknown[], unknown][] = [
-    ['getKeyring', () => vaultApi.getKeyring(), [{ status: 'x', epoch: 0, rev: 0 }, { status: 'READY', epoch: -1, rev: 0 }, { status: 'READY', epoch: 0, rev: 1.5 }, { status: 'READY', epoch: '0', rev: 0 }, { status: 'READY', epoch: 0 }, { epoch: 0, rev: 0 }], KEYRING_OK],
+    ['getKeyring', () => vaultApi.getKeyring(), [{ status: 'x', epoch: 0, rev: 0 }, { status: 'READY', epoch: -1, rev: 0 }, { status: 'READY', epoch: 0, rev: 1.5 }, { status: 'READY', epoch: '0', rev: 0 }, { status: 'READY', epoch: 0 }, { epoch: 0, rev: 0 },
+      { ...KEYRING_OK, staleCount: -1 }, { ...KEYRING_OK, staleCount: '1' }, { ...KEYRING_OK, staleCount: 1.5 },
+      { ...KEYRING_OK, prevVkWrap: 5 }], KEYRING_OK],
     ['getRecovery', () => vaultApi.getRecovery('r1'), [{ status: 'DONE' }, { id: 'r1' }], { status: 'COMPLETED' }],
     ['completeRecovery', () => vaultApi.completeRecovery('r1', '{}', 'p'), [{ status: 'WAITING' }, { status: 'completed' }], { status: 'COMPLETED' }],
-    ['updateKeyring', () => vaultApi.updateKeyring('{}', 'p'), [{ rev: '4' }, { rev: 1.5 }, { rev: -1 }, { status: 'READY' }], { rev: 4 }],
+    ['updateKeyring', () => vaultApi.updateKeyring('{}', 'p'), [{ rev: '4' }, { rev: 1.5 }, { rev: -1 }, { status: 'READY' }, { rev: 4 }, { rev: 4, epoch: -1 }, { rev: 4, epoch: '1' }, { epoch: 1 }], { rev: 4, epoch: 1 }],
     ['createKeyring', () => vaultApi.createKeyring({} as never), [{ rev: '1' }, { epoch: 0 }], { status: 'READY', epoch: 0, rev: 1 }],
     ['createRecovery', () => vaultApi.createRecovery('pub'), [{ id: '', fingerprint: 'AAAA' }, { id: 7, fingerprint: 'AAAA' }, { id: 'r1' }, { id: 'r1', fingerprint: null }], { id: 'r1', fingerprint: 'AAAA' }],
   ];
@@ -290,6 +308,11 @@ describe('valori legittimi del backend (guardia di forma)', () => {
     ['NONE (epoch 0, rev 0, campi null)', keyringNone],
     ['READY con openRecovery', keyringReady],
     ['READY con lockout', { ...keyringReady, lockedUntil: ISO, openRecovery: null }],
+    ['READY dopo una rotazione (prevVkWrap, staleCount)', { ...keyringReady, prevVkWrap: 'A'.repeat(80), staleCount: 3 }],
+    ['READY con prevVkWrap di lunghezza anomala (79): arriva a resolvePrev/openKeyring, non blocca la GET', { ...keyringReady, prevVkWrap: 'A'.repeat(79) }],
+    ['READY con prevVkWrap di lunghezza anomala (81)', { ...keyringReady, prevVkWrap: 'A'.repeat(81) }],
+    ['READY con prevVkWrap non base64url (B8): la GET non si blocca, lo gestisce resolvePrev/openKeyring (classe K)', { ...keyringReady, prevVkWrap: 'a+b/=' + 'A'.repeat(75) }],
+    ['READY senza rotazione (prevVkWrap null, staleCount 0)', { ...keyringReady, prevVkWrap: null, staleCount: 0 }],
     ['RESET_PENDING', { ...keyringReady, status: 'RESET_PENDING', resetScheduledAt: ISO, migrationState: 'IN_PROGRESS' }],
   ])('getKeyring: %s', async (_n, body) => {
     request.mockResolvedValue({ data: body });

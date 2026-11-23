@@ -526,7 +526,7 @@
     "kitRotation": {
       "title": "Sostituisci il Kit di recupero",
       "warning": "Un recupero di questo vault è stato rilasciato e poi annullato o scaduto. Il Kit di recupero attuale non è più sicuro: creane uno nuovo per continuare a usare il vault.",
-      "destroyOld": "Dopo aver creato il nuovo Kit di recupero, distruggi ogni copia del precedente (PDF scaricati, stampe, appunti): insieme al recupero rilasciato potrebbe ancora aprire il vault.",
+      "destroyOld": "Il Kit di recupero precedente non apre più il vault. Puoi distruggerne ogni copia (PDF scaricati, stampe, appunti).",
       "lock": "Blocca vault"
     },
     "recoveryBanner": {
@@ -692,7 +692,10 @@
       "lockedFor": "Troppi tentativi. Riprova tra {{time}}.",
       "forgotTitle": "PIN dimenticato?",
       "forgotBody": "Puoi recuperare l'accesso con il Kit di recupero. Senza il Kit resta solo il reset del vault.",
-      "forgotAction": "Recupera con il Kit di recupero"
+      "forgotAction": "Recupera con il Kit di recupero",
+      "removeFromDevice": "Rimuovi il vault da questo dispositivo",
+      "removeFromDeviceTitle": "Rimuovere il vault da questo dispositivo?",
+      "removeFromDeviceBody": "Le modifiche al vault fatte su questo dispositivo e non ancora sincronizzate andranno perse. Il vault sul server non viene toccato: poi potrai sbloccarlo di nuovo con il PIN."
     },
     "kit": {
       "title": "Kit di recupero",
@@ -740,6 +743,37 @@
       "failedQueued": "Alcune modifiche a questa nota non sono state sincronizzate. Risolvile e riprova.",
       "attachmentsBlocked": "Le note con allegati non possono essere spostate."
     },
+    "rotation": {
+      "unreadableNote": "Questo contenuto non è stato decifrato dopo un cambio di chiave. I dati cifrati originali sono conservati qui sotto.",
+      "dialogTitle": "Alcune note non si possono aprire",
+      "damaged": "{{count}} note sono danneggiate e non si possono decifrare.",
+      "damaged_one": "{{count}} nota è danneggiata e non si può decifrare.",
+      "keyMissingWarning": "{{count}} note richiedono la chiave precedente, che manca sul server. Se pensi sia un errore, annulla e contatta l'amministratore. Se continui, i dati cifrati restano dentro ogni nota, ma diventeranno illeggibili per sempre al prossimo cambio di chiave.",
+      "keyMissingWarning_one": "{{count}} nota richiede la chiave precedente, che manca sul server. Se pensi sia un errore, annulla e contatta l'amministratore. Se continui, i dati cifrati restano dentro la nota, ma diventeranno illeggibili per sempre al prossimo cambio di chiave.",
+      "confirmRewrap": "Conserva come note illeggibili",
+      "residue": "Alcune note non sono ancora aggiornate. Sono elencate di nuovo qui sotto.",
+      "tooLarge": "{{count}} note sono troppo grandi per essere conservate come note illeggibili. I loro dati non si possono più leggere: eliminale.",
+      "tooLarge_one": "{{count}} nota è troppo grande per essere conservata come nota illeggibile. I suoi dati non si possono più leggere: eliminala.",
+      "deleteTooLarge": "Elimina queste {{count}} note",
+      "deleteTooLarge_one": "Elimina questa nota",
+      "deleteTooLargeTitle": "Eliminare le note illeggibili?",
+      "deleteTooLargeConfirm": "I dati di queste {{count}} note non si possono più leggere. Verranno eliminate definitivamente. L'operazione non si può annullare.",
+      "deleteTooLargeConfirm_one": "I dati di questa nota non si possono più leggere. Verrà eliminata definitivamente. L'operazione non si può annullare.",
+      "deletedTooLarge": "{{count}} note illeggibili eliminate.",
+      "deletedTooLarge_one": "{{count}} nota illeggibile eliminata.",
+      "keyMissingTooLarge": "{{count}} note richiedono la chiave precedente, che manca sul server, e sono troppo grandi per essere riparate o eliminate da qui. Bloccano il prossimo cambio di chiave finché l'amministratore non ripristina la chiave precedente. Contatta l'amministratore.",
+      "keyMissingTooLarge_one": "{{count}} nota richiede la chiave precedente, che manca sul server, ed è troppo grande per essere riparata o eliminata da qui. Blocca il prossimo cambio di chiave finché l'amministratore non ripristina la chiave precedente. Contatta l'amministratore.",
+      "rewrapDone": "{{count}} note conservate come note illeggibili.",
+      "rewrapDone_one": "{{count}} nota conservata come nota illeggibile.",
+      "unverifiableWarning": "{{count}} note non si sono potute verificare: sono malformate o di una versione di chiave non riconosciuta. Potrebbe essere un errore del server. Se pensi sia così, annulla e contatta l'amministratore. Se continui, i dati cifrati restano dentro ogni nota, ma diventeranno illeggibili per sempre al prossimo cambio di chiave.",
+      "unverifiableWarning_one": "{{count}} nota non si è potuta verificare: è malformata o di una versione di chiave non riconosciuta. Potrebbe essere un errore del server. Se pensi sia così, annulla e contatta l'amministratore. Se continui, i dati cifrati restano dentro la nota, ma diventeranno illeggibili per sempre al prossimo cambio di chiave.",
+      "unverifiableTooLarge": "{{count}} note non si sono potute verificare e sono troppo grandi per essere conservate come note illeggibili. Da qui non si possono né riparare né eliminare. Contatta l'amministratore.",
+      "unverifiableTooLarge_one": "{{count}} nota non si è potuta verificare ed è troppo grande per essere conservata come nota illeggibile. Da qui non si può né riparare né eliminare. Contatta l'amministratore.",
+      "banner": "{{count}} note richiedono la tua attenzione dopo il cambio di chiave.",
+      "banner_one": "{{count}} nota richiede la tua attenzione dopo il cambio di chiave.",
+      "bannerAction": "Controlla",
+      "finishFailed": "Alcune note non si sono aggiornate alla nuova chiave. Riproveremo al prossimo sblocco del vault."
+    },
     "migrate": {
       "title": "Aggiorna il tuo vault",
       "intro": "Il tuo vault verrà ricifrato con un nuovo PIN. Ogni elemento viene controllato dopo la cifratura, prima di rimuovere la versione vecchia.",
@@ -779,7 +813,8 @@
         "invalid": "Il server ha rifiutato un elemento. Nulla è stato rimosso. Riprova più tardi.",
         "busy": "Un'altra scheda sta ancora lavorando sul vault. Riprova.",
         "aborted": "Interrotto.",
-        "notReady": "Le chiavi del vault non sono pronte su questo dispositivo. Ricarica la pagina, sblocca il vault e riprova."
+        "notReady": "Le chiavi del vault non sono pronte su questo dispositivo. Ricarica la pagina, sblocca il vault e riprova.",
+        "epochChanged": "Il vault è stato aggiornato su un altro dispositivo. Sbloccalo di nuovo e riprova."
       }
     },
     "settings": {
@@ -2033,7 +2068,10 @@
       "plaintextRejected": "Questo contenuto non può essere salvato in chiaro nel vault.",
       "rateLimited": "Troppe richieste. Riprova tra poco.",
       "rotateNotSupported": "La rotazione delle chiavi del vault non è ancora supportata.",
-      "rotationPending": "Alcune note del vault usano ancora la chiave precedente. Apri il vault per completare l'aggiornamento, poi riprova.",
+      "rotationPending": "Alcune note del vault usano ancora la chiave precedente. L'aggiornamento è partito: se qualche nota richiede la tua attenzione, un avviso o un banner nel vault te lo dirà. Poi riprova.",
+      "epochChanged": "Il vault è stato aggiornato su un altro dispositivo. Sbloccalo di nuovo, poi riprova.",
+      "localPending": "Alcune modifiche del vault su questo dispositivo non sono ancora sincronizzate. Apri il vault online per completare la sincronizzazione, poi riprova.",
+      "keyringRollback": "I dati del vault dal server sono più vecchi di quelli su questo dispositivo. Rimuovi il vault da questo dispositivo, poi sbloccalo di nuovo.",
       "setupDisabled": "Il vault non è ancora disponibile.",
       "stale": "Il vault è stato aggiornato su un altro dispositivo. Sbloccalo di nuovo e riprova.",
       "staleRev": "Il vault è cambiato su un altro dispositivo. Ricarica e riprova.",

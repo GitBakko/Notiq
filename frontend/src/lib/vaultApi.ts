@@ -77,7 +77,11 @@ const isObj = (d: unknown): d is Record<string, unknown> => !!d && typeof d === 
 const isUint = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 const KEYRING_STATUSES = ['NONE', 'READY', 'RESET_PENDING'];
 const RECOVERY_STATUSES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-const okKeyring = (d: unknown) => isObj(d) && KEYRING_STATUSES.includes(d.status as string) && isUint(d.epoch) && isUint(d.rev);
+// prevVkWrap = 60 B (80 caratteri b64url) e staleCount = conteggio del server: assenti con un server precedente alla rotazione. Del wrap si controlla solo che sia
+// una stringa, NON alfabeto ne' lunghezza: un valore corrotto deve arrivare a resolvePrev/openKeyring e diventare `broken` (K), non bloccare la GET del keyring.
+const okKeyring = (d: unknown) =>
+  isObj(d) && KEYRING_STATUSES.includes(d.status as string) && isUint(d.epoch) && isUint(d.rev)
+  && optOf(d.prevVkWrap, isStr) && optOf(d.staleCount, isUint);
 // attemptsLeft/expiresAt/rejectReason: assenti con un server vecchio, null fuori dallo stato che li riguarda.
 const optOf = (v: unknown, ok: (x: unknown) => boolean) => v === undefined || v === null || ok(v);
 const okRecovery = (d: unknown) =>
@@ -85,6 +89,8 @@ const okRecovery = (d: unknown) =>
   && optOf(d.attemptsLeft, isUint) && optOf(d.expiresAt, (x) => typeof x === 'string') && optOf(d.rejectReason, (x) => typeof x === 'string');
 const okCompleted = (d: unknown) => isObj(d) && d.status === 'COMPLETED';
 const okRev = (d: unknown) => isObj(d) && isUint(d.rev);
+// PUT /keyring risponde { rev, epoch }: epoch e' quella dopo l'update (+1 con rotate), il client la confronta con la propria attesa.
+const okUpdated = (d: unknown) => isObj(d) && isUint(d.rev) && isUint(d.epoch);
 const okCreated = (d: unknown) => isObj(d) && typeof d.id === 'string' && d.id !== '' && typeof d.fingerprint === 'string';
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isStrArr = (v: unknown) => Array.isArray(v) && v.every(isStr);
@@ -189,10 +195,20 @@ export async function getKeyring<T = unknown>(): Promise<T> {
 
 export const createKeyring = <T = unknown>(body: CreateKeyringBody) => call<T>('post', '/vault/keyring', body, false, undefined, okRev);
 
-export const unlock = (authKey: string) => call<{ serverShare: string }>('post', '/vault/unlock', { authKey }, false, undefined, okUnlock);
+/** `rev` (opzionale): il keyring da cui il client ha derivato l'authKey; se il server e' avanti risponde 409 staleRev senza contare il tentativo. */
+export const unlock = (authKey: string, rev?: number) =>
+  call<{ serverShare: string }>('post', '/vault/unlock', rev === undefined ? { authKey } : { authKey, rev }, false, undefined, okUnlock);
 
-export const updateKeyring = <T = unknown>(payload: string, vkProof: string) =>
-  call<T>('put', '/vault/keyring', { payload, vkProof }, false, undefined, okRev);
+/** Corpo del `payload` firmato di PUT /keyring (schema strict del backend). Con `rotate` servono anche `escrow` e `wrap.serverShare`, e viceversa. */
+export interface KeyringUpdatePayload {
+  rev: number;
+  wrap?: { kdf: 'argon2id'; kdfParams: VaultKdfParams; pinSalt: string; wrappedVkPin: string; authKey: string; serverShare?: string };
+  escrow?: { escrowBlob: string; sealedRootShare: string; rootKeyId: string; userShareUnderVk: string };
+  rotate?: { vkSigPub: string; wrappedVkSigKey: string; prevVkWrap: string };
+}
+
+export const updateKeyring = <T = { rev: number; epoch: number }>(payload: string, vkProof: string) =>
+  call<T>('put', '/vault/keyring', { payload, vkProof }, false, undefined, okUpdated);
 
 export const getItems = <T = unknown>(body: VaultItemsBody = {}) => call<T>('post', '/vault/items', body, true, undefined, okItems);
 

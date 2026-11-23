@@ -369,3 +369,57 @@ describe('vaultStore v3', () => {
     });
   });
 });
+
+describe('vaultStore v3: keys.prev (rotazione della VK)', () => {
+  const withPrev = (): VaultKeys => ({
+    ...fakeKeys('cur'),
+    prev: { epoch: 3, vkHkdf: { tag: 'prev-hkdf' } as unknown as CryptoKey, vkAes: { tag: 'prev-aes' } as unknown as CryptoKey },
+  });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useVaultStore.getState().lockVault();
+    useVaultStore.setState({ byUser: {} });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('unlock tiene prev in memoria insieme alle chiavi', () => {
+    const keys = withPrev();
+    useVaultStore.getState().unlock('u1', keys, 4);
+    expect(useVaultStore.getState().keys?.prev?.epoch).toBe(3);
+    expect(useVaultStore.getState().keys).toBe(keys);
+  });
+
+  it('prev non finisce mai in localStorage: partialize e chiave di storage invariati', () => {
+    useVaultStore.getState().setKeyringCache('u1', cache());
+    useVaultStore.getState().unlock('u1', withPrev(), 4);
+    expect(useVaultStore.persist.getOptions().name).toBe('vault-storage');
+    const persisted = useVaultStore.persist.getOptions().partialize!(useVaultStore.getState()) as Record<string, unknown>;
+    expect(Object.keys(persisted).sort()).toEqual(['byUser', 'isSetup', 'pinHash']);
+    expect(JSON.stringify(persisted)).not.toContain('prev');
+    useVaultStore.setState({ isSetup: true }); // il middleware scrive in localStorage
+    const raw = localStorage.getItem('vault-storage') ?? '';
+    expect(raw).not.toMatch(/prev|vkHkdf|vkAes/);
+    useVaultStore.setState({ isSetup: false });
+  });
+
+  it('lockVault azzera prev (il flusher pre-lock lo riceve nel contesto catturato)', async () => {
+    const keys = withPrev();
+    let seenPrev: number | undefined;
+    const off = useVaultStore.getState().registerPreLock((ctx) => {
+      seenPrev = ctx.keys.prev?.epoch;
+    });
+    useVaultStore.getState().unlock('u1', keys, 4);
+    await useVaultStore.getState().lockVault();
+    expect(useVaultStore.getState().keys).toBeNull();
+    expect(seenPrev).toBe(3);
+    off();
+  });
+
+  it('un unlock con chiavi nuove senza prev non lascia il prev vecchio', () => {
+    useVaultStore.getState().unlock('u1', withPrev(), 4);
+    useVaultStore.getState().unlock('u1', fakeKeys('nuovo'), 5);
+    expect(useVaultStore.getState().keys?.prev).toBeUndefined();
+  });
+});

@@ -318,3 +318,40 @@ Nasce dal piano `2026-11-23-vault-p4-fase5-vk-rotation-plan.md` (decisioni D6-D7
 - Riga illeggibile + server re-incapsulato: HYDRATE, 0 copie, nessun DROP di item diversi.
 - Item di coda con contenuto diverso dall'envelope re-incapsulato: tenuto (REQUEUE).
 - Riga leggibile: regole degli addendum precedenti invariate.
+
+## Addendum 7 (23/11): precondizioni di A6 e conteggi (P4 Fase 5)
+
+Nasce dalla revisione di Addendum 5 e 6. Prevale su Addendum 6 §2-§3, su Addendum 5 §4 e su T3/T4 solo dove sotto indicato. Nessuna op nuova, `syncService.ts` e Dexie invariati.
+
+**1. A6 solo se il server contiene la riga.** Una riga illeggibile può esserlo per un difetto del client (AAD, tipo, derivazione) e avere edit non sincronizzati. Non si sostituisce a occhi chiusi.
+- A6 HYDRATE scatta solo se il plaintext del server contiene l'envelope della riga alla lettera, come lo costruisce `rewrapUnreadable`.
+- NOTE: un paragrafo del documento TipTap il cui testo è esattamente `row.content`.
+- CREDENTIAL: `JSON.parse(c).notes === row.content`.
+- Il plaintext non si decifra o non si interpreta: nessun A6.
+- Senza la precondizione resta il comportamento di prima: LEAVE(decrypt) o la regola della tabella, riga e coda intatte.
+- Il fatto si calcola in `withFacts`, dove si decifra il server (campo `srvWraps` dello snapshot). `decide` resta pura.
+
+**2. Item scartati in A6.** Prevale su Addendum 6 §3.
+- Si scartano gli item con `content` uguale all'envelope illeggibile della riga, oppure uguale a quello del server.
+- Gli altri item si tengono (REQUEUE). Un item con altri campi perde solo `content`, `title`, `isEncrypted`, `isVault`.
+
+**3. `legacyLeft` solo per SL.** Prevale su Addendum 5 §4.
+- Ogni nota del server con envelope di epoch diverso dal corrente va in `staleLeft`, con o senza `keys.prev`.
+- `legacyLeft` conta solo il content non envelope (SL).
+- Il banner legacy non compare per le SX.
+
+**4. T3 e T4 con riga in `prevEpoch`.**
+- Riga in `prevEpoch` e payload uguale al server (`same`): ADOPT, senza copia.
+- Payload diverso: `withCopy` + ADOPT, come prima.
+- Riga corrente: invariata.
+
+**5. Accettazione** (`vaultReconcile.test.ts`).
+- Server SE decifrabile che non contiene la riga: LEAVE(decrypt), riga e coda intatte.
+- Server che contiene la riga, NOTE e CREDENTIAL: A6 HYDRATE.
+- Item con l'envelope vecchio della riga: scartato. Item con altro content: tenuto.
+- SX senza `keys.prev`: `staleLeft`, `legacyLeft` 0. SL: `legacyLeft`.
+- T3 e T4 con riga in `prevEpoch`: `same` ADOPT senza copia, senza `same` copia + ADOPT.
+
+**6. Limite noto (23/11, scelta deliberata).** A6 scatta solo con `P === 'decrypt'`. Una riga sporca con `P === 'epoch'` (e-1 senza `prev` nella sessione, oppure e-2) resta LEAVE anche se il server la contiene già re-incapsulata.
+- Nessuna perdita: la riga resta in Dexie, con la coda intatta.
+- Scelta presa per non toccare `vaultReconcile.ts` (TIER 1) in questa fase. Si rivede solo se il caso compare sui dati reali.

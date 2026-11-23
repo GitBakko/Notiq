@@ -22,13 +22,18 @@ const h = vi.hoisted(() => ({
   notebooks: [{ id: 'nb1' }] as any[],
   migrateProps: [] as any[],
   syncPush: vi.fn(),
+  finish: vi.fn(),
+  rewrap: vi.fn(),
+  permDelete: vi.fn(),
+  foreignPending: vi.fn(),
   liveSubs: new Set<() => void>(), // le live query si rilanciano su richiesta (notifyLive)
   editorProps: [] as any[],
   credProps: [] as any[],
   getHold: null as null | { id: string; p: Promise<void> }, // db.notes.get(id) resta pendente finche' p non si risolve
 }));
 
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+// con `count` il testo porta il numero (chiave:n), cosi' i test leggono i conteggi del dialog delle note stale
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string, o?: { count?: number }) => (typeof o?.count === 'number' ? `${k}:${o.count}` : k) }) }));
 vi.mock('react-hot-toast', () => {
   const toast: any = vi.fn();
   toast.success = vi.fn();
@@ -75,12 +80,19 @@ vi.mock('../../../lib/vaultSession', () => ({
   checkPendingOnStart: (...a: unknown[]) => h.checkPending(...a),
   syncKeyringCache: (...a: unknown[]) => h.syncCache(...a),
   refreshKeyringCache: (...a: unknown[]) => h.refreshCache(...a),
+  hasForeignEpochPending: (...a: unknown[]) => h.foreignPending(...a),
 }));
 vi.mock('../../../lib/vaultCodec', () => ({
   encryptItem: (...a: unknown[]) => h.encrypt(...a),
   decryptItem: (...a: unknown[]) => h.decrypt(...a),
 }));
 vi.mock('../../sync/syncService', () => ({ syncPush: (...a: unknown[]) => h.syncPush(...a) }));
+vi.mock('../vaultMigration', () => ({
+  finishRotation: (...a: unknown[]) => h.finish(...a),
+  rewrapUnreadable: (...a: unknown[]) => h.rewrap(...a),
+  MAX_REWRAP_LEN: 1.5 * 1024 * 1024,
+}));
+vi.mock('../../notes/noteService', () => ({ permanentlyDeleteNote: (...a: unknown[]) => h.permDelete(...a) }));
 vi.mock('../../../utils/vaultRootKeys', () => ({ getActiveRootKey: () => h.rootKey.v }));
 vi.mock('../../../store/authStore', () => ({
   useAuthStore: Object.assign((sel: (s: unknown) => unknown) => sel({ user: { id: 'u1' } }), { getState: () => ({ user: { id: 'u1' } }) }),
@@ -116,9 +128,25 @@ vi.mock('../VaultRecovery', () => ({
   ),
 }));
 vi.mock('../VaultMigrate', () => ({ default: (p: any) => { h.migrateProps.push(p); return <div data-testid="migrate" />; } }));
-vi.mock('../VaultSettingsSheet', () => ({
-  default: (p: any) => (p.isOpen ? <div data-testid="settings" data-force={p.forceKit ? '1' : ''}><button onClick={p.onKitDone}>kit-done</button></div> : null),
-}));
+// come il vero foglio: la cerimonia del Kit resta montata anche con isOpen falso (RecoveryKitSheet sta prima del guard su isOpen)
+vi.mock('../VaultSettingsSheet', async () => {
+  const { useState } = await import('react');
+  return {
+    default: function SheetMock(p: any) {
+      const [kit, setKit] = useState(false);
+      if (kit) return <div data-testid="kit-mock"><button onClick={() => { setKit(false); p.onKitDone(); }}>kit-done</button></div>;
+      return p.isOpen ? (
+        <div data-testid="settings" data-force={p.forceKit ? '1' : ''}>
+          <button onClick={p.onKitDone}>kit-done</button>
+          <button onClick={p.onRotationPending}>rotation-pending</button>
+          <button onClick={p.onLocalPending}>local-pending</button>
+          <button onClick={() => { setKit(true); p.onKitStart(); p.onClose(); }}>kit-start</button> {/* onClose: il flag e' stato azzerato, il foglio non e' piu' "aperto" ma la cerimonia resta montata */}
+          <button onClick={p.onClose}>settings-close</button>
+        </div>
+      ) : null;
+    },
+  };
+});
 vi.mock('../VaultNoteEditor', () => ({
   default: (p: any) => {
     h.editorProps.push(p);
@@ -142,8 +170,10 @@ const apiErr = (status: number, key: string) => Object.assign(new Error(key), { 
 const lockVault = vi.fn(async () => {});
 // risultato completo del giro: i test sovrascrivono solo i campi che contano
 const res = (o: Record<string, unknown> = {}) => ({
-  hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0, legacyPin: 0, ...o,
+  hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, staleLeft: 0, unresolved: 0, later: 0, legacyPin: 0, ...o,
 });
+// esito completo di rewrapUnreadable: i test sovrascrivono solo i bucket che contano
+const rw = (o: Record<string, unknown> = {}) => ({ rewrapped: [], tooLarge: [], readable: [], keyMissing: [], conflicts: [], unverified: [], failed: [], notFound: 0, ...o });
 const notifyLive = () => act(async () => { h.liveSubs.forEach((f) => f()); await Promise.resolve(); });
 
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname + l.search}</div>; }
@@ -175,6 +205,10 @@ beforeEach(() => {
   h.reconcile.mockResolvedValue(res());
   h.checkPending.mockResolvedValue('none');
   h.refreshCache.mockResolvedValue(undefined);
+  h.finish.mockResolvedValue({ unreadable: [] });
+  h.rewrap.mockResolvedValue(rw());
+  h.permDelete.mockResolvedValue(undefined);
+  h.foreignPending.mockResolvedValue(false);
   h.hydrate.mockResolvedValue(false);
   h.encrypt.mockImplementation(async (id: string) => ENV(id.replace(/-/g, '')));
   h.decrypt.mockImplementation(async (_id: string, _t: string, env: string) => ({ t: `T:${env.slice(-8)}`, c: '{}' }));
@@ -923,6 +957,481 @@ describe('VaultPage: trigger del giro T-d, T-h, T-f, T-g', () => {
   });
 });
 
+describe('VaultPage: rotazione della VK, note stale (Fase 5, T10)', () => {
+  const ctxNow = () => ({ ctx: { keys: useVaultStore.getState().keys, userId: 'u1', epoch: 1 } });
+  const HUGE = 2 * 1024 * 1024; // oltre MAX_REWRAP_LEN (1,5 MiB)
+  const item = (id: string, reason: 'damaged' | 'keyMissing' | 'unverifiable', size = 10) => ({ id, noteType: 'NOTE', size, reason });
+  const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+
+  it('stale dal reconcile: finishRotation UNA volta, poi un altro giro (senza loop se restano stale)', async () => {
+    unlock();
+    const order: string[] = [];
+    h.reconcile.mockImplementation(async () => { order.push('reconcile'); return res({ staleLeft: 2 }); });
+    h.finish.mockImplementation(async () => { order.push('finish'); return { unreadable: [] }; });
+    mount();
+    await waitFor(() => expect(order).toEqual(['reconcile', 'finish', 'reconcile']));
+    await settle();
+    expect(order).toEqual(['reconcile', 'finish', 'reconcile']);
+    expect(h.finish).toHaveBeenCalledWith(ctxNow());
+  });
+
+  it('staleCount > 0 nel keyring riletto da sbloccato: finishRotation; con reconcile staleLeft insieme sempre una volta sola', async () => {
+    unlock();
+    h.refreshCache.mockResolvedValue({ staleCount: 3 });
+    h.reconcile.mockResolvedValue(res({ staleLeft: 3 }));
+    mount();
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(h.finish).toHaveBeenCalledTimes(1);
+  });
+
+  it('nessuna stale: niente finishRotation', async () => {
+    unlock();
+    h.refreshCache.mockResolvedValue({ staleCount: 0 });
+    mount();
+    await waitFor(() => expect(h.reconcile).toHaveBeenCalled());
+    await settle();
+    expect(h.finish).not.toHaveBeenCalled();
+  });
+
+  it('sblocco offline: niente finishRotation (ne\' reconcile)', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    unlock();
+    h.reconcile.mockResolvedValue(res({ staleLeft: 2 }));
+    mount();
+    await settle();
+    expect(h.finish).not.toHaveBeenCalled();
+  });
+
+  it('ritorno online dopo uno sblocco offline: parte, una volta', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    unlock();
+    h.reconcile.mockResolvedValue(res({ staleLeft: 2 }));
+    mount();
+    await settle();
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    act(() => { window.dispatchEvent(new Event('online')); });
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+  });
+
+  it('il banner legacy non compare per le note stale (staleLeft non e\' legacyLeft)', async () => {
+    unlock();
+    h.reconcile.mockResolvedValue(res({ staleLeft: 3, legacyLeft: 0 }));
+    mount();
+    await waitFor(() => expect(h.finish).toHaveBeenCalled());
+    await settle();
+    expect(screen.queryByText(/vault\.settings\.legacyLeft/)).toBeNull();
+  });
+
+  it('errori: epochChanged -> toast errors.vault.epochChanged; busy -> silenzio (riprova al prossimo sblocco); altri -> toast non bloccante', async () => {
+    const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+    unlock();
+    h.reconcile.mockResolvedValue(res({ staleLeft: 2 }));
+    h.finish.mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'busy' }));
+    const { unmount } = mount();
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(toast.error).not.toHaveBeenCalled();
+    unmount();
+
+    useVaultStore.setState({ unlockedUserId: null, keys: null, epoch: null, lockVault });
+    unlock();
+    h.finish.mockReset();
+    h.finish.mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'epochChanged' }));
+    const m2 = mount();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.vault.epochChanged'));
+    m2.unmount();
+
+    useVaultStore.setState({ unlockedUserId: null, keys: null, epoch: null, lockVault });
+    unlock();
+    h.finish.mockReset();
+    h.finish.mockRejectedValue(new Error('boom'));
+    mount();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.finishFailed'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  describe('dialog delle note illeggibili', () => {
+    const mountWithUnreadable = async (items: unknown[]) => {
+      unlock();
+      h.reconcile.mockResolvedValue(res({ staleLeft: items.length }));
+      h.finish.mockResolvedValueOnce({ unreadable: items }).mockResolvedValue({ unreadable: [] });
+      mount();
+      return screen.findByRole('dialog');
+    };
+
+    it('D e K: un solo dialog con entrambi i conteggi e l\'avviso K; conferma -> rewrap con gli id K, poi finishRotation, poi reconcile', async () => {
+      const dlg = await mountWithUnreadable([item('a', 'damaged'), item('b', 'keyMissing'), item('c', 'keyMissing')]);
+      expect(dlg.getAttribute('aria-modal')).toBe('true');
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      expect(within(dlg).getByText('vault.rotation.damaged:1')).toBeTruthy();
+      expect(within(dlg).getByText('vault.rotation.keyMissingWarning:2')).toBeTruthy();
+      expect(h.rewrap).not.toHaveBeenCalled();
+      const order: string[] = [];
+      h.rewrap.mockImplementation(async () => { order.push('rewrap'); return rw({ rewrapped: ['a', 'b', 'c'] }); });
+      h.finish.mockImplementation(async () => { order.push('finish'); return { unreadable: [] }; });
+      h.reconcile.mockImplementation(async () => { order.push('reconcile'); return res(); });
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      await waitFor(() => expect(order).toEqual(['rewrap', 'finish', 'reconcile']));
+      expect(h.rewrap).toHaveBeenCalledWith(['a', 'b', 'c'], ctxNow().ctx, { allowKeyMissingIds: ['b', 'c'] });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('solo D: allowKeyMissingIds vuoto e nessun avviso K', async () => {
+      const dlg = await mountWithUnreadable([item('a', 'damaged'), item('b', 'damaged')]);
+      expect(within(dlg).getByText('vault.rotation.damaged:2')).toBeTruthy();
+      expect(within(dlg).queryByText(/keyMissingWarning/)).toBeNull();
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      await waitFor(() => expect(h.rewrap).toHaveBeenCalledWith(['a', 'b'], ctxNow().ctx, { allowKeyMissingIds: [] }));
+    });
+
+    it('annulla: nessuna chiamata di rewrap, il dialog si chiude, il vault resta usabile', async () => {
+      const dlg = await mountWithUnreadable([item('a', 'keyMissing')]);
+      fireEvent.click(within(dlg).getByText('common.cancel'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(h.rewrap).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('vault.createSecureNote')).toBeTruthy();
+    });
+
+    it("annulla: resta un banner non bloccante col conteggio; l'azione riapre il dialog con le stesse note", async () => {
+      const dlg = await mountWithUnreadable([item('a', 'damaged'), item('b', 'keyMissing')]);
+      expect(screen.queryByText('vault.rotation.banner:2')).toBeNull();
+      fireEvent.click(within(dlg).getByText('common.cancel'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(screen.getByText('vault.rotation.banner:2')).toBeTruthy();
+      fireEvent.click(screen.getByText('vault.rotation.bannerAction'));
+      const again = await screen.findByRole('dialog');
+      expect(within(again).getByText('vault.rotation.damaged:1')).toBeTruthy();
+      expect(screen.queryByText('vault.rotation.banner:2')).toBeNull(); // col dialog aperto il banner non serve
+    });
+
+    it('esito dopo la conferma: tutto riuscito -> dialog e banner spariti, niente residuo', async () => {
+      const dlg = await mountWithUnreadable([item('a', 'damaged')]);
+      h.rewrap.mockResolvedValue(rw({ rewrapped: ['a'] }));
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      await waitFor(() => expect(h.rewrap).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(screen.queryByText(/vault\.rotation\.banner/)).toBeNull();
+    });
+
+    it('il residuo e\' fin.unreadable (conflitti, failed, unverified restano stale sul server): il dialog si riapre con quello e col numero di note re-incapsulate', async () => {
+      const dlg = await mountWithUnreadable([item('a', 'damaged'), item('b', 'damaged'), item('c', 'damaged'), item('d', 'keyMissing'), item('e', 'damaged')]);
+      h.rewrap.mockResolvedValue(rw({ rewrapped: ['e'], conflicts: ['a'], failed: ['b'], unverified: ['c'], keyMissing: ['d'] }));
+      h.finish.mockReset();
+      h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged'), item('b', 'damaged'), item('c', 'damaged'), item('d', 'keyMissing')] });
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.residue')).toBeTruthy(); return d; });
+      expect(within(again).getByText('vault.rotation.rewrapDone:1')).toBeTruthy(); // e
+      expect(within(again).getByText('vault.rotation.damaged:3')).toBeTruthy(); // a, b, c
+      expect(within(again).getByText('vault.rotation.keyMissingWarning:1')).toBeTruthy(); // d
+    });
+
+    it('(h) rewrap riuscito con fin.unreadable vuoto: toast rewrapDone col numero, ne\' dialog ne\' banner', async () => {
+      const toast = (await import('react-hot-toast')).default as unknown as { success: ReturnType<typeof vi.fn> };
+      const dlg = await mountWithUnreadable([item('a', 'damaged'), item('b', 'damaged')]);
+      h.rewrap.mockResolvedValue(rw({ rewrapped: ['a', 'b'] }));
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith('vault.rotation.rewrapDone:2'));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryByText(/vault\.rotation\.banner/)).toBeNull();
+    });
+
+    it('unreadable del secondo finishRotation: dialog di nuovo, con quelle note', async () => {
+      const dlg = await mountWithUnreadable([item('a', 'damaged')]);
+      h.rewrap.mockResolvedValue(rw({ rewrapped: ['a'] }));
+      h.finish.mockReset();
+      h.finish.mockResolvedValue({ unreadable: [item('z', 'damaged'), item('y', 'keyMissing')] });
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.keyMissingWarning:1')).toBeTruthy(); return d; });
+      expect(within(again).getByText('vault.rotation.damaged:1')).toBeTruthy();
+    });
+
+    it('errore del rewrap: toast, dialog chiuso, ma il banner resta per riprovare', async () => {
+      const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+      const dlg = await mountWithUnreadable([item('a', 'damaged')]);
+      h.rewrap.mockRejectedValue(new Error('rete'));
+      fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.finishFailed'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(screen.getByText('vault.rotation.banner:1')).toBeTruthy();
+    });
+
+    describe('note troppo grandi (D7, D16): solo le D si cancellano a mano', () => {
+      // al ricontrollo (rewrapUnreadable) i due id tornano tooLarge: sono gli unici che l'eliminazione puo' toccare
+      const big = async () => {
+        const dlg = await mountWithUnreadable([item('a', 'damaged'), item('big1', 'damaged', HUGE), item('big2', 'damaged', HUGE)]);
+        h.rewrap.mockResolvedValue(rw({ tooLarge: ['big1', 'big2'] }));
+        return dlg;
+      };
+
+      it('il dialog mostra subito il loro numero e "Elimina queste N note"; il rewrap riguarda solo le entro-limite', async () => {
+        const dlg = await big();
+        expect(within(dlg).getByText('vault.rotation.tooLarge:2')).toBeTruthy();
+        expect(within(dlg).getByText('vault.rotation.damaged:1')).toBeTruthy();
+        expect(within(dlg).getByText('vault.rotation.deleteTooLarge:2')).toBeTruthy();
+        h.rewrap.mockResolvedValue(rw({ rewrapped: ['a'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('big1', 'damaged', HUGE), item('big2', 'damaged', HUGE)] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+        await waitFor(() => expect(h.rewrap).toHaveBeenCalledWith(['a'], ctxNow().ctx, { allowKeyMissingIds: [] }));
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.rewrapDone:1')).toBeTruthy(); return d; });
+        expect(within(again).queryByText('vault.rotation.confirmRewrap')).toBeNull(); // niente da re-incapsulare
+        expect(h.permDelete).not.toHaveBeenCalled();
+      });
+
+      it('un id che il rewrap rifiuta come troppo grande (tooLarge) e che resta stale diventa da eliminare anche se piccolo', async () => {
+        const dlg = await mountWithUnreadable([item('a', 'damaged'), item('edge', 'damaged')]);
+        h.rewrap.mockResolvedValue(rw({ rewrapped: ['a'], tooLarge: ['edge'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('edge', 'damaged')] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.tooLarge:1')).toBeTruthy(); return d; });
+        expect(within(again).getByText('vault.rotation.deleteTooLarge:1')).toBeTruthy();
+      });
+
+      it("l'azione apre un ConfirmDialog che avvisa dei dati illeggibili; annulla non elimina", async () => {
+        const dlg = await big();
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        expect(await screen.findByText('vault.rotation.deleteTooLargeConfirm:2')).toBeTruthy();
+        fireEvent.click(screen.getByText('common.cancel'));
+        expect(h.permDelete).not.toHaveBeenCalled();
+        expect(screen.getByText('vault.rotation.tooLarge:2')).toBeTruthy(); // si torna al dialog
+      });
+
+      it('conferma: eliminazione definitiva di entrambe, push; restano solo le note da re-incapsulare', async () => {
+        const dlg = await big();
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged')] }); // il server dopo l'eliminazione
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledTimes(2));
+        expect(h.permDelete.mock.calls.map((c) => c[0]).sort()).toEqual(['big1', 'big2']);
+        await waitFor(() => expect(h.syncPush).toHaveBeenCalled());
+        const toast = (await import('react-hot-toast')).default as unknown as { success: ReturnType<typeof vi.fn> };
+        expect(toast.success).toHaveBeenCalledWith('vault.rotation.deletedTooLarge:2'); // il conteggio reale
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.damaged:1')).toBeTruthy(); return d; });
+        expect(within(again).queryByText(/deleteTooLarge/)).toBeNull();
+      });
+
+      it('conferma con solo D oltre il limite: dialog e banner chiusi', async () => {
+        const dlg = await mountWithUnreadable([item('big1', 'damaged', HUGE)]);
+        h.rewrap.mockResolvedValue(rw({ tooLarge: ['big1'] }));
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:1'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledWith('big1'));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(screen.queryByText(/vault\.rotation\.banner/)).toBeNull();
+      });
+
+      it('(f) una K oltre il limite non arriva mai a permanentlyDeleteNote, ne\' con la D oltre il limite eliminata insieme ne\' da sola', async () => {
+        const dlg = await mountWithUnreadable([item('kbig', 'keyMissing', HUGE), item('dbig', 'damaged', HUGE)]);
+        h.rewrap.mockResolvedValue(rw({ tooLarge: ['dbig'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('kbig', 'keyMissing', HUGE)] });
+        expect(within(dlg).getByText('vault.rotation.keyMissingTooLarge:1')).toBeTruthy();
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:1'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledTimes(1));
+        expect(h.permDelete).toHaveBeenCalledWith('dbig');
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.keyMissingTooLarge:1')).toBeTruthy(); return d; });
+        expect(within(again).queryByText(/deleteTooLarge/)).toBeNull(); // nessuna via di eliminazione per la K
+        expect(within(again).queryByText('vault.rotation.confirmRewrap')).toBeNull();
+        expect(h.permDelete).toHaveBeenCalledTimes(1);
+      });
+
+      it('(g) eliminazione in corso: i pulsanti sono disabilitati, un solo permanentlyDeleteNote per id', async () => {
+        let release!: () => void;
+        h.permDelete.mockImplementation(() => new Promise<void>((r) => { release = r; }));
+        const dlg = await big();
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledTimes(1)); // big1 in volo
+        const del = await screen.findByText('vault.rotation.deleteTooLarge:2');
+        expect((del as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(del);
+        fireEvent.click(screen.getByText('vault.rotation.confirmRewrap'));
+        expect(screen.queryByText('vault.rotation.deleteTooLargeConfirm:2')).toBeNull();
+        expect(h.rewrap).toHaveBeenCalledTimes(1); // solo il ricontrollo dell'eliminazione, nessun rewrap della conferma
+        h.permDelete.mockResolvedValue(undefined);
+        release();
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledTimes(2));
+        expect(h.permDelete.mock.calls.map((c) => c[0]).sort()).toEqual(['big1', 'big2']);
+      });
+
+      it('A1: il ricontrollo ricalcola il bucket: un id tornato readable non si elimina; il ricontrollo non passa consensi e il dialog si riapre senza residuo', async () => {
+        const dlg = await big();
+        h.rewrap.mockResolvedValue(rw({ readable: ['big1'], tooLarge: ['big2'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged')] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledTimes(1));
+        expect(h.permDelete).toHaveBeenCalledWith('big2');
+        expect(h.rewrap).toHaveBeenLastCalledWith(['big1', 'big2'], ctxNow().ctx);
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.damaged:1')).toBeTruthy(); return d; });
+        expect(within(again).queryByText('vault.rotation.residue')).toBeNull();
+      });
+
+      it('A1: nessun id nel bucket tooLarge del ricontrollo -> nessuna eliminazione', async () => {
+        const dlg = await big();
+        h.rewrap.mockResolvedValue(rw({ readable: ['big1', 'big2'] }));
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.rewrap).toHaveBeenCalled());
+        await settle();
+        expect(h.permDelete).not.toHaveBeenCalled();
+      });
+
+      it('A3: U (unverifiable) oltre il limite: nessun pulsante Elimina (anche con una D oltre il limite accanto), mai permanentlyDeleteNote', async () => {
+        const dlg = await mountWithUnreadable([item('ubig', 'unverifiable', HUGE), item('dbig', 'damaged', HUGE)]);
+        expect(within(dlg).getByText('vault.rotation.unverifiableTooLarge:1')).toBeTruthy();
+        h.rewrap.mockResolvedValue(rw({ tooLarge: ['dbig'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('ubig', 'unverifiable', HUGE)] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:1'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(h.permDelete).toHaveBeenCalledTimes(1));
+        expect(h.permDelete).toHaveBeenCalledWith('dbig');
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.unverifiableTooLarge:1')).toBeTruthy(); return d; });
+        expect(within(again).queryByText(/deleteTooLarge/)).toBeNull();
+      });
+
+      it('A3: U sola oltre il limite (come un server che riscrive nv3.<e-1> in nv3.<e-2>): dialog senza Elimina ne conferma', async () => {
+        const dlg = await mountWithUnreadable([item('ubig', 'unverifiable', HUGE)]);
+        expect(within(dlg).getByText('vault.rotation.unverifiableTooLarge:1')).toBeTruthy();
+        expect(within(dlg).queryByText(/deleteTooLarge/)).toBeNull();
+        expect(within(dlg).queryByText('vault.rotation.confirmRewrap')).toBeNull();
+      });
+
+      it('A3: il consenso del rewrap (allowKeyMissingIds) comprende K e U entro il limite, non le D', async () => {
+        const dlg = await mountWithUnreadable([item('d', 'damaged'), item('k', 'keyMissing'), item('u', 'unverifiable')]);
+        fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+        await waitFor(() => expect(h.rewrap).toHaveBeenCalledWith(['d', 'k', 'u'], ctxNow().ctx, { allowKeyMissingIds: ['k', 'u'] }));
+      });
+
+      it('1: il ricontrollo porta le note in K: nessun toast di successo, nessuna eliminazione, e il dialog non le offre piu come eliminabili', async () => {
+        const toast = (await import('react-hot-toast')).default as unknown as { success: ReturnType<typeof vi.fn> };
+        const dlg = await big();
+        h.rewrap.mockResolvedValue(rw({ keyMissing: ['big1', 'big2'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged'), item('big1', 'keyMissing', HUGE), item('big2', 'keyMissing', HUGE)] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.keyMissingTooLarge:2')).toBeTruthy(); return d; });
+        expect(within(again).queryByText(/deleteTooLarge/)).toBeNull();
+        expect(h.permDelete).not.toHaveBeenCalled();
+        expect(toast.success).not.toHaveBeenCalledWith(expect.stringContaining('deletedTooLarge'));
+      });
+
+      it('1: epochChanged durante il ricontrollo -> toast errors.vault.epochChanged, non unknownError', async () => {
+        const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+        const dlg = await big();
+        h.rewrap.mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'epochChanged' }));
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.vault.epochChanged'));
+        expect(h.permDelete).not.toHaveBeenCalled();
+      });
+
+      it('eliminazione fallita: toast e il dialog resta', async () => {
+        const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+        const dlg = await big();
+        h.permDelete.mockRejectedValue(new Error('idb'));
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.common.unknownError'));
+        expect(screen.getByText('vault.rotation.tooLarge:2')).toBeTruthy();
+      });
+    });
+
+    describe('guard rotatedFor e modali (foglio impostazioni, Kit, ripresa)', () => {
+      const online = () => act(async () => { window.dispatchEvent(new Event('online')); await Promise.resolve(); });
+      const openSettings = async () => fireEvent.click(await screen.findByLabelText('vault.settings.title'));
+
+      it("ripresa fallita (rete): il guard si azzera e il prossimo trigger riprova; con 'busy' no", async () => {
+        unlock();
+        h.reconcile.mockResolvedValue(res({ staleLeft: 2 }));
+        h.finish.mockRejectedValue(new Error('rete'));
+        mount();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+        await settle();
+        await online();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(2));
+        h.finish.mockReset();
+        h.finish.mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'busy' }));
+        await online();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+        await settle();
+        await online();
+        await settle();
+        expect(h.finish).toHaveBeenCalledTimes(1); // busy: guard intatto
+      });
+
+      it('(i) risultato arrivato con il foglio aperto: nessun dialog; dopo onClose il dialog compare', async () => {
+        unlock();
+        let resolve!: (v: unknown) => void;
+        h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+        h.finish.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+        mount();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+        await openSettings();
+        await act(async () => { resolve({ unreadable: [item('a', 'damaged')] }); });
+        await settle();
+        expect(screen.getByTestId('settings')).toBeTruthy();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.click(screen.getByText('settings-close'));
+        const dlg = await screen.findByRole('dialog');
+        expect(within(dlg).getByText('vault.rotation.damaged:1')).toBeTruthy();
+      });
+
+      it('(j) finishRotation rifiutata durante il Kit, poi evento online: nessun dialog finche il foglio e aperto', async () => {
+        unlock();
+        h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+        h.finish.mockRejectedValueOnce(new Error('rete'));
+        mount();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+        await settle();
+        await openSettings(); // cerimonia del Kit in corso (il foglio e' aperto)
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged')] });
+        await online();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(2));
+        await settle();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.click(screen.getByText('settings-close'));
+        expect(await screen.findByRole('dialog')).toBeTruthy();
+      });
+
+      it('(k) onRotationPending: foglio chiuso, toast, un solo finishRotation in piu anche con il guard gia impostato', async () => {
+        const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+        unlock();
+        h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+        mount();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1)); // guard impostato
+        await settle();
+        await openSettings();
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'keyMissing')] });
+        fireEvent.click(screen.getByText('rotation-pending'));
+        expect(screen.queryByTestId('settings')).toBeNull();
+        expect(toast.error).toHaveBeenCalledWith('errors.vault.rotationPending');
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(2));
+        const dlg = await screen.findByRole('dialog');
+        expect(within(dlg).getByText('vault.rotation.keyMissingWarning:1')).toBeTruthy();
+        await settle();
+        expect(h.finish).toHaveBeenCalledTimes(2);
+      });
+
+      it('(l) dopo onKitDone il foglio si chiude e il dialog compare; nessun secondo finishRotation', async () => {
+        unlock();
+        h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged')] });
+        mount();
+        await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+        await openSettings();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.click(screen.getByText('kit-done'));
+        expect(screen.queryByTestId('settings')).toBeNull();
+        const dlg = await screen.findByRole('dialog');
+        expect(within(dlg).getByText('vault.rotation.damaged:1')).toBeTruthy();
+        await settle();
+        expect(h.finish).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+});
+
 describe('VaultPage: sorgente', () => {
   it('nessun importFile e nessun useVaultHydration', () => {
     const src = readFileSync(resolve(__dirname, '../VaultPage.tsx'), 'utf8');
@@ -1222,5 +1731,161 @@ describe('VaultPage: chiusura della cerimonia e banner (Fase 4, T8)', () => {
     fireEvent.click(await screen.findByText('rec-none'));
     expect(seen).toHaveBeenCalledTimes(1);
     window.removeEventListener('notiq:vault-recovery-closed', seen);
+  });
+});
+
+describe('VaultPage: rotazione obbligatoria del Kit + 409 rotationPending (foglio forzato rinviato)', () => {
+  const item = (id: string, reason: 'damaged' | 'keyMissing') => ({ id, noteType: 'NOTE', size: 10, reason });
+  const mountForced = async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0, kitRotationRequired: true, openRecovery: null });
+    mount();
+    await screen.findByTestId('unlock');
+    await waitFor(() => expect(h.getKeyring).toHaveBeenCalled());
+    act(() => { unlock(); });
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  };
+
+  it('(o) forceKit attivo, onRotationPending: il foglio sparisce e, dopo finishRotation con item, compare il dialog', async () => {
+    await mountForced();
+    h.finish.mockResolvedValue({ unreadable: [item('a', 'keyMissing')] });
+    fireEvent.click(screen.getByText('rotation-pending'));
+    await waitFor(() => expect(screen.queryByTestId('settings')).toBeNull());
+    const dlg = await screen.findByRole('dialog');
+    expect(within(dlg).getByText('vault.rotation.keyMissingWarning:1')).toBeTruthy();
+  });
+
+  it('(p) il rewrap che svuota il residuo fa ricomparire il foglio forzato', async () => {
+    await mountForced();
+    h.finish.mockResolvedValueOnce({ unreadable: [item('a', 'damaged')] }).mockResolvedValue({ unreadable: [] });
+    h.rewrap.mockResolvedValue(rw({ rewrapped: ['a'] }));
+    fireEvent.click(screen.getByText('rotation-pending'));
+    const dlg = await screen.findByRole('dialog');
+    expect(screen.queryByTestId('settings')).toBeNull();
+    fireEvent.click(within(dlg).getByText('vault.rotation.confirmRewrap'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('9: rotateStale fallita (rete) dopo il rinvio: toast e il foglio forzato ricompare', async () => {
+    const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+    await mountForced();
+    h.finish.mockRejectedValue(new Error('rete'));
+    fireEvent.click(screen.getByText('rotation-pending'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.finishFailed'));
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('10: nessuna illeggibile ma residuo (failed/tooLarge/conflicts/unverified): banner di rotazione incompleta e il foglio forzato resta rinviato', async () => {
+    await mountForced();
+    h.finish.mockResolvedValue({ unreadable: [], failed: ['x'], tooLarge: [], conflicts: [], unverified: [] });
+    fireEvent.click(screen.getByText('rotation-pending'));
+    expect(await screen.findByText('vault.rotation.finishFailed')).toBeTruthy();
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('10: giro pulito (nessun residuo): niente banner di incompletezza', async () => {
+    unlock();
+    h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+    h.finish.mockResolvedValue({ unreadable: [], failed: [], tooLarge: [], conflicts: [], unverified: [] });
+    mount();
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(screen.queryByText('vault.rotation.finishFailed')).toBeNull();
+  });
+
+  it('11: localPending durante la rotazione forzata: foglio rinviato con toast, e ricompare dopo il giro del reconcile', async () => {
+    const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+    await mountForced();
+    fireEvent.click(screen.getByText('local-pending'));
+    expect(toast.error).toHaveBeenCalledWith('errors.vault.localPending');
+    expect(screen.queryByTestId('settings')).toBeNull();
+    await waitFor(() => expect(h.syncPush).toHaveBeenCalled());
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('12: dialog mai sopra la cerimonia del Kit: anche se il foglio non e piu aperto, finche non arriva onKitDone', async () => {
+    unlock();
+    h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+    h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged')] });
+    mount();
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByLabelText('vault.settings.title'));
+    fireEvent.click(await screen.findByText('kit-start'));
+    expect(screen.getByTestId('kit-mock')).toBeTruthy(); // cerimonia montata, foglio non aperto
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await act(async () => { window.dispatchEvent(new Event('online')); await new Promise((r) => setTimeout(r, 30)); });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByText('kit-done'));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+
+  it('13: onKitDone con un finishRotation a chiavi vecchie ancora in corso: a giro finito (locked) con chiavi nuove rilancia rotateStale', async () => {
+    unlock();
+    let rejectOld!: (e: unknown) => void;
+    h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+    h.finish.mockReturnValueOnce(new Promise((_, rej) => { rejectOld = rej; }));
+    mount();
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(1));
+    const newKeys = {} as any;
+    act(() => { useVaultStore.setState({ keys: newKeys, epoch: 2 }); }); // la rotazione ha cambiato le chiavi
+    fireEvent.click(await screen.findByLabelText('vault.settings.title'));
+    fireEvent.click(await screen.findByText('kit-done')); // rotateStale: no-op, il vecchio giro e' ancora in corso
+    expect(h.finish).toHaveBeenCalledTimes(1);
+    h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged')] });
+    await act(async () => { rejectOld(Object.assign(new Error('x'), { name: 'MigrationError', code: 'locked' })); await new Promise((r) => setTimeout(r, 30)); });
+    await waitFor(() => expect(h.finish).toHaveBeenCalledTimes(2));
+    expect(h.finish).toHaveBeenLastCalledWith({ ctx: { keys: newKeys, userId: 'u1', epoch: 2 } });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+
+  const idle = () => act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+  const onlineEv = () => act(async () => { window.dispatchEvent(new Event('online')); await Promise.resolve(); });
+
+  it('2: un rinvio local sopravvive a un errore di finishRotation (solo il rinvio stale si annulla)', async () => {
+    h.foreignPending.mockResolvedValue(true);
+    h.reconcile.mockResolvedValue(res({ staleLeft: 1 }));
+    h.finish.mockRejectedValue(new Error('rete'));
+    await mountForced();
+    await waitFor(() => expect(h.finish).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('local-pending'));
+    expect(screen.queryByTestId('settings')).toBeNull();
+    await idle();
+    const calls = h.finish.mock.calls.length;
+    await onlineEv(); // reconcile con staleLeft: rotateStale -> finishRotation rifiuta di nuovo
+    await waitFor(() => expect(h.finish.mock.calls.length).toBeGreaterThan(calls));
+    await idle();
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('3: il rinvio local si chiude solo quando non restano envelope locali e-1 non sincronizzati', async () => {
+    h.foreignPending.mockResolvedValue(true); // la riga e-1 e' ancora in LEAVE
+    await mountForced();
+    fireEvent.click(screen.getByText('local-pending'));
+    await waitFor(() => expect(h.syncPush).toHaveBeenCalled());
+    await idle();
+    expect(screen.queryByTestId('settings')).toBeNull();
+    h.foreignPending.mockResolvedValue(false);
+    await onlineEv(); // nuovo giro del reconcile
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('4a: rotationIncomplete vale solo per le chiavi che l\'hanno vista', async () => {
+    unlock();
+    mount();
+    fireEvent.click(await screen.findByLabelText('vault.settings.title'));
+    h.finish.mockResolvedValue({ unreadable: [], failed: ['x'], tooLarge: [], conflicts: [], unverified: [] });
+    fireEvent.click(await screen.findByText('rotation-pending'));
+    expect(await screen.findByText('vault.rotation.finishFailed')).toBeTruthy();
+    act(() => { useVaultStore.setState({ keys: {} as any, epoch: 2 }); }); // chiavi diverse (nuovo sblocco)
+    expect(screen.queryByText('vault.rotation.finishFailed')).toBeNull();
+  });
+
+  it('4b: un residuo di soli unverified non accende il banner e non tiene il rinvio stale', async () => {
+    await mountForced();
+    h.finish.mockResolvedValue({ unreadable: [], failed: [], tooLarge: [], conflicts: [], unverified: ['u'] });
+    fireEvent.click(screen.getByText('rotation-pending'));
+    expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+    expect(screen.queryByText('vault.rotation.finishFailed')).toBeNull();
   });
 });

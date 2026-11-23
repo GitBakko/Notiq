@@ -1,5 +1,5 @@
 import { useVaultStore, type VaultKeys } from '../store/vaultStore';
-import { decryptItem as decryptEnvelope, deriveNoteKey, encryptItem as encryptEnvelope, sha256hex } from '../utils/vaultCrypto';
+import { decryptItem as decryptEnvelope, deriveNoteKey, encryptItem as encryptEnvelope, sha256hex, type VaultKey } from '../utils/vaultCrypto';
 
 // Cifra/decifra gli item vault (plan 5.6) con le chiavi dello store. Condiviso fra features (lib/): niente import da features/.
 // Il plaintext vive solo nella cache in memoria qui sotto, che si svuota a ogni cambio di chiavi (lock, logout, cambio utente).
@@ -19,6 +19,7 @@ export class VaultLockedError extends Error {
 const MAX_CACHE = 500;
 /** Tetto di memoria dei decifrati (stringhe JS: 2 byte per carattere). */
 export const MAX_PLAIN_BYTES = 32 * 1024 * 1024;
+// Chiave epoch|noteId: con una rotazione in corso `keys.prev` e `keys` derivano K_note diverse per lo stesso noteId.
 const kNotes = new Map<string, CryptoKey>();
 // Chiave noteId|noteType; l'envelope e' verificato con lunghezza + hash (non lo si tiene in memoria).
 interface PlainEntry { len: number; hash: string; out: { t: string; c: string }; bytes: number }
@@ -68,26 +69,34 @@ function ctxOf(ctx?: VaultCodecCtx): VaultCodecCtx {
   return { keys, userId: unlockedUserId, epoch };
 }
 
-async function noteKey(keys: VaultKeys, noteId: string): Promise<CryptoKey> {
-  const vk = { hkdf: keys.vkHkdf, aes: keys.vkAes };
+/** VK dell'epoch dell'envelope: la corrente o lo slot `prev` (un solo epoch indietro); altrimenti null. */
+function vkForEpoch(keys: VaultKeys, e: number, cur: number): VaultKey | null {
+  if (e === cur) return { hkdf: keys.vkHkdf, aes: keys.vkAes };
+  if (keys.prev && keys.prev.epoch === e) return { hkdf: keys.prev.vkHkdf, aes: keys.prev.vkAes };
+  return null;
+}
+
+async function noteKey(keys: VaultKeys, vk: VaultKey, e: number, noteId: string): Promise<CryptoKey> {
   // Chiavi gia' azzerate (flusher pre-lock): si deriva senza memorizzare nulla.
   if (!isLive(keys)) return deriveNoteKey(vk, noteId);
   if (cacheKeys !== keys) {
     clearVaultCodecCache();
     cacheKeys = keys;
   }
-  let k = kNotes.get(noteId);
+  const ck = `${e}|${noteId}`;
+  let k = kNotes.get(ck);
   if (!k) {
     k = await deriveNoteKey(vk, noteId);
     // Un lock durante la derivazione ha gia' svuotato la cache: non la si ripopola.
-    if (isLive(keys)) fifoSet(kNotes, noteId, k);
+    if (isLive(keys)) fifoSet(kNotes, ck, k);
   }
   return k;
 }
 
 export async function encryptItem(noteId: string, noteType: VaultNoteType, item: { t: string; c: string }, ctx?: VaultCodecCtx): Promise<string> {
   const { keys, userId, epoch } = ctxOf(ctx);
-  return encryptEnvelope(await noteKey(keys, noteId), { userId, noteId, noteType, epoch }, item);
+  // Si cifra sempre all'epoch corrente, mai con `prev`.
+  return encryptEnvelope(await noteKey(keys, vkForEpoch(keys, epoch, epoch)!, epoch, noteId), { userId, noteId, noteType, epoch }, item);
 }
 
 export async function decryptItem(noteId: string, noteType: VaultNoteType, envelope: string, ctx?: VaultCodecCtx): Promise<{ t: string; c: string }> {
@@ -96,7 +105,11 @@ export async function decryptItem(noteId: string, noteType: VaultNoteType, envel
   const hash = await sha256hex(envelope);
   const hit = isLive(keys) ? plain.get(ck) : undefined;
   if (hit && hit.len === envelope.length && hit.hash === hash) return { ...hit.out };
-  const out = await decryptEnvelope(await noteKey(keys, noteId), { userId, noteId, noteType, epoch }, envelope);
+  // Epoch dell'envelope: corrente o `prev`; qualsiasi altro (o formato strano) resta con l'epoch corrente e lo rifiuta decryptEnvelope ('stale'/'invalidEnvelope').
+  const m = /^nv3\.(\d+)\./.exec(envelope);
+  const eEnv = m ? Number(m[1]) : epoch;
+  const e = vkForEpoch(keys, eEnv, epoch) ? eEnv : epoch;
+  const out = await decryptEnvelope(await noteKey(keys, vkForEpoch(keys, e, epoch)!, e, noteId), { userId, noteId, noteType, epoch: e }, envelope);
   if (isLive(keys)) plainSet(ck, { len: envelope.length, hash, out, bytes: (out.t.length + out.c.length) * 2 });
   return { ...out };
 }

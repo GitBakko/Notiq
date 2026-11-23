@@ -1,6 +1,6 @@
 # Vault P4, Fase 5: rotazione della VK (piano, 23/11/2026)
 
-Stato: **piano dell'architect approvato; D1-D5 approvate dall'utente il 23/11/2026 come raccomandate. D6-D10 approvate dall'utente lo stesso giorno, come raccomandate.**
+Stato: **piano dell'architect approvato; D1-D5 approvate dall'utente il 23/11/2026 come raccomandate. D6-D10 approvate dall'utente lo stesso giorno, come raccomandate. D11-D17 approvate dall'utente il 23/11/2026. D18 (23/11/2026) da confermare con l'utente.**
 Chiude il residuo del red-team del piano Fase 4 §9 («la rotazione del Kit non cambia la VK»), decisione dell'utente del 13/11/2026.
 
 Verificati dal coordinatore sul codice (HEAD `b21604e`): `rotate` riservato e rifiutato in `vault.service.ts:318,336`; il server accetta solo l'epoch corrente (`vault.service.ts:79`, 422 `stale`). Da verificare nei test: `@updatedAt` di `Note` aggiornato dall'`updateMany` di `/migrate` (`vault.service.ts:529`), rate limit e durata di `/items` e `/migrate` su vault grandi.
@@ -54,11 +54,15 @@ Attaccante con la VK vecchia (Kit superstite + `S_root` + `escrowBlob` di un ril
 - Il recupero (`vaultRecovery.service.ts:446-450`) accetta lo stesso `rotate` con le stesse regole. Nel payload di `complete` il `rotate` è **obbligatorio**, non opzionale. Il P4 non è in prod: non c'è compatibilità da tenere.
 
 ### Client che ruota (`rotateVault`, sostituisce `regenerateKit` in `vaultSession.ts:473-526`)
-1. `flushPending` della coda (`vaultMigration.ts:151`). Con `staleCount > 0` prima finisce la rotazione pendente.
+1. Eseguito dal chiamante (D13): la UI chiama `flushPending` della coda (`vaultMigration.ts:151`) prima di `rotateVault`. `rotateVault` non lo chiama. Con `staleCount > 0` prima finisce la rotazione pendente.
+   - Prima della PUT `rotateVault` rifiuta con `epochChanged` se l'epoch del server non è quella in memoria. Lo stesso vale per `changePin`.
+   - Rifiuta con `localPending` solo se ci sono righe o item locali non sincronizzati `nv3.<epoch-1>.` e la sessione ha `prev`.
 2. PIN; seconda Argon2 con salt nuovo e `DEFAULT_KDF` (come `changePin`); nuovi `serverShare`, VK_new, `sigKey`, `S_root'`, `S_user'`.
 3. Round-trip completo in memoria: wrap del PIN, escrow, `prevVkWrap`, firma verificata con la SPKI nuova.
 4. Marker `kit` `{epoch: kr.epoch, rev: kr.rev, origin:'regenerate'}` prima della PUT (`checkPending`, `vaultSession.ts:565`, invariato).
 5. Su 200 (o 409 con il nostro `escrowHash`): `unlock(keys{…, prev}, epoch+1)`; cache dal server; `saveDeviceShare(newShare, epoch+1, wrappedVkSigKey nuovo)`; Kit mostrato («commit, poi Kit» invariato).
+   - Se il vault viene bloccato durante la rotazione, il commit aggiorna solo cache e share.
+   - Se lo store è tornato su epochOld, il commit chiama `lockVault()`.
 6. Dopo la cerimonia `finishRotation`, poi `vaultReconcile()`.
 
 ### `finishRotation` (= `migrateLegacy`, `vaultMigration.ts:248`, generalizzato)
@@ -67,18 +71,46 @@ Attaccante con la VK vecchia (Kit superstite + `S_root` + `escrowBlob` di un ril
 - `/migrate` (CAS su `baseHash`, snapshot di rollback, `vault.service.ts:523-534`), verifica dai byte del server, `/finalize`;
 - il controllo `keys !== ctx.keys` (`:261`) diventa un'opzione `live`, per il recupero.
 
-### Note stale non decifrabili (D6, D7, D10)
-Una nota stale che nessuna chiave apre bloccherebbe per sempre la rotazione e il `complete`. Si risolve con il **re-incapsulamento**, sul modello di ciò che `migrateLegacy` fa già con ciò che non riesce a decifrare.
-- La nota illeggibile diventa un envelope valido all'epoch corrente.
-  - NOTE: documento TipTap con un paragrafo «contenuto non leggibile», seguito dal testo dell'envelope vecchio copiato tale e quale.
-  - CREDENTIAL: credenziale vuota con l'envelope vecchio nel campo `notes`.
+### Note stale non decifrabili (D6, D7, D10, D11)
+Una nota stale che nessuna chiave apre bloccherebbe per sempre la rotazione e il `complete`. Si risolve con il **re-incapsulamento**, sul modello di ciò che `migrateLegacy` fa già con ciò che non riesce a decifrare. Il client non decide da solo: classifica la nota e chiede conferma.
+
+**Risolvere `prev`.** Quando la sessione non ha `keys.prev`, `resolvePrev(ctx)` (in `vaultMigration.ts`) rilegge il keyring dal server. Apre `prevVkWrap` con la VK già in memoria. `unwrapPrevVk` richiede solo la VK corrente: niente PIN, niente sblocco online. Esiti:
+- `ok`: `prev` disponibile.
+- `absent`: `prevVkWrap` nullo.
+- `broken`: l'unwrap fallisce.
+- Se il keyring ha un'epoch diversa da quella del contesto, vale la classe F. Solo un cambio vero e' F: con il keyring ancora a quell'epoch, un envelope di epoch maggiore e' una nota `unverifiable` (U).
+
+**Classi di una nota del server stale.** Stale vuol dire content `nv3.` ma non `nv3.<e>.`. Le note legacy non envelope non entrano in `finishRotation`.
+- **R** (leggibile con VK o prev): `finishRotation` la migra in automatico.
+- **D** (danneggiata): decifrata con una chiave valida (e-1 con prev `ok`) e l'AEAD ha fallito (tag errato). E' l'unico caso in cui i dati risultano rotti (D18). Serve il `ConfirmDialog` D6, con il numero di note. Ogni altra eccezione della decifratura (non AEAD) e' transitoria: la nota va in `failed`, non in `unreadable`.
+- **U** (non verificabile, D18): nessuna chiave valida l'ha provata. Envelope malformato, epoch ≤ e-2, epoch maggiore con il keyring ancora a `ctx.epoch`, struttura non valida. Come la K: avviso e rewrap solo dopo conferma (stesso consenso per nota, `allowKeyMissingIds`); oltre il limite c'e' solo l'avviso «contatta l'amministratore», mai l'eliminazione.
+- **K** (chiave mancante): e-1 con prev `absent` o `broken`. Serve una conferma dedicata (D11), con questo avviso:
+  - manca la chiave precedente sul server;
+  - se sembra un errore, annulla e contatta l'amministratore;
+  - il contenuto cifrato resta dentro la nota;
+  - alla rotazione successiva la chiave precedente sparisce per sempre.
+- **F** (il keyring riletto e' davvero a un'epoch diversa dal contesto, con un envelope di epoch maggiore o senza `prev` in sessione): `lockVault()` e `epochChanged`. Nessuna scrittura. Se il keyring e' ancora a `ctx.epoch` la nota e' U, non F. Dopo un conflitto (CAS 409) il keyring si rilegge prima del nuovo giro: un cambio di epoch nel frattempo e' F.
+
+**API.**
+- `UnreadableItem.reason: 'damaged' | 'keyMissing' | 'unverifiable'`.
+- `rewrapUnreadable(ids, ctx, {allowKeyMissingIds?})` riclassifica con `resolvePrev` prima di scrivere. L'opzione e' l'elenco degli id per cui l'utente ha dato il consenso (K e U).
+- Una K o U senza consenso va nel bucket `keyMissing` e non si tocca.
+- Una nota tornata leggibile va in `readable`. Anche `already` dal server va in `readable`.
+- Un server malevolo non può indurre il re-incapsulamento senza un consenso con avviso specifico.
+
+**Come si re-incapsula.** La nota illeggibile diventa un envelope valido all'epoch corrente.
+- NOTE: documento TipTap con un paragrafo «contenuto non leggibile», seguito dal testo dell'envelope vecchio copiato tale e quale.
+- CREDENTIAL: credenziale vuota con l'envelope vecchio nel campo `notes`.
 - Nessuno schema e nessun endpoint nuovo: passa da `/migrate` e `/finalize`.
 - Il ciphertext non si perde. Resta recuperabile, in caso di bug del client, fino alla rotazione successiva.
 - L'attaccante con la VK vecchia non guadagna nulla: quella nota non si apriva con la VK vecchia nemmeno prima.
-- **D6:** il re-incapsulamento parte solo dopo conferma esplicita in `ConfirmDialog`, che mostra il numero di note coinvolte. Protegge da un bug di derivazione della chiave scambiato per spazzatura.
-- **D7:** il `complete` del recupero resta bloccato dalle note stale (409 `rotationPending`). La cerimonia le risolve prima, con lo stesso dialog.
+
+**Decisioni.**
+- **D6:** il re-incapsulamento delle note D parte solo dopo conferma esplicita in `ConfirmDialog`, che mostra il numero di note coinvolte. Protegge da un bug di derivazione della chiave scambiato per spazzatura.
+- **D7:** il `complete` del recupero resta bloccato dalle note stale (409 `rotationPending`). La cerimonia le risolve prima, con lo stesso `resolvePrev` (VK dell'escrow, `live:false`) e lo stesso dialog. Il `complete` resta possibile.
   - Eccezione: un envelope vecchio oltre ~1,5 MiB non entra nel re-incapsulamento. L'utente deve cancellare la nota a mano.
 - **D10:** indurimento backend. `createNote` e `updateNote` rispondono 422 se una nota vault ha contenuto che inizia con `nv3.` e l'utente non ha un keyring. Chiude gli envelope piantati prima del setup.
+- **D11:** le note K si re-incapsulano solo dopo la conferma dedicata con l'avviso del rischio. È l'unica uscita per rotazione e recupero del PIN.
 
 ### Server: versioni
 - `itemSelect._count.versions` (`vault.service.ts:454`) conta le versioni NOT `startsWith 'nv3.<epoch>.'`; `finalize` (`:570`) cancella le stesse. Il punto finale evita `nv3.1.` / `nv3.10.`.
@@ -101,7 +133,7 @@ Una nota stale che nessuna chiave apre bloccherebbe per sempre la rotazione e il
 | Risposta persa | Banner `kitUnconfirmed`; PIN invariato; la rigenerazione rifà una rotazione dopo aver finito quella pendente |
 | Giro a metà | A ogni sblocco online con `staleCount > 0` e `keys.prev` parte `finishRotation`, su qualunque dispositivo 1.15 |
 | Durante il giro | Il codec legge `e` ed `e+1`; un edit ricifra con `e+1` e passa il CAS sul vecchio hash |
-| Nota stale non decifrabile | `finishRotation` la restituisce in `unreadable[]`. Dopo la conferma in `ConfirmDialog` (D6), `rewrapUnreadable` la re-incapsula all'epoch corrente e il giro finisce |
+| Nota stale non decifrabile | `finishRotation` la classifica con `resolvePrev`: R si migra da sola, D, K e U tornano in `unreadable[]` con `reason`, F blocca il vault (`epochChanged`). Dopo la conferma in `ConfirmDialog` (D6, o D11 per le K e le U con il loro avviso), `rewrapUnreadable` le re-incapsula all'epoch corrente e il giro finisce. Oltre `MAX_REWRAP_LEN`: una D si può solo eliminare (D7, dopo un ricontrollo con `rewrapUnreadable` che la riconferma troppo grande), una K resta bloccata finché l'amministratore non ripristina `prevVkWrap` (D16), una U resta bloccata e va all'amministratore (D18) |
 | Snapshot rimasto dopo un crash | Lo pulisce il passo 4 del reconcile al prossimo sblocco (D8, D9) |
 
 Invariante: mai ruotare con `staleCount > 0`, quindi nessuna nota resta più di un'epoch indietro.
@@ -116,7 +148,7 @@ Invariante: mai ruotare con `staleCount > 0`, quindi nessuna nota resta più di 
 
 ### Recupero
 - Con `staleCount > 0` la cerimonia sbusta prima `prev` con la VK dell'escrow e finisce il giro (`ctx` esplicito, `live`).
-- Le note stale non decifrabili si risolvono prima di `complete`, con lo stesso `ConfirmDialog` (D7).
+- Le note stale non decifrabili si risolvono prima di `complete`, con lo stesso `resolvePrev` (VK dell'escrow, `live:false`) e lo stesso `ConfirmDialog` (D7, D11).
 - Poi `complete` con `rotate`, epoch+1 nei round-trip (`vaultRecovery.ts:391-406`).
 - `afterCommit` deve passare la `wrappedVkSigKey` nuova (oggi `kr.wrappedVkSigKey`, `vaultRecovery.ts:317,424`).
 
@@ -147,10 +179,32 @@ Invariante: mai ruotare con `staleCount > 0`, quindi nessuna nota resta più di 
 - **T7 Sessione** (`vaultSession.test.ts`). `rotateVault`: marker prima della PUT; su 200 Kit restituito, store a epoch+1 con `prev`, share salvato con epoch+1; 409 col nostro hash → successo; 409 diverso → `kitNotUpdated` e marker cancellato; `staleCount > 0` → `rotationPending`; `syncKeyringCache` con epoch più alta blocca il vault; `openKeyring` sbusta `prev`.
 - **T8 `finishRotation`** (`vaultMigration.test.ts`). SX → SE verificati e finalizzati; abort a metà + secondo giro → `staleCount` 0; conflitti con 3 giri; nessun plaintext in Dexie o nella coda; `updatedAt` della nota aggiornato (propagazione alla pull). Aggiunte (D6):
   - `finishRotation` restituisce `unreadable[]`. La decifratura usa la chiave scelta dall'epoch dell'envelope.
-  - In `unreadable[]` finiscono anche gli envelope malformati, quelli di epoch futura e, senza `prevVkWrap`, tutti gli stale.
-  - Nuova funzione `rewrapUnreadable(ids, ctx)`: NOTE e CREDENTIAL come in §3, passando da `/migrate` e `/finalize`.
+  - `unreadable[]` segue le classi R/D/K/U/F di §3. Le R si migrano da sole; D, K e U escono con `reason`; F blocca il vault.
+  - `rewrapUnreadable(ids, ctx, {allowKeyMissingIds?})`: NOTE e CREDENTIAL come in §3, passando da `/migrate` e `/finalize`.
+  - e-1 senza `prev` in sessione ma con `prevVkWrap` valido: nota migrata senza PIN.
+  - `prevVkWrap` nullo o spazzatura: nota `keyMissing`, zero chiamate a `/migrate`.
+  - e-1 con `prev` ok e tag errato (AEAD): `damaged`. Un'eccezione non AEAD nella decifratura: `failed`. Un `MigrationError` dentro `prepare` o nel ciclo del rewrap si propaga (mai `failed`).
+  - Epoch futura con il keyring a un'altra epoch (F): zero `/migrate`, `lockVault`, `epochChanged`. Con il keyring ancora a `ctx.epoch`: nota `unverifiable`, nessun lock. Malformata o e-2: `unverifiable`. Un server che riscrive `nv3.<e-1>.` in `nv3.<e-2>.`: `unverifiable`, non `damaged`.
+  - Conflitto (CAS 409): il refetch applica lo stesso filtro `only` del primo giro e rilegge il keyring (epoch cambiata: `epochChanged`).
+  - Nota SL non listata.
+  - K e U con e senza consenso (`allowKeyMissingIds`).
+  - K tornata leggibile: va in `readable`.
 - **T9 Reconcile** (TIER 1, `vaultReconcile.test.ts`). Una riga per T5, T9, T15 con `prev` (uguale → ADOPT, diverso → copia cifrata nella nuova epoch); `e-2` → LEAVE `epoch`; `staleLeft` e `legacyLeft` separati. Aggiunta (Addendum 6 della spec): una riga Dexie illeggibile, con il server già re-incapsulato, finisce in HYDRATE senza copia e senza DROP.
 - **T10 UI.** Impostazioni e F2 chiamano `rotateVault`; flush; avanzamento; ripresa automatica in `VaultPage`; il banner legacy non compare per gli SX; i18n en/it; `dark:`. Test dei componenti e `npx tsc -p tsconfig.app.json --noEmit`. Aggiunta (D6): `ConfirmDialog` di conferma del re-incapsulamento, con il numero di note coinvolte (i18n en/it, varianti `dark:`).
+  - Ripresa automatica in `VaultPage` dopo lo sblocco online quando ci sono stale.
+  - Un solo `ConfirmDialog`, con il conteggio per `reason` e il paragrafo di avviso K se K > 0.
+  - Annullare lascia il vault usabile. Rotazione e `complete` restano bloccati, con un messaggio che rimanda al dialog.
+  - `VaultSettingsSheet` chiama `flushPending` prima di `rotateVault`, poi `finishRotation` e `vaultReconcile` dopo.
+  - Gli errori di `MigrationError` mostrano chiavi i18n (`errors.vault.flushTimeout` e simili), mai `unknownError`.
+  - Il bottone «Blocca vault» resta visibile nel foglio forzato in errore.
+  - Commit unico con T5-T9 (D15): il nucleo di T10 (ripresa automatica di `finishRotation` in `VaultPage`, dialog D/K) entra nello stesso commit.
+  - **Modello UI a proprietario unico (dopo il 2° giro di review).** Supera i design con `held`, `kitOpen`, `onRotationGuard`, `onUnreadable` e `finishAfterRotation`: non sono più il design attuale.
+    - `VaultPage` è l'unico proprietario di `stale: { keys, items: StaleItem[], open, last?: { rewrapped } } | null`. `StaleItem = UnreadableItem & { tooLarge }`, con `tooLarge = size > MAX_REWRAP_LEN` (`vaultMigration.ts:21`). `busyRef` è lo single-flight di rewrap ed eliminazione.
+    - Il dialog compare se `stale && stale.open && stale.keys === keys && !(settingsOpen || forceKit || showResume)`. Un esito arrivato durante un modale resta nello stato e il dialog compare alla chiusura.
+    - Sei gruppi, calcolati da `reason` prima di `tooLarge`: D, K e U entro il limite (D: conferma D6; K: avviso D11; U: avviso `vault.rotation.unverifiableWarning`; il rewrap parte dopo conferma); D oltre il limite («Elimina» con `ConfirmDialog` danger, D7, con ricontrollo `rewrapUnreadable` e poi `finishRotation` come fonte di verita'); K oltre il limite (solo avviso `vault.rotation.keyMissingTooLarge`, D16); U oltre il limite (solo avviso `vault.rotation.unverifiableTooLarge`, D18). K e U oltre il limite non hanno pulsanti e non sono mai eliminabili.
+    - Dopo il rewrap l'esito è `fin.unreadable` del `finishRotation` successivo (verità del server). Residuo vuoto: toast `vault.rotation.rewrapDone` e `setStale(null)`. Residuo non vuoto: il dialog si riapre con `last.rewrapped`. Dopo un'eliminazione: filtro locale degli id e toast.
+    - Annulla mette `open:false` e mostra il banner `vault.rotation.banner`, la cui azione rimette `open:true`. Un errore transitorio di `finishRotation` dà un toast e azzera il guard: ritenta il prossimo trigger (online, `staleLeft` del reconcile, sblocco).
+    - Il foglio fa solo `flushPending`, `rotateVault` e il Kit. `onKitDone` (D17) fa `setSettingsOpen(false)` e `rotateStale()`. `onRotationPending` fa `setSettingsOpen(false)`, toast `errors.vault.rotationPending` e `rotateStale({ force: true })`.
 - **T11 Recupero** (`vaultRecovery.test.ts`). Verdetti invariati; keyring a epoch+1; Kit vecchio sul nuovo escrow → errore; giro pendente finito prima di `complete`. Aggiunta (D7): lo stesso `ConfirmDialog` nella cerimonia di recupero; envelope vecchio oltre ~1,5 MiB: l'utente cancella la nota a mano.
 - **T12 E2E.** `vault-kit.spec.ts`: rotazione, note e credenziali leggibili, `/vault/items` senza `nv3.<e-1>.`, Kit vecchio che non apre il nuovo escrow; interruzione (abort di `/vault/migrate` dopo il primo batch, reload, sblocco) → ripresa fino a 0. `vault-multidevice.spec.ts`: B edit offline, A ruota, B online e sblocca → testo conservato (adottato o in copia); la seconda scheda di A si blocca. `vault-recovery.spec.ts`: `complete` → epoch+1. SQL dev: 0 note e 0 versioni vault `LIKE 'nv3.%' AND NOT LIKE 'nv3.<e>.%'`. Aggiunta (D6): spazzatura `nv3.<E>.` piantata via REST (solo JWT) → rotazione, conferma nel dialog, seconda rotazione con 200.
 - **T13 Docs.** `CLAUDE.md` (vault flow), piano Fase 4 §9 (residuo chiuso), runbook 1.15.0 (solo la migration della colonna, nessun job in prod).
@@ -158,10 +212,12 @@ Invariante: mai ruotare con `staleCount > 0`, quindi nessuna nota resta più di 
 ## 6. Rischi e residui
 
 - Due rotazioni con un dispositivo offline con edit non sincronizzati: quegli edit restano LEAVE `epoch` (un solo slot `prev`).
+- Residuo accettato (D12): una riga dirty in e-1, non copiabile su un dispositivo (senza `navigator.locks`, `size`, `roundTrip`, notebook), più una seconda rotazione fatta da un altro dispositivo. La riga resta in Dexie come LEAVE, mai DROP.
 - Vault grandi: rate limit e durata di `/items` e `/migrate` da misurare, anche su WebKit/iOS (due Argon2 + ricifratura).
 - `@updatedAt` con `updateMany` di `/migrate` non verificato; se non si aggiorna rimedia la HYDRATE T1 del reconcile (coperto in T8).
 - Copie in conflitto su dispositivi con edit non spinti: nessuna perdita, ma duplicati.
 - I backup precedenti alla rotazione restano leggibili con VK_old.
+- Un server malevolo che cambia `noteType` nel listing di `/items` fa fallire l'AEAD (AAD diversa) e la nota appare D, quindi eliminabile oltre il limite. Accettato: il server può comunque cancellare da sé.
 - Corsa teorica di una PUT di nota a cavallo di due rotazioni: in `note.service.ts` (circa righe 230 e 286) la guardia sull'epoch si legge fuori dal lock. Servono due rotazioni complete tra lettura e scrittura. Accettato.
 
 ## 7. Decisioni per l'utente
@@ -179,3 +235,11 @@ Esito D1-D5: approvate il 23/11/2026.
 - **D8.** Le versioni `NoteVersion` non contano nella guardia. Il CAS di rotazione e `completeRecovery` cancellano nella stessa transazione le versioni envelope di epoch diversa da E. Esito: approvata il 23/11/2026.
 - **D9.** `listNoteVersions` restituisce per le note `isVault` solo le versioni `nv3.<epoch corrente>.`. Esito: approvata il 23/11/2026.
 - **D10.** `createNote` e `updateNote` rispondono 422 se una nota vault ha content `nv3.` e l'utente non ha un keyring. Esito: approvata il 23/11/2026.
+- **D11.** Le note K (chiave precedente mancante sul server) si re-incapsulano dopo una conferma dedicata, con avviso del rischio. È l'unica uscita per rotazione e recupero del PIN. Esito: approvata il 23/11/2026.
+- **D12.** Residuo accettato: riga dirty in e-1 non copiabile su un dispositivo, più una seconda rotazione da un altro dispositivo. La riga resta in Dexie come LEAVE, mai DROP (vedi §6). Esito: approvata il 23/11/2026.
+- **D13.** `flushPending` esce da `vaultSession.rotateVault`. La UI lo chiama prima di `rotateVault`. Motivo: layering `lib/` verso `features/` e test in ambiente node. Esito: approvata il 23/11/2026.
+- **D14.** Un keyring con epoch più bassa di quella in cache si rifiuta (`keyringRollback`). L'uscita è «Rimuovi dal dispositivo». Esito: approvata il 23/11/2026.
+- **D15.** Commit unico per T5-T10, con il nucleo di T10 (ripresa automatica di `finishRotation` in `VaultPage`, dialog D/K). Nessun commit intermedio di T5-T9. Esito: approvata il 23/11/2026.
+- **D16.** Una nota K (keyMissing: epoch e-1 con `prevVkWrap` assente o rotto) oltre il limite di re-incapsulamento (~1,5 MiB, `MAX_REWRAP_LEN`) non è risolvibile dall'utente. Blocca la prossima rotazione e il `complete` del recupero (409 `rotationPending`) finché l'amministratore non ripristina `prevVkWrap`. Il dialog delle note stale lo dice in chiaro (chiave `vault.rotation.keyMissingTooLarge`) e non offre alcuna eliminazione. L'utente può ancora cancellarla a mano dalla lista del vault, con la conferma normale. Esito: approvata il 23/11/2026.
+- **D17.** Quando la cerimonia del Kit nata da una rotazione finisce, il foglio Impostazioni si chiude da solo (`onKitDone`), così il dialog delle note stale può comparire. Esito: approvata il 23/11/2026.
+- **D18 (23/11/2026, restringe D7).** L'eliminazione di una nota oltre il limite resta solo per le note la cui decifratura con una chiave valida fallisce l'AEAD. Le note malformate, con epoch ≤ e-2 o futura, sono `unverifiable`: avviso come le K, nessuna eliminazione, per non far credere all'utente che un server manomesso abbia ragione. Esito: da confermare con l'utente.

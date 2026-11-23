@@ -6,16 +6,17 @@ vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() 
 vi.mock('../../../store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: { id: 'u1', email: 'a@b.it', name: 'A', surname: 'B' } }),
 }));
-vi.mock('../../../lib/vaultSession', () => ({ changePin: vi.fn(), regenerateKit: vi.fn(), confirmKit: vi.fn(async () => {}) }));
+vi.mock('../../../lib/vaultSession', () => ({ changePin: vi.fn(), rotateVault: vi.fn(), confirmKit: vi.fn(async () => {}) }));
 vi.mock('../../../lib/vaultReconcile', () => ({ vaultReconcile: vi.fn() }));
 vi.mock('../../../utils/vaultRootKeys', () => ({ getActiveRootKey: vi.fn(() => ({ id: 'rk_x', ecdhSpki: new Uint8Array([1]) })) }));
 vi.mock('../PinPolicy', () => ({ checkPin: vi.fn(async () => ({ ok: true })) }));
+vi.mock('../vaultMigration', () => ({ flushPending: vi.fn(async () => {}), finishRotation: vi.fn(async () => ({ unreadable: [] })) }));
 vi.mock('../RecoveryKitSheet', () => ({ default: () => <div>vault.kit.title</div> }));
 
 // Store reale: l'auto-lock e' quello vero (10 min).
 import { useVaultStore, type VaultKeys } from '../../../store/vaultStore';
 import VaultSettingsSheet from '../VaultSettingsSheet';
-import { regenerateKit } from '../../../lib/vaultSession';
+import { rotateVault } from '../../../lib/vaultSession';
 
 const fakeKeys = () => ({ vkHkdf: {}, vkAes: {}, sigKey: {} }) as unknown as VaultKeys;
 const MIN = 60 * 1000;
@@ -32,7 +33,7 @@ describe('VaultSettingsSheet: cerimonia del Kit e auto-lock', () => {
   });
 
   const startCeremony = async () => {
-    vi.mocked(regenerateKit).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
+    vi.mocked(rotateVault).mockResolvedValue({ kit: new Uint8Array(20).fill(7), escrowHash: 'h-regen' });
     render(<VaultSettingsSheet isOpen onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText('vault.settings.kitPin'), { target: { value: 'old111' } });
     await act(async () => { fireEvent.click(screen.getByText('vault.settings.kitButton')); });

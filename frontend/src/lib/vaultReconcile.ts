@@ -47,6 +47,8 @@ export interface ReconcileResult {
   finalized: number;
   /** Item del server non ancora envelope dell'epoch corrente (banner "N elementi da aggiornare"). */
   legacyLeft: number;
+  /** Addendum 5: note del server in `prevEpoch` ancora da ricifrare (le ricifra finishRotation, non il reconcile). Separato da legacyLeft. */
+  staleLeft: number;
   /** Note lasciate com'erano: non decifrabili, epoch diverso, rinviate (incluse in `later`), errori. */
   unresolved: number;
   /** Rinviate al prossimo giro: lock della nota tenuto altrove, snapshot cambiato fra decide e commit, server non raggiungibile. */
@@ -68,7 +70,7 @@ const STRIP_KEYS = new Set(['content', 'title', 'isEncrypted', 'isVault']);
 export interface Payload { t: string; c: string }
 /** Perche' il payload locale non si ottiene: envelope di un altro epoch, non decifrabile, credenziale legacy senza il vecchio PIN. */
 export type Fail = 'decrypt' | 'legacyPin' | 'epoch';
-export type LeaveWhy = Fail | 'size' | 'roundTrip' | 'legacyLeft' | 'notebook' | 'unchanged';
+export type LeaveWhy = Fail | 'stale' | 'size' | 'roundTrip' | 'legacyLeft' | 'notebook' | 'unchanged';
 /** Stato del server per l'id: S? (unknown) = rete/5xx/429, mai "assente". */
 export type Srv = { k: 'unknown' } | { k: 'S0' } | { k: 'SN' } | { k: 'item'; item: ServerItem };
 
@@ -76,6 +78,8 @@ export interface Snapshot {
   id: string;
   userId: string;
   epoch: number;
+  /** Addendum 5: epoch precedente leggibile con `keys.prev` (rotazione della VK), assente senza `prev`. */
+  prevEpoch?: number;
   /** K: chiavi del vault disponibili. */
   k: boolean;
   /** held = lock della nota nostro, busy = tenuto da un'altra scheda, none = navigator.locks assente. */
@@ -94,6 +98,8 @@ export interface Snapshot {
   same?: boolean;
   /** Server SE il cui payload e' stato decifrato in withFacts: T6 puo' adottarlo anche senza P. */
   srvOk?: boolean;
+  /** Addendum 7 §1: il plaintext del server contiene l'envelope della riga alla lettera (come lo costruisce rewrapUnreadable). */
+  srvWraps?: boolean;
   /** Impronta di riga e coda al momento dello snapshot (precondizione 7, controllata dal commit). */
   sig?: string;
   /** listSig di riga e coda al momento del listing del server (precondizione 7, controllata anche dal commit). */
@@ -120,6 +126,10 @@ export interface Decision {
 const isEnv = (c: string | undefined): c is string => !!c && ENVELOPE_RE.test(c);
 const envEpoch = (c: string) => Number(c.split('.')[1]);
 const isCurrentEnvelope = (c: string | undefined, epoch: number) => isEnv(c) && envEpoch(c) === epoch;
+/** Addendum 5: envelope dell'epoch precedente, leggibile con `keys.prev`. */
+const isPrevEnv = (c: string | undefined, s: Pick<Snapshot, 'prevEpoch'>) => isEnv(c) && s.prevEpoch !== undefined && envEpoch(c) === s.prevEpoch;
+/** SX: in `prevEpoch` lo ricifra finishRotation ('stale'), oltre resta a P3 ('epoch'). */
+const sxWhy = (s: Snapshot, item: ServerItem): LeaveWhy => (isPrevEnv(item.content, s) ? 'stale' : 'epoch');
 /** SE = envelope dell'epoch corrente, SX = envelope di un altro epoch, SL = vault legacy (content non envelope). */
 export const srvClass = (item: ServerItem, epoch: number): 'SE' | 'SX' | 'SL' =>
   !isEnv(item.content) ? 'SL' : envEpoch(item.content) === epoch ? 'SE' : 'SX';
@@ -155,6 +165,19 @@ const reactivates = (i: SyncQueueItem, rowContent: string, nrTried?: ReadonlySet
   if (stripChanges(i, rowContent)) return true;
   if (i.lastError === 'vault:notReady') return i.data?.content !== rowContent || !nrTried?.has(i.id as number);
   return i.lastError === 'vault:stale' ? i.data?.content !== rowContent : true;
+};
+/** Addendum 5: epoch dell'envelope apribile con le chiavi del giro (corrente o `keys.prev`). */
+const readableEpoch = (ctx: VaultCodecCtx, e: number) => e === ctx.epoch || e === ctx.keys.prev?.epoch;
+/** Addendum 7 §1: NOTE = un paragrafo TipTap il cui testo e' l'envelope; CREDENTIAL = `notes` e' l'envelope. */
+const wrapsEnvelope = (type: VaultNoteType, c: string, env: string) => {
+  try {
+    const b = JSON.parse(c);
+    return type === 'NOTE'
+      ? Array.isArray(b?.content) && b.content.some((p: { type?: string; content?: { text?: string }[] }) => p?.type === 'paragraph' && p.content?.length === 1 && p.content[0]?.text === env)
+      : b?.notes === env;
+  } catch {
+    return false;
+  }
 };
 const noteTypeOf = (n: { noteType?: string } | undefined): VaultNoteType => (n?.noteType === 'CREDENTIAL' ? 'CREDENTIAL' : 'NOTE');
 
@@ -203,7 +226,7 @@ function plainRow(s: Snapshot, row: LocalNote): Decision {
   const u = hasU(row, items);
   if (srv.k === 'item') {
     const c = srvClass(srv.item, s.epoch);
-    if (c === 'SX') return leave('T14', 'epoch');
+    if (c === 'SX') return leave('T14', sxWhy(s, srv.item));
     if (c === 'SL') return leave('T14', 'legacyLeft'); // dopo T20 diventa SE e si risolve con T12
     return env || u ? withCopy(s, 'T12', 'ADOPT') : R('T12', 'ADOPT');
   }
@@ -221,7 +244,7 @@ function vaultRow(s: Snapshot, row: LocalNote): Decision {
   if (srv.k === 'S0') return s0Row(s, row);
   if (srv.k !== 'item') return R('P6', 'LATER');
   const c = srvClass(srv.item, s.epoch);
-  if (c === 'SX') return leave('T8', 'epoch');
+  if (c === 'SX') return leave('T8', sxWhy(s, srv.item));
   if (c === 'SL') return t7(s, row, srv.item);
   return seRow(s, row);
 }
@@ -235,7 +258,7 @@ function s0Row(s: Snapshot, row: LocalNote): Decision {
   if (!hasU(row, s.items)) return R('T10', 'DROP');
   const create = s.items.find((i) => i.type === 'CREATE');
   if (!create) return withCopy(s, 'T10', 'DROP');
-  if (isLegacyShape(row, s.items)) {
+  if (isLegacyShape(row, s.items) || isPrevEnv(row.content, s)) { // Addendum 5: CREATE in prevEpoch -> REENCRYPT_CREATE
     if (typeof s.P === 'string') return leave('T9', s.P);
     return s.P ? R('T9', 'REENCRYPT_CREATE') : leave('T9', 'decrypt');
   }
@@ -269,19 +292,24 @@ function t6(s: Snapshot, row: LocalNote): Decision {
 function seRow(s: Snapshot, row: LocalNote): Decision {
   const { items, hs, hl } = s;
   if (isLegacyShape(row, items)) return t6(s, row);
+  // Addendum 6/7: riga che nessuna chiave apre e server SE che la contiene alla lettera (re-incapsulato): HYDRATE, niente copia, niente DROP
+  if (s.P === 'decrypt' && s.srvWraps && isEnv(row.content) && s.hl !== s.hs) return R('A6', 'HYDRATE');
   const base = row.vaultBaseHash;
   const sent = row.vaultSentHashes ?? [];
   const failed = items.filter(isFailed);
   const conflicts = failed.filter((i) => i.lastError === 'vault:conflict');
   const vfail = failed.filter((i) => vaultFailed(i) && i.lastError !== 'vault:conflict');
   const unclean = items.some(uncleanKeys);
+  // Addendum 7 §4: riga in prevEpoch con payload uguale al server: ADOPT senza copia
+  const adopt = (rule: string) => (isPrevEnv(row.content, s) && s.same ? R(rule, 'ADOPT') : withCopy(s, rule, 'ADOPT'));
 
   if (conflicts.length) {
     if (hs !== undefined && (hs === hl || sent.includes(hs))) return R('T2', 'ACK'); // risposta persa: il server ha gia' i nostri byte
     if (hs === base) return R('T3', 'REQUEUE'); // la PUT era partita con una base vecchia (altra scheda)
-    return withCopy(s, 'T3', 'ADOPT');
+    return adopt('T3');
   }
   if ((vfail.length || unclean) && row.content !== '') {
+    if (isPrevEnv(row.content, s)) return s.same ? R('T5', 'ADOPT') : withCopy(s, 'T5', 'ADOPT'); // Addendum 5
     if (!isCurrentEnvelope(row.content, s.epoch)) return leave('T5', 'epoch');
     return items.some((i) => reactivates(i, row.content, s.nrTried)) ? R('T5', 'STRIP_REQUEUE') : leave('T5', 'unchanged');
   }
@@ -294,7 +322,7 @@ function seRow(s: Snapshot, row: LocalNote): Decision {
     const hasContentItem = items.some((i) => i.type === 'CREATE' || (!!i.data && 'content' in i.data));
     return base !== hs || !hasContentItem ? R('T4', 'QUEUE_CONTENT') : R('T4', 'NONE');
   }
-  return withCopy(s, 'T4', 'ADOPT');
+  return adopt('T4');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -323,7 +351,7 @@ async function localPayload(ctx: VaultCodecCtx, row: LocalNote, items: SyncQueue
   let c: string | undefined;
   let dt = '';
   if (isEnv(row.content)) {
-    if (envEpoch(row.content) !== ctx.epoch) return 'epoch';
+    if (!readableEpoch(ctx, envEpoch(row.content))) return 'epoch';
     try {
       const d = await decryptItem(row.id, noteTypeOf(row), row.content, ctx);
       c = d.c;
@@ -356,7 +384,7 @@ async function itemPayload(ctx: VaultCodecCtx, id: string, items: SyncQueueItem[
   const content = last.data?.content as string;
   const t = lastTitle(items);
   if (!isEnv(content)) return last.data?.noteType === 'CREDENTIAL' ? 'legacyPin' : { t, c: content };
-  if (envEpoch(content) !== ctx.epoch) return 'epoch';
+  if (!readableEpoch(ctx, envEpoch(content))) return 'epoch';
   try {
     const d = await decryptItem(id, noteTypeOf(last.data), content, ctx);
     return { t: t || d.t, c: d.c };
@@ -388,7 +416,7 @@ async function withFacts(s: Snapshot, ctx: VaultCodecCtx, opts: ReconcileOptions
       }
     }
     let sp: Payload | Fail | undefined;
-    if (sv && row.isVault && (lp || cls === 'SL')) {
+    if (sv && row.isVault && (lp || cls === 'SL' || isPrevEnv(row.content, s))) {
       if (cls === 'SL') sp = { t: sv.title, c: sv.content };
       else {
         try {
@@ -400,6 +428,12 @@ async function withFacts(s: Snapshot, ctx: VaultCodecCtx, opts: ReconcileOptions
     }
     out.srvOk = cls === 'SE' && typeof sp === 'object';
     out.P = await localPayload(ctx, row, items, sp, opts);
+    // Addendum 6/7: riga illeggibile, il server SE deve aprirsi e contenere l'envelope della riga per poterla sostituire
+    if (out.P === 'decrypt' && sv && cls === 'SE') {
+      const d = typeof sp === 'object' ? sp : await decryptItem(s.id, sv.noteType, sv.content, ctx).catch(() => undefined);
+      out.srvOk = !!d;
+      out.srvWraps = !!d && wrapsEnvelope(sv.noteType, d.c, row.content);
+    }
     if (typeof out.P === 'object' && sp && typeof sp === 'object' && out.P.t === sp.t && out.P.c === sp.c) out.same = true;
   } catch {
     out.P = 'decrypt';
@@ -489,9 +523,9 @@ async function requeueVault(userId: string, id: string, rowContent: string, gate
 }
 
 /** Item della nota dopo che la riga ha preso il contenuto del server: CREATE superflui via, solo content/title/isEncrypted via, misti ripuliti. */
-async function settleItems(userId: string, id: string) {
+async function settleItems(userId: string, id: string, only?: (it: SyncQueueItem) => boolean) {
   for (const it of await noteItems(userId, id)) {
-    if (it.type === 'DELETE') continue;
+    if (it.type === 'DELETE' || (only && !only(it))) continue;
     const rest = Object.keys(it.data ?? {}).filter((k) => !STRIP_KEYS.has(k));
     if (it.type === 'CREATE' || rest.length === 0) await db.syncQueue.delete(it.id as number);
     else await requeue(it.id, Object.fromEntries(rest.map((k) => [k, (it.data as Record<string, unknown>)[k]])));
@@ -530,6 +564,12 @@ async function commit(s: Snapshot, d: Decision, plan: Plan): Promise<{ ok: boole
     switch (d.op) {
       case 'HYDRATE':
         await db.notes.update(id, { content: sv!.content, title: sv!.title, isEncrypted: true, vaultBaseHash: s.hs, vaultSentHashes: [], updatedAt: sv!.updatedAt });
+        if (d.rule === 'A6') {
+          // Addendum 7 §2: via il content identico all'envelope illeggibile della riga o a quello del server; gli altri item si tengono (REQUEUE)
+          await settleItems(userId, id, (it) => it.data?.content === row!.content || it.data?.content === sv!.content);
+          await requeueVault(userId, id, sv!.content);
+          if (!(await noteItems(userId, id)).some((i) => i.type !== 'DELETE')) await db.notes.update(id, { syncStatus: 'synced' });
+        }
         break;
       case 'ACK':
         await db.notes.update(id, { vaultBaseHash: s.hs });
@@ -716,7 +756,7 @@ function abortable(p: Promise<ReconcileResult>, signal?: AbortSignal): Promise<R
 }
 
 const emptyResult = (): ReconcileResult =>
-  ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, unresolved: 0, later: 0, legacyPin: 0 });
+  ({ hydrated: 0, conflictsResolved: 0, copies: 0, legacyResolved: 0, reactivated: 0, finalized: 0, legacyLeft: 0, staleLeft: 0, unresolved: 0, later: 0, legacyPin: 0 });
 
 async function run(opts: ReconcileOptions): Promise<ReconcileResult> {
   const r = emptyResult();
@@ -777,7 +817,10 @@ async function round(ctx: VaultCodecCtx, opts: ReconcileOptions, r: ReconcileRes
     if (!live()) return abort();
     for (const s of page.items) {
       listing.set(s.id, s);
-      if (!isCurrentEnvelope(s.content, ctx.epoch)) r.legacyLeft++;
+      if (!isCurrentEnvelope(s.content, ctx.epoch)) {
+        if (isEnv(s.content)) r.staleLeft++; // Addendum 7 §3: ogni SX; la ricifra finishRotation (prevEpoch) o P3
+        else r.legacyLeft++; // solo SL
+      }
       else if (s.hasPlaintextVersions) toFinalize.push(s);
     }
     after = page.next ?? undefined;
@@ -847,7 +890,7 @@ async function processNote(c: Candidate, srv: Srv, ctx: VaultCodecCtx, opts: Rec
   const attempt = async (lock: 'held' | 'none') => {
     const row = await db.notes.get(id);
     const items = await noteItems(ctx.userId, id);
-    let snap: Snapshot = { id, userId: ctx.userId, epoch: ctx.epoch, k: true, lock, row, items, srv, sig: sigOf(row, items), listed: c.listed, nrTried: new Set(nrTriedFor(ctx.keys)) };
+    let snap: Snapshot = { id, userId: ctx.userId, epoch: ctx.epoch, prevEpoch: ctx.keys.prev?.epoch, k: true, lock, row, items, srv, sig: sigOf(row, items), listed: c.listed, nrTried: new Set(nrTriedFor(ctx.keys)) };
     let d = decide(snap);
     // Il server in mano e' del listing: se da allora la nota e' cambiata (push 2xx, altra scheda) ogni op che scrive userebbe un envelope vecchio.
     if (d.op !== 'NONE' && d.op !== 'SKIP' && listSig(row, items) !== c.listed) return later();
