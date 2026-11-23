@@ -77,6 +77,34 @@ beforeEach(() => {
 
 const lockedCalls = () => (logEvent as any).mock.calls.filter((c: any[]) => c[1] === 'vault.unlock.locked');
 
+describe('unlock: rev opzionale', () => {
+  beforeEach(() => { row.rev = 7; });
+
+  it('rev giusto: come oggi (serverShare)', async () => {
+    expect((await unlock(U, authKey, 7)).serverShare.equals(serverShare)).toBe(true);
+  });
+
+  it('rev assente: come oggi', async () => {
+    expect((await unlock(U, authKey)).serverShare.equals(serverShare)).toBe(true);
+  });
+
+  it('rev sbagliato: 409 staleRev, nessun incremento dei tentativi, nessuna verifica authKey', async () => {
+    const e = await fail(unlock(U, wrongKey, 6));
+    expect(e.statusCode).toBe(409);
+    expect(e.message).toBe('errors.vault.staleRev');
+    expect(mp.$queryRaw).not.toHaveBeenCalled();
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('lockout attivo + rev sbagliato: 429 locked come oggi', async () => {
+    row.lockedUntil = new Date(Date.now() + 60_000);
+    const e = await fail(unlock(U, authKey, 6));
+    expect(e.statusCode).toBe(429);
+    expect(e.message).toBe('errors.vault.locked');
+    expect(mp.$queryRaw).not.toHaveBeenCalled();
+  });
+});
+
 describe('unlock: errori e lockout', () => {
   it('errori 1-5: 403 invalidPin, niente email ne audit', async () => {
     for (let i = 1; i <= 5; i++) {
@@ -180,6 +208,26 @@ describe('unlock: successo', () => {
   it('updateMany count 0 -> 429, openServerShare mai eseguito (serverShareEnc spazzatura)', async () => {
     row.serverShareEnc = Buffer.alloc(64, 7);
     mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+    const e = await fail(unlock(U, authKey));
+    expect(e.statusCode).toBe(429);
+    expect(e.message).toBe('errors.vault.locked');
+  });
+
+  it('CAS fallito perche una rotazione ha cambiato l epoch -> 409 staleRev (non 429), serverShare non aperto', async () => {
+    mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+    mp.vaultKeyring.findUnique.mockReset()
+      .mockResolvedValueOnce(row)
+      .mockResolvedValueOnce({ status: 'READY', epoch: row.epoch + 1, lockedUntil: null });
+    const e = await fail(unlock(U, authKey));
+    expect(e.statusCode).toBe(409);
+    expect(e.message).toBe('errors.vault.staleRev');
+  });
+
+  it('CAS fallito con epoch invariata (lockout vero) -> resta 429 locked', async () => {
+    mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+    mp.vaultKeyring.findUnique.mockReset()
+      .mockResolvedValueOnce(row)
+      .mockResolvedValueOnce({ status: 'READY', epoch: row.epoch, lockedUntil: new Date(Date.now() + 60_000) });
     const e = await fail(unlock(U, authKey));
     expect(e.statusCode).toBe(429);
     expect(e.message).toBe('errors.vault.locked');

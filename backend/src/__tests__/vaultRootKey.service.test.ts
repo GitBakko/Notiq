@@ -11,6 +11,9 @@ import { VAULT_ROOT_KEYS } from '../utils/vaultRootKeys';
 // Lista pubblica vuota nel test: ci registriamo le coppie generate qui sotto (G11: il rilascio verifica la firma con questa lista).
 vi.mock('../utils/vaultRootKeys', () => ({ VAULT_ROOT_KEYS: {} as Record<string, { ecdhSpki: string; ecdsaSpki: string }> }));
 
+// Argon2/RSA reali: sotto il carico della suite parallela superano i 5 s di default.
+vi.setConfig({ testTimeout: 30000 });
+
 const U = 'user-1';
 const EPOCH = 2;
 const REQUEST = 'request-1';

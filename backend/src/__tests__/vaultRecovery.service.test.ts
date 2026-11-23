@@ -11,13 +11,24 @@ import { AppError } from '../utils/errors';
 import { logEvent } from '../services/audit.service';
 import { notifyRecovery, notifySuperadmins } from '../services/vaultRecoveryNotify';
 import { releaseRootShare } from '../services/vaultRootKey.service';
+import path from 'path';
 import { getE2eCodeB } from '../utils/vaultE2e';
+import { openRootKeyFile } from '../utils/vaultRootKeyFile';
+import { openRootShare, sealRootShare } from '../utils/vaultSeal';
 import { openServerShare, pepperStatus, verifierKey } from '../services/vault.service';
 import {
   approveRecovery, cancelRecovery, completeRecovery, confirmRecovery, createRecoveryRequest, expireRecoveryRequests, fingerprintOf,
   getOpenRecovery, getRecovery, getRecoveryForAdmin, kitRotationRequired, listRecoveriesForAdmin, rejectRecovery, releaseRecovery,
   runRecoveryJobs, sendRecoveryReminders,
 } from '../services/vaultRecovery.service';
+
+// La chiave root di test E2E (fixture del frontend, passphrase pubblica) entra in VAULT_ROOT_KEYS solo in questo file: serve a far passare il controllo di rootKeyId di complete.
+vi.mock('../utils/vaultRootKeys', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../utils/vaultRootKeys')>();
+  return { ...orig, VAULT_ROOT_KEYS: { ...orig.VAULT_ROOT_KEYS, ...orig.VAULT_E2E_ROOT_KEYS } };
+});
+const E2E_FIXTURE = path.resolve(__dirname, '../../../frontend/e2e/fixtures/vault-root-e2e.json');
+const E2E_PASSPHRASE = 'notiq-e2e-test-root-passphrase-NOT-A-SECRET';
 
 const mp = prisma as any;
 const U = 'user-1';
@@ -769,6 +780,8 @@ describe('completamento', () => {
   };
   const wrap = () => ({ kdf: 'argon2id', kdfParams: { m: 65536, t: 10, p: 1 }, pinSalt: Buffer.alloc(16).toString('base64url'), wrappedVkPin: Buffer.alloc(60).toString('base64url'), authKey: Buffer.alloc(32).toString('base64url'), serverShare: Buffer.alloc(32, 7).toString('base64url') });
   const escrow = () => ({ escrowBlob: Buffer.alloc(60).toString('base64url'), sealedRootShare: Buffer.alloc(157).toString('base64url'), rootKeyId: 'rk_68a265761e7e37c7', userShareUnderVk: Buffer.alloc(48).toString('base64url') });
+  const rotate = (o: any = {}) => ({ vkSigPub: Buffer.alloc(91, 8).toString('base64url'), wrappedVkSigKey: Buffer.alloc(100, 9).toString('base64url'), prevVkWrap: Buffer.alloc(60, 7).toString('base64url'), ...o });
+  beforeEach(() => { mp.note.count.mockReset().mockResolvedValue(0); });
   const setup = () => {
     const pair = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
     const keyring = { userId: U, status: 'READY', epoch: 2, pepperKeyId: pepperStatus().keyId, vkSigPub: pair.publicKey.export({ type: 'spki', format: 'der' }) };
@@ -778,11 +791,12 @@ describe('completamento', () => {
 
   it('complete valido aggiorna keyring e richiesta nella stessa transazione; U4 azzera il lockout; replay idempotente senza nuova notify', async () => {
     const pair = setup();
-    const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow() });
+    const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
     const proof = proofOf(pair, payload);
     const first = await completeRecovery(U, RID, payload, proof);
     expect(first).toEqual({ status: 'COMPLETED', idempotent: false });
     expect(mp.$transaction).toHaveBeenCalledTimes(1);
+    expect(mp.$transaction.mock.calls[0][1]).toEqual({ timeout: 30000 }); // D8: delete versioni fuori epoch
     expect(mp.vaultKeyring.updateMany).toHaveBeenCalledTimes(1);
     const keyringData = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
     expect(keyringData.failedAttempts).toBe(0);
@@ -797,22 +811,158 @@ describe('completamento', () => {
     expect(notifyRecovery).toHaveBeenCalledTimes(1);
   });
 
-  it('G-A: complete scrive serverShareEnc (sigillato per utente ed epoch) insieme ad authVerifier', async () => {
+  it('G-A: complete scrive serverShareEnc (sigillato per utente ed epoch, ora la nuova) insieme ad authVerifier', async () => {
     const pair = setup();
-    const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow() });
+    const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
     await completeRecovery(U, RID, payload, proofOf(pair, payload));
     const data = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
     expect(data.authVerifier).toBeDefined();
-    expect(openServerShare(U, 2, data.serverShareEnc).equals(Buffer.alloc(32, 7))).toBe(true);
-    expect(() => openServerShare(U, 3, data.serverShareEnc)).toThrow();
+    expect(openServerShare(U, 3, data.serverShareEnc).equals(Buffer.alloc(32, 7))).toBe(true);
+    expect(() => openServerShare(U, 2, data.serverShareEnc)).toThrow();
+  });
+
+  it('replay dopo il commit: la riga ha gia vkSigPub ed epoch nuovi e la prova non si verifica piu, ma risponde idempotente (idempotenza PRIMA del proof)', async () => {
+    const pair = setup();
+    const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+    await completeRecovery(U, RID, payload, proofOf(pair, payload));
+    const fresh = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    mp.vaultRequest.findFirst.mockResolvedValue({
+      status: 'COMPLETED',
+      completedPayloadHash: crypto.createHash('sha256').update(payload).digest('hex'),
+      user: { vaultKeyring: { userId: U, status: 'READY', epoch: 3, rev: 4, vkSigPub: fresh.publicKey.export({ type: 'spki', format: 'der' }) } },
+    });
+    mp.vaultKeyring.updateMany.mockClear();
+    await expect(completeRecovery(U, RID, payload, Buffer.alloc(64, 1))).resolves.toEqual({ status: 'COMPLETED', idempotent: true });
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+    expect(notifyRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  describe('rotate (P4 fase 5): stessa validazione e stesso CAS di PUT /keyring', () => {
+
+    it('rotate valido: epoch+1, vkSigPub, wrappedVkSigKey, prevVkWrap, serverShareEnc con epoch nuova, escrow, nello stesso CAS', async () => {
+      const pair = setup();
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+      await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).resolves.toEqual({ status: 'COMPLETED', idempotent: false });
+      expect(mp.vaultKeyring.updateMany).toHaveBeenCalledTimes(1);
+      const arg = mp.vaultKeyring.updateMany.mock.calls[0][0];
+      expect(arg.where).toEqual({ userId: U, status: 'READY', epoch: 2, rev: 3 });
+      const d = arg.data;
+      expect(d.epoch).toBe(3);
+      expect(d.rev).toEqual({ increment: 1 });
+      expect(d.failedAttempts).toBe(0);
+      expect(Buffer.from(d.vkSigPub).equals(Buffer.alloc(91, 8))).toBe(true);
+      expect(Buffer.from(d.wrappedVkSigKey).equals(Buffer.alloc(100, 9))).toBe(true);
+      expect(Buffer.from(d.prevVkWrap).equals(Buffer.alloc(60, 7))).toBe(true);
+      expect(Buffer.from(d.sealedRootShare).length).toBe(157);
+      expect(openServerShare(U, 3, d.serverShareEnc).equals(Buffer.alloc(32, 7))).toBe(true);
+      expect(() => openServerShare(U, 2, d.serverShareEnc)).toThrow();
+    });
+
+    it('senza rotate (client 1.14) -> 400 invalidPayload (D1: ogni nuovo Kit ruota la VK), nessuna transazione ne scrittura', async () => {
+      const pair = setup();
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow() });
+      await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidPayload' });
+      expect(mp.$transaction).not.toHaveBeenCalled();
+      expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+      expect(notifyRecovery).not.toHaveBeenCalled();
+    });
+
+    it('replay di un complete con rotate: idempotente, nessuna seconda scrittura ne notify', async () => {
+      const pair = setup();
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+      const proof = proofOf(pair, payload);
+      await completeRecovery(U, RID, payload, proof);
+      mp.vaultRequest.findFirst.mockResolvedValue({ status: 'COMPLETED', completedPayloadHash: crypto.createHash('sha256').update(payload).digest('hex') });
+      await expect(completeRecovery(U, RID, payload, proof)).resolves.toEqual({ status: 'COMPLETED', idempotent: true });
+      expect(mp.vaultKeyring.updateMany).toHaveBeenCalledTimes(1);
+      expect(notifyRecovery).toHaveBeenCalledTimes(1);
+    });
+
+    it('D8: complete riuscito cancella le versioni nv3 fuori dall epoch pre-rotazione (E=2) nella stessa transazione, dopo il CAS', async () => {
+      const pair = setup();
+      mp.noteVersion.deleteMany.mockClear();
+      const order: string[] = [];
+      mp.vaultKeyring.updateMany.mockImplementationOnce(async () => { order.push('cas'); return { count: 1 }; });
+      mp.noteVersion.deleteMany.mockImplementationOnce(async () => { order.push('delete'); return { count: 2 }; });
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+      await completeRecovery(U, RID, payload, proofOf(pair, payload));
+      expect(mp.noteVersion.deleteMany).toHaveBeenCalledTimes(1);
+      expect(mp.noteVersion.deleteMany.mock.calls[0][0]).toEqual({
+        where: { note: { userId: U }, content: { startsWith: 'nv3.' }, NOT: { content: { startsWith: 'nv3.2.' } } },
+      });
+      expect(order.slice(0, 2)).toEqual(['cas', 'delete']);
+    });
+
+    it('D8: CAS fallito (count 0) -> 409 staleRev, nessuna delete', async () => {
+      const pair = setup();
+      mp.noteVersion.deleteMany.mockClear();
+      mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+      await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.staleRev' });
+      expect(mp.noteVersion.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('staleCount > 0 -> 409 rotationPending, keyring e richiesta non toccati (il conteggio e sull epoch corrente)', async () => {
+      const pair = setup();
+      mp.note.count.mockResolvedValue(1);
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+      await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.rotationPending' });
+      expect(mp.note.count.mock.calls[0][0].where).toEqual({ userId: U, isVault: true, content: { startsWith: 'nv3.' }, NOT: { content: { startsWith: 'nv3.2.' } } });
+      expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+      expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
+      expect(notifyRecovery).not.toHaveBeenCalled();
+    });
+
+    it('rotate con chiavi sconosciute, campi mancanti o lunghezze errate -> 400 senza transazione', async () => {
+      const pair = setup();
+      for (const r of [rotate({ extra: 1 }), { vkSigPub: rotate().vkSigPub, wrappedVkSigKey: rotate().wrappedVkSigKey }, rotate({ prevVkWrap: Buffer.alloc(59).toString('base64url') }), rotate({ vkSigPub: Buffer.alloc(90).toString('base64url') })]) {
+        const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: r });
+        await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidPayload' });
+      }
+      expect(mp.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('round-trip reale con la chiave root di test E2E: sigillato a epoch 3 dal client, salvato dal complete, openRootShare vero apre a 3 e fallisce a 2', async () => {
+      const { keys } = await openRootKeyFile(E2E_FIXTURE, E2E_PASSPHRASE);
+      const [rootKeyId, k] = Object.entries(keys)[0];
+      const sRoot = crypto.randomBytes(32);
+      const pair = setup();
+      const payload = JSON.stringify({
+        rev: 3, wrap: wrap(), rotate: rotate(),
+        escrow: { ...escrow(), rootKeyId, sealedRootShare: sealRootShare(sRoot, k.ecdhSpki, U, 3, rootKeyId).toString('base64url') },
+      });
+      await completeRecovery(U, RID, payload, proofOf(pair, payload));
+      const d = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
+      expect(d.epoch).toBe(3);
+      expect(d.rootKeyId).toBe(rootKeyId);
+      expect(openRootShare(d.sealedRootShare, k.ecdhPkcs8, U, d.epoch, d.rootKeyId).equals(sRoot)).toBe(true);
+      expect(() => openRootShare(d.sealedRootShare, k.ecdhPkcs8, U, 2, d.rootKeyId)).toThrow();
+    }, 60_000);
+
+    it('dopo il complete con rotate un rilascio successivo passa l epoch nuova e la share root sigillata nuova', async () => {
+      const pair = setup();
+      const payload = JSON.stringify({ rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate() });
+      await completeRecovery(U, RID, payload, proofOf(pair, payload));
+      const d = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
+      const clientPub = pub();
+      mp.vaultRequest.findFirst.mockResolvedValue({
+        userId: U, clientEphPub: clientPub, fingerprint: fingerprintOf(clientPub), notBefore: new Date(Date.now() - 1000),
+        user: { vaultKeyring: { epoch: d.epoch, rev: 4, rootKeyId: d.rootKeyId, sealedRootShare: d.sealedRootShare, escrowBlob: d.escrowBlob } },
+      });
+      (releaseRootShare as any).mockResolvedValue({ rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) });
+      await releaseRecovery(ADMIN, RID, 'passphrase');
+      const arg = (releaseRootShare as any).mock.calls[0][0];
+      expect(arg.epoch).toBe(3);
+      expect(Buffer.from(arg.sealedRootShare).equals(Buffer.from(d.sealedRootShare))).toBe(true);
+    });
   });
 
   it('G-A: wrap senza serverShare (o di lunghezza sbagliata) e rotate -> 400 senza transazione', async () => {
     const pair = setup();
     const { serverShare: _s, ...noShare } = wrap();
     for (const body of [
-      { rev: 3, wrap: noShare, escrow: escrow() },
-      { rev: 3, wrap: { ...wrap(), serverShare: Buffer.alloc(31).toString('base64url') }, escrow: escrow() },
+      { rev: 3, wrap: noShare, escrow: escrow(), rotate: rotate() },
+      { rev: 3, wrap: { ...wrap(), serverShare: Buffer.alloc(31).toString('base64url') }, escrow: escrow(), rotate: rotate() },
       { rev: 3, wrap: wrap(), escrow: escrow(), rotate: {} },
     ]) {
       const payload = JSON.stringify(body);
@@ -824,9 +974,9 @@ describe('completamento', () => {
   it('chiavi sconosciute dentro wrap o escrow (o in cima) -> 400, nessuna transazione', async () => {
     const pair = setup();
     for (const body of [
-      { rev: 3, wrap: { ...wrap(), extra: 1 }, escrow: escrow() },
-      { rev: 3, wrap: wrap(), escrow: { ...escrow(), extra: 1 } },
-      { rev: 3, wrap: wrap(), escrow: escrow(), extra: 1 },
+      { rev: 3, wrap: { ...wrap(), extra: 1 }, escrow: escrow(), rotate: rotate() },
+      { rev: 3, wrap: wrap(), escrow: { ...escrow(), extra: 1 }, rotate: rotate() },
+      { rev: 3, wrap: wrap(), escrow: escrow(), rotate: rotate(), extra: 1 },
     ]) {
       const payload = JSON.stringify(body);
       await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidPayload' });
@@ -836,7 +986,7 @@ describe('completamento', () => {
 
   it('G5: payload solo-wrap o solo-escrow o vuoto -> 400, nessuna transazione', async () => {
     const pair = setup();
-    for (const body of [{ rev: 3, wrap: wrap() }, { rev: 3, escrow: escrow() }, { rev: 3 }]) {
+    for (const body of [{ rev: 3, wrap: wrap(), rotate: rotate() }, { rev: 3, escrow: escrow(), rotate: rotate() }, { rev: 3, rotate: rotate() }]) {
       const payload = JSON.stringify(body);
       await expect(completeRecovery(U, RID, payload, proofOf(pair, payload))).rejects.toMatchObject({ statusCode: 400, message: 'errors.vault.invalidPayload' });
     }

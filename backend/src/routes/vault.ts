@@ -32,7 +32,7 @@ const keyringSchema = z.object({
   userShareUnderVk: b64url(48),
 });
 
-const unlockSchema = z.object({ authKey: b64url(32) });
+const unlockSchema = z.object({ authKey: b64url(32), rev: z.number().int().min(0).optional() });
 const updateSchema = z.object({ payload: z.string().max(65536), vkProof: b64url(64) });
 const itemsSchema = z.object({ ids: z.array(z.string().uuid()).max(200).optional(), after: z.string().uuid().optional() });
 const migrateSchema = z.object({
@@ -72,6 +72,19 @@ function assertP256(der: Buffer) {
     // cade nel 400 sotto
   }
   throw new AppError(400, 'errors.vault.invalidPayload');
+}
+
+// Il payload di PUT /keyring e complete e' una stringa opaca firmata: qui se ne legge solo rotate.vkSigPub per il controllo di curva; il resto lo valida il service.
+function assertRotateP256(payload: string) {
+  let k: unknown;
+  try {
+    k = (JSON.parse(payload) as { rotate?: { vkSigPub?: unknown } } | null)?.rotate?.vkSigPub;
+  } catch {
+    return;
+  }
+  if (k === undefined) return;
+  if (typeof k !== 'string' || !/^[A-Za-z0-9_-]+$/.test(k)) throw new AppError(400, 'errors.vault.invalidPayload');
+  assertP256(bytes(k));
 }
 
 // Per-utente (non per IP spoofabile via X-Forwarded-For); fase onRequest di default: dopo authenticate (hook di istanza), prima del parsing del body.
@@ -135,12 +148,13 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
 
   fastify.post('/unlock', limit(10, '1 minute'), async (request) => {
     const b = parse(unlockSchema, request.body);
-    const { serverShare } = await vaultService.unlock(request.user.id, bytes(b.authKey));
+    const { serverShare } = await vaultService.unlock(request.user.id, bytes(b.authKey), b.rev);
     return { serverShare: serverShare.toString('base64url') };
   });
 
   fastify.put('/keyring', limit(10, '1 hour', true), async (request) => {
     const b = parse(updateSchema, request.body);
+    assertRotateP256(b.payload);
     return vaultService.updateKeyring(request.user.id, b.payload, bytes(b.vkProof));
   });
 
@@ -186,6 +200,7 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
   fastify.post('/recovery/:id/complete', limit(10, '1 hour', true), async (request) => {
     const { id } = parse(recoveryIdSchema, request.params);
     const b = parse(recoveryCompleteSchema, request.body);
+    assertRotateP256(b.payload);
     return recoveryService.completeRecovery(request.user.id, id, b.payload, bytes(b.vkProof));
   });
 

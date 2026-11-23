@@ -233,8 +233,16 @@ export async function listNoteVersions(userId: string, noteId: string): Promise<
   const note = await prisma.note.findFirst({ where: { id: noteId, userId } });
   if (!note) throw new NotFoundError('errors.notes.notFound');
 
+  // D9: a vault note shows only envelopes of the current keyring epoch (owner-only: the caller is the owner).
+  let epochFilter = {};
+  if (note.isVault) {
+    const guard = await getVaultGuard(userId);
+    if (!guard) return [];
+    epochFilter = { content: { startsWith: `nv3.${guard.epoch}.` } };
+  }
+
   return prisma.noteVersion.findMany({
-    where: { noteId },
+    where: { noteId, ...epochFilter },
     orderBy: { createdAt: 'desc' },
     select: { id: true, title: true, content: true, createdAt: true },
   });
@@ -277,6 +285,7 @@ export async function restoreNoteVersion(
 
   const guard = note.isVault ? await getVaultGuard(userId) : null;
   if (guard) assertVaultContent(version.content, guard);
+  else if (note.isVault && version.content.startsWith('nv3.')) throw new AppError(422, 'errors.vault.noKeyring'); // D10
 
   // Hook runs only after every check passed (e.g. flush live collab edits to the DB). It may change
   // note.content, so re-read it: the forced snapshot below must archive the flushed content.

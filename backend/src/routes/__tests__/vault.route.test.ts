@@ -32,6 +32,7 @@ vi.mock('../../services/vaultRecovery.service', () => ({
 
 import * as vaultService from '../../services/vault.service';
 import { KDF_T_MIN } from '../../services/vault.service';
+import * as recoveryService from '../../services/vaultRecovery.service';
 import { AppError } from '../../utils/errors';
 import vaultRoutes from '../vault';
 
@@ -304,6 +305,17 @@ describe('vault routes', () => {
     expect(svc.unlock.mock.calls[0][1]).toHaveLength(32);
   });
 
+  it('POST /unlock passa rev opzionale al service; rev negativo o non intero -> 400', async () => {
+    svc.unlock.mockResolvedValue({ serverShare: Buffer.alloc(32) });
+    svc.unlock.mockClear();
+    expect((await call('POST', '/unlock', { authKey: b(32), rev: 4 })).statusCode).toBe(200);
+    expect(svc.unlock.mock.calls[0][2]).toBe(4);
+    await call('POST', '/unlock', { authKey: b(32) });
+    expect(svc.unlock.mock.calls[1][2]).toBeUndefined();
+    expect((await call('POST', '/unlock', { authKey: b(32), rev: -1 })).statusCode).toBe(400);
+    expect((await call('POST', '/unlock', { authKey: b(32), rev: 1.5 })).statusCode).toBe(400);
+  });
+
   it('PUT /keyring passa vkProof come Buffer da 64 byte', async () => {
     svc.updateKeyring.mockResolvedValue({ rev: 2 });
     const res = await call('PUT', '/keyring', { payload: '{"rev":1}', vkProof: b(64) });
@@ -311,6 +323,41 @@ describe('vault routes', () => {
     expect(res.json()).toEqual({ rev: 2 });
     const [uid, payload, proof] = svc.updateKeyring.mock.calls[0];
     expect([uid, payload, proof.length]).toEqual(['user-1', '{"rev":1}', 64]);
+  });
+
+  describe('rotate.vkSigPub (P-256) su PUT /keyring e POST /recovery/:id/complete', () => {
+    const rotatePayload = (vkSigPub: string) =>
+      JSON.stringify({ rev: 1, rotate: { vkSigPub, wrappedVkSigKey: b(100), prevVkWrap: b(60) } });
+    const targets: [string, string, () => void, () => any][] = [
+      ['PUT /keyring', '/keyring', () => svc.updateKeyring.mockResolvedValue({ rev: 2, epoch: 2 }), () => svc.updateKeyring],
+      [
+        'POST /recovery/:id/complete',
+        `/recovery/${UUID}/complete`,
+        () => (recoveryService.completeRecovery as any).mockResolvedValue({ status: 'COMPLETED' }),
+        () => recoveryService.completeRecovery,
+      ],
+    ];
+    it.each(targets)('%s: P-384 -> 400, service non chiamato', async (_n, url, _arm, fn) => {
+      const res = await call(url.startsWith('/recovery') ? 'POST' : 'PUT', url, {
+        payload: rotatePayload(spki('secp384r1').toString('base64url')), vkProof: b(64),
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toBe('errors.vault.invalidPayload');
+      expect(fn()).not.toHaveBeenCalled();
+    });
+    it.each(targets)('%s: 91 byte spazzatura -> 400, service non chiamato', async (_n, url, _arm, fn) => {
+      const res = await call(url.startsWith('/recovery') ? 'POST' : 'PUT', url, { payload: rotatePayload(b(91, 9)), vkProof: b(64) });
+      expect(res.statusCode).toBe(400);
+      expect(fn()).not.toHaveBeenCalled();
+    });
+    it.each(targets)('%s: P-256 valido -> il service e chiamato', async (_n, url, arm, fn) => {
+      arm();
+      const res = await call(url.startsWith('/recovery') ? 'POST' : 'PUT', url, {
+        payload: rotatePayload(spki('prime256v1').toString('base64url')), vkProof: b(64),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(fn()).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('POST /migrate accetta un body da ~2 MiB', async () => {

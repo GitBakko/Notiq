@@ -19,6 +19,7 @@ import {
   getKeyring,
   updateKeyring,
   openServerShare,
+  assertVaultContent,
   KDF_T_MIN,
   sha256hex,
   pepperStatus,
@@ -168,6 +169,17 @@ describe('createKeyring', () => {
     expectNoSecrets([authKey, serverShare]);
   });
 
+  it('NONE -> READY (updateMany) azzera prevVkWrap; anche la create lo scrive null', async () => {
+    mp.vaultKeyring.updateMany.mockResolvedValue({ count: 1 });
+    mp.vaultKeyring.findUnique.mockResolvedValue({ rev: 1 });
+    await createKeyring('u1', dto({ expectedEpoch: 2 }));
+    const data = mp.vaultKeyring.updateMany.mock.calls[0][0].data;
+    expect(data).toHaveProperty('prevVkWrap', null);
+    mp.vaultKeyring.create.mockResolvedValue({ rev: 0 });
+    await createKeyring('u1', dto());
+    expect(mp.vaultKeyring.create.mock.calls[0][0].data).toHaveProperty('prevVkWrap', null);
+  });
+
   it('authVerifier = HMAC(verifierKey, userId|authKey), legato allo userId', async () => {
     mp.vaultKeyring.create.mockResolvedValue({ rev: 0 });
     await createKeyring('u1', dto());
@@ -261,6 +273,36 @@ describe('getKeyring', () => {
     for (const k of RESERVED) expect(sel).not.toHaveProperty(k);
   });
 
+  it('prevVkWrap (base64url, null se assente) e staleCount: note nv3 fuori dall epoch corrente', async () => {
+    const base = {
+      status: 'READY', epoch: 7, rev: 1, kdf: 'argon2id', kdfParams: { m: 1 }, pinSalt: Buffer.alloc(16, 1),
+      wrappedVkPin: Buffer.alloc(60, 2), wrappedVkSigKey: Buffer.alloc(80, 3), rootKeyId: RK,
+      migrationState: 'NONE', lockedUntil: null, resetScheduledAt: null,
+    };
+    mp.note.count.mockImplementation(async ({ where }: any) => (where.content ? 3 : 0));
+    mp.vaultKeyring.findUnique.mockResolvedValue({ ...base, prevVkWrap: Buffer.alloc(60, 9) });
+    const r: any = await getKeyring('u1');
+    expect(r.prevVkWrap).toBe(Buffer.alloc(60, 9).toString('base64url'));
+    expect(r.staleCount).toBe(3);
+    expect(mp.vaultKeyring.findUnique.mock.calls[0][0].select.prevVkWrap).toBe(true);
+    const staleWhere = mp.note.count.mock.calls.map((c: any) => c[0].where).find((w: any) => w.content);
+    expect(staleWhere).toEqual({
+      userId: 'u1', isVault: true, content: { startsWith: 'nv3.' }, NOT: { content: { startsWith: 'nv3.7.' } },
+    });
+    mp.vaultKeyring.findUnique.mockResolvedValue({ ...base, prevVkWrap: null });
+    mp.note.count.mockResolvedValue(0);
+    const r2: any = await getKeyring('u1');
+    expect(r2.prevVkWrap).toBeNull();
+    expect(r2.staleCount).toBe(0);
+  });
+
+  it('senza riga: prevVkWrap null e staleCount 0', async () => {
+    mp.vaultKeyring.findUnique.mockResolvedValue(null);
+    const r: any = await getKeyring('u1');
+    expect(r.prevVkWrap).toBeNull();
+    expect(r.staleCount).toBe(0);
+  });
+
   it('escrowHash = sha256 hex dei byte grezzi; escrowBlob mai nella risposta', async () => {
     const blob = Buffer.from(Array.from({ length: 60 }, (_, i) => i));
     mp.vaultKeyring.findUnique.mockResolvedValue({
@@ -318,11 +360,21 @@ describe('updateKeyring', () => {
     userId: 'u1', epoch: 2, rev: 4, status: 'READY', vkSigPub: new Uint8Array(spki), authVerifier: oldVerifier,
     pepperKeyId: pepperStatus().keyId, ...o,
   });
-  const signed = (payloadObj: any) => {
+  const signed = (payloadObj: any, epoch = 2) => {
     const raw = JSON.stringify(payloadObj);
-    const msg = `notiq/vault/v3/proof|PUT /api/vault/keyring|u1|2|${payloadObj.rev}|${sha256hex(raw)}`;
+    const msg = `notiq/vault/v3/proof|PUT /api/vault/keyring|u1|${epoch}|${payloadObj.rev}|${sha256hex(raw)}`;
     return { raw, sig: crypto.sign('sha256', Buffer.from(msg), { key: privateKey, dsaEncoding: 'ieee-p1363' }) };
   };
+  const rotate = (o: any = {}) => ({ vkSigPub: b64(91, 8), wrappedVkSigKey: b64(100, 9), prevVkWrap: b64(60, 7), ...o });
+  const newShare = Buffer.alloc(32, 0x66);
+  // rotazione completa: wrap col nuovo serverShare + escrow + rotate (D2: ogni nuovo Kit ruota la VK)
+  const rotation = (o: any = {}) => ({
+    rev: 4,
+    wrap: { ...wrap(), serverShare: newShare.toString('base64url') },
+    escrow: escrow(),
+    rotate: rotate(),
+    ...o,
+  });
   const wrap = () => ({
     kdf: 'argon2id', kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 }, pinSalt: b64(16), wrappedVkPin: b64(60),
     authKey: b64(32, 0x55),
@@ -334,15 +386,218 @@ describe('updateKeyring', () => {
   beforeEach(() => {
     mp.vaultKeyring.findUnique.mockResolvedValue(row());
     mp.vaultKeyring.updateMany.mockResolvedValue({ count: 1 });
+    mp.note.count.mockResolvedValue(0);
+    mp.vaultRequest.findFirst.mockResolvedValue(null);
   });
 
-  it('PUT firmato -> CAS con rev nel where, {rev:n+1}', async () => {
-    const { raw, sig } = signed({ rev: 4, escrow: escrow() });
-    await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5 });
+  it('PUT firmato (cambio PIN) -> CAS con rev nel where, {rev:n+1}, epoch invariata', async () => {
+    const { raw, sig } = signed({ rev: 4, wrap: wrap() });
+    await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5, epoch: 2 });
     const arg = mp.vaultKeyring.updateMany.mock.calls[0][0];
     expect(arg.where).toEqual({ userId: 'u1', status: 'READY', epoch: 2, rev: 4 });
     expect(arg.data.rev).toEqual({ increment: 1 });
-    expect(arg.data.rootKeyId).toBe(RK);
+    expect(arg.data).not.toHaveProperty('epoch');
+    expect(arg.data).not.toHaveProperty('serverShareEnc');
+    expect(mp.note.count).not.toHaveBeenCalled();
+  });
+
+  it('rotate: epoch+1, rev+1 e tutti i campi nuovi in UN solo CAS; unlock aprirebbe il serverShare con la nuova epoch', async () => {
+    const { raw, sig } = signed(rotation());
+    await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5, epoch: 3 });
+    expect(mp.vaultKeyring.updateMany).toHaveBeenCalledTimes(1);
+    const arg = mp.vaultKeyring.updateMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ userId: 'u1', status: 'READY', epoch: 2, rev: 4 });
+    const d = arg.data;
+    expect(d.epoch).toBe(3);
+    expect(d.rev).toEqual({ increment: 1 });
+    expect(Buffer.from(d.vkSigPub).equals(Buffer.alloc(91, 8))).toBe(true);
+    expect(Buffer.from(d.wrappedVkSigKey).equals(Buffer.alloc(100, 9))).toBe(true);
+    expect(Buffer.from(d.prevVkWrap).equals(Buffer.alloc(60, 7))).toBe(true);
+    expect(d.rootKeyId).toBe(RK);
+    expect(Buffer.from(d.escrowBlob).equals(Buffer.alloc(60, 1))).toBe(true);
+    expect(Buffer.from(d.pinSalt).length).toBe(16);
+    expect(openServerShare('u1', 3, d.serverShareEnc).equals(newShare)).toBe(true);
+    expect(() => openServerShare('u1', 2, d.serverShareEnc)).toThrow();
+    expect(d.authVerifier.equals(oldVerifier)).toBe(false);
+    expectNoSecrets([newShare, Buffer.alloc(32, 0x55)]);
+  });
+
+  it('rotate: staleCount > 0 -> 409 rotationPending, nessuna scrittura; conta le nv3 fuori dall epoch corrente (2)', async () => {
+    mp.note.count.mockResolvedValue(2);
+    const { raw, sig } = signed(rotation());
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(409);
+    expect(e.message).toBe('errors.vault.rotationPending');
+    expect(mp.note.count.mock.calls[0][0].where).toEqual({
+      userId: 'u1', isVault: true, content: { startsWith: 'nv3.' }, NOT: { content: { startsWith: 'nv3.2.' } },
+    });
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rotate con rilascio di recupero aperto -> 409 recoveryInProgress, nessuna scrittura', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
+    const { raw, sig } = signed(rotation());
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(409);
+    expect(e.message).toBe('errors.vault.recoveryInProgress');
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rotate con pepperKeyId diverso -> 503 pepperMismatch, nessuna scrittura', async () => {
+    mp.vaultKeyring.findUnique.mockResolvedValue(row({ pepperKeyId: 'deadbeefdeadbeef' }));
+    const { raw, sig } = signed(rotation());
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(503);
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rotate: concorrenza (rev ok al controllo, CAS fallito per una scrittura concorrente) -> 409 staleRev', async () => {
+    mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+    const { raw, sig } = signed(rotation());
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(409);
+    expect(e.message).toBe('errors.vault.staleRev');
+  });
+
+  describe('D8: cancellazione versioni envelope fuori epoch nel CAS di rotazione', () => {
+    const expectedDelete = (E: number) => ({
+      where: { note: { userId: 'u1' }, content: { startsWith: 'nv3.' }, NOT: { content: { startsWith: `nv3.${E}.` } } },
+    });
+
+    it('rotate riuscita: deleteMany sulle versioni nv3 NON dell epoch prima della rotazione (E=2, punto finale incluso), nella transazione del CAS, dopo il CAS', async () => {
+      mp.noteVersion.deleteMany.mockClear();
+      const order: string[] = [];
+      mp.$transaction.mockImplementationOnce(async (fn: any) => { order.push('tx'); const r = await fn(mp); order.push('commit'); return r; });
+      mp.vaultKeyring.updateMany.mockImplementationOnce(async () => { order.push('cas'); return { count: 1 }; });
+      mp.noteVersion.deleteMany.mockImplementationOnce(async () => { order.push('delete'); return { count: 3 }; });
+      const { raw, sig } = signed(rotation());
+      await updateKeyring('u1', raw, sig);
+      expect(mp.noteVersion.deleteMany).toHaveBeenCalledTimes(1);
+      expect(mp.noteVersion.deleteMany.mock.calls[0][0]).toEqual(expectedDelete(2));
+      expect(order).toEqual(['tx', 'cas', 'delete', 'commit']);
+    });
+
+    it('la transazione di rotazione ha timeout 30 s (delete di molte versioni da 2 MiB)', async () => {
+      mp.$transaction.mockClear();
+      const { raw, sig } = signed(rotation());
+      await updateKeyring('u1', raw, sig);
+      expect(mp.$transaction.mock.calls[0][1]).toEqual({ timeout: 30000 });
+    });
+
+    it('con E=1 il filtro e nv3.1. (con punto): nv3.10. non e protetta, nv3.1. si', async () => {
+      mp.noteVersion.deleteMany.mockClear();
+      mp.vaultKeyring.findUnique.mockResolvedValue(row({ epoch: 1 }));
+      const { raw, sig } = signed(rotation(), 1);
+      await updateKeyring('u1', raw, sig);
+      const w = mp.noteVersion.deleteMany.mock.calls[0][0].where;
+      expect(w.NOT.content.startsWith).toBe('nv3.1.');
+      expect('nv3.10.x.y'.startsWith(w.NOT.content.startsWith)).toBe(false);
+      expect('nv3.1.x.y'.startsWith(w.NOT.content.startsWith)).toBe(true);
+    });
+
+    it('CAS fallito (count 0): nessuna delete, 409 staleRev', async () => {
+      mp.noteVersion.deleteMany.mockClear();
+      mp.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+      const { raw, sig } = signed(rotation());
+      const e = await fail(updateKeyring('u1', raw, sig));
+      expect(e.message).toBe('errors.vault.staleRev');
+      expect(mp.noteVersion.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('cambio PIN senza rotate: nessuna delete', async () => {
+      mp.noteVersion.deleteMany.mockClear();
+      const { raw, sig } = signed({ rev: 4, wrap: wrap() });
+      await updateKeyring('u1', raw, sig);
+      expect(mp.noteVersion.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('replay di una rotazione GIA committata (riga a epoch 3, rev 5, chiave nuova; payload rev 4 firmato con la chiave vecchia) -> 409 staleRev, non 403', async () => {
+    const fresh = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ format: 'der', type: 'spki' });
+    mp.vaultKeyring.findUnique.mockResolvedValue(row({ epoch: 3, rev: 5, vkSigPub: new Uint8Array(fresh) }));
+    const { raw, sig } = signed(rotation({ rev: 4 }), 2);
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(409);
+    expect(e.message).toBe('errors.vault.staleRev');
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('dopo la rotazione una PUT firmata con la chiave di firma VECCHIA -> 403 invalidProof', async () => {
+    const fresh = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ format: 'der', type: 'spki' });
+    mp.vaultKeyring.findUnique.mockResolvedValue(row({ epoch: 3, rev: 5, vkSigPub: new Uint8Array(fresh) }));
+    const { raw, sig } = signed({ rev: 5, wrap: wrap() }, 3);
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(403);
+    expect(e.message).toBe('errors.vault.invalidProof');
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rotate: il vkProof si verifica con epoch ATTUALE (vecchia): firma sull epoch nuova -> 403', async () => {
+    const { raw, sig } = signed(rotation(), 3);
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(403);
+  });
+
+  describe('regole di forma di rotate (D2): 400 invalidPayload senza scritture', () => {
+    const cases: [string, any][] = [
+      ['chiavi sconosciute in rotate', rotation({ rotate: rotate({ extra: 'x' }) })],
+      ['rotate senza prevVkWrap', rotation({ rotate: { vkSigPub: b64(91), wrappedVkSigKey: b64(100) } })],
+      ['prevVkWrap di 59 byte', rotation({ rotate: rotate({ prevVkWrap: b64(59) }) })],
+      ['vkSigPub di 90 byte', rotation({ rotate: rotate({ vkSigPub: b64(90) }) })],
+      ['wrappedVkSigKey di 79 byte', rotation({ rotate: rotate({ wrappedVkSigKey: b64(79) }) })],
+      ['wrappedVkSigKey di 221 byte', rotation({ rotate: rotate({ wrappedVkSigKey: b64(221) }) })],
+      ['escrow senza rotate', rotation({ rotate: undefined })],
+      ['rotate senza escrow', rotation({ escrow: undefined })],
+      ['rotate senza wrap', rotation({ wrap: undefined })],
+      ['rotate con wrap senza serverShare', rotation({ wrap: wrap() })],
+      ['wrap.serverShare senza rotate (cambio PIN)', { rev: 4, wrap: { ...wrap(), serverShare: b64(32) } }],
+    ];
+    it.each(cases)('%s', async (_n, body) => {
+      const { raw, sig } = signed(body);
+      const e = await fail(updateKeyring('u1', raw, sig));
+      expect(e.statusCode).toBe(400);
+      expect(e.message).toBe('errors.vault.invalidPayload');
+      expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('schema strict a ogni livello (3)', () => {
+    const w = () => ({ ...wrap(), serverShare: newShare.toString('base64url') });
+    const cases: [string, any][] = [
+      ['top-level', rotation({ extra: 1 })],
+      ['wrap', rotation({ wrap: { ...w(), extra: 1 } })],
+      ['kdfParams', rotation({ wrap: { ...w(), kdfParams: { ...wrap().kdfParams, extra: 1 } } })],
+      ['escrow', rotation({ escrow: { ...escrow(), extra: 1 } })],
+      ['top-level, cambio PIN', { rev: 4, wrap: wrap(), extra: 1 }],
+      ['kdfParams, cambio PIN', { rev: 4, wrap: { ...wrap(), kdfParams: { ...wrap().kdfParams, extra: 1 } } }],
+    ];
+    it.each(cases)('chiave sconosciuta: %s -> 400 invalidPayload', async (_n, body) => {
+      const { raw, sig } = signed(body);
+      const e = await fail(updateKeyring('u1', raw, sig));
+      expect(e.statusCode).toBe(400);
+      expect(e.message).toBe('errors.vault.invalidPayload');
+      expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('payload del cambio PIN del client 1.14 ({rev, wrap:{kdf, kdfParams:{m,t,p}, pinSalt, wrappedVkPin, authKey}}) -> ok', async () => {
+      const { raw, sig } = signed({
+        rev: 4,
+        wrap: { kdf: 'argon2id', kdfParams: { m: 65536, t: KDF_T_MIN, p: 1 }, pinSalt: b64(16), wrappedVkPin: b64(60), authKey: b64(32, 0x55) },
+      });
+      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5, epoch: 2 });
+    });
+  });
+
+  it('dopo la rotazione l envelope dell epoch vecchia e rifiutato dalla PUT di una nota: 422 stale', () => {
+    const old = `nv3.2.${'A'.repeat(16)}.${'B'.repeat(30)}`;
+    let err: any;
+    try {
+      assertVaultContent(old, { epoch: 3, ready: true });
+    } catch (e) {
+      err = e;
+    }
+    expect(err.statusCode).toBe(422);
+    expect(err.message).toBe('errors.vault.stale');
   });
 
   it('wrap con kdfParams.t < KDF_T_MIN -> 400 invalidPayload', async () => {
@@ -360,13 +615,6 @@ describe('updateKeyring', () => {
     const e = await fail(updateKeyring('u1', raw, sig));
     expect(e.statusCode).toBe(409);
     expect(e.message).toBe('errors.vault.staleRev');
-  });
-
-  it('rotate firmato -> 400 rotateNotSupported', async () => {
-    const { raw, sig } = signed({ rev: 4, rotate: {} });
-    const e = await fail(updateKeyring('u1', raw, sig));
-    expect(e.statusCode).toBe(400);
-    expect(e.message).toBe('errors.vault.rotateNotSupported');
   });
 
   it('firma sbagliata -> 403 invalidProof', async () => {
@@ -420,12 +668,6 @@ describe('updateKeyring', () => {
     expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
   });
 
-  it('escrow-only con pepperKeyId diverso -> ok', async () => {
-    mp.vaultKeyring.findUnique.mockResolvedValue(row({ pepperKeyId: 'deadbeefdeadbeef' }));
-    const { raw, sig } = signed({ rev: 4, escrow: escrow() });
-    await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5 });
-  });
-
   it('rev 2**31 firmato -> 400 invalidPayload', async () => {
     const { raw, sig } = signed({ rev: 2 ** 31, escrow: escrow() });
     const e = await fail(updateKeyring('u1', raw, sig));
@@ -434,14 +676,14 @@ describe('updateKeyring', () => {
   });
 
   it('escrow con rootKeyId sconosciuto -> 400 invalidRootKey', async () => {
-    const { raw, sig } = signed({ rev: 4, escrow: escrow('rk_nope') });
+    const { raw, sig } = signed(rotation({ escrow: escrow('rk_nope') }));
     expect((await fail(updateKeyring('u1', raw, sig))).message).toBe('errors.vault.invalidRootKey');
   });
 
   describe('rilascio di recupero aperto', () => {
     it('escrow con RECOVERY RELEASED non scaduta -> 409 recoveryInProgress, nessuna scrittura', async () => {
       mp.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
-      const { raw, sig } = signed({ rev: 4, escrow: escrow() });
+      const { raw, sig } = signed(rotation());
       const e = await fail(updateKeyring('u1', raw, sig));
       expect(e.statusCode).toBe(409);
       expect(e.message).toBe('errors.vault.recoveryInProgress');
@@ -451,17 +693,17 @@ describe('updateKeyring', () => {
       });
     });
 
-    it('escrow senza rilascio aperto -> 200', async () => {
+    it('rotate senza rilascio aperto -> 200', async () => {
       mp.vaultRequest.findFirst.mockResolvedValue(null);
-      const { raw, sig } = signed({ rev: 4, escrow: escrow() });
-      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5 });
+      const { raw, sig } = signed(rotation());
+      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5, epoch: 3 });
     });
 
     it('solo wrap con rilascio aperto -> 200, senza nemmeno cercare il rilascio', async () => {
       mp.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });
       mp.vaultRequest.findFirst.mockClear();
       const { raw, sig } = signed({ rev: 4, wrap: wrap() });
-      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5 });
+      await expect(updateKeyring('u1', raw, sig)).resolves.toEqual({ rev: 5, epoch: 2 });
       expect(mp.vaultRequest.findFirst).not.toHaveBeenCalled();
     });
   });

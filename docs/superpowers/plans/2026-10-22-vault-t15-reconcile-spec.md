@@ -298,3 +298,23 @@ Nasce dal piano `2026-11-23-vault-p4-fase5-vk-rotation-plan.md` (§3 «Multi-dis
 - T8/T14: SX in `prevEpoch` LEAVE e conteggiata in `staleLeft`; SX in `epoch-2` LEAVE(epoch).
 - `staleLeft` e `legacyLeft` separati; il banner legacy resta spento con soli SX.
 - Senza `keys.prev` nessuna regola cambia.
+
+## Addendum 6 (23/11): righe illeggibili e server re-incapsulato (P4 Fase 5)
+
+Nasce dal piano `2026-11-23-vault-p4-fase5-vk-rotation-plan.md` (decisioni D6-D7, task T9). Prevale sulla precondizione 8 solo per il caso sotto. Nessuna op nuova, `syncService.ts` e Dexie invariati.
+
+**1. Caso.** Riga Dexie vault il cui envelope non si decifra, né con la VK corrente né con `keys.prev`. Il server ha già la versione re-incapsulata della nota (SE, epoch corrente). Il re-incapsulamento lo fa `rewrapUnreadable` dopo la conferma dell'utente (D6).
+
+**2. Regola.** HYDRATE dal server: riga = server, base = Hs, sent = `[]`.
+- Niente COPY (copia di conflitto).
+- Niente DROP di item di coda che contengano edit reali.
+- Una riga illeggibile non ha edit leggibili da salvare. Il ciphertext originale sopravvive dentro il contenuto re-incapsulato del server.
+
+**3. Item di coda con lo stesso envelope illeggibile.**
+- Si scartano solo se il loro contenuto è identico all'envelope già incapsulato dal server.
+- Altrimenti si tengono (REQUEUE). Non si perde nulla.
+
+**4. Accettazione** (test di T9 del piano Fase 5, `vaultReconcile.test.ts`).
+- Riga illeggibile + server re-incapsulato: HYDRATE, 0 copie, nessun DROP di item diversi.
+- Item di coda con contenuto diverso dall'envelope re-incapsulato: tenuto (REQUEUE).
+- Riga leggibile: regole degli addendum precedenti invariate.

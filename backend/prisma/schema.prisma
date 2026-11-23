@@ -824,6 +824,7 @@ model VaultKeyring {
   sealedRootShare  Bytes?
   rootKeyId        String?
   userShareUnderVk Bytes?
+  prevVkWrap       Bytes?                           // AES-GCM(VK_new, VK_old), 60 byte; sostituita a ogni rotazione della VK (P4 Fase 5)
   migrationState   VaultMigrationState @default(NONE)
   failedAttempts   Int                 @default(0)
   lockedUntil      DateTime?

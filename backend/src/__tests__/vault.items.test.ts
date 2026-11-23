@@ -38,8 +38,19 @@ describe('getItems', () => {
     expect(r.items.map((i: any) => [i.title, i.hasPlaintextVersions, i.hasAttachments])).toEqual([['T', true, true], ['T', false, false]]);
     const sel = mp.note.findMany.mock.calls[0][0].select;
     expect(sel.title).toBe(true);
-    expect(sel._count.select.versions.where).toEqual({ NOT: { content: { startsWith: 'nv3.' } } });
+    expect(sel._count.select.versions.where).toEqual({ NOT: { content: { startsWith: `nv3.${EPOCH}.` } } });
     expect(sel._count.select.attachments).toBe(true);
+  });
+
+  it('hasPlaintextVersions: il filtro usa l epoch del keyring (1 e 10 non si confondono)', async () => {
+    for (const epoch of [1, 10]) {
+      vi.clearAllMocks();
+      mp.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', epoch });
+      mp.note.findMany.mockResolvedValue([]);
+      await getItems(U, { ids: ['a'] });
+      const w = mp.note.findMany.mock.calls[0][0].select._count.select.versions.where;
+      expect(w).toEqual({ NOT: { content: { startsWith: `nv3.${epoch}.` } } });
+    }
   });
 
   it('con ids: where con userId, isVault e id in; next null; contentHash corretto', async () => {
@@ -122,6 +133,16 @@ describe('migrateItems', () => {
     expect(arg.where).toEqual({ id: 'a', userId: U, isVault: true, content: cur40 });
     expect(arg.data).toEqual({ content: item.content, title: '', isEncrypted: true, searchText: null, ydocState: null });
     expect(logEvent).toHaveBeenCalledWith(U, 'vault.migrate', { ok: 1, already: 0, conflict: 0, notFound: 0, invalid: 0 });
+  });
+
+  it('rotazione (SX): envelope epoch vecchia -> nuova = ok, con snapshot di rollback del vecchio envelope', async () => {
+    const old = env(EPOCH - 1, 'O');
+    mp.note.findFirst.mockResolvedValue({ content: old, title: '', noteType: 'text' });
+    mp.note.updateMany.mockResolvedValue({ count: 1 });
+    const r = await migrateItems(U, [good('a', sha256hex(old))]);
+    expect(r.results).toEqual([{ id: 'a', status: 'ok' }]);
+    expect(mp.noteVersion.create).toHaveBeenCalledWith({ data: { noteId: 'a', content: old, title: '' } });
+    expect(mp.note.updateMany.mock.calls[0][0].where).toEqual({ id: 'a', userId: U, isVault: true, content: old });
   });
 
   it('due item, uno con baseHash sbagliato -> conflict, l\'altro ok, stesso ordine', async () => {
@@ -215,9 +236,37 @@ describe('finalize', () => {
     expect(r.rejected).toEqual(['plain', 'old', 'foreign']);
     expect(r.finalized).toBe(1);
     expect(mp.noteVersion.deleteMany).toHaveBeenCalledWith({
-      where: { noteId: { in: ['ok'] }, NOT: { content: { startsWith: 'nv3.' } } },
+      where: { noteId: { in: ['ok'] }, NOT: { content: { startsWith: `nv3.${EPOCH}.` } } },
     });
     expect(logEvent).toHaveBeenCalledWith(U, 'vault.finalize', { finalized: 1, rejected: 3, legacyCount: 1 });
+  });
+
+  // Valuta il filtro Prisma `NOT startsWith` sui contenuti di esempio: dimostra la semantica, non solo la forma.
+  // deleteMany cancella quel che soddisfa `NOT startsWith`: sopravvive chi inizia col prefisso.
+  const survivors = (where: any, contents: string[]) =>
+    contents.filter((c) => c.startsWith(where.NOT.content.startsWith));
+
+  it('rotazione: cancella le versioni in chiaro e nv3.<e-1>., tiene nv3.<e>.', async () => {
+    mp.note.findMany.mockResolvedValue([{ id: 'ok', content: env() }]);
+    mp.note.count.mockResolvedValue(0);
+    mp.vaultKeyring.findUnique.mockResolvedValueOnce(readyGuard).mockResolvedValueOnce({ migrationState: 'NONE' });
+    await finalize(U, ['ok']);
+    const where = mp.noteVersion.deleteMany.mock.calls[0][0].where;
+    expect(survivors(where, ['plaintext', env(EPOCH - 1), env(EPOCH, 'C')])).toEqual([env(EPOCH, 'C')]);
+  });
+
+  it('il punto finale separa nv3.1. da nv3.10. (epoch 1 e 10)', async () => {
+    for (const [epoch, other] of [[1, 10], [10, 1]] as const) {
+      vi.clearAllMocks();
+      mp.vaultKeyring.findUnique
+        .mockResolvedValueOnce({ status: 'READY', epoch })
+        .mockResolvedValueOnce({ migrationState: 'NONE' });
+      mp.note.findMany.mockResolvedValue([{ id: 'ok', content: env(epoch) }]);
+      mp.note.count.mockResolvedValue(0);
+      await finalize(U, ['ok']);
+      const where = mp.noteVersion.deleteMany.mock.calls[0][0].where;
+      expect(survivors(where, [env(epoch, 'C'), env(other, 'D')])).toEqual([env(epoch, 'C')]);
+    }
   });
 
   it('nessun accettato -> deleteMany non chiamato', async () => {

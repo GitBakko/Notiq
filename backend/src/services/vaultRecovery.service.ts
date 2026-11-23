@@ -8,7 +8,7 @@ import { putE2eCodeB } from '../utils/vaultE2e';
 import { logEvent } from './audit.service';
 import { notifyRecovery, notifySuperadmins, type RecoveryEvent } from './vaultRecoveryNotify';
 import { assertPointOnCurve, releaseRootShare, sealRecoveryCode } from './vaultRootKey.service';
-import { authVerifierOf, b64url, keyringUpdatePayloadSchema, pepperStatus, sealServerShare, sha256hex, verifierKey, verifyVkProof } from './vault.service';
+import { authVerifierOf, b64url, countStaleVaultNotes, deleteOutOfEpochVersions, keyringUpdatePayloadSchema, pepperStatus, rotateSchema, rotationUpdate, sha256hex, verifierKey, verifyVkProof } from './vault.service';
 
 const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -442,11 +442,12 @@ export async function getRecoveryForAdmin(requestId: string) {
   return { ...adminView(row), audit };
 }
 
-// wrap ed escrow obbligatori; il wrap porta anche il nuovo serverShare (la KEK lo include: senza, il nuovo PIN non sbloccherebbe); `rotate` vietato e chiavi sconosciute rifiutate a ogni livello (strict).
+// wrap ed escrow obbligatori; il wrap porta anche il nuovo serverShare (la KEK lo include: senza, il nuovo PIN non sbloccherebbe); `rotate` (VK nuova, epoch+1) obbligatorio (D1: ogni nuovo Kit ruota; wrap, escrow e rotate richiesti = assertRotationShape di PUT /keyring), chiavi sconosciute rifiutate a ogni livello (strict).
 export const recoveryCompletePayloadSchema = z.object({
   rev: keyringUpdatePayloadSchema.shape.rev,
   wrap: keyringUpdatePayloadSchema.shape.wrap.unwrap().extend({ serverShare: b64url(32) }).strict(),
   escrow: keyringUpdatePayloadSchema.shape.escrow.unwrap().strict(),
+  rotate: rotateSchema,
 }).strict();
 
 export async function completeRecovery(userId: string, requestId: string, payloadRaw: string, proof: Buffer) {
@@ -473,7 +474,9 @@ export async function completeRecovery(userId: string, requestId: string, payloa
     verifyVkProof(keyring, 'POST', `/api/vault/recovery/${requestId}/complete`, payloadRaw, payload.rev, proof);
     if (!Object.prototype.hasOwnProperty.call(VAULT_ROOT_KEYS, payload.escrow.rootKeyId)) throw new AppError(400, 'errors.vault.invalidRootKey');
     if (keyring.pepperKeyId !== pepperStatus().keyId) throw new AppError(503, 'errors.vault.pepperMismatch');
-    const { wrap, escrow } = payload;
+    const { wrap, escrow, rotate } = payload;
+    // Invariante della rotazione: mai con note ferme a un'epoch precedente (come PUT /keyring).
+    if ((await countStaleVaultNotes(userId, keyring.epoch, tx)) > 0) throw new AppError(409, 'errors.vault.rotationPending');
     // U4: con il PIN nuovo, contatore dei tentativi e lockout dello sblocco ripartono da zero.
     const data: Prisma.VaultKeyringUpdateManyMutationInput = {
       rev: { increment: 1 },
@@ -484,7 +487,7 @@ export async function completeRecovery(userId: string, requestId: string, payloa
       pinSalt: Buffer.from(wrap.pinSalt, 'base64url'),
       wrappedVkPin: Buffer.from(wrap.wrappedVkPin, 'base64url'),
       authVerifier: authVerifierOf(userId, Buffer.from(wrap.authKey, 'base64url')),
-      serverShareEnc: sealServerShare(userId, keyring.epoch, Buffer.from(wrap.serverShare, 'base64url')),
+      ...rotationUpdate(userId, keyring.epoch, wrap.serverShare, rotate),
       pepperKeyId: pepperStatus().keyId,
       escrowBlob: Buffer.from(escrow.escrowBlob, 'base64url'),
       sealedRootShare: Buffer.from(escrow.sealedRootShare, 'base64url'),
@@ -493,12 +496,13 @@ export async function completeRecovery(userId: string, requestId: string, payloa
     };
     const changedKeyring = await tx.vaultKeyring.updateMany({ where: { userId, status: 'READY', epoch: keyring.epoch, rev: payload.rev }, data });
     if (changedKeyring.count !== 1) throw new AppError(409, 'errors.vault.staleRev');
+    await deleteOutOfEpochVersions(tx, userId, keyring.epoch); // D8
     const changedRequest = await tx.vaultRequest.updateMany({
       where: { id: requestId, userId, status: 'RELEASED' },
       data: { status: 'COMPLETED', completedAt: new Date(), completedPayloadHash: payloadHash, rootShareForClient: null, rootSignature: null },
     });
     if (changedRequest.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
-  });
+  }, { timeout: 30000 }); // D8: delete versioni fuori epoch, il default di 5 s non basta
   await logEvent(userId, 'vault.recovery.completed', { requestId });
   notify(userId, 'completed', { requestId });
   return { status: 'COMPLETED' as const, idempotent: false };

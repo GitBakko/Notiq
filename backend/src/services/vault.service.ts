@@ -152,6 +152,24 @@ export async function countLegacyVaultNotes(
   return db.note.count({ where: { userId, isVault: true, NOT: { content: { startsWith: 'nv3.' } } } });
 }
 
+/** Note vault ferme a un'epoch precedente: envelope `nv3.` ma non `nv3.<epoch>.` (il punto finale evita nv3.1. / nv3.10.). Stessa popolazione di getItems. */
+export async function countStaleVaultNotes(
+  userId: string,
+  epoch: number,
+  db: Pick<Prisma.TransactionClient, 'note'> = prisma,
+): Promise<number> {
+  return db.note.count({
+    where: { userId, isVault: true, content: { startsWith: 'nv3.' }, NOT: { content: { startsWith: `nv3.${epoch}.` } } },
+  });
+}
+
+// Versioni fuori dall'epoch corrente: in chiaro (migrazione) o envelope di un'epoch precedente (rotazione).
+const notCurrentVersions = (epoch: number) => ({ NOT: { content: { startsWith: `nv3.${epoch}.` } } });
+
+/** D8: dentro il CAS di rotazione, elimina le versioni envelope fuori dall'epoch `fromEpoch` (quella PRIMA della rotazione). Restano le versioni in chiaro (non `nv3.`). */
+export const deleteOutOfEpochVersions = (tx: Pick<Prisma.TransactionClient, 'noteVersion'>, userId: string, fromEpoch: number) =>
+  tx.noteVersion.deleteMany({ where: { note: { userId }, content: { startsWith: 'nv3.' }, ...notCurrentVersions(fromEpoch) } });
+
 const toB64 = (v: Uint8Array | null | undefined) => (v ? Buffer.from(v).toString('base64url') : null);
 
 // kill switch (D2): letto a ogni chiamata, assente = chiuso. Lo usano createKeyring e GET /keyring (setupAllowed).
@@ -167,7 +185,7 @@ export async function getKeyring(userId: string) {
     select: {
       status: true, epoch: true, rev: true, kdf: true, kdfParams: true, pinSalt: true,
       wrappedVkPin: true, wrappedVkSigKey: true, rootKeyId: true, migrationState: true,
-      lockedUntil: true, resetScheduledAt: true, escrowBlob: true,
+      lockedUntil: true, resetScheduledAt: true, escrowBlob: true, prevVkWrap: true,
     },
   });
   const legacyCount = await countLegacyVaultNotes(userId);
@@ -176,9 +194,11 @@ export async function getKeyring(userId: string) {
       status: 'NONE', epoch: 0, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null,
       wrappedVkSigKey: null, rootKeyId: null, migrationState: 'NONE', lockedUntil: null,
       resetScheduledAt: null, escrowHash: null, legacyCount, setupAllowed: isSetupAllowed(userId),
+      prevVkWrap: null, staleCount: 0,
     };
   }
   const { escrowBlob, ...rest } = row;
+  const staleCount = await countStaleVaultNotes(userId, row.epoch);
   // hash dei byte grezzi (stesso calcolo del client, T13)
   const escrowHash = escrowBlob
     ? crypto.createHash('sha256').update(Buffer.from(escrowBlob)).digest('hex')
@@ -189,6 +209,8 @@ export async function getKeyring(userId: string) {
     pinSalt: toB64(row.pinSalt),
     wrappedVkPin: toB64(row.wrappedVkPin),
     wrappedVkSigKey: toB64(row.wrappedVkSigKey),
+    prevVkWrap: toB64(row.prevVkWrap),
+    staleCount,
     legacyCount,
     setupAllowed: isSetupAllowed(userId),
   };
@@ -256,6 +278,7 @@ export async function createKeyring(userId: string, dto: CreateKeyringDto) {
     sealedRootShare: dto.sealedRootShare,
     rootKeyId: dto.rootKeyId,
     userShareUnderVk: dto.userShareUnderVk,
+    prevVkWrap: null, // un reset non deve lasciare la VK vecchia avvolta dalla nuova
     migrationState,
   } as const;
 
@@ -292,20 +315,28 @@ export async function createKeyring(userId: string, dto: CreateKeyringDto) {
   return { status: 'READY' as const, epoch, rev };
 }
 
+export const rotateSchema = z
+  .object({ vkSigPub: b64url(91), wrappedVkSigKey: b64url([80, 220]), prevVkWrap: b64url(60) })
+  .strict();
+
 export const keyringUpdatePayloadSchema = z.object({
   rev: z.number().int().min(0).max(2147483646),
   wrap: z
     .object({
       kdf: z.literal('argon2id'),
-      kdfParams: z.object({
-        m: z.number().int().min(65536).max(1048576),
-        t: z.number().int().min(KDF_T_MIN).max(10),
-        p: z.literal(1),
-      }),
+      kdfParams: z
+        .object({
+          m: z.number().int().min(65536).max(1048576),
+          t: z.number().int().min(KDF_T_MIN).max(10),
+          p: z.literal(1),
+        })
+        .strict(),
       pinSalt: b64url(16),
       wrappedVkPin: b64url(60),
       authKey: b64url(32),
+      serverShare: b64url(32).optional(), // solo con rotate: il nuovo serverShare, sigillato con l'epoch nuova
     })
+    .strict()
     .optional(),
   escrow: z
     .object({
@@ -314,9 +345,33 @@ export const keyringUpdatePayloadSchema = z.object({
       rootKeyId: z.string().min(1).max(64),
       userShareUnderVk: b64url(48),
     })
+    .strict()
     .optional(),
-  rotate: z.unknown().optional(),
-});
+  rotate: rotateSchema.optional(),
+}).strict();
+
+/** Rotazione della VK (P4 fase 5): ogni nuovo Kit ruota. PUT: rotate <=> escrow + wrap.serverShare (D2). */
+export function assertRotationShape(p: { wrap?: { serverShare?: string }; escrow?: unknown; rotate?: unknown }) {
+  const ok = p.rotate ? !!p.escrow && !!p.wrap?.serverShare : !p.escrow && !p.wrap?.serverShare;
+  if (!ok) throw new AppError(400, 'errors.vault.invalidPayload');
+}
+
+/** Campi del CAS di una rotazione; tutto cio' che e' legato all'epoch usa epoch+1. Condiviso con complete del recupero. */
+export function rotationUpdate(
+  userId: string,
+  fromEpoch: number,
+  serverShare: string,
+  rotate: z.infer<typeof rotateSchema>,
+): Prisma.VaultKeyringUpdateManyMutationInput {
+  const next = fromEpoch + 1;
+  return {
+    epoch: next,
+    serverShareEnc: sealServerShare(userId, next, Buffer.from(serverShare, 'base64url')),
+    vkSigPub: Buffer.from(rotate.vkSigPub, 'base64url'),
+    wrappedVkSigKey: Buffer.from(rotate.wrappedVkSigKey, 'base64url'),
+    prevVkWrap: Buffer.from(rotate.prevVkWrap, 'base64url'),
+  };
+}
 
 export async function updateKeyring(userId: string, payloadRaw: string, proof: Buffer) {
   let payload: z.infer<typeof keyringUpdatePayloadSchema>;
@@ -324,22 +379,21 @@ export async function updateKeyring(userId: string, payloadRaw: string, proof: B
     const parsed = keyringUpdatePayloadSchema.safeParse(JSON.parse(payloadRaw));
     if (!parsed.success) throw new Error('invalid');
     payload = parsed.data;
+    assertRotationShape(payload);
   } catch {
     throw new AppError(400, 'errors.vault.invalidPayload');
   }
 
   const row = await prisma.vaultKeyring.findUnique({ where: { userId } });
   if (!row || row.status !== 'READY') throw new AppError(409, 'errors.vault.notReady');
+  // Prima del proof: dopo una rotazione committata la riga ha gia' vkSigPub ed epoch nuovi, e un replay (risposta persa) darebbe 403 invece di 409. Il rev e' pubblico (GET /keyring).
+  if (payload.rev !== row.rev) throw new AppError(409, 'errors.vault.staleRev');
 
   verifyVkProof(row, 'PUT', '/api/vault/keyring', payloadRaw, payload.rev, proof);
 
-  if (payload.rotate !== undefined) throw new AppError(400, 'errors.vault.rotateNotSupported');
-  const { wrap, escrow } = payload;
+  const { wrap, escrow, rotate } = payload;
   if (escrow && !isRootKey(escrow.rootKeyId)) {
     throw new AppError(400, 'errors.vault.invalidRootKey');
-  }
-  if (wrap && row.pepperKeyId !== pepperStatus().keyId) {
-    throw new AppError(503, 'errors.vault.pepperMismatch');
   }
   // Con un rilascio aperto un escrow nuovo si accoppierebbe all'S_root gia' rilasciato: il client vedrebbe kitInvalid anche col Kit giusto.
   if (escrow) {
@@ -348,6 +402,13 @@ export async function updateKeyring(userId: string, payloadRaw: string, proof: B
       select: { id: true },
     });
     if (open) throw new AppError(409, 'errors.vault.recoveryInProgress');
+  }
+  // Invariante: mai ruotare con note ferme a un'epoch precedente, cosi' nessuna nota resta piu' di un'epoch indietro.
+  if (rotate && (await countStaleVaultNotes(userId, row.epoch)) > 0) {
+    throw new AppError(409, 'errors.vault.rotationPending');
+  }
+  if (wrap && row.pepperKeyId !== pepperStatus().keyId) {
+    throw new AppError(503, 'errors.vault.pepperMismatch');
   }
 
   const dec = (v: string) => Buffer.from(v, 'base64url');
@@ -366,31 +427,45 @@ export async function updateKeyring(userId: string, payloadRaw: string, proof: B
     data.rootKeyId = escrow.rootKeyId;
     data.userShareUnderVk = dec(escrow.userShareUnderVk);
   }
+  if (rotate) Object.assign(data, rotationUpdate(userId, row.epoch, wrap!.serverShare!, rotate));
 
-  const r = await prisma.vaultKeyring.updateMany({
-    where: { userId, status: 'READY', epoch: row.epoch, rev: payload.rev },
-    data,
-  });
-  if (r.count === 0) throw new AppError(409, 'errors.vault.staleRev');
+  const casWhere = { userId, status: 'READY' as const, epoch: row.epoch, rev: payload.rev };
+  if (rotate) {
+    // D8: CAS e cancellazione delle versioni fuori epoch nella STESSA transazione (CAS fallito = niente delete).
+    await prisma.$transaction(async (tx) => {
+      const r = await tx.vaultKeyring.updateMany({ where: casWhere, data });
+      if (r.count === 0) throw new AppError(409, 'errors.vault.staleRev');
+      await deleteOutOfEpochVersions(tx, userId, row.epoch);
+    }, { timeout: 30000 }); // il default di 5 s non basta con molte versioni da 2 MiB
+  } else {
+    const r = await prisma.vaultKeyring.updateMany({ where: casWhere, data });
+    if (r.count === 0) throw new AppError(409, 'errors.vault.staleRev');
+  }
 
-  await logEvent(userId, 'vault.keyring.updated', { wrap: !!wrap, escrow: !!escrow });
-  return { rev: payload.rev + 1 };
+  await logEvent(userId, 'vault.keyring.updated', { wrap: !!wrap, escrow: !!escrow, rotate: !!rotate });
+  return { rev: payload.rev + 1, epoch: rotate ? row.epoch + 1 : row.epoch };
 }
 
 // ---------------------------------------------------------------- Unlock (T7)
 
-export async function unlock(userId: string, authKey: Buffer): Promise<{ serverShare: Buffer }> {
+export async function unlock(userId: string, authKey: Buffer, rev?: number): Promise<{ serverShare: Buffer }> {
   if (!userId) throw new Error('unlock: userId required');
   const ps = pepperStatus();
   if (ps.status !== 'ok') throw new AppError(503, 'errors.vault.unavailable');
 
   const row = await prisma.vaultKeyring.findUnique({
     where: { userId },
-    select: { status: true, epoch: true, authVerifier: true, serverShareEnc: true, pepperKeyId: true },
+    select: { status: true, epoch: true, rev: true, lockedUntil: true, authVerifier: true, serverShareEnc: true, pepperKeyId: true },
   });
   if (!row || row.status !== 'READY') throw new AppError(409, 'errors.vault.notReady');
   // Pepper sostituito: non e' un tentativo, nessun incremento
   if (row.pepperKeyId !== ps.keyId) throw new AppError(503, 'errors.vault.pepperMismatch');
+
+  // rev opzionale (client >= 1.15): una rotazione fra GET /keyring e questa POST renderebbe l'authKey del salt vecchio un falso PIN errato. Il lockout resta prioritario.
+  if (rev !== undefined && rev !== row.rev) {
+    if (row.lockedUntil && row.lockedUntil > new Date()) throw new AppError(429, 'errors.vault.locked');
+    throw new AppError(409, 'errors.vault.staleRev');
+  }
 
   const expected = authVerifierOf(userId, authKey);
   const stored = row.authVerifier ? Buffer.from(row.authVerifier) : null;
@@ -441,7 +516,12 @@ export async function unlock(userId: string, authKey: Buffer): Promise<{ serverS
     },
     data: { failedAttempts: 0, lockedUntil: null },
   });
-  if (r.count !== 1) throw new AppError(429, 'errors.vault.locked');
+  if (r.count !== 1) {
+    // Una rotazione (epoch+1) fra la lettura e il CAS non e' un lockout: il client deve rileggere il keyring.
+    const cur = await prisma.vaultKeyring.findUnique({ where: { userId }, select: { epoch: true } });
+    if (cur && cur.epoch !== row.epoch) throw new AppError(409, 'errors.vault.staleRev');
+    throw new AppError(429, 'errors.vault.locked');
+  }
 
   // serverShareEnc null o GCM fallito: stato corrotto, l'errore si propaga (500)
   return { serverShare: openServerShare(userId, row.epoch, Buffer.from(row.serverShareEnc!)) };
@@ -449,13 +529,14 @@ export async function unlock(userId: string, authKey: Buffer): Promise<{ serverS
 
 // ---------------------------------------------------------------- Items, migrate, finalize (T8)
 
-const itemSelect = {
+const itemSelect = (epoch: number) => ({
   id: true, noteType: true, title: true, content: true, updatedAt: true, isTrashed: true,
-  _count: { select: { versions: { where: { NOT: { content: { startsWith: 'nv3.' } } } }, attachments: true } },
-} as const;
+  _count: { select: { versions: { where: notCurrentVersions(epoch) }, attachments: true } },
+}) as const;
 
 export async function getItems(userId: string, opts: { ids?: string[]; after?: string } = {}) {
   if (!userId) throw new Error('getItems: userId required');
+  const select = itemSelect((await getVaultGuard(userId))?.epoch ?? 0);
   const toItem = (r: {
     id: string; noteType: string; title: string; content: string; updatedAt: Date; isTrashed: boolean;
     _count: { versions: number; attachments: number };
@@ -474,7 +555,7 @@ export async function getItems(userId: string, opts: { ids?: string[]; after?: s
   if (opts.ids) {
     const rows = await prisma.note.findMany({
       where: { userId, isVault: true, id: { in: opts.ids } },
-      select: itemSelect,
+      select,
     });
     // Fuori dal risultato non vuol dire "assente": absent = non e' una nota di questo utente (un id altrui e' absent,
     // nessun oracolo fra utenti), notVault = nota dell'utente non vault. Nessun content di note non vault.
@@ -492,7 +573,7 @@ export async function getItems(userId: string, opts: { ids?: string[]; after?: s
     where: { userId, isVault: true, ...(opts.after ? { id: { gt: opts.after } } : {}) },
     orderBy: { id: 'asc' },
     take: 101,
-    select: itemSelect,
+    select,
   });
   const page = rows.slice(0, 100);
   return { items: page.map(toItem), next: rows.length > 100 ? page[99].id : null };
@@ -567,7 +648,7 @@ export async function finalize(userId: string, ids: string[]) {
 
   if (accepted.length > 0) {
     await prisma.noteVersion.deleteMany({
-      where: { noteId: { in: accepted }, NOT: { content: { startsWith: 'nv3.' } } },
+      where: { noteId: { in: accepted }, ...notCurrentVersions(guard.epoch) },
     });
   }
 

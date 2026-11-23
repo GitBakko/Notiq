@@ -545,6 +545,41 @@ describe('listNoteVersions', () => {
     prismaMock.note.findFirst.mockResolvedValue(null);
     await expect(listNoteVersions('u1', 'note-1')).rejects.toThrow();
   });
+
+  describe('D9: vault note, only versions of the current keyring epoch', () => {
+    beforeEach(() => {
+      prismaMock.vaultKeyring.findUnique.mockReset();
+      prismaMock.noteVersion.findMany.mockClear();
+    });
+
+    it('filters findMany on the keyring epoch prefix (with the trailing dot: nv3.1. is not nv3.10.)', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1', isVault: true });
+      prismaMock.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', epoch: 3 });
+      const cur = { id: 'v1', title: '', content: 'nv3.3.iv.ct', createdAt: new Date(NOW) };
+      prismaMock.noteVersion.findMany.mockResolvedValue([cur]);
+      const out = await listNoteVersions('u1', 'note-1');
+      expect(out).toEqual([cur]);
+      expect(prismaMock.vaultKeyring.findUnique.mock.calls[0][0].where).toEqual({ userId: 'u1' });
+      expect(prismaMock.noteVersion.findMany.mock.calls[0][0].where).toEqual({
+        noteId: 'note-1', content: { startsWith: 'nv3.3.' },
+      });
+    });
+
+    it('vault note without a keyring: empty list, no version query', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1', isVault: true });
+      prismaMock.vaultKeyring.findUnique.mockResolvedValue(null);
+      expect(await listNoteVersions('u1', 'note-1')).toEqual([]);
+      expect(prismaMock.noteVersion.findMany).not.toHaveBeenCalled();
+    });
+
+    it('non-vault note: unchanged (no keyring lookup, plain where)', async () => {
+      prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', userId: 'u1', isVault: false });
+      prismaMock.noteVersion.findMany.mockResolvedValue([]);
+      await listNoteVersions('u1', 'note-1');
+      expect(prismaMock.vaultKeyring.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.noteVersion.findMany.mock.calls[0][0].where).toEqual({ noteId: 'note-1' });
+    });
+  });
 });
 
 describe('restoreNoteVersion', () => {
@@ -655,6 +690,16 @@ describe('restoreNoteVersion', () => {
       .rejects.toMatchObject({ statusCode: 409, message: 'errors.notes.restoreConflict' });
     expect(prismaMock.note.updateMany.mock.calls[0][0].where)
       .toEqual({ id: 'note-1', userId: 'u1', isVault: true, isEncrypted: false, content: 'C'.repeat(200) });
+  });
+
+  it('D10: vault note, no keyring, envelope version -> 422 noKeyring, nothing written', async () => {
+    prismaMock.note.findFirst.mockResolvedValue({ id: 'note-1', content: 'C'.repeat(200), title: 'now', isEncrypted: false, isVault: true });
+    prismaMock.noteVersion.findUnique.mockResolvedValue({ id: 'v1', noteId: 'note-1', content: 'nv3.9.junk', title: '' });
+    prismaMock.vaultKeyring.findUnique.mockResolvedValue(null);
+    prismaMock.note.updateMany.mockClear();
+    await expect(restoreNoteVersion('u1', 'note-1', 'v1'))
+      .rejects.toMatchObject({ statusCode: 422, message: 'errors.vault.noKeyring' });
+    expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
   });
 
   it('writes searchText null for a vault note, but keeps it for a normal note', async () => {

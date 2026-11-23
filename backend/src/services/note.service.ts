@@ -64,6 +64,9 @@ export const createNote = async (
       assertVaultContent(content, guard);
       if (title !== '') throw new AppError(422, 'errors.vault.plaintextRejected');
       isEncrypted = true;
+    } else if (content.startsWith('nv3.')) {
+      // D10: an envelope planted before any keyring exists would later look like valid vault data.
+      throw new AppError(422, 'errors.vault.noKeyring');
     }
   }
 
@@ -305,6 +308,11 @@ export const updateNote = async (userId: string, id: string, data: {
         rest.isEncrypted = true;
       }
     }
+  }
+
+  // D10: envelope on a vault note while the user has no keyring (same guard as createNote).
+  if (!guard && (rest.isVault ?? note.isVault) && (rest.content ?? note.content).startsWith('nv3.')) { // effective content: a metadata-only flip must not adopt a planted envelope
+    throw new AppError(422, 'errors.vault.noKeyring');
   }
 
   // T15: an envelope body on a note that stays non-vault would overwrite plaintext with ciphertext (any keyring state).

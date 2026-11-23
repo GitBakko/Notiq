@@ -68,7 +68,7 @@ const BACKEND_ERRORS = [
   ...family('errors.vault', [
     'alreadySetup', 'attachmentsBlocked', 'conflict', 'importBlocked', 'invalidPassword', 'invalidPayload', 'invalidPin', 'invalidProof',
     'invalidRootKey', 'invalidSeal', 'invalidSealInput', 'locked', 'notReady', 'pepperMismatch', 'plaintextRejected', 'plaintextRequired',
-    'rotateNotSupported', 'setupDisabled', 'stale', 'staleRev', 'unavailable',
+    'rotateNotSupported', 'rotationPending', 'setupDisabled', 'stale', 'staleRev', 'unavailable',
   ]),
   ...family('errors.vault', ['rateLimited', 'offlineUnavailable', 'kitNotUpdated']), // generate lato client
   ...family('errors.common', ['networkError', 'unknownError']),
