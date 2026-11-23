@@ -54,7 +54,7 @@ Chiave root (ECDH + ECDSA P-384, PKCS#8):
 ```
 
 - Il cambio PIN re-incapsula solo VK. VK ed epoch non cambiano, quindi ciphertext e versioni restano validi.
-- L'epoch cambia solo con il reset.
+- L'epoch cambia con il reset e con ogni rotazione della VK: ogni nuovo Kit (rigenerazione, foglio obbligatorio, `complete` del recupero, P4 Fase 5). Vedi `2026-11-23-vault-p4-fase5-vk-rotation-plan.md`.
 - La rigenerazione del Kit (vault sbloccato) genera **nuovi `S_root` e `S_user`**, sigilla il nuovo `S_root` alla chiave root pubblica e sostituisce escrow e `userShareUnderVk` con `PUT /vault/keyring` + `vkProof`. Il client non ha bisogno del vecchio `S_root`: è solo un segreto casuale. Il vecchio Kit smette di funzionare.
 - **`vkProof` (definizione).** Ogni mutazione del keyring (`PUT /vault/keyring`, `POST /vault/recovery/:id/complete`) manda `{payload, vkProof}`: `payload` è la **stringa JSON esatta** che il server poi fa parsing (niente canonicalizzazione), `vkProof` è la firma ECDSA P-256 del messaggio in §2.1. Il server verifica con `vkSigPub` salvata, poi applica la CAS su `rev`. Siccome `rev` è nel messaggio firmato e la CAS lo incrementa, una richiesta catturata (log di proxy, ARR, root) **non si può rigiocare**: dopo il primo successo il `rev` non torna più. Metodo e path nel messaggio impediscono di spostare una firma da un endpoint all'altro. Il server non riceve **mai** un segreto riutilizzabile: niente `vkAuth` grezzo, neanche al setup (al setup viaggia solo `vkSigPub`). La rotazione di VK genera anche una nuova `vkSigKey`.
 
@@ -263,6 +263,8 @@ Solo online. Si può fare sia a vault bloccato sia sbloccato, perché serve prop
 - Il server risponde 422 `errors.vault.conflict`, che è già terminale (`failed`) anche nei bundle vecchi.
 - Allo sblocco il vault trova gli item `failed` delle note vault e salva la versione locale come nuova nota "(copia in conflitto)", ri-cifrata con il nuovo `noteId` nell'AAD. Poi accetta la versione del server e rimuove l'item.
 - Niente sovrascritture silenziose.
+
+**Dopo una rotazione della VK (P4 Fase 5).** Gli altri dispositivi sbloccati si bloccano quando vedono un'epoch server più alta. Lo sblocco offline è `offlineUnavailable` finché non si sblocca online una volta, perché l'AAD di `shareEnc` contiene l'epoch. Gli edit offline in epoch vecchia li recupera il reconcile con `prevEpoch` (Addendum 5 della spec T15, `2026-10-22-vault-t15-reconcile-spec.md`).
 
 ### 5.4 Logout
 

@@ -258,3 +258,43 @@ Nasce da J.7 del piano dei MINOR residui. Prevale su Addendum 2 §1 solo per l'a
 **3. Terminazione.** La frase di Addendum 2 §1 diventa: T-a, T-b e T-c seguono eventi esterni; T-d e T-h scattano al massimo una volta per id e per sessione; T-f fa al massimo 2 giri per ogni trigger esterno; T-g non avvia giri. Un 409 persistente sullo stesso item dà al massimo un giro in più. La riga dei componenti di accettazione diventa `VaultPage: T-c, T-d, T-h (memo), T-f, T-g, banner`.
 
 **4. Accettazione.** Dopo "Rimuovi dal dispositivo" e lo sblocco online, i titoli decifrati compaiono entro 1-2 s dall'arrivo della pull, senza chiudere note e senza "Controlla ora". In Dexie il content riprende il formato `nv3.` e il titolo resta `''`; nessun plaintext in Dexie o syncQueue. I test T-a, T-b, T-d, T-f e T-g restano invariati. L'E2E deve trattenere la pull fino a dopo lo sblocco, altrimenti T-a copre il difetto e il test non discrimina.
+
+## Addendum 5 (23/11): rotazione della VK, `prevEpoch` (P4 Fase 5)
+
+Nasce dal piano `2026-11-23-vault-p4-fase5-vk-rotation-plan.md` (§3 «Multi-dispositivo e offline», task T0 e T9). Prevale su T5, T8, T9, T14 e T15 solo dove sotto indicato. Nessuna op nuova, nessun DROP nuovo, `syncService.ts` e Dexie invariati.
+
+**1. Contesto.** Ogni nuovo Kit porta una VK nuova e il keyring passa a `epoch+1`. Il client tiene la VK vecchia come `keys.prev`, sbustata da `prevVkWrap`. C'è un solo slot: solo l'epoch immediatamente precedente. `finishRotation` ricifra sul server tutte le note SX dell'epoch precedente. Invariante: non si ruota mai con note ancora in `epoch-1`, quindi nessuna nota resta più di un'epoch indietro.
+
+**2. Snapshot.** Nuovo campo `prevEpoch`, uguale a `epoch-1` quando `keys.prev` è presente, altrimenti assente.
+- Un envelope in `prevEpoch` (riga Dexie, item della coda o server) è **leggibile** con `keys.prev`.
+- Un envelope con epoch < `prevEpoch` resta come oggi: LEAVE(epoch).
+- Senza `prevEpoch` tutte le regole restano quelle di prima.
+
+**3. Regole cambiate.**
+- **T5** con item o riga in `prevEpoch` (riga sopra, «T5 SE, riga envelope corrente»):
+  - payload decifrato uguale al server: ADOPT.
+  - payload diverso: COPY cifrata nell'epoch corrente (`withCopy`) + ADOPT.
+  - Mai DROP del testo.
+- **T9** (S0, U, con CREATE) con envelope in `prevEpoch`: REENCRYPT_CREATE nell'epoch corrente. La CREATE rinfrescata è canonica come in T9 (override di T5: id, notebookId e noteType restano).
+- **T15** (L0 con item `vault:*`) con `prevEpoch` leggibile: si applica `withCopy`, già coperto da `itemPayload`. Senza `prevEpoch` resta com'è.
+- **T8 e T14 (SX)**:
+  - SX in `prevEpoch` non va più a P3. La ricifra `finishRotation`, non il reconcile.
+  - Il reconcile lascia la riga (LEAVE) e la conta in `staleLeft`.
+  - SX con epoch < `prevEpoch` resta LEAVE(epoch).
+  - LN+SX in `prevEpoch`: LEAVE come sopra; con epoch < `prevEpoch` resta LEAVE(epoch).
+
+**4. Risultato.** Nuovo `ReconcileResult.staleLeft`, separato da `legacyLeft`.
+- `staleLeft` = numero di note server in `prevEpoch` ancora da ricifrare.
+- `legacyLeft` resta solo per il vault legacy (SL).
+- Il banner legacy non compare per le SX.
+
+**5. Precondizioni invariate.** Lock (Addendum 1), cache READY sull'epoch corrente, nessun plaintext in Dexie o coda. L'ordine di valutazione non cambia.
+
+**6. Accettazione** (test di T9 del piano Fase 5, `vaultReconcile.test.ts`).
+- T5 con `prevEpoch`, payload uguale: ADOPT, 0 copie.
+- T5 con `prevEpoch`, payload diverso: `withCopy` + ADOPT, il testo locale non si perde.
+- T9 con envelope in `prevEpoch`: REENCRYPT_CREATE nell'epoch corrente.
+- T15 con `prevEpoch`: `withCopy`.
+- T8/T14: SX in `prevEpoch` LEAVE e conteggiata in `staleLeft`; SX in `epoch-2` LEAVE(epoch).
+- `staleLeft` e `legacyLeft` separati; il banner legacy resta spento con soli SX.
+- Senza `keys.prev` nessuna regola cambia.
