@@ -109,6 +109,7 @@ Reviewer: 1 MAJOR (test di parità delle chiavi root non esteso alla chiave E2E:
 
 Residui (red-team):
 - **La rotazione del Kit non cambia la VK.** Chi ha `S_root` + `escrowBlob` di un rilascio annullato o scaduto apre ancora la VK con una copia superstite del Kit precedente (PDF, stampa), offline e per sempre. Vale già per ogni recupero completato e per ogni rigenerazione del Kit: la frase della spec «il vecchio Kit smette di funzionare» è vera solo verso il server. Mitigazione: il foglio di rotazione chiede di distruggere ogni copia del Kit precedente. Chiusura vera: rotazione della VK con ricifratura delle note. **Decisione dell'utente (13/11/2026): si pianifica nella Fase 5.**
+  - **Chiuso dalla Fase 5** (commit `8240125`, `4baea7f`, `d292304`): ogni rigenerazione del Kit e ogni recupero ruotano la VK (piano `2026-11-23-vault-p4-fase5-vk-rotation-plan.md`).
 - Isolamento E2E solo da env: controllo pre-volo in `Deploy-Server.ps1` (`VAULT_E2E` o `NODE_ENV=test` → stop) in T11/T12.
 - Nessun backfill di `releasedEscrowHash`: le righe `RELEASED` precedenti alla migration non accendono il flag. In prod non ci sono righe P4.
 - `getRecovery` in transazione interattiva: sotto pressione sul pool può rispondere 500 (P2028) dove prima accodava; la UI lo tratta come errore transitorio del polling.
