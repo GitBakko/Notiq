@@ -4,7 +4,7 @@ import { join } from 'path';
 import { registerAndLogin, type TestUser } from './helpers';
 import {
   advanceRecovery, apiFor, assertE2eBackend, assertTestRootKey, codeBOf, confirmKitUi, createSecureNoteUi, createSuperadminViaApi, deviceStoreKeys,
-  E2E_ROOT_PASSPHRASE, expectUnlocked, keyringOf, kitDialog, loginInBrowser, lockUi, newDevice, NEW_PIN, openRecoveryOf, PIN, readKit, setupVaultUi,
+  E2E_ROOT_PASSPHRASE, expectAllCurrent, expectUnlocked, keyringOf, kitDialog, loginInBrowser, lockUi, newDevice, NEW_PIN, openRecoveryOf, PIN, readKit, rotateUi, setupVaultUi,
   unlockUi, userIdOf,
 } from './vault-helpers';
 
@@ -33,7 +33,7 @@ const NOTE = { title: 'Nota del recupero', body: 'contenuto segreto di A' };
 
 interface Rig {
   user: TestUser; api: APIRequestContext; b: { ctx: BrowserContext; page: Page }; adm: { ctx: BrowserContext; page: Page; user: TestUser };
-  requestId: string; fp: string; kit: string; escrowBefore: string; epochBefore: number; codeB: string;
+  requestId: string; fp: string; kit: string; kitNew?: string; escrowBefore: string; epochBefore: number; codeB: string;
 }
 
 const openUnlockRecovery = async (page: Page) => {
@@ -52,7 +52,7 @@ async function openAdminDetail(adm: Page, email: string) {
 }
 
 /** Dal setup fino alla richiesta RELEASED (A resta bloccato). */
-async function runToReleased(page: Page, browser: Browser): Promise<Rig> {
+async function runToReleased(page: Page, browser: Browser, opts: { rotateFirst?: boolean } = {}): Promise<Rig> {
   const user = await registerAndLogin(page, { name: 'Vault Recovery User' });
   const api = await apiFor(page);
   await assertE2eBackend(api);
@@ -61,6 +61,13 @@ async function runToReleased(page: Page, browser: Browser): Promise<Rig> {
   const kit = await setupVaultUi(page, user);
   await assertTestRootKey(api);
   await createSecureNoteUi(page, api, NOTE);
+  // Rotazione PRIMA della richiesta (con una richiesta aperta la PUT del keyring darebbe 409 recoveryInProgress): il Kit di setup non vale piu'
+  let kitNew: string | undefined;
+  if (opts.rotateFirst) {
+    await page.getByRole('button', { name: 'Back' }).click();
+    kitNew = await rotateUi(page);
+    await expectAllCurrent(api, 1);
+  }
   const escrowBefore = (await keyringOf(api)).escrowHash as string;
   const epochBefore = (await keyringOf(api)).epoch as number; // il recupero ruota la VK: epoch+1 (P4 fase 5)
   await lockUi(page);
@@ -151,23 +158,38 @@ async function runToReleased(page: Page, browser: Browser): Promise<Rig> {
   await expect(dlg2.getByLabel('Root key passphrase')).toHaveCount(0); // la passphrase non resta nel DOM: il campo sparisce con lo stato RELEASED
   await shot(adm.page, '09-admin-released');
 
-  return { user, api, b, adm, requestId, fp, kit, escrowBefore, epochBefore, codeB };
+  return { user, api, b, adm, requestId, fp, kit, kitNew, escrowBefore, epochBefore, codeB };
 }
 
 test('recupero completo: richiesta, approvazione, codici, attesa, rilascio, Kit nuovo, PIN nuovo', async ({ page, browser }) => {
-  test.setTimeout(600000);
-  const r = await runToReleased(page, browser);
+  test.setTimeout(720000);
+  const r = await runToReleased(page, browser, { rotateFirst: true });
   const { api, requestId, kit } = r;
+  const kitNew0 = r.kitNew!;
   const userId = await userIdOf(page);
 
   // ---- A: form di completamento: Kit vecchio + PIN nuovo due volte ----
   await page.goto('/vault?recovery=1');
   await expect(page.getByRole('heading', { name: 'Complete the recovery' })).toBeVisible({ timeout: 30000 });
   await shot(page, '10-complete-form');
+  // Il Kit di setup non vale piu' (la rotazione ha rigenerato l'escrow): rifiutato in locale, nessuna POST complete
+  let completeCalls = 0;
+  page.on('request', (q) => { if (q.method() === 'POST' && /\/api\/vault\/recovery\/[^/]+\/complete$/.test(new URL(q.url()).pathname)) completeCalls++; });
   await page.getByLabel('Recovery Kit', { exact: true }).fill(kit);
   await page.getByLabel('New PIN', { exact: true }).fill(NEW_PIN);
   await page.getByLabel('Confirm PIN', { exact: true }).fill(NEW_PIN);
   await page.getByRole('button', { name: 'Recover access' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'The Recovery Kit is not correct. Check it and try again.' })).toBeVisible({ timeout: 60000 });
+  expect(completeCalls).toBe(0);
+  expect((await openRecoveryOf(api))?.status).toBe('RELEASED');
+
+  // Il Kit nuovo (quello della rotazione) vale
+  await page.getByLabel('Recovery Kit', { exact: true }).fill(kitNew0);
+  await page.getByLabel('New PIN', { exact: true }).fill(NEW_PIN);
+  await page.getByLabel('Confirm PIN', { exact: true }).fill(NEW_PIN);
+  await page.getByRole('button', { name: 'Recover access' }).click();
+  // Controllo positivo: col Kit valido la POST complete parte davvero (lo 0 di prima non e' un contatore rotto)
+  await expect.poll(() => completeCalls, { timeout: 60000 }).toBeGreaterThanOrEqual(1);
 
   // Foglio del Kit nuovo: finche e' aperto non compare il banner "Kit non confermato"
   const { groups } = await readKit(page);
@@ -176,6 +198,7 @@ test('recupero completo: richiesta, approvazione, codici, attesa, rilascio, Kit 
   await shot(page, '11-kit-sheet');
   const newKit = await confirmKitUi(page);
   expect(newKit).not.toBe(kit);
+  expect(newKit).not.toBe(kitNew0);
   await expect(page.getByText('The Recovery Kit was not confirmed')).toHaveCount(0);
   await expectUnlocked(page);
 
@@ -197,6 +220,7 @@ test('recupero completo: richiesta, approvazione, codici, attesa, rilascio, Kit 
   // il recupero ha ruotato la VK (epoch+1) e le note rimaste all'epoch precedente sono state portate avanti da VaultPage (finishRotation)
   expect((await keyringOf(api)).epoch).toBe(r.epochBefore + 1);
   await expect.poll(async () => (await keyringOf(api)).staleCount, { timeout: 60000 }).toBe(0);
+  expect(await expectAllCurrent(api, 1)).toBe(r.epochBefore + 1);
 
   // PIN: il vecchio e' rifiutato, il nuovo sblocca
   await page.goto('/vault');
@@ -262,6 +286,12 @@ test('rotazione del Kit: rilascio annullato da B, foglio obbligatorio al primo s
   await expect(kitDialog(page)).toBeHidden();
   expect((await keyringOf(api)).kitRotationRequired).toBe(false);
   expect((await keyringOf(api)).escrowHash).not.toBe(r.escrowBefore);
+  // La rigenerazione del Kit ruota la VK: epoch+1, tutto all'epoch nuovo, e la nota si apre ancora
+  expect(await expectAllCurrent(api, 1)).toBe(r.epochBefore + 1);
+  await expect(page.getByText(NOTE.title)).toBeVisible({ timeout: 45000 });
+  await page.getByText(NOTE.title).click();
+  await expect(page.getByPlaceholder('Note Title')).toHaveValue(NOTE.title, { timeout: 30000 });
+  await expect(page.locator('.ProseMirror')).toContainText(NOTE.body, { timeout: 30000 });
 
   await Promise.all([r.b.ctx.close(), r.adm.ctx.close()]);
 });

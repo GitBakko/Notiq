@@ -274,6 +274,66 @@ export async function syncQueueOf(page: Page): Promise<string[]> {
   );
 }
 
+/** Rotazione della VK dallo sheet (rigenera anche il Kit): PIN di conferma -> Kit nuovo -> conferma. Ritorna il Kit nuovo; il foglio lo chiude la pagina (onKitDone). */
+export async function rotateUi(page: Page, pin: string = PIN): Promise<string> {
+  await page.getByRole('button', { name: 'Vault settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Vault settings' });
+  await expect(sheet).toBeVisible();
+  await sheet.getByLabel('PIN to confirm').fill(pin);
+  await sheet.getByRole('button', { name: 'Generate new Kit' }).click();
+  return confirmKitUi(page);
+}
+
+/** Dopo una rotazione: nessuna nota stale sul server, ogni item all'epoch corrente e senza versioni in chiaro/e-1 (finalize e' l'ultimo passo, dopo lo staleCount 0). Ritorna l'epoch. */
+export async function expectAllCurrent(api: APIRequestContext, minItems = 0): Promise<number> {
+  const kr = await keyringOf(api);
+  await expect.poll(async () => (await keyringOf(api)).staleCount, { timeout: 90000 }).toBe(0);
+  const violations = async () => {
+    const items = await allVaultItems(api);
+    const bad = items.filter((i) => !i.content.startsWith(`nv3.${kr.epoch}.`) || i.hasPlaintextVersions).map((i) => `${i.id} ${i.content.slice(0, 8)} versions=${i.hasPlaintextVersions}`);
+    // `minItems`: evita un controllo vacuo su un utente senza item
+    return items.length >= minItems ? bad : [...bad, `solo ${items.length} item, attesi almeno ${minItems}`];
+  };
+  await expect.poll(violations, { timeout: 90000 }).toEqual([]);
+  return kr.epoch as number;
+}
+
+export type VaultItem = { id: string; noteType: string; title: string; content: string; hasPlaintextVersions: boolean; isTrashed: boolean };
+
+/** Tutti gli item vault dell'utente: segue `next` (pagine da 100). Il cestino rientra, come nel criterio SQL di rotazione. */
+export async function allVaultItems(api: APIRequestContext): Promise<VaultItem[]> {
+  const out: VaultItem[] = [];
+  let after: string | undefined;
+  for (let guard = 0; guard < 1000; guard++) {
+    const r = (await (await api.post('/api/vault/items', { data: after ? { after } : {} })).json()) as { items: VaultItem[]; next: string | null };
+    out.push(...r.items);
+    if (!r.next) return out;
+    after = r.next;
+  }
+  throw new Error('allVaultItems: paginazione senza fine');
+}
+
+/** Righe `notes` di Dexie (`NotiqDB`) per gli id dati: `{ id, content }`, per verificare l'epoch dell'envelope locale. */
+export async function dexieNotesOf(page: Page, ids: string[]): Promise<{ id: string; content: string }[]> {
+  return page.evaluate(
+    (want) =>
+      new Promise<{ id: string; content: string }[]>((resolve, reject) => {
+        const open = indexedDB.open('NotiqDB');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const r = db.transaction('notes', 'readonly').objectStore('notes').getAll();
+          r.onsuccess = () => {
+            db.close();
+            resolve((r.result as { id: string; content?: string }[]).filter((n) => want.includes(n.id)).map((n) => ({ id: n.id, content: n.content ?? '' })));
+          };
+          r.onerror = () => reject(r.error);
+        };
+      }),
+    ids,
+  );
+}
+
 export async function lockUi(page: Page) {
   await page.getByRole('button', { name: 'Lock Vault' }).click();
   await expect(page.getByRole('heading', { name: 'Vault Locked' })).toBeVisible({ timeout: 15000 });

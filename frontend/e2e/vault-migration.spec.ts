@@ -72,8 +72,8 @@ test('vault legacy -> wizard -> note migrate (titoli compresi), finalize, nessun
   const page1Notes: { id: string }[] = Array.isArray(page1) ? page1 : (page1.notes ?? []);
   expect(page1Notes.length).toBeLessThanOrEqual(50);
   expect(page1Notes.some((n) => n.id === oldNote), 'la nota vecchia deve stare oltre la prima pagina').toBe(false);
-  const versionsBefore = await (await api.get(`/api/notes/${oldNote}/versions`)).json();
-  expect(Array.isArray(versionsBefore) ? versionsBefore.length : (versionsBefore.versions?.length ?? 0)).toBeGreaterThan(0);
+  // Senza keyring GET /versions ritorna [] (D9): le versioni in chiaro si vedono dal listing /vault/items
+  expect((await vaultItems(api, [oldNote])).items[0].hasPlaintextVersions).toBe(true);
 
   const before = await keyringOf(api);
   expect(before.status).toBe('NONE');
