@@ -963,6 +963,390 @@ describe('VaultPage: trigger del giro T-d, T-h, T-f, T-g', () => {
   });
 });
 
+describe('VaultPage: T12b, barriera per istanza di editor', () => {
+  const tick = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  const ENV2 = (n: string) => ENV(n).replace('nv3.1.', 'nv3.2.');
+  const unlock2 = () => { unlock(); useVaultStore.setState({ epoch: 2 }); };
+  const pushRow = (noteType: string, content = ENV('alpha'), id = 'a') =>
+    h.rows.push({ id, userId: 'u1', title: '', content, isVault: true, noteType, updatedAt: '2026-01-01T00:00:00Z', createdAt: '2026-01-01T00:00:00Z' });
+  const held = (testId: string) => {
+    expect(screen.queryByTestId(testId)).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('common.loading');
+  };
+  // giro che non si assesta finche' il test non chiama done()
+  const pendingRound = () => {
+    const ctl = { done: () => {} };
+    h.reconcile.mockImplementation(() => new Promise((r) => { ctl.done = () => r(res()); }));
+    return ctl;
+  };
+
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
+
+  it.each([['CREDENTIAL', 'cred-form'], ['NOTE', 'note-editor']])('%s: riga e1 con epoch 2 e giro pendente -> placeholder, poi il giro (later 0) monta l\'editor', async (type, testId) => {
+    unlock2();
+    pushRow(type);
+    const ctl = pendingRound();
+    mount('/?noteId=a');
+    await tick();
+    held(testId);
+    await act(async () => { ctl.done(); });
+    await tick();
+    expect(screen.getByTestId(testId)).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('nessun gate: riga a epoch corrente (nv3.2.) -> editor subito, la barriera non aggiunge giri (solo T-a)', async () => {
+    unlock2();
+    pushRow('CREDENTIAL', ENV2('alpha'));
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    mount('/?noteId=a');
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+    expect(h.reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('nessun gate offline: riga e1 con epoch 2 -> editor subito, nessun giro (D22)', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    unlock2();
+    pushRow('CREDENTIAL');
+    mount('/?noteId=a');
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+    expect(h.reconcile).not.toHaveBeenCalled();
+  });
+
+  it('editor montato a epoch corrente, poi rotazione nella stessa sessione (chiavi nuove, epoch 3), riga ancora e2 -> stesso elemento, nessun placeholder', async () => {
+    unlock2();
+    pushRow('CREDENTIAL', ENV2('alpha'));
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    mount('/?noteId=a');
+    await tick();
+    const el = screen.getByTestId('cred-form');
+    h.finish.mockImplementation(() => new Promise(() => {}));
+    act(() => { useVaultStore.setState({ keys: {} as any, epoch: 3 }); });
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBe(el);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('editor montato dopo un giro assestato su riga e1, rotazione (epoch 3) con reconcile/finish pendenti -> resta montato', async () => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    mount('/?noteId=a');
+    await tick();
+    const el = screen.getByTestId('cred-form');
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    h.finish.mockImplementation(() => new Promise(() => {}));
+    act(() => { useVaultStore.setState({ keys: {} as any, epoch: 3 }); });
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBe(el);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('editor montato offline su riga e1, ritorno online -> resta montato (stesso elemento), D22', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    unlock2();
+    pushRow('CREDENTIAL');
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    mount('/?noteId=a');
+    await tick();
+    const el = screen.getByTestId('cred-form');
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    act(() => { window.dispatchEvent(new Event('online')); });
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBe(el);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('cerimonia di recupero con noteId in URL: chiavi nuove durante il wizard, alla chiusura placeholder finche\' un giro si assesta, poi l\'editor', async () => {
+    unlock2();
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    pushRow('CREDENTIAL');
+    const ctl = pendingRound();
+    mount('/vault?recovery=1&noteId=a');
+    await tick();
+    expect(screen.getByTestId('recovery')).toBeTruthy();
+    act(() => { useVaultStore.setState({ keys: {} as any, epoch: 3 }); });
+    await tick();
+    fireEvent.click(screen.getByText('rec-none'));
+    await tick();
+    held('cred-form');
+    await act(async () => { ctl.done(); });
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('chiavi cambiate senza un giro successivo (finish rifiutato), poi si apre un\'ALTRA nota e1: la barriera lancia un giro, assestato -> editor', async () => {
+    unlock2();
+    pushRow('CREDENTIAL', ENV('alpha'), 'a');
+    pushRow('CREDENTIAL', ENV('beta'), 'b');
+    mount('/');
+    await tick(); // T-a si assesta con le chiavi iniziali
+    h.finish.mockRejectedValue(new Error('rete'));
+    act(() => { useVaultStore.setState({ keys: {} as any, epoch: 3 }); });
+    await tick();
+    const ctl = pendingRound();
+    const before = h.reconcile.mock.calls.length;
+    fireEvent.click(screen.getByText('card:b'));
+    await tick();
+    held('cred-form');
+    expect(h.reconcile.mock.calls.length).toBeGreaterThan(before);
+    await act(async () => { ctl.done(); });
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+  });
+
+  it('giro che non si assesta mai: l\'editor monta dopo 30 s, non prima', async () => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    mount('/?noteId=a');
+    await tick();
+    await tick(29_000);
+    held('cred-form');
+    await tick(1_000);
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('later 1 e riga ancora e1: resta trattenuto, T-f ritenta (openNoteRef nullo) e la riga a e2 monta l\'editor', async () => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    h.reconcile
+      .mockResolvedValueOnce(res({ later: 1 })) // T-a
+      .mockResolvedValueOnce(res({ later: 1 })) // barriera
+      .mockImplementationOnce(async () => { h.rows[0].content = ENV2('alpha'); return res(); }); // ritentativo T-f
+    mount('/?noteId=a');
+    await tick();
+    held('cred-form');
+    expect(h.reconcile).toHaveBeenCalledTimes(2);
+    await tick(5_000);
+    expect(h.reconcile).toHaveBeenCalledTimes(3);
+    await notifyLive();
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+  });
+
+  it('rinuncia: later 1 sempre, retry esauriti -> l\'editor monta con la riga ancora e1', async () => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    h.reconcile.mockResolvedValue(res({ later: 1 }));
+    mount('/?noteId=a');
+    await tick();
+    await tick(5_000);
+    held('cred-form');
+    expect(h.reconcile).toHaveBeenCalledTimes(3);
+    await tick(20_000);
+    expect(h.reconcile).toHaveBeenCalledTimes(4);
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+  });
+
+  it('la riga arriva a nv3.2. via liveQuery prima che il giro si assesti: l\'editor monta', async () => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    pendingRound();
+    mount('/?noteId=a');
+    await tick();
+    held('cred-form');
+    h.rows[0].content = ENV2('alpha');
+    await notifyLive();
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+  });
+
+  it.each([
+    ['skipped busy', () => h.reconcile.mockResolvedValue(res({ later: 1, skipped: 'busy' }))],
+    ['skipped notReady', () => h.reconcile.mockResolvedValue(res({ later: 1, skipped: 'notReady' }))],
+    ['aborted', () => h.reconcile.mockResolvedValue(res({ later: 1, aborted: true }))],
+    ['rejection', () => h.reconcile.mockRejectedValue(new Error('rete'))],
+  ])('%s: l\'editor monta', async (_n, setup) => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    setup();
+    mount('/?noteId=a');
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+  });
+
+  it('blocco poi sblocco con lo stesso noteId in URL e riga ancora e1, giro pendente -> placeholder di nuovo', async () => {
+    unlock2();
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 }); // da bloccato la pagina rilegge il keyring (le implementazioni dei mock non si azzerano tra i test)
+    pushRow('CREDENTIAL');
+    mount('/?noteId=a');
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+    act(() => { useVaultStore.setState({ unlockedUserId: null, keys: null, epoch: null }); });
+    await tick();
+    expect(screen.queryByTestId('cred-form')).toBeNull();
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    act(() => { useVaultStore.setState({ unlockedUserId: 'u1', keys: {} as any, epoch: 2 }); });
+    await tick();
+    held('cred-form');
+  });
+
+  it('nota A e1 in attesa, passaggio alla nota B e1: B ha la sua barriera (30 s da quando si apre) e il timer di A non conta', async () => {
+    unlock2();
+    pushRow('CREDENTIAL', ENV('alpha'), 'a');
+    pushRow('CREDENTIAL', ENV('beta'), 'b');
+    h.reconcile.mockImplementation(() => new Promise(() => {}));
+    mount('/?noteId=a');
+    await tick();
+    await tick(20_000);
+    held('cred-form');
+    fireEvent.click(screen.getByText('card:b'));
+    await tick();
+    held('cred-form');
+    await tick(29_000); // 49 s dall'apertura di A: il suo timer sarebbe scaduto, quello di B no
+    held('cred-form');
+    await tick(1_000);
+    expect(screen.getByTestId('cred-form').textContent).toContain('b');
+  });
+
+  it('riga ancora in lettura: il giro later 1 ritenta (openNoteRef nullo, MINOR 1); letta la riga, il giro della barriera si assesta e l\'editor monta (R1f)', async () => {
+    unlock2();
+    pushRow('CREDENTIAL');
+    let release: () => void = () => {};
+    h.getHold = { id: 'a', p: new Promise<void>((r) => { release = r; }) };
+    h.reconcile.mockResolvedValueOnce(res({ later: 1 })).mockResolvedValueOnce(res({ later: 1 })).mockResolvedValue(res());
+    mount('/?noteId=a');
+    await tick();
+    await tick(5_000);
+    expect(h.reconcile).toHaveBeenCalledTimes(2);
+    release();
+    await tick();
+    await tick();
+    expect(screen.getByTestId('cred-form')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  describe('R1, review della barriera', () => {
+    const roundCtls = () => {
+      const ctls: Array<() => void> = [];
+      h.reconcile.mockImplementation(() => new Promise((r) => { ctls.push(() => r(res())); }));
+      return ctls;
+    };
+
+    it('R1a: editor aperto su nv3.2. (riga vuota di epoch), poi la riga scende a nv3.1. -> stesso elemento, nessun placeholder', async () => {
+      unlock2();
+      pushRow('CREDENTIAL', ENV2('alpha'));
+      h.reconcile.mockImplementation(() => new Promise(() => {}));
+      mount('/?noteId=a');
+      await tick();
+      const el = screen.getByTestId('cred-form');
+      h.rows[0].content = ENV('alpha');
+      await notifyLive();
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBe(el);
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R1b: un giro partito PRIMA del mount non apre la barriera; si apre solo col giro partito dopo', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      const ctls = roundCtls();
+      mount('/');
+      await tick();
+      expect(ctls).toHaveLength(1); // T-a, in volo
+      fireEvent.click(screen.getByText('card:a'));
+      await tick();
+      expect(ctls).toHaveLength(2); // il giro della barriera
+      held('cred-form');
+      await act(async () => { ctls[0](); });
+      await tick();
+      held('cred-form');
+      await act(async () => { ctls[1](); });
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R1c: staleLeft 1 con finishRotation pendente -> placeholder; a rotazione finita il giro di follow-up assesta e l\'editor monta', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      let finishOk: () => void = () => {};
+      h.finish.mockImplementation(() => new Promise((r) => { finishOk = () => r({ unreadable: [] }); }));
+      h.reconcile.mockResolvedValueOnce(res({ staleLeft: 1 })).mockResolvedValueOnce(res({ staleLeft: 1 })); // T-a, barriera; poi il follow-up (default)
+      mount('/');
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByText('card:a'));
+      await tick();
+      expect(h.reconcile).toHaveBeenCalledTimes(2);
+      held('cred-form');
+      await act(async () => { finishOk(); });
+      await tick();
+      expect(h.reconcile).toHaveBeenCalledTimes(3);
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R1c: staleLeft 1 e finishRotation rifiutato (rete) -> l\'editor monta senza aspettare i 30 s', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      let finishFail: () => void = () => {};
+      h.finish.mockImplementation(() => new Promise((_r, rej) => { finishFail = () => rej(new Error('rete')); }));
+      h.reconcile.mockResolvedValueOnce(res()).mockResolvedValueOnce(res({ staleLeft: 1 })); // T-a, barriera
+      mount('/');
+      await tick();
+      fireEvent.click(screen.getByText('card:a'));
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      held('cred-form');
+      await act(async () => { finishFail(); });
+      await tick(); // niente avanzamento del tempo: la barriera si assesta sul fallimento
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R1c: staleLeft 1 con rotatedFor === keys (seconda volta nella sessione) -> rotateStale non parte e la barriera si assesta subito', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      h.reconcile.mockResolvedValueOnce(res({ staleLeft: 1 })).mockResolvedValueOnce(res()).mockResolvedValueOnce(res({ staleLeft: 1 })); // T-a, follow-up, barriera
+      mount('/');
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByText('card:a'));
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R1d: riga e1 gia\' synced -> editor subito, nessun giro in piu\'', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      h.rows[0].syncStatus = 'synced';
+      h.reconcile.mockImplementation(() => new Promise(() => {}));
+      mount('/?noteId=a');
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
+    });
+
+    it('R1e: barriera in attesa con il timer T-f armato, si apre il recupero -> nessun nuovo giro con le chiavi pre-recupero', async () => {
+      unlock2();
+      h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+      pushRow('CREDENTIAL');
+      h.reconcile.mockResolvedValue(res({ later: 1 }));
+      function Go() { const n = useNavigate(); return <button onClick={() => n('/?noteId=a&recovery=1')}>go-recovery</button>; }
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter initialEntries={['/?noteId=a']}><VaultPage /><Go /></MemoryRouter>
+        </QueryClientProvider>,
+      );
+      await tick();
+      held('cred-form');
+      const before = h.reconcile.mock.calls.length;
+      fireEvent.click(screen.getByText('go-recovery'));
+      await tick();
+      expect(screen.getByTestId('recovery')).toBeTruthy();
+      await tick(25_000);
+      expect(h.reconcile.mock.calls.length).toBe(before);
+    });
+  });
+});
+
 describe('VaultPage: rotazione della VK, note stale (Fase 5, T10)', () => {
   const ctxNow = () => ({ ctx: { keys: useVaultStore.getState().keys, userId: 'u1', epoch: 1 } });
   const HUGE = 2 * 1024 * 1024; // oltre MAX_REWRAP_LEN (1,5 MiB)

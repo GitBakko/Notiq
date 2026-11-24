@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSearchParams } from 'react-router-dom';
@@ -71,6 +71,51 @@ const sessionCtx = () => {
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const MAX_ENVELOPE_LEN = 2 * 1024 * 1024; // oltre non passa il limite del server
 const LATER_RETRY_MS = [5_000, 20_000]; // T-f: recupero delle note in LATER (spec, Addendum 2 §1)
+const BARRIER_MS = 30_000; // T12b: oltre questo l'editor monta comunque (giro che non si assesta)
+
+// T12b: barriera per istanza di editor. Online, con la riga vault non ancora sincronizzata e a un'epoch vecchia, l'editor terrebbe il Web Lock `shared` e il commit del reconcile
+// (`exclusive`+`ifAvailable`) uscirebbe LATER per tutta la sua vita: prima di montarlo si aspetta un giro PARTITO dopo il mount della barriera che si assesti (R1b), che la riga
+// arrivi all'epoch, o BARRIER_MS. Online, epoch e riga di partenza sono catturati al mount; `ready` va solo da false a true (R1a: il latch `opened`), quindi nessun cambio
+// successivo di chiavi, rete o riga smonta un editor aperto. Il confronto della riga e' con `epoch0` (quello del mount), non con l'epoch corrente: e' voluto.
+const envEpochOf = (c: string | undefined) => Number(ENVELOPE_RE.exec(c ?? '')?.[1] ?? Infinity); // non-envelope: nulla da riportare
+function EditorBarrier({ noteId, content, syncStatus, epoch, online, settledSeq, roundSeq, runRef, onOpen, children }: {
+  noteId: string; content: string | undefined; syncStatus: string | undefined; epoch: number | null; online: boolean; settledSeq: number;
+  roundSeq: { current: number }; runRef: { current: (retry?: boolean) => void }; onOpen: (id: string | null) => void; children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [epoch0] = useState(epoch);
+  // R1d: una riga gia' sincronizzata non ha modifiche locali da spingere, l'editor la idrata da solo sotto il suo lock shared
+  const [waits] = useState(() => online && syncStatus !== 'synced' && envEpochOf(content) < (epoch ?? -1));
+  const [opened, setOpened] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const seq0 = useRef<number | null>(null);
+  const arrived = !waits || envEpochOf(content) >= (epoch0 ?? -1) || timedOut;
+  const ready = opened || arrived;
+  useEffect(() => {
+    if (!waits) return;
+    seq0.current = roundSeq.current; // prima del giro della barriera: un giro gia' in volo non la apre
+    runRef.current();
+  }, [waits, roundSeq, runRef]);
+  useEffect(() => {
+    if (opened) return;
+    // latch in microtask: il lint vieta il setState sincrono nel corpo dell'effect, e qui la microtask gira prima di ogni altro render
+    if (arrived || (seq0.current !== null && settledSeq > seq0.current)) queueMicrotask(() => setOpened(true));
+  }, [opened, arrived, settledSeq]);
+  useEffect(() => {
+    if (ready) return;
+    const id = setTimeout(() => setTimedOut(true), BARRIER_MS);
+    return () => clearTimeout(id);
+  }, [ready]);
+  // T-f: con un editor montato i giri di recupero aspettano T-c; con la barriera ancora chiusa no, cosi' ritentano
+  useEffect(() => {
+    if (!ready) return;
+    onOpen(noteId);
+    return () => onOpen(null);
+  }, [ready, noteId, onOpen]);
+  return ready ? <>{children}</> : (
+    <div role="status" className="flex h-full items-center justify-center text-neutral-400 dark:text-neutral-500">{t('common.loading')}</div>
+  );
+}
 
 // Solo in memoria (D8): titolo decifrato e testo di ricerca. Mai in Dexie, coda o storage.
 interface Plain { title: string; hay: string }
@@ -107,6 +152,7 @@ export default function VaultPage() {
   const userId = useAuthStore((s) => s.user?.id);
   const unlocked = useVaultStore((s) => !!userId && s.unlockedUserId === userId && !!s.keys);
   const keys = useVaultStore((s) => s.keys);
+  const epoch = useVaultStore((s) => s.epoch);
   const lockVault = useVaultStore((s) => s.lockVault);
   const touchVault = useVaultStore((s) => s.touchVault);
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,8 +193,10 @@ export default function VaultPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectedNoteId = searchParams.get('noteId');
-  const openNoteRef = useRef(selectedNoteId); // T-f: con un editor aperto i giri di recupero aspettano T-c
-  useEffect(() => { openNoteRef.current = selectedNoteId; }, [selectedNoteId]);
+  const openNoteRef = useRef<string | null>(null); // T-f: con un editor aperto i giri di recupero aspettano T-c; lo imposta EditorBarrier solo a barriera aperta
+  const setOpenNote = useCallback((id: string | null) => { openNoteRef.current = id; }, []);
+  const [settledSeq, setSettledSeq] = useState(0); // T12b: numero del giro piu' alto assestato (niente retry in programma); la barriera lo confronta col roundSeq del suo mount
+  const roundSeq = useRef(0); // T12b: numero progressivo dei giri partiti
   const rootKey = getActiveRootKey();
   // Il wizard (setup o migrazione) resta montato finche' non finisce: il setup sblocca prima della cerimonia del Kit.
   // Il recupero (?recovery=1 dal banner/notifica, o "PIN dimenticato") occupa lo stesso posto: reconcile e checkPendingOnStart restano spenti
@@ -296,6 +344,7 @@ export default function VaultPage() {
       const code = (err as { name?: string; code?: string } | null)?.name === 'MigrationError' ? (err as { code?: string }).code : undefined;
       if (code !== 'busy') rotatedFor.current = null; // ripresa fallita (rete, 429, ...): un altro trigger puo' riprovare; con busy un altro giro sta gia' lavorando
       if (code === 'busy') return;
+      if (aliveRef.current) setSettledSeq((n) => Math.max(n, roundSeq.current)); // R1c: la rotazione fallita non lascia la barriera fino ai 30 s
       setDeferKit((d) => (d?.why === 'stale' ? null : d)); // fallita: il foglio forzato deve poter ricomparire; un rinvio local aspetta la sua condizione
       if (!aliveRef.current) return;
       if (code === 'locked') {
@@ -332,9 +381,12 @@ export default function VaultPage() {
   const runReconcile = useCallback((retry = false) => {
     clearTimeout(laterTimer.current);
     if (!retry) laterTry.current = 0;
+    const seq = ++roundSeq.current;
+    const settle = () => { if (aliveRef.current) setSettledSeq((n) => Math.max(n, seq)); };
     vaultReconcile()
       .then((r) => {
-        if (!aliveRef.current || r.skipped) return;
+        if (!aliveRef.current) return;
+        if (r.skipped) { settle(); return; }
         setLegacyLeft(r.legacyLeft); // solo le SL: le stale (staleLeft) le chiude finishRotation, non il banner
         setLegacyPinLeft(r.legacyPin ?? 0);
         if (deferRef.current?.why === 'local') {
@@ -344,14 +396,16 @@ export default function VaultPage() {
             if (!still && aliveRef.current) setDeferKit((d) => (d?.why === 'local' ? null : d));
           });
         }
-        if (r.staleLeft > 0) void rotateStale();
+        let rotatingNow = false; // R1c: con una rotazione in corso a assestare e' il giro di follow-up di rotateStale
+        if (r.staleLeft > 0) { void rotateStale(); rotatingNow = rotating.current; }
+        const settleNow = () => { if (!rotatingNow) settle(); };
         if (r.conflictsResolved + r.reactivated > 0) void syncPush().catch(() => false); // T-g: ACK e REQUEUE non svegliano la push reattiva
-        if (!r.later) { laterTry.current = 0; return; }
-        if (r.aborted || openNoteRef.current || laterTry.current >= LATER_RETRY_MS.length) return; // T-f
+        if (!r.later) { laterTry.current = 0; settleNow(); return; }
+        if (r.aborted || openNoteRef.current || laterTry.current >= LATER_RETRY_MS.length) { settleNow(); return; } // T-f
         clearTimeout(laterTimer.current); // single-flight: due .then possono arrivare qui, il primo timer non va perso
         laterTimer.current = setTimeout(() => { if (aliveRef.current && !openNoteRef.current) runRef.current(true); }, LATER_RETRY_MS[laterTry.current++]);
       })
-      .catch(() => { /* il prossimo trigger riprova */ });
+      .catch(() => { settle(); /* il prossimo trigger riprova */ });
   }, [rotateStale]);
   useEffect(() => { runRef.current = runReconcile; }, [runReconcile]);
 
@@ -413,6 +467,7 @@ export default function VaultPage() {
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
   }, [reconcileEnabled, runReconcile]);
+  useEffect(() => { if (!reconcileEnabled) clearTimeout(laterTimer.current); }, [reconcileEnabled]); // R1e: un retry T-f non parte con le chiavi pre-recupero
 
   // T-c: l'editor chiama onReleased dopo l'ultimo salvataggio locale e il rilascio del lock; la push porta fuori l'edit, poi il giro
   const onEditorReleased = useCallback(() => {
@@ -597,7 +652,6 @@ export default function VaultPage() {
   );
   // useLiveQuery restituisce il risultato delle deps precedenti finche' la nuova query non emette: si usa solo se e' della nota nell'URL
   const selectedNote = sel && sel.id === selectedNoteId ? sel.row : undefined;
-
   // Auto-close se la nota non esiste piu', e' nel cestino o e' uscita dal vault
   useEffect(() => {
     if (selectedNote === undefined) return;
@@ -892,23 +946,34 @@ export default function VaultPage() {
   const renderEditor = () => (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-neutral-900 relative">
       {selectedNote && selectedNote.isVault ? (
-        selectedNote.noteType === 'CREDENTIAL' ? (
-          <CredentialForm
-            key={selectedNote.id}
-            note={selectedNote as unknown as Note}
-            onBack={() => setSelectedNoteId(null)}
-            onDelete={() => setSelectedNoteId(null)}
-            onReleased={onEditorReleased}
-            onLegacyPin={openLegacyPin}
-          />
-        ) : (
-          <VaultNoteEditor
-            key={selectedNote.id}
-            note={selectedNote as unknown as Note}
-            onBack={() => setSelectedNoteId(null)}
-            onReleased={onEditorReleased}
-          />
-        )
+        <EditorBarrier
+          key={selectedNote.id}
+          noteId={selectedNote.id}
+          content={selectedNote.content}
+          syncStatus={selectedNote.syncStatus}
+          epoch={epoch}
+          online={online}
+          settledSeq={settledSeq}
+          roundSeq={roundSeq}
+          runRef={runRef}
+          onOpen={setOpenNote}
+        >
+          {selectedNote.noteType === 'CREDENTIAL' ? (
+            <CredentialForm
+              note={selectedNote as unknown as Note}
+              onBack={() => setSelectedNoteId(null)}
+              onDelete={() => setSelectedNoteId(null)}
+              onReleased={onEditorReleased}
+              onLegacyPin={openLegacyPin}
+            />
+          ) : (
+            <VaultNoteEditor
+              note={selectedNote as unknown as Note}
+              onBack={() => setSelectedNoteId(null)}
+              onReleased={onEditorReleased}
+            />
+          )}
+        </EditorBarrier>
       ) : (
         <div className="flex h-full items-center justify-center text-neutral-400 flex-col p-4 text-center dark:text-neutral-500">
           <Lock size={48} className="mb-4 opacity-20" />

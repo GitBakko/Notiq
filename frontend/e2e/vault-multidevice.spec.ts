@@ -219,11 +219,12 @@ test('rotazione da A con una credenziale aperta e modificata (non salvata) su A2
   await unlockUi(a2);
   await expectUnlocked(a2);
 
-  // L'editor riaperto tiene il lock shared e blocca il reconcile finché non si chiude: difetto tracciato a parte (T12b).
-  await a2.getByRole('button', { name: 'Back' }).click();
-  expect(await expectAllCurrent(api, 1)).toBe(e0 + 1);
+  // T12b: l'editor riaperto resta aperto (non si chiude per sbloccare il reconcile): la barriera per istanza di VaultPage (EditorBarrier) lo trattiene finché un giro si assesta o la riga è all'epoch corrente
+  await expect(a2.getByPlaceholder('Enter password')).not.toHaveValue('', { timeout: 45000 });
   await expect.poll(async () => (await syncQueueOf(a2)).length, { timeout: 90000 }).toBe(0);
   await expect.poll(async () => (await keyringOf(api)).staleCount, { timeout: 90000 }).toBe(0);
+  expect(await expectAllCurrent(api, 1)).toBe(e0 + 1);
+  await a2.getByRole('button', { name: 'Back' }).click();
 
   // La modifica non e' persa: sta nella credenziale o in una copia di conflitto
   const rows = a2.getByRole('heading', { level: 3, name: /^MD Dirty( \(conflict copy\))?$/ });
@@ -245,5 +246,70 @@ test('rotazione da A con una credenziale aperta e modificata (non salvata) su A2
   await expect.poll(collect, { timeout: 60000 }).toContain('pw-A2-dirty');
   expect(await dumpDeviceStorage(a2)).not.toContain('pw-A2-dirty');
   expect(await dumpDeviceStorage(page)).not.toContain('pw-A2-dirty');
+  await api.dispose();
+});
+
+test('rotazione da A con una nota sicura aperta e modificata (non salvata) su A2: il reconcile non resta bloccato dall\'editor riaperto, il testo non è perso né su disco', async ({ page }) => {
+  test.setTimeout(420000);
+  const user = await registerAndLogin(page, { name: 'Vault Rotation Dirty Note' });
+  const api = await apiFor(page);
+  await setupVaultUi(page, user);
+  await createSecureNoteUi(page, api, { title: 'MD Dirty Note', body: 'body-d0' });
+  await page.getByRole('button', { name: 'Back' }).click();
+  const e0 = (await keyringOf(api)).epoch as number;
+
+  // A2: seconda scheda dello stesso contesto, sbloccata, nota aperta
+  const a2 = await page.context().newPage();
+  await a2.goto('/vault');
+  await unlockUi(a2);
+  await expectUnlocked(a2);
+  await a2.getByText('MD Dirty Note', { exact: true }).click();
+  await expect(a2.locator('.ProseMirror')).toContainText('body-d0', { timeout: 30000 });
+
+  // Timer di A2 fermi: il debounce di salvataggio non scatta, la modifica resta "sporca" fino al blocco
+  await expect.poll(async () => (await syncQueueOf(a2)).length, { timeout: 30000 }).toBe(0);
+  await a2.clock.install();
+  await a2.clock.pauseAt(Date.now() + 1000);
+  await a2.locator('.ProseMirror').click();
+  await a2.locator('.ProseMirror').pressSequentially('-body-A2-dirty');
+  await expect(a2.locator('.ProseMirror')).toContainText('body-A2-dirty');
+  await a2.waitForTimeout(1500); // piu' del debounce reale: con i timer fermi non deve essere partito nessun salvataggio
+  expect(await syncQueueOf(a2)).toHaveLength(0);
+
+  // A ruota la VK: A2 si blocca (evento storage) e il flusher pre-lock salva con le chiavi catturate
+  await rotateUi(page);
+  await expect(a2.getByRole('heading', { name: 'Vault Locked' })).toBeVisible({ timeout: 30000 });
+  await a2.clock.resume();
+  expect(await dumpDeviceStorage(a2)).not.toContain('body-A2-dirty');
+  await unlockUi(a2);
+  await expectUnlocked(a2);
+
+  // T12b: l'editor riaperto resta aperto, il reconcile porta comunque coda e keyring a posto
+  await expect(a2.locator('.ProseMirror')).toContainText('body-', { timeout: 45000 });
+  await expect.poll(async () => (await syncQueueOf(a2)).length, { timeout: 90000 }).toBe(0);
+  await expect.poll(async () => (await keyringOf(api)).staleCount, { timeout: 90000 }).toBe(0);
+  expect(await expectAllCurrent(api, 1)).toBe(e0 + 1);
+  await a2.getByRole('button', { name: 'Back' }).click();
+
+  // La modifica non e' persa: sta nella nota o in una copia di conflitto
+  const rows = a2.getByRole('heading', { level: 3, name: /^MD Dirty Note( \(conflict copy\))?$/ });
+  await expect(rows.first()).toBeVisible({ timeout: 45000 });
+  const serverNotes = async () => (await allVaultItems(api)).filter((i) => i.noteType !== 'CREDENTIAL').length;
+  await expect.poll(async () => (await rows.count()) === (await serverNotes()), { timeout: 90000 }).toBe(true);
+  const collect = async () => {
+    const out: string[] = [];
+    const n = await rows.count();
+    for (let i = 0; i < n; i++) {
+      await rows.nth(i).click();
+      const body = a2.locator('.ProseMirror');
+      await expect(body).not.toHaveText('', { timeout: 30000 });
+      out.push(await body.innerText());
+      await a2.getByRole('button', { name: 'Back' }).click();
+    }
+    return out.join('|');
+  };
+  await expect.poll(collect, { timeout: 60000 }).toContain('body-A2-dirty');
+  expect(await dumpDeviceStorage(a2)).not.toContain('body-A2-dirty');
+  expect(await dumpDeviceStorage(page)).not.toContain('body-A2-dirty');
   await api.dispose();
 });
