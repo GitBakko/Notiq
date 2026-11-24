@@ -64,8 +64,8 @@ import { purgeApiCache } from '../apiCache';
 import { deriveS } from '../../utils/argon2';
 import { buildRecoveryPayload, fingerprintOf, generateRecoveryKeyPair } from '../../utils/vaultRecoveryCrypto';
 import {
-  b64uDecode, b64uEncode, decryptShare, deriveKekPin, deriveRk, generateSigKey, generateVkRaw, importVk, sealRootShare, sha256hex, sha256hexBytes,
-  unwrapEscrow, unwrapVkPin, wrapEscrow, wrapVkPin, wrapVkSigKey,
+  b64uDecode, b64uEncode, decryptItem, decryptShare, deriveKekPin, deriveNoteKey, deriveRk, encryptItem, generateSigKey, generateVkRaw, importVk, sealRootShare, sha256hex, sha256hexBytes,
+  unwrapEscrow, unwrapPrevVk, unwrapVkPin, wrapEscrow, wrapVkPin, wrapVkSigKey,
 } from '../../utils/vaultCrypto';
 import { formatKit } from '../../utils/vaultKit';
 import enLocale from '../../locales/en.json';
@@ -91,12 +91,16 @@ const code = (e: unknown) => (e as { code?: string }).code;
 type Row = {
   epoch: number; rev: number; kdfParams: typeof KDF; pinSalt: string; wrappedVkPin: string; wrappedVkSigKey: string; vkSigPub: string;
   rootKeyId: string; escrowBlob: string; serverShare: string; authKey: string; escrowHash: string;
+  /** Note ancora a un'epoch precedente (T11: > 0 = rotazione da finire) e prevVkWrap dell'ultima rotazione. */
+  staleCount?: number; prevVkWrap?: string | null;
 };
 
 class FakeServer {
   kr!: Row;
   r: { status: string; fingerprint: string; payloadHash?: string; sealedCodeA?: string | null; sig: string } | null = null;
   posts: { id: string; payload: string; proof: string }[] = [];
+  /** `rotate` dei payload applicati (T11). */
+  applied: { vkSigPub: string; wrappedVkSigKey: string; prevVkWrap: string }[] = [];
   created: { pub: string }[] = [];
   cancelled: string[] = [];
   /** Errori lanciati dalle prossime POST del complete PRIMA di elaborarle (una per chiamata). */
@@ -126,6 +130,7 @@ class FakeServer {
     return {
       status: 'READY', epoch: k.epoch, rev: k.rev, kdf: 'argon2id', kdfParams: k.kdfParams, pinSalt: k.pinSalt, wrappedVkPin: k.wrappedVkPin,
       wrappedVkSigKey: k.wrappedVkSigKey, rootKeyId: k.rootKeyId, lockedUntil: null, escrowHash: k.escrowHash, legacyCount: 0, openRecovery: this.openRecovery,
+      staleCount: k.staleCount ?? 0, prevVkWrap: k.prevVkWrap ?? null,
     };
   }
   async createRecovery(pub: string, _reason?: string) {
@@ -158,12 +163,15 @@ class FakeServer {
     const hash = await sha256hex(payload);
     if (r.status === 'COMPLETED' && r.payloadHash === hash) return { status: 'COMPLETED' as const };
     if (r.status !== 'RELEASED') throw apiErr(409, 'errors.vault.recoveryStateConflict');
-    const p = JSON.parse(payload) as { rev: number; wrap: Record<string, unknown>; escrow: Record<string, unknown> };
+    const p = JSON.parse(payload) as { rev: number; wrap: Record<string, unknown>; escrow: Record<string, unknown>; rotate?: { vkSigPub: string; wrappedVkSigKey: string; prevVkWrap: string } };
+    if (!p.rotate) throw apiErr(400, 'errors.vault.invalidPayload'); // T11: il recupero ruota sempre
+    if ((this.kr.staleCount ?? 0) > 0) throw apiErr(409, 'errors.vault.rotationPending');
     if (p.rev !== this.kr.rev) throw apiErr(409, 'errors.vault.staleRev');
     const msg = `notiq/vault/v3/proof|POST /api/vault/recovery/${id}/complete|${U}|${this.kr.epoch}|${p.rev}|${hash}`;
     const ok = verify('sha256', Buffer.from(msg), { key: Buffer.from(this.kr.vkSigPub, 'base64url'), format: 'der', type: 'spki', dsaEncoding: 'ieee-p1363' }, Buffer.from(proof, 'base64url'));
     if (!ok) throw apiErr(400, 'errors.vault.invalidProof');
-    Object.assign(this.kr, p.wrap, p.escrow, { rev: this.kr.rev + 1 });
+    Object.assign(this.kr, p.wrap, p.escrow, { rev: this.kr.rev + 1, epoch: this.kr.epoch + 1, vkSigPub: p.rotate.vkSigPub, wrappedVkSigKey: p.rotate.wrappedVkSigKey, prevVkWrap: p.rotate.prevVkWrap });
+    this.applied.push(p.rotate);
     this.kr.escrowHash = createHash('sha256').update(Buffer.from(this.kr.escrowBlob, 'base64url')).digest('hex');
     r.status = 'COMPLETED';
     r.payloadHash = hash;
@@ -632,7 +640,7 @@ describe('completeRecovery', () => {
       expect(h.server.r!.status).toBe('COMPLETED');
       expect(st().unlockedUserId).toBe(U);
       expect(st().keys).not.toBeNull();
-      expect(st().byUser[U]).toMatchObject({ rev: 4, epoch: 0 });
+      expect(st().byUser[U]).toMatchObject({ rev: 4, epoch: 1 }); // il recupero ruota: epoch+1
       expect(st().byUser[U].pinSalt).toBe(h.server.kr.pinSalt);
       expect(KEY()).toBeUndefined();
       expect(purgeApiCache).toHaveBeenCalled();
@@ -672,16 +680,16 @@ describe('completeRecovery', () => {
       }
       expect(st().unlockedUserId).toBe(U);
       expect(st().byUser[U]).toMatchObject({
-        status: 'READY', epoch: 0, rev: 4, pinSalt: h.server.kr.pinSalt, rootKeyId: F.rootKeyId, offlineUnlock: false, // wrappedVkPin non si tiene in cache con lo sblocco offline spento
+        status: 'READY', epoch: 1, rev: 4, pinSalt: h.server.kr.pinSalt, rootKeyId: F.rootKeyId, offlineUnlock: false, // wrappedVkPin non si tiene in cache con lo sblocco offline spento
       });
       expect(await checkPendingOnStart(U)).toBe('kitUnconfirmed'); // e il Kit non confermato e' ancora tracciato (hash del keyring = quello del marker)
     });
 
-    it('N9: senza cache e refresh fallito: sbloccato comunque (il server ha committato), nessuna cache sintetizzata, nessuno share', async () => {
+    it('N9: senza cache e refresh fallito: applied (il server ha committato) ma NON sbloccato (store a epoch+1 con cache assente/vecchia farebbe rispondere notReady al reconcile), nessuna cache sintetizzata, nessuno share', async () => {
       const w = await world();
       h.server.onPost = () => { h.server.getKeyringError = netErr(); };
       applied(await complete(w));
-      expect(st().unlockedUserId).toBe(U);
+      expect(st().unlockedUserId).toBeNull();
       expect(st().byUser[U]).toBeUndefined();
       expect(raw('shares').size).toBe(0);
     });
@@ -701,20 +709,22 @@ describe('completeRecovery', () => {
       expect(b64uDecode(built.wrap.wrappedVkPin)).toHaveLength(60);
       const S = await deriveS(NEW_PIN, b64uDecode(built.wrap.pinSalt), KDF);
       const kek = await deriveKekPin(S, b64uDecode(built.wrap.serverShare), b64uDecode(built.wrap.pinSalt), U);
-      expect(await unwrapVkPin(kek, b64uDecode(built.wrap.wrappedVkPin), U, 0, built.wrap.kdfParams)).toEqual(w.vkRaw);
+      const vkNew = await unwrapEscrow(await deriveRk(sRootNew, kit, U), b64uDecode(built.escrow.escrowBlob), U, 1, built.escrow.rootKeyId); // epoch+1, VK NUOVA
+      expect(vkNew).not.toEqual(w.vkRaw);
+      expect(await unwrapVkPin(kek, b64uDecode(built.wrap.wrappedVkPin), U, 1, built.wrap.kdfParams)).toEqual(vkNew);
       const blob = b64uDecode(built.escrow.escrowBlob);
-      expect(await unwrapEscrow(await deriveRk(sRootNew, kit, U), blob, U, 0, built.escrow.rootKeyId)).toEqual(w.vkRaw);
-      await expect(unwrapEscrow(await deriveRk(sRootNew, w.sUser, U), blob, U, 0, built.escrow.rootKeyId)).rejects.toThrow();
-      await expect(unwrapEscrow(await deriveRk(Uint8Array.from(Buffer.from(F.sRootHex, 'hex')), w.sUser, U), blob, U, 0, built.escrow.rootKeyId)).rejects.toThrow();
+      await expect(unwrapEscrow(await deriveRk(sRootNew, w.sUser, U), blob, U, 1, built.escrow.rootKeyId)).rejects.toThrow();
+      await expect(unwrapEscrow(await deriveRk(Uint8Array.from(Buffer.from(F.sRootHex, 'hex')), w.sUser, U), blob, U, 1, built.escrow.rootKeyId)).rejects.toThrow();
     });
 
     it('vkProof verificato con node:crypto sul path del complete (e non su un altro); S del nuovo PIN azzerato', async () => {
       const w = await prepared();
       vi.mocked(deriveS).mockClear();
+      const oldSigPub = h.server.kr.vkSigPub; // la proof si verifica col vkSigPub VECCHIO (il commit lo ruota)
       applied(await complete(w));
       const { payload, proof } = h.server.posts[0];
       const msg = (path: string) => `notiq/vault/v3/proof|${path}|${U}|0|3|${createHash('sha256').update(payload).digest('hex')}`;
-      const pub = { key: Buffer.from(h.server.kr.vkSigPub, 'base64url'), format: 'der' as const, type: 'spki' as const, dsaEncoding: 'ieee-p1363' as const };
+      const pub = { key: Buffer.from(oldSigPub, 'base64url'), format: 'der' as const, type: 'spki' as const, dsaEncoding: 'ieee-p1363' as const };
       expect(verify('sha256', Buffer.from(msg(`POST /api/vault/recovery/${RID}/complete`)), pub, Buffer.from(proof, 'base64url'))).toBe(true);
       expect(verify('sha256', Buffer.from(msg('PUT /api/vault/keyring')), pub, Buffer.from(proof, 'base64url'))).toBe(false);
       const results = await Promise.all(vi.mocked(deriveS).mock.results.map((r) => r.value as Promise<Uint8Array>));
@@ -728,8 +738,9 @@ describe('completeRecovery', () => {
       applied(await complete(w));
       const share = (await device.getShare(U))!;
       const devKey = (await device.getDeviceKey(U))!;
-      expect(b64uEncode(await decryptShare(devKey, share.shareEnc, U, 0))).toBe(h.server.kr.serverShare);
-      expect(share.wrappedVkSigKey).toEqual(b64uDecode(h.server.kr.wrappedVkSigKey));
+      expect(share.epoch).toBe(1);
+      expect(b64uEncode(await decryptShare(devKey, share.shareEnc, U, 1))).toBe(h.server.kr.serverShare);
+      expect(share.wrappedVkSigKey).toEqual(b64uDecode(h.server.applied[0].wrappedVkSigKey)); // quello di rotate (sigKey nuova), non quello vecchio del keyring
       expect(st().byUser[U].offlineUnlock).toBe(true);
 
       reset();
@@ -744,8 +755,17 @@ describe('completeRecovery', () => {
       const w = await prepared();
       h.server.onPost = () => { h.server.getKeyringError = netErr(); };
       applied(await complete(w));
-      expect(st().byUser[U]).toMatchObject({ rev: 3 });
-      expect(st().unlockedUserId).toBe(U);
+      expect(st().byUser[U]).toMatchObject({ rev: 3, epoch: 0 });
+      expect(st().unlockedUserId).toBeNull(); // cache all'epoch vecchia: uno store a epoch+1 la smentirebbe; si sblocca col PIN nuovo dopo il Kit
+    });
+
+    it('GET /keyring fallita dopo il 2xx con la cerimonia avviata da sbloccati: applied, lo store (chiavi vecchie, PIN cambiato) si blocca', async () => {
+      const w = await prepared();
+      st().unlock(U, { vkHkdf: {}, vkAes: {}, sigKey: {} } as never, 0);
+      h.server.onPost = () => { h.server.getKeyringError = netErr(); };
+      applied(await complete(w));
+      expect(st().unlockedUserId).toBeNull();
+      expect(st().keys).toBeNull();
     });
 
     it('passi dopo il 200 best-effort: purge che rifiuta e scritture IDB dello share che falliscono, applied comunque', async () => {
@@ -1054,7 +1074,7 @@ const opensWith = async (pin: string) => {
   const salt = b64uDecode(h.server.kr.pinSalt);
   const S = await deriveS(pin, salt, KDF);
   const kek = await deriveKekPin(S, b64uDecode(h.server.kr.serverShare), salt, U);
-  try { await unwrapVkPin(kek, b64uDecode(h.server.kr.wrappedVkPin), U, 0, h.server.kr.kdfParams); return true; } catch { return false; }
+  try { await unwrapVkPin(kek, b64uDecode(h.server.kr.wrappedVkPin), U, h.server.kr.epoch, h.server.kr.kdfParams); return true; } catch { return false; }
 };
 /** Prima POST: (before) poi applica e perde la risposta; le successive lanciano after(). */
 function commitThenLose(after: () => unknown, before?: () => Promise<void>) {
@@ -1339,7 +1359,7 @@ describe('COMPLETED: il verdetto lo decide il keyring (regola unica)', () => {
   });
 
   // P3a (poc4): keyring cambiato tra il commit e il retry; il retry riceve 200 idempotente
-  it('P3a: 200 idempotente con il keyring gia\' cambiato -> appliedKitReplaced (PIN appena scelto valido), Kit azzerato (e nessun Kit restituito)', async () => {
+  it('P3a: 200 idempotente con il keyring gia\' cambiato (stessa epoch) -> appliedKitReplaced locked: mai sbloccato con la nostra VK, Kit azzerato (e nessun Kit restituito)', async () => {
     const w = await prepared();
     const orig = h.server.completeRecovery.bind(h.server);
     let n = 0;
@@ -1353,11 +1373,11 @@ describe('COMPLETED: il verdetto lo decide il keyring (regola unica)', () => {
       return orig(id, p, v);
     };
     const r = await complete(w);
-    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', key: 'vault.recovery.errors.appliedKitReplaced' });
+    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', locked: true, key: 'vault.recovery.errors.appliedKitReplacedLocked' });
     expect(r.kit).toBeUndefined();
     const sUser = vi.mocked(buildRecoveryPayload).mock.calls[0][0].sUser;
     expect(sUser.every((x) => x === 0)).toBe(true); // il Kit nuovo non vale: azzerato
-    expect(st().unlockedUserId).toBe(U); // il 200 e' nostro: il PIN nuovo vale
+    expect(st().unlockedUserId).toBeNull(); // escrow altrui: la nostra VK nuova non e' quella del keyring, mai sbloccare
     expect(KEY()).toBeUndefined();
     expect(await checkPendingOnStart(U)).toBe('none'); // marker superato da (epoch, rev), nessun banner per un Kit che non vale
     expect(MARKERS()).toHaveLength(0);
@@ -1486,6 +1506,96 @@ describe('200 che non viene dal vault (giro 3, Q2)', () => {
     expect(purgeApiCache).not.toHaveBeenCalled();
   });
 
+  // T11 fix 1: dopo la Fase 5 un escrow sostituito implica in genere una rotazione (epoch diversa): chiavi stale e cache non autenticata non devono passare
+  it('T11: 200 idempotente, escrow sostituito con epoch diversa (COMPLETED) -> appliedKitReplaced "locked": store NON sbloccato, nessuno share, epoch in cache non alzata', async () => {
+    const w = await prepared(true);
+    await device.putShare(U, { epoch: 0, shareEnc: new Uint8Array([1]), wrappedVkSigKey: new Uint8Array([2]) });
+    const orig = h.server.completeRecovery.bind(h.server);
+    let n = 0;
+    h.server.completeRecovery = async (id: string, p: string, v: string) => {
+      if (++n === 1) {
+        await orig(id, p, v);
+        const other = crypto.getRandomValues(new Uint8Array(60));
+        h.server.kr.escrowBlob = b64uEncode(other); h.server.kr.escrowHash = await sha256hexBytes(other); h.server.kr.rev++; h.server.kr.epoch++; // altra sessione: nuova rotazione
+        throw netErr();
+      }
+      return orig(id, p, v);
+    };
+    const r = await complete(w);
+    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', locked: true, key: 'vault.recovery.errors.appliedKitReplacedLocked' });
+    expect(r.kit).toBeUndefined();
+    expect(h.server.kr.epoch).toBe(2);
+    expect(st().unlockedUserId).toBeNull();
+    expect(await device.getShare(U)).toBeNull();
+    expect(st().byUser[U].epoch).toBe(0); // l'epoch in cache non sale senza un unwrap AEAD
+  });
+
+  it('cerimonia da sbloccati (store a epoch 0), escrow altrui e keyring a epoch 2 dopo il commit: lo store si blocca (niente chiavi stale)', async () => {
+    const w = await prepared(true);
+    st().unlock(U, { vkHkdf: {}, vkAes: {}, sigKey: {} } as never, 0);
+    const orig = h.server.completeRecovery.bind(h.server);
+    let n = 0;
+    h.server.completeRecovery = async (id: string, p: string, v: string) => {
+      if (++n === 1) {
+        await orig(id, p, v);
+        const other = crypto.getRandomValues(new Uint8Array(60));
+        h.server.kr.escrowBlob = b64uEncode(other); h.server.kr.escrowHash = await sha256hexBytes(other); h.server.kr.rev++; h.server.kr.epoch++;
+        throw netErr();
+      }
+      return orig(id, p, v);
+    };
+    const r = await complete(w);
+    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', locked: true });
+    expect(h.server.kr.epoch).toBe(2);
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().keys).toBeNull();
+  });
+
+  it('cerimonia da sbloccati, escrow altrui COMPLETED con epoch uguale a quella dello store: lo store si blocca comunque (la nostra VK ha gia\' ruotato)', async () => {
+    const w = await prepared(true);
+    st().unlock(U, { vkHkdf: {}, vkAes: {}, sigKey: {} } as never, 2);
+    const orig = h.server.completeRecovery.bind(h.server);
+    let n = 0;
+    h.server.completeRecovery = async (id: string, p: string, v: string) => {
+      if (++n === 1) {
+        await orig(id, p, v);
+        const other = crypto.getRandomValues(new Uint8Array(60));
+        h.server.kr.escrowBlob = b64uEncode(other); h.server.kr.escrowHash = await sha256hexBytes(other); h.server.kr.rev++; h.server.kr.epoch++;
+        throw netErr();
+      }
+      return orig(id, p, v);
+    };
+    const r = await complete(w);
+    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', locked: true });
+    expect(h.server.kr.epoch).toBe(2);
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().keys).toBeNull();
+  });
+
+  it('cerimonia da sbloccati, escrow altrui, epoch del keyring = epoch in cache ma keyring incompleto (cacheKeyring lancia): lo store si blocca comunque, nessuno share, verdetto locked', async () => {
+    const w = await prepared(true);
+    st().unlock(U, { vkHkdf: {}, vkAes: {}, sigKey: {} } as never, 2);
+    st().setKeyringCache(U, { ...st().byUser[U], epoch: 2 }); // epoch in cache uguale a quella del keyring: cacheUnverified scrive, e il keyring incompleto la fa lanciare
+    await device.putShare(U, { epoch: 0, shareEnc: new Uint8Array([1]), wrappedVkSigKey: new Uint8Array([2]) });
+    const orig = h.server.completeRecovery.bind(h.server);
+    let n = 0;
+    h.server.completeRecovery = async (id: string, p: string, v: string) => {
+      if (++n === 1) {
+        await orig(id, p, v);
+        const other = crypto.getRandomValues(new Uint8Array(60));
+        h.server.kr.escrowBlob = b64uEncode(other); h.server.kr.escrowHash = await sha256hexBytes(other); h.server.kr.rev++; h.server.kr.epoch++;
+        h.server.kr.wrappedVkPin = ''; // READY senza wrappedVkPin -> keyringInvalid
+        throw netErr();
+      }
+      return orig(id, p, v);
+    };
+    const r = await complete(w);
+    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', locked: true });
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().keys).toBeNull();
+    expect(await device.getShare(U)).toBeNull();
+  });
+
   it('keyring cambiato ma la richiesta non e COMPLETED e rev < rev+2: unknown', async () => {
     const w = await prepared();
     html200();
@@ -1495,13 +1605,16 @@ describe('200 che non viene dal vault (giro 3, Q2)', () => {
     expect(st().unlockedUserId).toBeNull();
   });
 
-  it('keyring avanzato di 2 rev con un altro escrow, richiesta non COMPLETED: appliedKitReplaced (il commit e certo)', async () => {
-    const w = await prepared();
+  it('keyring avanzato di 2 rev con un altro escrow e STESSA epoch (server bugiardo), richiesta non COMPLETED: appliedKitReplaced locked, mai sbloccato ne\' share', async () => {
+    const w = await prepared(true);
+    await device.putShare(U, { epoch: 0, shareEnc: new Uint8Array([1]), wrappedVkSigKey: new Uint8Array([2]) });
     html200();
-    h.server.onPost = () => { h.server.kr.escrowHash = 'ee'.repeat(32); h.server.kr.rev += 2; };
+    h.server.onPost = () => { h.server.kr.escrowHash = 'ee'.repeat(32); h.server.kr.rev += 2; h.server.kr.epoch = 1; }; // html200 non applica il payload: epoch = quella che il nostro payload produce (escrow diverso, STESSA epoch)
     const r = await complete(w);
-    expect(r).toMatchObject({ verdict: 'appliedKitReplaced' });
-    expect(st().unlockedUserId).toBe(U);
+    expect(r).toMatchObject({ verdict: 'appliedKitReplaced', locked: true, key: 'vault.recovery.errors.appliedKitReplacedLocked' });
+    expect(st().unlockedUserId).toBeNull();
+    expect(await device.getShare(U)).toBeNull();
+    expect(st().byUser[U].epoch).toBe(0); // la cache altrui non sale senza un unwrap AEAD
     expect(KEY()).toBeUndefined();
   });
 
@@ -1517,7 +1630,7 @@ describe('200 che non viene dal vault (giro 3, Q2)', () => {
 
 describe('codici e messaggi', () => {
   it('VaultRecoveryError usa vault.recovery.errors.<code>, tranne alreadyOpen', () => {
-    for (const code of ['releaseInvalid', 'kitInvalid', 'notThisDevice', 'keyringChanged', 'busy', 'requestClosed', 'rejected', 'completedElsewhere', 'appliedWithoutKit', 'appliedKitReplaced', 'completedUnverified', 'notReleased', 'unknown', 'retryLater'] as const) {
+    for (const code of ['releaseInvalid', 'kitInvalid', 'notThisDevice', 'keyringChanged', 'busy', 'requestClosed', 'rejected', 'completedElsewhere', 'appliedWithoutKit', 'completedUnverified', 'notReleased', 'unknown', 'retryLater'] as const) {
       expect(new rec.VaultRecoveryError(code).key).toBe(`vault.recovery.errors.${code}`);
     }
     expect(new rec.VaultRecoveryError('alreadyOpen').key).toBe('errors.vault.recoveryAlreadyOpen');
@@ -1535,24 +1648,6 @@ describe('codici e messaggi', () => {
     expect(it_).toMatch(/PIN scelto in quel tentativo/i);
     expect(it_).toMatch(/rigenera/i);
     expect(it_).not.toMatch(/nuovo PIN/i);
-  });
-
-  it('appliedKitReplaced: EN e IT dicono PIN appena scelto, vault sbloccato, Kit sostituito da un\'altra sessione e rigenerazione; non parlano di tentativo precedente', () => {
-    const en = enLocale.vault.recovery.errors.appliedKitReplaced;
-    const it_ = itLocale.vault.recovery.errors.appliedKitReplaced;
-    expect(en).toMatch(/PIN you just chose/i);
-    expect(en).toMatch(/unlocked/i);
-    expect(en).toMatch(/another session/i);
-    expect(en).toMatch(/regenerate/i);
-    expect(en).not.toMatch(/earlier attempt|previous attempt|that attempt/i);
-    expect(it_).toMatch(/PIN che hai appena scelto/i);
-    expect(it_).toMatch(/sbloccato/i);
-    expect(it_).toMatch(/un'altra sessione/i);
-    expect(it_).toMatch(/rigenera/i);
-    expect(it_).not.toMatch(/tentativo precedente|quel tentativo/i);
-    // il testo dell'altro caso non deve contraddire il suo: niente "PIN che hai appena scelto"
-    expect(enLocale.vault.recovery.errors.appliedWithoutKit).not.toMatch(/just chose/i);
-    expect(itLocale.vault.recovery.errors.appliedWithoutKit).not.toMatch(/appena scelto/i);
   });
 
   it('completedUnverified e notReleased: EN e IT', () => {
@@ -1704,5 +1799,166 @@ describe('testi neutri sul recupero gia applicato', () => {
     expect(en).toMatch(/most recently chosen PIN/i);
     expect(it_).toMatch(/risulta già cambiato, qui o su un altro dispositivo/i);
     expect(it_).toMatch(/PIN scelto più di recente/i);
+  });
+});
+
+// ================================================================ T11: il recupero ruota la VK (P4 fase 5)
+
+describe('T11: recupero con rotazione della VK', () => {
+  const ECDSA = { name: 'ECDSA', hash: 'SHA-256' } as const;
+  const ctxAt = (epoch: number, noteId = 'n1') => ({ userId: U, noteId, noteType: 'NOTE', epoch });
+  /** Envelope all'epoch 0 cifrato con la VK VECCHIA del mondo di test. */
+  const oldEnvelope = async (w: World) => encryptItem(await deriveNoteKey(await importVk(w.vkRaw), 'n1'), ctxAt(0), { t: 't', c: 'segreto' });
+  const vkOf = (k: { vkHkdf: CryptoKey; vkAes: CryptoKey }) => ({ hkdf: k.vkHkdf, aes: k.vkAes });
+
+  it('(a) percorso felice: rotate 91/60/[80,220] B; server e store a epoch 1; prev apre l envelope epoch 0; la sigKey nuova verifica con vkSigPub del keyring; share salvato a epoch 1 con il wrappedVkSigKey di rotate', async () => {
+    const w = await prepared(true);
+    await device.putShare(U, { epoch: 0, shareEnc: new Uint8Array([1]), wrappedVkSigKey: new Uint8Array([2]) });
+    const env = await oldEnvelope(w);
+    const oldSigPub = h.server.kr.vkSigPub;
+    applied(await complete(w));
+    const rot = JSON.parse(h.server.posts[0].payload).rotate as { vkSigPub: string; wrappedVkSigKey: string; prevVkWrap: string };
+    expect(Object.keys(rot).sort()).toEqual(['prevVkWrap', 'vkSigPub', 'wrappedVkSigKey']);
+    expect(b64uDecode(rot.vkSigPub)).toHaveLength(91);
+    expect(b64uDecode(rot.prevVkWrap)).toHaveLength(60);
+    const wl = b64uDecode(rot.wrappedVkSigKey).length;
+    expect(wl).toBeGreaterThanOrEqual(80);
+    expect(wl).toBeLessThanOrEqual(220);
+    expect(rot.vkSigPub).not.toBe(oldSigPub);
+    expect(h.server.kr.epoch).toBe(1);
+    expect(st().epoch).toBe(1);
+    expect(st().byUser[U]).toMatchObject({ epoch: 1, rev: 4 });
+    const keys = st().keys!;
+    expect(keys.prev?.epoch).toBe(0);
+    expect((await decryptItem(await deriveNoteKey(vkOf(keys.prev!), 'n1'), ctxAt(0), env)).c).toBe('segreto'); // l'envelope epoch 0 si apre con prev
+    const msg = new Uint8Array([4, 5, 6]);
+    const pub = await crypto.subtle.importKey('spki', b64uDecode(h.server.kr.vkSigPub), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    expect(await crypto.subtle.verify(ECDSA, pub, await crypto.subtle.sign(ECDSA, keys.sigKey, msg), msg)).toBe(true);
+    const share = (await device.getShare(U))!;
+    expect(share.epoch).toBe(1);
+    expect(share.wrappedVkSigKey).toEqual(b64uDecode(rot.wrappedVkSigKey)); // non quello vecchio del keyring
+    expect(b64uEncode(await decryptShare((await device.getDeviceKey(U))!, share.shareEnc, U, 1))).toBe(h.server.kr.serverShare);
+  });
+
+  it('(b) Kit nuovo + escrow nuovo danno VK_new != VK_old; il Kit vecchio non apre l escrow nuovo; il PIN nuovo apre wrappedVkPin a epoch 1', async () => {
+    const w = await prepared();
+    let sRootNew = new Uint8Array(0);
+    vi.mocked(sealRootShare).mockImplementationOnce(async (s, ...rest) => {
+      sRootNew = s.slice();
+      return (await vi.importActual<typeof import('../../utils/vaultCrypto')>('../../utils/vaultCrypto')).sealRootShare(s, ...rest);
+    });
+    const kit = applied(await complete(w));
+    const p = JSON.parse(h.server.posts[0].payload) as { wrap: { pinSalt: string; serverShare: string; wrappedVkPin: string; kdfParams: typeof KDF }; escrow: Record<string, string> };
+    const blob = b64uDecode(p.escrow.escrowBlob);
+    const vkNew = await unwrapEscrow(await deriveRk(sRootNew, kit, U), blob, U, 1, p.escrow.rootKeyId);
+    expect(vkNew).not.toEqual(w.vkRaw);
+    await expect(unwrapEscrow(await deriveRk(sRootNew, w.sUser, U), blob, U, 1, p.escrow.rootKeyId)).rejects.toThrow(); // Kit vecchio
+    await expect(unwrapEscrow(await deriveRk(sRootNew, kit, U), blob, U, 0, p.escrow.rootKeyId)).rejects.toThrow(); // l'escrow e' a epoch 1, non 0
+    const S = await deriveS(NEW_PIN, b64uDecode(p.wrap.pinSalt), KDF);
+    const kek = await deriveKekPin(S, b64uDecode(p.wrap.serverShare), b64uDecode(p.wrap.pinSalt), U);
+    expect(await unwrapVkPin(kek, b64uDecode(p.wrap.wrappedVkPin), U, 1, p.wrap.kdfParams)).toEqual(vkNew);
+  });
+
+  it('(c) unwrapPrevVk(VK_new, prevVkWrap, U, 1, 0) restituisce la VK vecchia', async () => {
+    const w = await prepared();
+    const env = await oldEnvelope(w);
+    applied(await complete(w));
+    const prev = await unwrapPrevVk(vkOf(st().keys!), b64uDecode(h.server.kr.prevVkWrap!), U, 1, 0);
+    expect((await decryptItem(await deriveNoteKey(prev, 'n1'), ctxAt(0), env)).c).toBe('segreto');
+  });
+
+  it('(d) staleCount > 0: rotationPending in preparazione, 0 POST, 0 marker, deriveS mai chiamato', async () => {
+    const w = await prepared();
+    h.server.kr.staleCount = 2;
+    vi.mocked(deriveS).mockClear(); // world() ha usato deriveS per il PIN vecchio
+    await expect(complete(w)).rejects.toMatchObject({ name: 'VaultRecoveryError', code: 'rotationPending', key: 'vault.recovery.errors.rotationPending' });
+    expect(h.server.posts).toHaveLength(0);
+    expect(MARKER()).toBeUndefined();
+    expect(deriveS).not.toHaveBeenCalled();
+    expect(buildRecoveryPayload).not.toHaveBeenCalled();
+    expect(st().unlockedUserId).toBeNull();
+  });
+
+  it('(e) 409 rotationPending alla POST con la richiesta ancora RELEASED -> notApplied/rotationPending, Kit azzerato, nessuno sblocco', async () => {
+    const w = await prepared();
+    h.server.onPost = () => { h.server.kr.staleCount = 1; }; // note tornate stale tra la preparazione e la POST
+    const r = await complete(w);
+    expect(r).toMatchObject({ verdict: 'notApplied', reason: 'rotationPending', key: 'vault.recovery.errors.rotationPending' });
+    expect(r.kit).toBeUndefined();
+    expectNoWritesBeyondMarker();
+    expect(h.server.kr.epoch).toBe(0);
+  });
+
+  it('(f) escrow nostro ma epoch del keyring != epoch+1 -> unknown, store bloccato, nessuno share', async () => {
+    const w = await prepared(true);
+    const orig = h.server.completeRecovery.bind(h.server);
+    h.server.completeRecovery = async (...a: Parameters<FakeServer['completeRecovery']>) => { const r = await orig(...a); h.server.kr.epoch = 5; return r; };
+    const r = await complete(w);
+    expect(r.verdict).toBe('unknown');
+    expect(r.kit).toBeUndefined();
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().keys).toBeNull();
+    expect(raw('shares').size).toBe(0);
+  });
+
+  it('(f) escrow nostro con epoch diversa e cerimonia da sbloccati: unknown, lo store (chiavi vecchie) si blocca', async () => {
+    const w = await prepared(true);
+    st().unlock(U, { vkHkdf: {}, vkAes: {}, sigKey: {} } as never, 0);
+    const orig = h.server.completeRecovery.bind(h.server);
+    h.server.completeRecovery = async (...a: Parameters<FakeServer['completeRecovery']>) => { const r = await orig(...a); h.server.kr.epoch = 5; return r; };
+    expect((await complete(w)).verdict).toBe('unknown');
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().keys).toBeNull();
+  });
+
+  describe('(h) openRecoveryContext', () => {
+    it('RELEASED: ctx a kr.epoch che decifra con la VK dell escrow, staleCount riportato; nessun marker, POST, sblocco, share', async () => {
+      const w = await prepared();
+      h.server.kr.staleCount = 3;
+      const env = await oldEnvelope(w);
+      const o = await rec.openRecoveryContext({ userId: U, requestId: RID, kit: w.kit });
+      expect(o).not.toBeNull();
+      expect(o!.staleCount).toBe(3);
+      expect(o!.ctx).toMatchObject({ userId: U, epoch: 0 });
+      expect(o!.ctx.keys.prev).toBeUndefined();
+      expect((await decryptItem(await deriveNoteKey(vkOf(o!.ctx.keys), 'n1'), ctxAt(0), env)).c).toBe('segreto');
+      expect(o!.ctx.keys.vkAes.extractable).toBe(false);
+      expect(h.server.posts).toHaveLength(0);
+      expect(MARKER()).toBeUndefined();
+      expect(st().unlockedUserId).toBeNull();
+      expect(raw('shares').size).toBe(0);
+      expect(KEY()).toMatchObject({ requestId: RID });
+    });
+
+    it('Kit errato -> kitInvalid; escrow cambiato -> keyringChanged; nessuna scrittura', async () => {
+      const w = await prepared();
+      await expect(rec.openRecoveryContext({ userId: U, requestId: RID, kit: formatKit(new Uint8Array(20).fill(9)) })).rejects.toMatchObject({ code: 'kitInvalid' });
+      h.server.kr.escrowHash = 'ff';
+      await expect(rec.openRecoveryContext({ userId: U, requestId: RID, kit: w.kit })).rejects.toMatchObject({ code: 'keyringChanged' });
+      expect(MARKER()).toBeUndefined();
+      expect(h.server.posts).toHaveLength(0);
+    });
+
+    it('non RELEASED (WAITING, COMPLETED, CANCELLED, richiesta sparita) -> null: il verdetto lo da completeRecovery', async () => {
+      const w = await prepared();
+      for (const status of ['WAITING', 'COMPLETED', 'CANCELLED']) {
+        h.server.r!.status = status;
+        expect(await rec.openRecoveryContext({ userId: U, requestId: RID, kit: w.kit })).toBeNull();
+      }
+      h.server.r = null;
+      expect(await rec.openRecoveryContext({ userId: U, requestId: RID, kit: w.kit })).toBeNull();
+      expect(MARKER()).toBeUndefined();
+      expect(h.server.posts).toHaveLength(0);
+    });
+
+    it('lock occupato -> busy; utente del token diverso -> notReady', async () => {
+      const w = await prepared();
+      const locks = fakeLocks();
+      locks.held.add(LOCK);
+      await expect(rec.openRecoveryContext({ userId: U, requestId: RID, kit: w.kit })).rejects.toMatchObject({ code: 'busy' });
+      locks.held.clear();
+      useAuthStore.setState({ user: { id: OTHER, email: 'x@y.z' } });
+      await expect(rec.openRecoveryContext({ userId: U, requestId: RID, kit: w.kit })).rejects.toMatchObject({ code: 'notReady' });
+    });
   });
 });

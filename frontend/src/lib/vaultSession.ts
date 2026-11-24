@@ -90,7 +90,7 @@ const zero = (...bufs: (Uint8Array | null | undefined)[]) => { for (const b of b
 const fetchKeyring = () => vaultApi.getKeyring<KeyringDto>();
 
 /** Scrittura della cache PRIMA di aver verificato il PIN (AEAD di wrappedVkPin): mai con un'epoch oltre quella verificata in cache, e mai senza una cache (B5). */
-function cacheUnverified(userId: string, kr: KeyringDto, offline: boolean) {
+export function cacheUnverified(userId: string, kr: KeyringDto, offline: boolean) {
   const c = store().byUser[userId];
   if (c && kr.epoch === c.epoch) cacheKeyring(userId, kr, offline);
 }
@@ -557,6 +557,43 @@ export async function changePin(args: { userId: string; currentPin: string; newP
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
+ * Pezzi della rotazione della VK (P4 fase 5), condivisi da `rotateVault` e dal recupero: VK nuova, sigKey nuova col suo wrap a epoch+1 e `prevVkWrap` (VK vecchia sotto la nuova).
+ * Due sonde in memoria prima di restituire: `prev` si riapre e la VK sbustata e' proprio la vecchia (round-trip di un envelope all'epoch vecchio), la firma verifica con la pubblica.
+ * Fallimento -> keyringInvalid (nulla e' stato inviato). Il chiamante azzera `vkNewRaw` e `sig.pkcs8`; in caso di errore li azzera la funzione stessa.
+ */
+export async function rotationParts(vkOldRaw: Uint8Array, vkOld: VaultKey, userId: string, epochOld: number) {
+  const epochNew = epochOld + 1;
+  const vkNewRaw = generateVkRaw();
+  let pkcs8: Uint8Array | null = null;
+  try {
+    const vkNew = await importVk(vkNewRaw);
+    const sig = await generateSigKey();
+    pkcs8 = sig.pkcs8;
+    const wrappedVkSigKey = await wrapVkSigKey(vkNew, pkcs8, userId, epochNew);
+    const prevVkWrap = await wrapPrevVk(vkNew, vkOldRaw, userId, epochNew, epochOld);
+    const bad = () => new VaultSessionError('keyringInvalid', 'errors.common.unknownError');
+    try {
+      const prevCheck = await unwrapPrevVk(vkNew, prevVkWrap, userId, epochNew, epochOld);
+      const ctx = { userId, noteId: 'rotation-check', noteType: 'NOTE', epoch: epochOld };
+      const env = await encryptItem(await deriveNoteKey(prevCheck, ctx.noteId), ctx, { t: '', c: 'x' }); // la VK sbustata e' proprio quella vecchia
+      if ((await decryptItem(await deriveNoteKey(vkOld, ctx.noteId), ctx, env)).c !== 'x') throw bad();
+      const sigCheck = await unwrapVkSigKey(vkNew, wrappedVkSigKey, userId, epochNew);
+      const probe = new Uint8Array([1, 2, 3]);
+      const ecdsa = { name: 'ECDSA', hash: 'SHA-256' } as const;
+      const pub = await crypto.subtle.importKey('spki', sig.spki, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      if (!(await crypto.subtle.verify(ecdsa, pub, await crypto.subtle.sign(ecdsa, sigCheck, probe), probe))) throw bad();
+    } catch {
+      throw bad();
+    }
+    return { vkNewRaw, vkNew, sig, wrappedVkSigKey, prevVkWrap };
+  } catch (e) {
+    zero(vkNewRaw, pkcs8);
+    throw e;
+  }
+}
+
+
+/**
  * Rotazione della VK (P4 fase 5, ogni nuovo Kit ruota; vault sbloccato + PIN riconfermato). PUT PRIMA, cerimonia dopo: il Kit nuovo si restituisce solo
  * dopo 200 (o 409 con escrowHash uguale). Nuovi: VK, sigKey, serverShare, salt (seconda Argon2 col PIN invariato), escrow; `prevVkWrap` = VK vecchia sotto la nuova.
  * Con `staleCount > 0` (note ancora all'epoch precedente) non scrive nulla: `rotationPending`, il chiamante finisce prima la rotazione in corso.
@@ -585,7 +622,7 @@ export async function rotateVault(args: { userId: string; pin: string; rootKey: 
   const newShare = rnd(32);
   const sRoot = rnd(32);
   const sUser = rnd(20);
-  const vkNewRaw = generateVkRaw();
+  let vkNewHeld: Uint8Array | null = null; // azzerata nel finally
   let S: Uint8Array | null = null;
   let authKey: Uint8Array | null = null;
   let pkcs8: Uint8Array | null = null;
@@ -595,32 +632,22 @@ export async function rotateVault(args: { userId: string; pin: string; rootKey: 
     S = await deriveS(pin, newSalt, kdf);
     authKey = await deriveAuthKey(S, userId);
     const kek = await deriveKekPin(S, newShare, newSalt, userId);
-    const wrappedVkPin = await wrapVkPin(kek, vkNewRaw, userId, epochNew, kdf);
-    const vkNew = await importVk(vkNewRaw);
-    const sig = await generateSigKey();
+    const parts = await rotationParts(o.vkRaw, o.vk, userId, epochOld); // VK nuova, sigKey nuova, prevVkWrap e le loro sonde
+    const { vkNewRaw, vkNew, sig, wrappedVkSigKey, prevVkWrap } = parts;
+    vkNewHeld = vkNewRaw;
     pkcs8 = sig.pkcs8;
-    const wrappedVkSigKey = await wrapVkSigKey(vkNew, pkcs8, userId, epochNew);
+    const wrappedVkPin = await wrapVkPin(kek, vkNewRaw, userId, epochNew, kdf);
     const rk = await deriveRk(sRoot, sUser, userId);
     const escrowBlob = await wrapEscrow(rk, vkNewRaw, userId, epochNew, rootKey.id);
     const sealedRootShare = await sealRootShare(sRoot, rootKey.ecdhSpki, userId, epochNew, rootKey.id);
     const userShareUnderVk = await wrapUserShare(vkNew, sUser, userId, epochNew);
-    const prevVkWrap = await wrapPrevVk(vkNew, o.vkRaw, userId, epochNew, epochOld);
 
-    // round-trip completo in memoria PRIMA della PUT: un wrap che non si riapre dopo il commit sarebbe un vault perso
     const bad = () => new VaultSessionError('keyringInvalid', 'errors.common.unknownError');
+    // round-trip in memoria PRIMA della PUT (le sonde di prev e firma sono in rotationParts): un wrap che non si riapre dopo il commit sarebbe un vault perso
     const viaPin = await unwrapVkPin(kek, wrappedVkPin, userId, epochNew, kdf);
     const viaEscrow = await unwrapEscrow(rk, escrowBlob, userId, epochNew, rootKey.id);
-    const prevCheck = await unwrapPrevVk(vkNew, prevVkWrap, userId, epochNew, epochOld);
     try {
       if (!sameBytes(viaPin, vkNewRaw) || !sameBytes(viaEscrow, vkNewRaw)) throw bad();
-      const ctx = { userId, noteId: 'rotation-check', noteType: 'NOTE', epoch: epochOld };
-      const env = await encryptItem(await deriveNoteKey(prevCheck, ctx.noteId), ctx, { t: '', c: 'x' }); // la VK sbustata e' proprio quella vecchia
-      if ((await decryptItem(await deriveNoteKey(o.vk, ctx.noteId), ctx, env)).c !== 'x') throw bad();
-      const sigCheck = await unwrapVkSigKey(vkNew, wrappedVkSigKey, userId, epochNew);
-      const probe = new Uint8Array([1, 2, 3]);
-      const ecdsa = { name: 'ECDSA', hash: 'SHA-256' } as const;
-      const pub = await crypto.subtle.importKey('spki', sig.spki, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-      if (!(await crypto.subtle.verify(ecdsa, pub, await crypto.subtle.sign(ecdsa, sigCheck, probe), probe))) throw bad();
     } finally {
       zero(viaPin, viaEscrow);
     }
@@ -687,7 +714,7 @@ export async function rotateVault(args: { userId: string; pin: string; rootKey: 
     throw e;
   } finally {
     rotating = false;
-    zero(o.vkRaw, o.serverShare, S, authKey, pkcs8, vkNewRaw, newShare, sRoot);
+    zero(o.vkRaw, o.serverShare, S, authKey, pkcs8, vkNewHeld, newShare, sRoot);
   }
 }
 

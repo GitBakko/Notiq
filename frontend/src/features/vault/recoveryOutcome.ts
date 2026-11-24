@@ -29,13 +29,13 @@ const BY_CODE: Record<VaultRecoveryCode, Outcome> = {
   notReleased: { key: `${E}notReleased`, action: 'backToStatus' },
   busy: { key: `${E}busy`, action: 'retry' },
   keyringChanged: { key: `${E}keyringChanged`, action: 'retry' },
+  rotationPending: { key: `${E}rotationPending`, action: 'retry' }, // preparazione: note ancora stale, si riprova dopo averle risolte
   alreadyOpen: { key: 'errors.vault.recoveryAlreadyOpen', action: 'restart' },
   retryLater: { key: `${E}retryLater`, action: 'retry' },
   requestClosed: { key: `${E}requestClosed`, action: 'newRequest' },
   rejected: { key: `${E}rejected`, action: 'retryFresh' },
   completedElsewhere: { key: `${E}completedElsewhere`, action: 'goUnlock' },
   appliedWithoutKit: { key: `${E}appliedWithoutKit`, action: 'goUnlock' },
-  appliedKitReplaced: { key: `${E}appliedKitReplaced`, action: 'regenerateKit' },
   completedUnverified: { key: `${E}completedUnverified`, action: 'goUnlock' },
   unknown: { key: `${E}unknown`, action: 'goUnlock' },
 };
@@ -45,8 +45,9 @@ const isResult = (x: unknown): x is CompleteResult => !!x && typeof x === 'objec
 function ofResult(r: CompleteResult): Outcome {
   switch (r.verdict) {
     case 'applied': return { key: 'vault.recovery.outcome.applied', action: 'kitCeremony' };
-    // keyringChanged dopo la POST: nulla applicato, serve rileggere la richiesta (in preparazione invece basta riprovare)
-    case 'notApplied': return r.reason === 'keyringChanged' ? { ...BY_CODE.keyringChanged, action: 'retryFresh' } : BY_CODE[r.reason ?? 'rejected'];
+    // keyringChanged e rotationPending dopo la POST: nulla applicato, serve rileggere la richiesta (in preparazione invece basta riprovare)
+    case 'notApplied': return r.reason === 'keyringChanged' || r.reason === 'rotationPending' ? { ...BY_CODE[r.reason], action: 'retryFresh' } : BY_CODE[r.reason ?? 'rejected'];
+    case 'appliedKitReplaced': return { key: `${E}appliedKitReplacedLocked`, action: 'goUnlock' }; // sempre bloccato: un escrow sostituito ruota la VK, mai sblocco
     default: return BY_CODE[r.verdict];
   }
 }

@@ -10,6 +10,8 @@ import { resolve } from 'node:path';
 const h = vi.hoisted(() => ({
   rows: [] as any[],
   queue: [] as any[],
+  qUpdate: vi.fn(),
+  lockBusy: false,
   getKeyring: vi.fn(),
   reconcile: vi.fn(),
   hydrate: vi.fn(),
@@ -67,6 +69,7 @@ vi.mock('../../../lib/db', () => ({
     syncQueue: {
       add: async (i: any) => { h.queue.push(i); },
       filter: (fn: (i: any) => boolean) => ({ toArray: async () => h.queue.filter(fn) }),
+      update: (...a: unknown[]) => h.qUpdate(...a),
     },
     transaction: async (_m: string, _a: unknown, _b: unknown, fn: () => Promise<unknown>) => fn(),
   },
@@ -92,6 +95,7 @@ vi.mock('../vaultMigration', () => ({
   rewrapUnreadable: (...a: unknown[]) => h.rewrap(...a),
   MAX_REWRAP_LEN: 1.5 * 1024 * 1024,
 }));
+vi.mock('../../../lib/vaultNoteLock', () => ({ withNoteLock: async (_id: string, fn: () => unknown) => (h.lockBusy ? { status: 'busy' } : { status: 'ran', value: await fn() }) })); // jsdom non ha navigator.locks
 vi.mock('../../notes/noteService', () => ({ permanentlyDeleteNote: (...a: unknown[]) => h.permDelete(...a) }));
 vi.mock('../../../utils/vaultRootKeys', () => ({ getActiveRootKey: () => h.rootKey.v }));
 vi.mock('../../../store/authStore', () => ({
@@ -195,6 +199,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.rows.length = 0;
   h.queue.length = 0;
+  h.lockBusy = false;
+  h.qUpdate.mockReset();
   h.migrateProps.length = 0;
   h.editorProps.length = 0;
   h.credProps.length = 0;
@@ -1210,6 +1216,48 @@ describe('VaultPage: rotazione della VK, note stale (Fase 5, T10)', () => {
         expect(within(again).queryByText(/deleteTooLarge/)).toBeNull();
       });
 
+      it('(fix2) una D oltre il limite con modifiche non sincronizzate (riga locale o coda) non si elimina mai: toast, resta nel dialog', async () => {
+        h.rows.push({ id: 'big1', syncStatus: 'updated' });
+        h.queue.push({ entity: 'NOTE', entityId: 'big2' });
+        const dlg = await big();
+        h.finish.mockResolvedValue({ unreadable: [item('a', 'damaged'), item('big1', 'damaged', HUGE), item('big2', 'damaged', HUGE)] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:2'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.deleteSkippedPending:2'));
+        expect(h.permDelete).not.toHaveBeenCalled();
+        const again = await waitFor(() => { const d = screen.getByRole('dialog'); expect(within(d).getByText('vault.rotation.tooLarge:2')).toBeTruthy(); return d; });
+        expect(within(again).getByText('vault.rotation.deleteTooLarge:2')).toBeTruthy();
+      });
+
+      it('lock occupato altrove: toast "aperta altrove" (non "modifiche non sincronizzate"), nessuna eliminazione', async () => {
+        h.rows.push({ id: 'big1', syncStatus: 'synced' });
+        const dlg = await mountWithUnreadable([item('big1', 'damaged', HUGE)]);
+        h.rewrap.mockResolvedValue(rw({ tooLarge: ['big1'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('big1', 'damaged', HUGE)] });
+        h.lockBusy = true;
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:1'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.deleteSkippedBusy:1'));
+        expect(toast.error).not.toHaveBeenCalledWith('vault.rotation.deleteSkippedPending:1');
+        expect(h.permDelete).not.toHaveBeenCalled();
+      });
+
+      it('DELETE failed in coda e nota ancora illeggibile dopo la push: riattivato, avviso, nessun toast di eliminazione, resta nel dialog', async () => {
+        h.queue.push({ id: 3, entity: 'NOTE', entityId: 'big1', type: 'DELETE', status: 'failed' });
+        const dlg = await mountWithUnreadable([item('big1', 'damaged', HUGE)]);
+        h.rewrap.mockResolvedValue(rw({ tooLarge: ['big1'] }));
+        h.finish.mockResolvedValue({ unreadable: [item('big1', 'damaged', HUGE)] });
+        fireEvent.click(within(dlg).getByText('vault.rotation.deleteTooLarge:1'));
+        fireEvent.click(await screen.findByText('common.deleteForever'));
+        const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn>; success: ReturnType<typeof vi.fn> };
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.deletePendingSync:1'));
+        expect(h.qUpdate).toHaveBeenCalledWith(3, { status: 'pending', attempts: 0 });
+        expect(toast.success).not.toHaveBeenCalledWith(expect.stringContaining('deletedTooLarge'));
+        await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('vault.rotation.tooLarge:1')).toBeTruthy());
+      });
+
       it('conferma con solo D oltre il limite: dialog e banner chiusi', async () => {
         const dlg = await mountWithUnreadable([item('big1', 'damaged', HUGE)]);
         h.rewrap.mockResolvedValue(rw({ tooLarge: ['big1'] }));
@@ -1459,6 +1507,26 @@ describe('VaultPage: recupero con il Kit (Fase 4, T6)', () => {
     expect(screen.getByTestId('where').textContent).toBe('/vault?x=1');
   });
 
+  // Causa del test instabile sopra: la cerimonia compare per derivazione dal parametro, l'effetto che la aggancia al flag gira dopo (macrotask). Se la chiusura cade nella finestra,
+  // il flag false di closeRecovery viene riportato a true dall'effetto (il parametro e' ancora nell'URL: la navigazione di MemoryRouter e' in startTransition) e lo sblocco non compare mai.
+  // Qui il clic parte dal MutationObserver, cioe' subito dopo il commit e prima dell'effetto: deterministico.
+  it('chiusura nella stessa finestra del commit (prima dell effetto di aggancio): la cerimonia non si riapre da sola', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    let clicked = false;
+    const mo = new MutationObserver(() => {
+      const btn = !clicked && screen.queryByText('rec-unlock');
+      if (btn) { clicked = true; fireEvent.click(btn); }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    try {
+      mount('/vault?recovery=1&x=1');
+      await screen.findByTestId('unlock');
+    } finally { mo.disconnect(); }
+    expect(clicked).toBe(true);
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/vault?x=1'));
+    expect(screen.queryByTestId('recovery')).toBeNull();
+  });
+
   it('con recoveryOpen e store sbloccato (dopo il 200) non gira checkPendingOnStart, ne il reconcile, ne compare il banner kitUnconfirmed', async () => {
     unlock();
     h.checkPending.mockResolvedValue('kitUnconfirmed');
@@ -1478,6 +1546,27 @@ describe('VaultPage: recupero con il Kit (Fase 4, T6)', () => {
     expect(screen.queryByTestId('recovery')).toBeNull();
     await waitFor(() => expect(h.checkPending).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId('where').textContent).toBe('/vault');
+  });
+
+  it('(u) onClose("none") dopo un recupero applicato: finishRotation con le chiavi NUOVE (epoch+1, prev), una volta', async () => {
+    unlock();
+    mount('/vault?recovery=1');
+    const rec = await screen.findByText('rec-none');
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(h.finish).not.toHaveBeenCalled(); // la cerimonia tiene spento il reconcile
+    const newKeys = { prev: { epoch: 1 } } as any; // il recupero ha sbloccato lo store con le chiavi a epoch+1
+    useVaultStore.setState({ keys: newKeys, epoch: 2 });
+    fireEvent.click(rec);
+    await waitFor(() => expect(h.finish).toHaveBeenCalledWith({ ctx: { keys: newKeys, userId: 'u1', epoch: 2 } }));
+    expect(h.finish).toHaveBeenCalledTimes(1);
+  });
+
+  it('onClose("unlock") dopo il recupero non lancia finishRotation da solo', async () => {
+    unlock();
+    mount('/vault?recovery=1');
+    fireEvent.click(await screen.findByText('rec-unlock'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(h.finish).not.toHaveBeenCalled();
   });
 
   it('onClose("regenerate") con il vault sbloccato: si apre VaultSettingsSheet', async () => {

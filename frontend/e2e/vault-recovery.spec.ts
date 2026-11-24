@@ -33,7 +33,7 @@ const NOTE = { title: 'Nota del recupero', body: 'contenuto segreto di A' };
 
 interface Rig {
   user: TestUser; api: APIRequestContext; b: { ctx: BrowserContext; page: Page }; adm: { ctx: BrowserContext; page: Page; user: TestUser };
-  requestId: string; fp: string; kit: string; escrowBefore: string; codeB: string;
+  requestId: string; fp: string; kit: string; escrowBefore: string; epochBefore: number; codeB: string;
 }
 
 const openUnlockRecovery = async (page: Page) => {
@@ -62,6 +62,7 @@ async function runToReleased(page: Page, browser: Browser): Promise<Rig> {
   await assertTestRootKey(api);
   await createSecureNoteUi(page, api, NOTE);
   const escrowBefore = (await keyringOf(api)).escrowHash as string;
+  const epochBefore = (await keyringOf(api)).epoch as number; // il recupero ruota la VK: epoch+1 (P4 fase 5)
   await lockUi(page);
 
   // ---- A: "PIN dimenticato" -> avvio del recupero ----
@@ -150,7 +151,7 @@ async function runToReleased(page: Page, browser: Browser): Promise<Rig> {
   await expect(dlg2.getByLabel('Root key passphrase')).toHaveCount(0); // la passphrase non resta nel DOM: il campo sparisce con lo stato RELEASED
   await shot(adm.page, '09-admin-released');
 
-  return { user, api, b, adm, requestId, fp, kit, escrowBefore, codeB };
+  return { user, api, b, adm, requestId, fp, kit, escrowBefore, epochBefore, codeB };
 }
 
 test('recupero completo: richiesta, approvazione, codici, attesa, rilascio, Kit nuovo, PIN nuovo', async ({ page, browser }) => {
@@ -193,6 +194,9 @@ test('recupero completo: richiesta, approvazione, codici, attesa, rilascio, Kit 
   expect(rec.status).toBe('COMPLETED');
   expect((await keyringOf(api)).escrowHash).not.toBe(r.escrowBefore);
   expect((await keyringOf(api)).openRecovery).toBeNull();
+  // il recupero ha ruotato la VK (epoch+1) e le note rimaste all'epoch precedente sono state portate avanti da VaultPage (finishRotation)
+  expect((await keyringOf(api)).epoch).toBe(r.epochBefore + 1);
+  await expect.poll(async () => (await keyringOf(api)).staleCount, { timeout: 60000 }).toBe(0);
 
   // PIN: il vecchio e' rifiutato, il nuovo sblocca
   await page.goto('/vault');
@@ -240,7 +244,7 @@ test('rotazione del Kit: rilascio annullato da B, foglio obbligatorio al primo s
   const sheet = page.getByRole('dialog', { name: 'Replace your Recovery Kit' });
   await expect(sheet).toBeVisible({ timeout: 60000 });
   await expect(sheet.getByRole('alert')).toContainText('no longer safe');
-  await expect(sheet).toContainText('destroy every copy of the previous one');
+  await expect(sheet).toContainText('destroy every copy of it');
   await shot(page, '13-rotation-sheet');
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);

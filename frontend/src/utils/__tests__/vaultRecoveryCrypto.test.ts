@@ -172,6 +172,7 @@ describe('vaultRecoveryCrypto: buildRecoveryPayload', () => {
       sRoot: crypto.getRandomValues(new Uint8Array(32)),
       sUser: crypto.getRandomValues(new Uint8Array(20)),
       rootKey: { id: 'rk_test000000000000', ecdhSpki: rootSpki },
+      rotate: { vkSigPub: 'c2lnLXB1Yg', wrappedVkSigKey: 'd3JhcHBlZC1zaWc', prevVkWrap: 'cHJldi13cmFw' },
     };
     return { args, rootPriv: rootEcdh.privateKey, out: await buildRecoveryPayload(args) };
   }
@@ -179,7 +180,7 @@ describe('vaultRecoveryCrypto: buildRecoveryPayload', () => {
   it('schema del payload: chiavi esatte e lunghezze decodificate come recoveryCompletePayloadSchema', async () => {
     const { out } = await build();
     const p = JSON.parse(out.payload);
-    expect(Object.keys(p).sort()).toEqual(['escrow', 'rev', 'wrap']);
+    expect(Object.keys(p).sort()).toEqual(['escrow', 'rev', 'rotate', 'wrap']);
     expect(p.rev).toBe(REV);
     expect(Object.keys(p.wrap).sort()).toEqual(['authKey', 'kdf', 'kdfParams', 'pinSalt', 'serverShare', 'wrappedVkPin']);
     expect(Object.keys(p.escrow).sort()).toEqual(['escrowBlob', 'rootKeyId', 'sealedRootShare', 'userShareUnderVk']);
@@ -197,6 +198,14 @@ describe('vaultRecoveryCrypto: buildRecoveryPayload', () => {
     expect(len(p.escrow.userShareUnderVk)).toBe(48);
     expect(p.escrow.rootKeyId).toBe('rk_test000000000000');
     expect(out.payload.length).toBeLessThanOrEqual(65536);
+  });
+
+  it('(i) rotate passa tale e quale, con solo le tre chiavi attese, dopo escrow', async () => {
+    const { args, out } = await build();
+    const p = JSON.parse(out.payload);
+    expect(p.rotate).toEqual(args.rotate);
+    expect(Object.keys(p.rotate).sort()).toEqual(['prevVkWrap', 'vkSigPub', 'wrappedVkSigKey']);
+    expect(Object.keys(p)).toEqual(['rev', 'wrap', 'escrow', 'rotate']);
   });
 
   it('hash: escrowHash e wrappedVkPinHash = sha256 hex dei byte decodificati', async () => {

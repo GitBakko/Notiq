@@ -6,7 +6,8 @@ import * as vaultApi from './vaultApi';
 import type { RecoveryDto, VaultApiError } from './vaultApi';
 import { purgeApiCache } from './apiCache';
 import * as device from './deviceKeyStore';
-import { cacheKeyring, saveDeviceShare, VaultSessionError, type KeyringDto } from './vaultSession';
+import { cacheKeyring, cacheUnverified, rotationParts, saveDeviceShare, VaultSessionError, type KeyringDto } from './vaultSession';
+import type { VaultCodecCtx } from './vaultCodec';
 import { useVaultStore, type VaultKeys } from '../store/vaultStore';
 import { useAuthStore } from '../store/authStore';
 import { DEFAULT_KDF, deriveS } from '../utils/argon2';
@@ -19,7 +20,7 @@ import { parseKit } from '../utils/vaultKit';
 
 export type VaultRecoveryCode =
   | 'releaseInvalid' | 'kitInvalid' | 'notThisDevice' | 'keyringChanged' | 'busy' | 'alreadyOpen' | 'retryLater'
-  | 'updateRequired' | 'requestClosed' | 'rejected' | 'completedElsewhere' | 'appliedWithoutKit' | 'appliedKitReplaced' | 'completedUnverified' | 'notReleased' | 'unknown';
+  | 'updateRequired' | 'requestClosed' | 'rejected' | 'completedElsewhere' | 'appliedWithoutKit' | 'completedUnverified' | 'notReleased' | 'rotationPending' | 'unknown';
 
 /** `key` e' una chiave i18n: `vault.recovery.errors.<code>`, tranne alreadyOpen che riusa `errors.vault.recoveryAlreadyOpen`. */
 const errorKey = (code: VaultRecoveryCode) => (code === 'alreadyOpen' ? 'errors.vault.recoveryAlreadyOpen' : `vault.recovery.errors.${code}`);
@@ -194,17 +195,19 @@ async function syncBound(userId: string, requestId: string): Promise<SyncLocalRe
 /**
  * Esito del complete. `applied`: il server ha committato il NOSTRO payload e c'e' il nuovo Kit (20 B, lo azzera chi lo mostra). `appliedWithoutKit`: il recupero e' stato committato da un
  * tentativo PRECEDENTE della stessa richiesta, quindi il Kit di questo tentativo non vale: vale il PIN di quel tentativo (non di questo), si sblocca con quello e si rigenera il Kit.
- * `appliedKitReplaced`: il 200 e' di QUESTO tentativo (vale il PIN appena scelto, lo store e' gia' sbloccato) ma il keyring ha poi un altro escrow (sostituito da un'altra sessione dopo il commit): il Kit di questo tentativo non vale, si rigenera. `notApplied`: nulla e' cambiato, vale il Kit
+ * `appliedKitReplaced`: il 200 e' di QUESTO tentativo ma il keyring ha poi un altro escrow (un'altra sessione, che ruota sempre la VK): il Kit di questo tentativo non vale e lo store NON e' sbloccato (`locked`, si va allo sblocco col PIN corrente). `notApplied`: nulla e' cambiato, vale il Kit
  * precedente. `completedElsewhere`: un'altra sessione ha completato il recupero. `completedUnverified`: la richiesta e' COMPLETED ma il keyring o i marker non si sono potuti leggere, quindi non si sa quale escrow/PIN valga (il Kit precedente non vale piu').
  * `unknown`: lo stato della richiesta non e' noto, decide il marker `kit` al riavvio. `key`: chiave i18n del messaggio.
  */
 export interface CompleteResult {
   verdict: 'applied' | 'appliedWithoutKit' | 'appliedKitReplaced' | 'notApplied' | 'completedElsewhere' | 'completedUnverified' | 'unknown';
-  reason?: 'keyringChanged' | 'requestClosed' | 'rejected';
+  reason?: 'keyringChanged' | 'requestClosed' | 'rejected' | 'rotationPending';
   key?: string;
   kit?: Uint8Array;
   /** Solo con `applied`: hash dell'escrow del Kit restituito; la UI lo passa a confirmKit(userId, escrowHash). */
   escrowHash?: string;
+  /** Solo con `appliedKitReplaced`: sempre true, lo store NON e' sbloccato. */
+  locked?: boolean;
 }
 
 const notApplied = (reason: NonNullable<CompleteResult['reason']>): CompleteResult => ({ verdict: 'notApplied', reason, key: errorKey(reason) });
@@ -212,7 +215,8 @@ const UNKNOWN: CompleteResult = { verdict: 'unknown', key: errorKey('unknown') }
 const COMPLETED_UNVERIFIED: CompleteResult = { verdict: 'completedUnverified', key: errorKey('completedUnverified') };
 const COMPLETED_ELSEWHERE: CompleteResult = { verdict: 'completedElsewhere', key: errorKey('completedElsewhere') };
 const APPLIED_WITHOUT_KIT: CompleteResult = { verdict: 'appliedWithoutKit', key: errorKey('appliedWithoutKit') };
-const APPLIED_KIT_REPLACED: CompleteResult = { verdict: 'appliedKitReplaced', key: errorKey('appliedKitReplaced') };
+/** Escrow del keyring diverso dal nostro dopo il commit (un cambio di escrow ruota sempre): nessuno sblocco, il PIN nuovo non e' piu' garantito, si va allo sblocco. */
+const APPLIED_KIT_REPLACED_LOCKED: CompleteResult = { verdict: 'appliedKitReplaced', locked: true, key: 'vault.recovery.errors.appliedKitReplacedLocked' };
 
 /** COMMITTED = il keyring ha il NOSTRO escrow: il commit e' avvenuto e il Kit (ancora in memoria) e' quello giusto. */
 const COMMITTED = 'committed' as const;
@@ -240,7 +244,7 @@ async function completedVerdict(userId: string, requestId: string, own: string |
 }
 
 /** 409: il GET della richiesta dice perche'. GET fallita o stato inatteso: unknown. */
-async function classify409(userId: string, requestId: string, ownEscrowHash: string): Promise<Verdict> {
+async function classify409(userId: string, e409: VaultApiError, requestId: string, ownEscrowHash: string): Promise<Verdict> {
   let status: string;
   try {
     status = (await vaultApi.getRecovery(requestId)).status;
@@ -249,7 +253,7 @@ async function classify409(userId: string, requestId: string, ownEscrowHash: str
     if (!isCurrent(userId)) throw notReady(); // il 404 e' del token di un altro utente: non dice nulla della nostra richiesta
     return notApplied('requestClosed');
   }
-  if (status === 'RELEASED') return notApplied('keyringChanged');
+  if (status === 'RELEASED') return notApplied(e409.key === 'errors.vault.rotationPending' ? 'rotationPending' : 'keyringChanged'); // rotationPending: note tornate stale dopo la preparazione
   if (status === 'COMPLETED') return completedVerdict(userId, requestId, ownEscrowHash);
   if (['EXPIRED', 'CANCELLED', 'REJECTED'].includes(status)) return notApplied('requestClosed');
   return UNKNOWN;
@@ -262,7 +266,7 @@ async function classify409(userId: string, requestId: string, ownEscrowHash: str
 async function classify(userId: string, e: unknown, requestId: string, ownEscrowHash: string, ambiguous: boolean): Promise<Verdict> {
   if (!isApiError(e)) return UNKNOWN;
   if (!isCurrent(userId)) throw notReady(); // prima di interpretare qualunque risposta (404 compreso): il token e' di un altro utente
-  if (e.status === 409) return classify409(userId, requestId, ownEscrowHash);
+  if (e.status === 409) return classify409(userId, e, requestId, ownEscrowHash);
   const rejected = isNotFound(e) || [400, 403, 413, 422].includes(e.status) || isVault503(e);
   if (!rejected) return UNKNOWN; // 401, rete/5xx/429 dopo i tentativi, 503 di proxy, altri
   if (ambiguous) {
@@ -286,39 +290,60 @@ const completedAtStart = async (userId: string, requestId: string): Promise<Comp
 
 /**
  * Passi dopo il 200 (tutti best-effort: il server ha committato). Ordine: GET del keyring + cache (solo utente corrente, solo dal server, anche se non esisteva), sblocco, share, purge, chiave effimera.
- * `ours` false = il keyring ha un escrow diverso dal nostro (200 idempotente con keyring cambiato nel frattempo): il Kit di questo tentativo non vale.
+ * `foreign` = il keyring ha un escrow diverso dal nostro (200 idempotente con keyring cambiato nel frattempo): il Kit di questo tentativo non vale e non si sblocca mai. Si sblocca solo con la cache scritta dal server a `epoch`.
  * Lo share nuovo si salva solo se il refresh e' riuscito (altrimenti cache vecchia + share nuovo): se no si cancella. Non cancella mai il marker `kit`: lo risolve checkPendingOnStart.
  */
-async function afterCommit(userId: string, requestId: string, keys: VaultKeys, epoch: number, newShare: Uint8Array, wrappedVkSigKey: string, ownEscrowHash: string, baseRev: number): Promise<{ ours: boolean; unverified: boolean }> {
-  let ours = true;
+async function afterCommit(userId: string, requestId: string, keys: VaultKeys, epoch: number, newShare: Uint8Array, wrappedVkSigKey: Uint8Array, ownEscrowHash: string, baseRev: number): Promise<{ unverified: boolean; foreign: boolean }> {
   let unverified = false;
+  let foreign = false; // escrow di un'altra sessione: le nostre chiavi non sono quelle del keyring
   let refreshed = false;
+  // Cerimonia avviata da sbloccati: le chiavi dello store sono dell'epoch vecchia e il keyring e' andato avanti, quindi si blocca (niente chiavi stale in sessione).
+  const lockIfStale = (target: number) => { if (store().unlockedUserId === userId && store().epoch !== target) void store().lockVault(); };
   await step('refresh', async () => {
     if (!isCurrent(userId)) return;
     const kr = await fetchKeyring();
     if (!isCurrent(userId)) return; // la risposta e' del token di un altro utente: ignorata
     if (kr.escrowHash !== ownEscrowHash) {
-      ours = false;
       // un 2xx che non viene dal vault (proxy, captive portal) non e' un commit: l'escrow diverso si crede solo se la richiesta e' COMPLETED o il keyring ha fatto 2 rev (commit + altra modifica)
       unverified = kr.rev < baseRev + 2; // se la GET lancia resta non verificato
       if (unverified) unverified = (await vaultApi.getRecovery(requestId)).status !== 'COMPLETED';
       if (unverified || !isCurrent(userId)) return;
+      // Un cambio di escrow ruota sempre la VK: con un server onesto l'epoch e' diversa. Con la stessa epoch (server bugiardo) le nostre chiavi non sono comunque quelle del keyring:
+      // mai sbloccare, mai salvare lo share; l'epoch in cache sale solo dopo un unwrap AEAD (qui mai).
+      foreign = true;
+      if (store().unlockedUserId === userId) void store().lockVault(); // PRIMA della cache: senza confronto di epoch, la nostra VK ha gia' ruotato, anche con l'epoch dichiarata uguale
+      try { if (kr.status === 'READY') cacheUnverified(userId, kr, store().byUser[userId]?.offlineUnlock ?? false); } catch { /* keyring incompleto: la cache resta com'e', il resto del ramo (share, verdetto locked) prosegue */ }
+      return;
+    } else if (kr.epoch !== epoch) {
+      unverified = true; // l'escrow e' nostro ma il keyring non e' all'epoch che il nostro payload produce: nessuno sblocco con chiavi di un'altra epoch
+      lockIfStale(kr.epoch);
+      return;
     }
     // come unlockOnline: la cache si scrive dal server anche se mancava (dispositivo nuovo, o dopo "Rimuovi vault"), PRIMA dello sblocco
     cacheKeyring(userId, kr, store().byUser[userId]?.offlineUnlock ?? false);
     refreshed = true;
   });
-  if (unverified) return { ours, unverified }; // niente sblocco, share, purge ne' cancellazione della chiave: il commit non e' provato
-  await step('unlock', () => { if (isCurrent(userId)) store().unlock(userId, keys, epoch); });
+  if (unverified) return { unverified, foreign }; // niente sblocco, share, purge ne' cancellazione della chiave: il commit non e' provato
+  if (foreign) {
+    // il commit e' certo (COMPLETED o rev+2) ma il keyring ha un altro escrow: nessuno sblocco, lo share di questo dispositivo non e' piu' valido
+    await step('share', async () => { if (isCurrent(userId)) await device.deleteShare(userId); });
+    await step('purge', () => purgeApiCache());
+    await step('key', () => device.deleteRecoveryKeyIf(userId, { requestId }));
+    return { unverified, foreign };
+  }
+  // Sblocco solo con la cache scritta dal server a `epoch`: con la GET fallita la cache e' all'epoch vecchia e lo store a `epoch` farebbe rispondere notReady al reconcile per tutta la sessione.
+  // Senza sblocco il verdetto resta `applied` (commit, poi Kit) e si sblocca col PIN nuovo; se la sessione era gia' sbloccata ha chiavi vecchie e si blocca.
+  if (refreshed) await step('unlock', () => { if (isCurrent(userId)) store().unlock(userId, keys, epoch); });
+  else lockIfStale(epoch);
   await step('share', async () => {
     if (!isCurrent(userId)) return; // utente cambiato durante la POST: lo share non e' piu' roba nostra
     if (!refreshed || !(store().byUser[userId]?.offlineUnlock ?? false)) { await device.deleteShare(userId); return; }
     // saveDeviceShare non lancia: false = non salvato; lo share vecchio ha il serverShare ruotato, meglio nessuno
-    if (!(await saveDeviceShare(userId, newShare, epoch, b64uDecode(wrappedVkSigKey)))) await device.deleteShare(userId);
+    if (!(await saveDeviceShare(userId, newShare, epoch, wrappedVkSigKey))) await device.deleteShare(userId);
   });
   await step('purge', () => purgeApiCache());
   await step('key', () => device.deleteRecoveryKeyIf(userId, { requestId }));
-  return { ours, unverified };
+  return { unverified, foreign };
 }
 
 /**
@@ -333,10 +358,22 @@ export function completeRecovery(args: { userId: string; requestId: string; kit:
   return withLock(args.userId, () => runComplete(args));
 }
 
-async function runComplete(args: { userId: string; requestId: string; kit: string; newPin: string; retryDelaysMs?: readonly number[] }): Promise<CompleteResult> {
-  const { userId, requestId } = args;
+interface ReleasePrep {
+  key: device.RecoveryKey;
+  kr: KeyringDto;
+  rootKeyId: string;
+  wrappedVkSigKey: string;
+  rootShareForClient: Uint8Array;
+  escrowBlob: Uint8Array;
+  rootKey: NonNullable<ReturnType<typeof getActiveRootKey>>;
+}
+
+/**
+ * Verifiche comuni a `runComplete` e `openRecoveryContext` (nessuna scrittura): richiesta, chiave locale, rilascio firmato, keyring READY con la chiave root nota e l'escrow
+ * della richiesta uguale a quello del keyring. `done`: la richiesta non e' RELEASED, il verdetto lo da `completeRecovery` (COMPLETED, chiusa). Errori di preparazione: VaultRecoveryError.
+ */
+async function loadRelease(userId: string, requestId: string): Promise<{ done: CompleteResult } | { prep: ReleasePrep }> {
   if (!isCurrent(userId)) throw notReady(); // prima della prima GET: un 404 di un altro utente non deve sembrare "richiesta chiusa"
-  const delays = args.retryDelaysMs ?? RETRY_DELAYS_MS;
   const key = await device.getRecoveryKey(userId);
   const mine = !!key && key.requestId === requestId;
   // getRecovery PRIMA del controllo della chiave (U7): una richiesta COMPLETED con la chiave gia' cancellata da una sync non e' "un altro dispositivo"
@@ -347,12 +384,12 @@ async function runComplete(args: { userId: string; requestId: string; kit: strin
     if (isNotFound(e)) {
       if (!isCurrent(userId)) throw notReady();
       if (!mine) throw rerr('notThisDevice');
-      return notApplied('requestClosed');
+      return { done: notApplied('requestClosed') };
     }
     throw e;
   }
-  if (r.status === 'COMPLETED') return completedAtStart(userId, requestId);
-  if (['EXPIRED', 'CANCELLED', 'REJECTED'].includes(r.status)) return notApplied('requestClosed'); // anche con la chiave gia' pulita da una sync: ne' releaseInvalid ne' notThisDevice
+  if (r.status === 'COMPLETED') return { done: await completedAtStart(userId, requestId) };
+  if (['EXPIRED', 'CANCELLED', 'REJECTED'].includes(r.status)) return { done: notApplied('requestClosed') }; // anche con la chiave gia' pulita da una sync: ne' releaseInvalid ne' notThisDevice
   if (!key || !mine) throw rerr('notThisDevice');
   const own = await fingerprintOf(key.publicRaw);
   if (['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING'].includes(r.status)) throw rerr('notReleased'); // richiesta sana, solo non ancora rilasciata: non va annullata
@@ -373,11 +410,58 @@ async function runComplete(args: { userId: string; requestId: string; kit: strin
   if ((await sha256hexBytes(escrowBlob)) !== kr.escrowHash) throw rerr('keyringChanged'); // richiesta e keyring non sono piu' lo stesso istante
   const rootKey = getActiveRootKey();
   if (!rootKey) throw rerr('updateRequired');
+  return { prep: { key, kr, rootKeyId: kr.rootKeyId, wrappedVkSigKey: kr.wrappedVkSigKey, rootShareForClient, escrowBlob, rootKey } };
+}
+
+/**
+ * Apre la VK dall'escrow col Kit vecchio (S_root dal rilascio) e la firma `sigKey`: stesse verifiche della preparazione di `completeRecovery`, nessuna scrittura (nessun marker, POST,
+ * sblocco, share). Serve alla UI per finire la rotazione precedente (`finishRotation` con questo `ctx`, `live:false`) PRIMA del complete, che ruota sempre.
+ * `ctx` = chiavi della VK dell'escrow a `kr.epoch` (non-extractable, senza `prev`: lo risolve finishRotation da `prevVkWrap`); `staleCount` = note ancora a un'epoch precedente.
+ * Richiesta non RELEASED (COMPLETED, chiusa, sparita): `null`, il verdetto lo da `completeRecovery`. Errori: gli stessi VaultRecoveryError della preparazione, piu' busy.
+ */
+export function openRecoveryContext(args: { userId: string; requestId: string; kit: string }): Promise<{ ctx: VaultCodecCtx; staleCount: number } | null> {
+  return withLock(args.userId, async () => {
+    const { userId, requestId } = args;
+    let loaded: Awaited<ReturnType<typeof loadRelease>>;
+    try {
+      loaded = await loadRelease(userId, requestId);
+    } catch (e) {
+      if (e instanceof VaultRecoveryError && e.code === 'notReleased') return null; // ancora in attesa: nessun contesto, lo dira' completeRecovery
+      throw e;
+    }
+    if ('done' in loaded) return null;
+    const { key, kr, rootKeyId, wrappedVkSigKey, rootShareForClient, escrowBlob } = loaded.prep;
+    let sRoot: Uint8Array | null = null;
+    let kitBytes: Uint8Array | null = null;
+    let vkRaw: Uint8Array | null = null;
+    try {
+      sRoot = await or('releaseInvalid', () => openRecoveryShare(rootShareForClient, key.privateKey, requestId, userId));
+      const oldKit = kitBytes = await or('kitInvalid', () => parseKit(args.kit));
+      vkRaw = await or('kitInvalid', async () => unwrapEscrow(await deriveRk(sRoot!, oldKit, userId), escrowBlob, userId, kr.epoch, rootKeyId));
+      const vk = await importVk(vkRaw);
+      const sigKey = await or('keyringChanged', () => unwrapVkSigKey(vk, b64uDecode(wrappedVkSigKey), userId, kr.epoch));
+      if (!isCurrent(userId)) throw notReady();
+      return { ctx: { keys: { vkHkdf: vk.hkdf, vkAes: vk.aes, sigKey }, userId, epoch: kr.epoch }, staleCount: kr.staleCount ?? 0 };
+    } finally {
+      zero(sRoot, kitBytes, vkRaw);
+    }
+  });
+}
+
+async function runComplete(args: { userId: string; requestId: string; kit: string; newPin: string; retryDelaysMs?: readonly number[] }): Promise<CompleteResult> {
+  const { userId, requestId } = args;
+  const delays = args.retryDelaysMs ?? RETRY_DELAYS_MS;
+  const loaded = await loadRelease(userId, requestId);
+  if ('done' in loaded) return loaded.done;
+  const { key, kr, rootKeyId, wrappedVkSigKey, rootShareForClient, escrowBlob, rootKey } = loaded.prep;
+  // Note ancora a un'epoch precedente: la rotazione in corso si finisce prima (openRecoveryContext + finishRotation). Prima di Argon2 e del marker: nulla da annullare.
+  if ((kr.staleCount ?? 0) > 0) throw rerr('rotationPending');
 
   let sRoot: Uint8Array | null = null;
   let kitBytes: Uint8Array | null = null;
   let vkRaw: Uint8Array | null = null;
   let S: Uint8Array | null = null;
+  let rot: Awaited<ReturnType<typeof rotationParts>> | null = null;
   const newSRoot = rnd(32);
   const newSUser = rnd(20);
   const newShare = rnd(32);
@@ -388,26 +472,33 @@ async function runComplete(args: { userId: string; requestId: string; kit: strin
   try {
     sRoot = await or('releaseInvalid', () => openRecoveryShare(rootShareForClient, key.privateKey, requestId, userId));
     const oldKit = kitBytes = await or('kitInvalid', () => parseKit(args.kit));
-    vkRaw = await or('kitInvalid', async () => unwrapEscrow(await deriveRk(sRoot!, oldKit, userId), escrowBlob, userId, kr.epoch, kr.rootKeyId!));
+    vkRaw = await or('kitInvalid', async () => unwrapEscrow(await deriveRk(sRoot!, oldKit, userId), escrowBlob, userId, kr.epoch, rootKeyId));
     const vk = await importVk(vkRaw);
-    const sigKey = await or('keyringChanged', () => unwrapVkSigKey(vk, b64uDecode(kr.wrappedVkSigKey!), userId, kr.epoch));
+    const sigKey = await or('keyringChanged', () => unwrapVkSigKey(vk, b64uDecode(wrappedVkSigKey), userId, kr.epoch)); // la chiave VECCHIA: firma la proof a kr.epoch
+
+    // Il recupero ruota sempre: VK nuova, sigKey nuova e prevVkWrap (VK vecchia sotto la nuova) a epoch+1; i wrap e l'escrow nuovi contengono la VK NUOVA.
+    const epochNew = kr.epoch + 1;
+    rot = await rotationParts(vkRaw, vk, userId, kr.epoch);
+    const vkNewRaw = rot.vkNewRaw;
+    const rotate = { vkSigPub: b64uEncode(rot.sig.spki), wrappedVkSigKey: b64uEncode(rot.wrappedVkSigKey), prevVkWrap: b64uEncode(rot.prevVkWrap) };
 
     const kdf = { m: DEFAULT_KDF.m, t: DEFAULT_KDF.t, p: DEFAULT_KDF.p };
     S = await deriveS(args.newPin, newSalt, kdf);
     const built = await buildRecoveryPayload({
-      userId, epoch: kr.epoch, rev: kr.rev, vkRaw, S, pinSalt: newSalt, serverShare: newShare, kdf, sRoot: newSRoot, sUser: newSUser, rootKey,
+      userId, epoch: epochNew, rev: kr.rev, vkRaw: vkNewRaw, S, pinSalt: newSalt, serverShare: newShare, kdf, sRoot: newSRoot, sUser: newSUser, rootKey, rotate,
     });
 
-    // Round-trip a runtime: il nuovo wrap col nuovo PIN e il nuovo escrow col nuovo Kit devono restituire la stessa VK, altrimenti niente marker e niente POST.
+    // Round-trip a runtime: il nuovo wrap col nuovo PIN e il nuovo escrow col nuovo Kit devono restituire la VK NUOVA, altrimenti niente marker e niente POST.
     try {
       const o = JSON.parse(built.payload) as { wrap: { pinSalt: string; wrappedVkPin: string; serverShare: string; kdfParams: typeof kdf }; escrow: { escrowBlob: string; rootKeyId: string } };
       const kek = await deriveKekPin(S, b64uDecode(o.wrap.serverShare), b64uDecode(o.wrap.pinSalt), userId);
-      check1 = await unwrapVkPin(kek, b64uDecode(o.wrap.wrappedVkPin), userId, kr.epoch, o.wrap.kdfParams);
-      check2 = await unwrapEscrow(await deriveRk(newSRoot, newSUser, userId), b64uDecode(o.escrow.escrowBlob), userId, kr.epoch, o.escrow.rootKeyId);
-      if (!sameBytes(check1, vkRaw) || !sameBytes(check2, vkRaw)) throw new Error('roundTripMismatch');
+      check1 = await unwrapVkPin(kek, b64uDecode(o.wrap.wrappedVkPin), userId, epochNew, o.wrap.kdfParams);
+      check2 = await unwrapEscrow(await deriveRk(newSRoot, newSUser, userId), b64uDecode(o.escrow.escrowBlob), userId, epochNew, o.escrow.rootKeyId);
+      if (!sameBytes(check1, vkNewRaw) || !sameBytes(check2, vkNewRaw)) throw new Error('roundTripMismatch');
     } catch {
       throw new VaultSessionError('keyringInvalid', 'errors.common.unknownError');
     }
+    // La proof usa la sigKey e l'epoch/rev VECCHI: il server la verifica col vkSigPub del keyring ancora non ruotato.
     const proof = await signVkProof(sigKey, userId, kr.epoch, kr.rev, built.payload, `POST /api/vault/recovery/${requestId}/complete`);
 
     // Marker PRIMA della POST (come setup e regenerateKit), uno per escrow: se non si scrive, nessun Kit puo' andare perso e non si invia nulla.
@@ -421,14 +512,16 @@ async function runComplete(args: { userId: string; requestId: string; kit: strin
       if (v !== COMMITTED) return v;
     }
 
-    const after = await afterCommit(userId, requestId, { vkHkdf: vk.hkdf, vkAes: vk.aes, sigKey }, kr.epoch, newShare, kr.wrappedVkSigKey, built.escrowHash, kr.rev);
+    // Store a epoch+1 con la VK vecchia in `prev` (serve a finishRotation sulle note rimaste a epoch-1, come dopo rotateVault); lo share porta il wrap della sigKey NUOVA.
+    const newKeys: VaultKeys = { vkHkdf: rot.vkNew.hkdf, vkAes: rot.vkNew.aes, sigKey: rot.sig.privateKey, prev: { epoch: kr.epoch, vkHkdf: vk.hkdf, vkAes: vk.aes } };
+    const after = await afterCommit(userId, requestId, newKeys, epochNew, newShare, rot.wrappedVkSigKey, built.escrowHash, kr.rev);
     if (!isCurrent(userId)) throw notReady(); // cambio utente o logout durante la POST: niente Kit a chi non e' piu' l'utente
     if (after.unverified) return UNKNOWN; // 200 senza prova di commit: nulla e' stato sbloccato ne' cancellato, decide il marker al riavvio
-    if (!after.ours) return APPLIED_KIT_REPLACED; // il 200 e' nostro (PIN nuovo valido, store sbloccato) ma il Kit di questo tentativo e' stato sostituito: il finally lo azzera
+    if (after.foreign) return APPLIED_KIT_REPLACED_LOCKED; // store non sbloccato: si va allo sblocco con il PIN corrente; il finally azzera il Kit di questo tentativo
     returned = true;
     return { verdict: 'applied', kit: newSUser, escrowHash: built.escrowHash };
   } finally {
-    zero(sRoot, kitBytes, vkRaw, S, newSRoot, newShare, check1, check2);
+    zero(sRoot, kitBytes, vkRaw, S, newSRoot, newShare, check1, check2, rot?.vkNewRaw, rot?.sig.pkcs8);
     if (!returned) zero(newSUser);
   }
 }

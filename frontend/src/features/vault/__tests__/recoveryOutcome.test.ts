@@ -15,12 +15,13 @@ const result = (verdict: CompleteResult['verdict'], reason?: CompleteResult['rea
 
 const CASES: Case[] = [
   ['applied', result('applied'), 'vault.recovery.outcome.applied', 'kitCeremony'],
-  ['appliedKitReplaced', result('appliedKitReplaced'), `${E}appliedKitReplaced`, 'regenerateKit'],
+  ['T11 appliedKitReplaced locked (epoch diversa: store bloccato)', { ...result('appliedKitReplaced'), locked: true }, `${E}appliedKitReplacedLocked`, 'goUnlock'],
   ['appliedWithoutKit', result('appliedWithoutKit'), `${E}appliedWithoutKit`, 'goUnlock'],
   ['completedElsewhere', result('completedElsewhere'), `${E}completedElsewhere`, 'goUnlock'],
   ['completedUnverified', result('completedUnverified'), `${E}completedUnverified`, 'goUnlock'],
   ['unknown (verdetto)', result('unknown'), `${E}unknown`, 'goUnlock'],
   ['notApplied/keyringChanged', result('notApplied', 'keyringChanged'), `${E}keyringChanged`, 'retryFresh'],
+  ['(w) notApplied/rotationPending', result('notApplied', 'rotationPending'), `${E}rotationPending`, 'retryFresh'],
   ['notApplied/rejected', result('notApplied', 'rejected'), `${E}rejected`, 'retryFresh'],
   ['notApplied/requestClosed', result('notApplied', 'requestClosed'), `${E}requestClosed`, 'newRequest'],
 ];
@@ -39,9 +40,9 @@ const CODES: [VaultRecoveryCode, string, OutcomeAction][] = [
   ['rejected', `${E}rejected`, 'retryFresh'],
   ['completedElsewhere', `${E}completedElsewhere`, 'goUnlock'],
   ['appliedWithoutKit', `${E}appliedWithoutKit`, 'goUnlock'],
-  ['appliedKitReplaced', `${E}appliedKitReplaced`, 'regenerateKit'],
   ['completedUnverified', `${E}completedUnverified`, 'goUnlock'],
   ['unknown', `${E}unknown`, 'goUnlock'],
+  ['rotationPending', `${E}rotationPending`, 'retry'], // (w) in preparazione: basta riprovare
 ];
 
 const ALL: Case[] = [
@@ -68,8 +69,8 @@ describe('outcomeOf', () => {
 
   it('copre ogni VaultRecoveryCode (se ne aggiungi uno, aggiorna la tabella)', () => {
     expect(CODES.map(([c]) => c).sort()).toEqual([
-      'alreadyOpen', 'appliedKitReplaced', 'appliedWithoutKit', 'busy', 'completedElsewhere', 'completedUnverified', 'keyringChanged', 'kitInvalid',
-      'notReleased', 'notThisDevice', 'rejected', 'releaseInvalid', 'requestClosed', 'retryLater', 'unknown', 'updateRequired',
+      'alreadyOpen', 'appliedWithoutKit', 'busy', 'completedElsewhere', 'completedUnverified', 'keyringChanged', 'kitInvalid',
+      'notReleased', 'notThisDevice', 'rejected', 'releaseInvalid', 'requestClosed', 'retryLater', 'rotationPending', 'unknown', 'updateRequired',
     ]);
   });
 

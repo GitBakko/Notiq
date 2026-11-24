@@ -71,7 +71,7 @@ import { useAuthStore } from '../../store/authStore';
 import { purgeApiCache } from '../apiCache';
 import { DEFAULT_KDF, deriveS } from '../../utils/argon2';
 import { getShare } from '../deviceKeyStore';
-import { b64uDecode, b64uEncode, deriveAuthKey, deriveKekPin, sha256hex, sha256hexBytes, unwrapVkPin, wrapEscrow, wrapPrevVk } from '../../utils/vaultCrypto';
+import { b64uDecode, b64uEncode, decryptItem, deriveAuthKey, deriveKekPin, deriveNoteKey, encryptItem, generateVkRaw, importVk, sha256hex, sha256hexBytes, unwrapPrevVk, unwrapVkPin, unwrapVkSigKey, wrapEscrow, wrapPrevVk } from '../../utils/vaultCrypto';
 
 const U = 'u1';
 const PIN = 'k7Rq2x';
@@ -1764,5 +1764,42 @@ describe('Y2 PUT del cambio PIN in timeout, committata dopo; secondo tentativo c
     await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject({ code: 'pinChangedElsewhere', key: 'errors.vault.pinChangedElsewhere' });
     await st().lockVault();
     await expect(session.unlockOnline(U, PIN2)).resolves.toBeDefined(); // il PIN del primo tentativo vale
+  });
+});
+
+describe('(k) rotationParts: i pezzi della rotazione, con sonde', () => {
+  const EO = 4;
+  const mk = async () => {
+    const vkOldRaw = generateVkRaw();
+    return { vkOldRaw, vkOld: await importVk(vkOldRaw) };
+  };
+
+  it('prev si riapre con la VK nuova e da la VK vecchia; la firma verifica con spki; il wrap della sigKey si apre a epoch+1', async () => {
+    const { vkOldRaw, vkOld } = await mk();
+    const p = await session.rotationParts(vkOldRaw, vkOld, U, EO);
+    expect(p.vkNewRaw).toHaveLength(32);
+    expect(p.vkNewRaw).not.toEqual(vkOldRaw);
+    const prev = await unwrapPrevVk(p.vkNew, p.prevVkWrap, U, EO + 1, EO);
+    const ctx = { userId: U, noteId: 'n1', noteType: 'NOTE', epoch: EO };
+    const env = await encryptItem(await deriveNoteKey(vkOld, ctx.noteId), ctx, { t: 't', c: 'c' });
+    expect((await decryptItem(await deriveNoteKey(prev, ctx.noteId), ctx, env)).c).toBe('c');
+    const key = await unwrapVkSigKey(p.vkNew, p.wrappedVkSigKey, U, EO + 1);
+    const ecdsa = { name: 'ECDSA', hash: 'SHA-256' } as const;
+    const pub = await crypto.subtle.importKey('spki', p.sig.spki, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    const msg = new Uint8Array([9, 8, 7]);
+    expect(await crypto.subtle.verify(ecdsa, pub, await crypto.subtle.sign(ecdsa, key, msg), msg)).toBe(true);
+    expect(p.prevVkWrap).toHaveLength(60);
+  });
+
+  it('sonda prev manomessa -> keyringInvalid', async () => {
+    const { vkOldRaw, vkOld } = await mk();
+    vi.mocked(wrapPrevVk).mockResolvedValueOnce(new Uint8Array(60));
+    await expect(session.rotationParts(vkOldRaw, vkOld, U, EO)).rejects.toMatchObject({ code: 'keyringInvalid' });
+  });
+
+  it('sonda firma manomessa -> keyringInvalid', async () => {
+    const { vkOldRaw, vkOld } = await mk();
+    vi.spyOn(crypto.subtle, 'verify').mockResolvedValueOnce(false);
+    await expect(session.rotationParts(vkOldRaw, vkOld, U, EO)).rejects.toMatchObject({ code: 'keyringInvalid' });
   });
 });

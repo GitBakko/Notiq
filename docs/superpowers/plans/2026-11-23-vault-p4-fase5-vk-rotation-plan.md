@@ -1,6 +1,6 @@
 # Vault P4, Fase 5: rotazione della VK (piano, 23/11/2026)
 
-Stato: **piano dell'architect approvato; D1-D5 approvate dall'utente il 23/11/2026 come raccomandate. D6-D10 approvate dall'utente lo stesso giorno, come raccomandate. D11-D17 approvate dall'utente il 23/11/2026. D18 approvata dall'utente il 24/11/2026.**
+Stato: **piano dell'architect approvato; D1-D5 approvate dall'utente il 23/11/2026 come raccomandate. D6-D10 approvate dall'utente lo stesso giorno, come raccomandate. D11-D17 approvate dall'utente il 23/11/2026. D18-D20 approvate dall'utente il 24/11/2026.**
 Chiude il residuo del red-team del piano Fase 4 §9 («la rotazione del Kit non cambia la VK»), decisione dell'utente del 13/11/2026.
 
 Verificati dal coordinatore sul codice (HEAD `b21604e`): `rotate` riservato e rifiutato in `vault.service.ts:318,336`; il server accetta solo l'epoch corrente (`vault.service.ts:79`, 422 `stale`). Da verificare nei test: `@updatedAt` di `Note` aggiornato dall'`updateMany` di `/migrate` (`vault.service.ts:529`), rate limit e durata di `/items` e `/migrate` su vault grandi.
@@ -218,6 +218,13 @@ Invariante: mai ruotare con `staleCount > 0`, quindi nessuna nota resta più di 
 - Copie in conflitto su dispositivi con edit non spinti: nessuna perdita, ma duplicati.
 - I backup precedenti alla rotazione restano leggibili con VK_old.
 - Un server malevolo che cambia `noteType` nel listing di `/items` fa fallire l'AEAD (AAD diversa) e la nota appare D, quindi eliminabile oltre il limite. Accettato: il server può comunque cancellare da sé.
+- T11, residui accettati dopo la review (24/11/2026):
+  - Il giro `live:false` della cerimonia di recupero non ha `AbortController`: dopo smontaggio, logout o cambio utente continua fino alla fine. Innocuo, perché il server filtra per `userId` (`notFound`).
+  - K o U oltre il limite nel recupero: `complete` resta in 409 `rotationPending` e da bloccato la lista del vault non si apre. Su un server onesto non capita (`assertVaultContent` rifiuta le epoch non correnti). L'uscita è il reset P3: va scritto nel runbook (T13).
+  - `staleCount` è creduto al server: un server che dichiara 0 con note a e-1 le fa diventare e-2 dopo la rotazione. Vale quanto una cancellazione lato server; `rotateVault` ha lo stesso limite.
+  - «Elimina» (D18, D20) salta le note con una riga Dexie non `synced` o un item in coda: restano nel dialog e un toast lo dice (`vault.rotation.deleteSkippedPending`).
+  - `rotateVault` dopo l'estrazione di `rotationParts`: un errore di `unwrapPrevVk` nella sonda diventa `keyringInvalid` invece dell'errore grezzo. Nessun invio in entrambi i casi.
+  - Nota R leggibile il cui envelope ricifrato supera `MAX_ENVELOPE_LEN` (`fin.tooLarge`): nel recupero `complete` resta in 409 `rotationPending` e la cerimonia non offre azioni. Su dati prodotti dal client non capita (il limite in scrittura è lo stesso). L'uscita è il reset P3: va nel runbook (T13) insieme a K/U oltre il limite.
 - Corsa teorica di una PUT di nota a cavallo di due rotazioni: in `note.service.ts` (circa righe 230 e 286) la guardia sull'epoch si legge fuori dal lock. Servono due rotazioni complete tra lettura e scrittura. Accettato.
 
 ## 7. Decisioni per l'utente
@@ -243,3 +250,5 @@ Esito D1-D5: approvate il 23/11/2026.
 - **D16.** Una nota K (keyMissing: epoch e-1 con `prevVkWrap` assente o rotto) oltre il limite di re-incapsulamento (~1,5 MiB, `MAX_REWRAP_LEN`) non è risolvibile dall'utente. Blocca la prossima rotazione e il `complete` del recupero (409 `rotationPending`) finché l'amministratore non ripristina `prevVkWrap`. Il dialog delle note stale lo dice in chiaro (chiave `vault.rotation.keyMissingTooLarge`) e non offre alcuna eliminazione. L'utente può ancora cancellarla a mano dalla lista del vault, con la conferma normale. Esito: approvata il 23/11/2026.
 - **D17.** Quando la cerimonia del Kit nata da una rotazione finisce, il foglio Impostazioni si chiude da solo (`onKitDone`), così il dialog delle note stale può comparire. Esito: approvata il 23/11/2026.
 - **D18 (23/11/2026, restringe D7).** L'eliminazione di una nota oltre il limite resta solo per le note la cui decifratura con una chiave valida fallisce l'AEAD. Le note malformate, con epoch ≤ e-2 o futura, sono `unverifiable`: avviso come le K, nessuna eliminazione, per non far credere all'utente che un server manomesso abbia ragione. Esito: approvata dall'utente il 24/11/2026.
+- **D19 (24/11/2026, T11).** Sul dispositivo del recupero, righe Dexie e item di coda non sincronizzati a `kr.epoch-1` dopo il `complete` diventano e-2 e restano LEAVE, mai DROP. Il recupero non si blocca per loro: chi ha dimenticato il PIN non può sbloccare per sincronizzarle. Residuo accettato, come D12. Esito: approvata dall'utente il 24/11/2026.
+- **D20 (24/11/2026, T11).** «L'utente cancella la nota a mano» (D7) nel recupero diventa il pulsante «Elimina» di `StaleNotesDialog`, con lo stesso ricontrollo di D18. Da bloccato la lista del vault non è raggiungibile: senza il pulsante una D oltre il limite bloccherebbe il recupero per sempre. Esito: approvata dall'utente il 24/11/2026.

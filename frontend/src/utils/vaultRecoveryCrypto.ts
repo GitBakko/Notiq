@@ -115,6 +115,8 @@ export interface RecoveryPayloadInput {
   sRoot: Uint8Array;
   sUser: Uint8Array;
   rootKey: { id: string; ecdhSpki: Uint8Array };
+  /** Rotazione della VK (P4 fase 5): il recupero ruota sempre. Base64url gia' pronti (da `rotationParts`), serializzati tali e quali. */
+  rotate: { vkSigPub: string; wrappedVkSigKey: string; prevVkWrap: string };
 }
 
 /**
@@ -149,6 +151,7 @@ export async function buildRecoveryPayload(a: RecoveryPayloadInput): Promise<{ p
         rootKeyId: a.rootKey.id,
         userShareUnderVk: b64uEncode(userShareUnderVk),
       },
+      rotate: { vkSigPub: a.rotate.vkSigPub, wrappedVkSigKey: a.rotate.wrappedVkSigKey, prevVkWrap: a.rotate.prevVkWrap },
     });
     return { payload, escrowHash: await sha256hexBytes(escrowBlob), wrappedVkPinHash: await sha256hexBytes(wrappedVkPin) };
   } finally {

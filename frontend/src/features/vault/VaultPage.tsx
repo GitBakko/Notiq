@@ -25,7 +25,7 @@ import { checkPendingOnStart, hasForeignEpochPending, refreshKeyringCache, syncK
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { getActiveRootKey } from '../../utils/vaultRootKeys';
 import { syncPush } from '../sync/syncService';
-import { permanentlyDeleteNote, type Note } from '../notes/noteService';
+import type { Note } from '../notes/noteService';
 import TagList from '../tags/TagList';
 import CredentialCard from './CredentialCard';
 import CredentialForm from './CredentialForm';
@@ -38,7 +38,8 @@ import VaultSettingsSheet from './VaultSettingsSheet';
 import StaleNotesDialog, { type StaleItem } from './StaleNotesDialog';
 import VaultSetup from './VaultSetup';
 import VaultUnlock from './VaultUnlock';
-import { finishRotation, MAX_REWRAP_LEN, rewrapUnreadable, type RotationResult, type UnreadableItem } from './vaultMigration';
+import { finishRotation, type RotationResult } from './vaultMigration';
+import { deleteDamagedThenFinish, markStale, rewrapTargets, rewrapThenFinish } from './staleActions';
 import { EMPTY_CREDENTIAL, parseCredential } from './credentialTypes';
 
 type TypeFilter = 'all' | 'note' | 'credential';
@@ -60,7 +61,6 @@ const rotationOf = (kr: KeyringDto) => kr.kitRotationRequired === true && kr.ope
 // MAX_REWRAP_LEN o rifiutato dal rewrap: D7), `open` = dialog visibile (chiuso: resta il banner), `last` = esito del tentativo che ha lasciato un residuo.
 // Solo per la sessione (`keys`) che le ha trovate.
 interface StaleState { keys: unknown; items: StaleItem[]; open: boolean; last?: { rewrapped: number } }
-const markStale = (u: UnreadableItem, rewrapRefused: string[] = []): StaleItem => ({ ...u, tooLarge: u.size > MAX_REWRAP_LEN || rewrapRefused.includes(u.id) });
 
 // Contesto di cifratura della sessione sbloccata (per finishRotation / rewrapUnreadable), null se bloccato
 const sessionCtx = () => {
@@ -158,9 +158,12 @@ export default function VaultPage() {
   const recoveryParam = searchParams.get('recovery') === '1';
   const recoveryOpen = recoveryFlag || (recoveryParam && (gate.k === 'ready' || unlocked));
   // Aperta dal parametro, la cerimonia si aggancia al flag: un auto-lock o un cambio di gate non la smontano a meta' (Kit/PIN digitati, esito `applied` persi). Cade solo in closeRecovery.
+  // closeRecovery segna la chiusura finche' il parametro e' ancora nell'URL (la navigazione di MemoryRouter/BrowserRouter e' in startTransition): senza, l'effetto, se gira dopo la chiusura, riaggancia il flag.
+  const recoveryDismissed = useRef(false);
   useEffect(() => {
+    if (!recoveryParam) { recoveryDismissed.current = false; return; }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- aggancio una tantum al flag
-    if (recoveryParam && (gate.k === 'ready' || unlocked)) setRecoveryFlag(true);
+    if (!recoveryDismissed.current && (gate.k === 'ready' || unlocked)) setRecoveryFlag(true);
   }, [recoveryParam, gate.k, unlocked]);
   const showWizard = gate.k === 'none' || recoveryOpen;
   const reconcileEnabled = unlocked && !showWizard;
@@ -248,18 +251,6 @@ export default function VaultPage() {
   }, [recoveryParam, unlocked, gate.k, setSearchParams]);
 
   const retryKeyring = () => { setRetrying(true); void loadKeyring(); };
-  const closeRecovery = (next: RecoveryNext) => {
-    setKitRotation(false); // il flag letto prima della cerimonia e' vecchio: dopo un recupero il Kit nuovo e' appena stato salvato
-    setRecoveryFlag(false);
-    setSearchParams((params) => {
-      const p = new URLSearchParams(params);
-      p.delete('recovery');
-      return p;
-    }, { replace: true }); // Indietro non deve riaprire la cerimonia
-    window.dispatchEvent(new Event(RECOVERY_CLOSED_EVENT)); // il banner globale rilegge lo stato della richiesta
-    if (next === 'regenerate') setSettingsOpen(true);
-    void loadKeyring(); // il keyring puo' essere cambiato durante il recupero: lo stato e il flag si rileggono SEMPRE (F10 sul valore fresco)
-  };
   const finishWizard = () => setGate({ k: 'ready' }); // setup/migrazione chiusi: il keyring e' READY per costruzione
   const handleAlreadySetup = () => { setAlreadySetup(true); finishWizard(); };
 
@@ -318,6 +309,20 @@ export default function VaultPage() {
     }
   }, [applyResult]);
   useEffect(() => { rotateRef.current = () => rotateStale(); }, [rotateStale]);
+  const closeRecovery = (next: RecoveryNext) => {
+    setKitRotation(false); // il flag letto prima della cerimonia e' vecchio: dopo un recupero il Kit nuovo e' appena stato salvato
+    setRecoveryFlag(false);
+    if (recoveryParam) recoveryDismissed.current = true; // senza parametro ("PIN dimenticato") non c'e' nulla da riagganciare, e il marker non verrebbe piu' azzerato
+    setSearchParams((params) => {
+      const p = new URLSearchParams(params);
+      p.delete('recovery');
+      return p;
+    }, { replace: true }); // Indietro non deve riaprire la cerimonia
+    window.dispatchEvent(new Event(RECOVERY_CLOSED_EVENT)); // il banner globale rilegge lo stato della richiesta
+    if (next === 'regenerate') setSettingsOpen(true);
+    if (next === 'none') void rotateStale(); // recupero applicato: il recupero ruota la VK, le note rimaste a epoch-1 si portano all'epoch nuova con le chiavi nuove (D17, come onKitDone)
+    void loadKeyring(); // il keyring puo' essere cambiato durante il recupero: lo stato e il flag si rileggono SEMPRE (F10 sul valore fresco)
+  };
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- setStale parte dopo un await (finishRotation), non in modo sincrono
     if (keyringStale && reconcileEnabled) void rotateStale(); // staleCount > 0 nel keyring riletto da sbloccato
@@ -365,13 +370,12 @@ export default function VaultPage() {
     const cur = stale;
     const ctx = sessionCtx();
     if (!cur || !ctx || cur.keys !== ctx.keys) return;
-    const todo = cur.items.filter((i) => !i.tooLarge); // le tooLarge: D si eliminano (D7), K non si toccano (D16)
-    if (todo.length === 0) return;
+    if (rewrapTargets(cur.items).length === 0) return; // le tooLarge: D si eliminano (D7), K non si toccano (D16)
     setStale({ ...cur, open: false }); // chiuso ma non perso: se qualcosa va storto il banner riapre il dialog
     try {
-      // consenso per nota: solo le K e U (non verificabili) mostrate nel dialog si re-incapsulano senza una chiave che le apra
-      const rw = await rewrapUnreadable(todo.map((i) => i.id), ctx, { allowKeyMissingIds: todo.filter((i) => i.reason !== 'damaged').map((i) => i.id) });
-      const fin = await finishRotation({ ctx }); // il residuo e' la verita' del server: comprende conflitti, failed e unverified, che restano stale
+      const done = await rewrapThenFinish(ctx, cur.items); // rewrap con consenso per nota, poi il residuo dal server
+      if (!done) return;
+      const { rw, fin } = done;
       if (!aliveRef.current) return;
       if (fin.unreadable.length === 0) toast.success(tRef.current('vault.rotation.rewrapDone', { count: rw.rewrapped.length }));
       applyResult(ctx.keys, fin, { rewrapped: rw.rewrapped.length }, rw.tooLarge);
@@ -388,19 +392,11 @@ export default function VaultPage() {
     const cur = stale;
     const ctx = sessionCtx();
     if (!cur || !ctx || cur.keys !== ctx.keys) return;
-    const ids = cur.items.filter((i) => i.tooLarge && i.reason === 'damaged').map((i) => i.id);
-    if (ids.length === 0) return;
-    const gone = new Set<string>();
     try {
-      // l'eliminazione e' irreversibile: si riclassifica ORA (non lo snapshot) e si elimina solo cio' che il server riconferma troppo grande e senza chiave che lo apra
-      const rw = await rewrapUnreadable(ids, ctx);
-      for (const id of rw.tooLarge) { await permanentlyDeleteNote(id); gone.add(id); }
-      if (gone.size > 0) {
-        await syncPush().catch(() => false); // il DELETE deve arrivare al server prima di rileggerne lo stato
-        toast.success(tRef.current('vault.rotation.deletedTooLarge', { count: gone.size }));
-      }
-      // il server e' la fonte di verita': una nota riclassificata (K, U, failed) esce dal gruppo eliminabile; quelle appena eliminate si tolgono comunque (push fallita)
-      const fin = await finishRotation({ ctx });
+      // riclassifica ORA, elimina solo il riconfermato (staleActions); il server e' la fonte di verita': una nota riclassificata (K, U, failed) esce dal gruppo eliminabile
+      const done = await deleteDamagedThenFinish(ctx, cur.items, { onDeleted: (n) => toast.success(tRef.current('vault.rotation.deletedTooLarge', { count: n })), onSkipped: (n) => toast.error(tRef.current('vault.rotation.deleteSkippedPending', { count: n })), onBusy: (n) => toast.error(tRef.current('vault.rotation.deleteSkippedBusy', { count: n })), onPendingSync: (n) => toast.error(tRef.current('vault.rotation.deletePendingSync', { count: n })) });
+      if (!done) return;
+      const { gone, fin } = done;
       if (!aliveRef.current) return;
       applyResult(ctx.keys, { ...fin, unreadable: fin.unreadable.filter((u) => !gone.has(u.id)) });
       runRef.current();

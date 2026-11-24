@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyRound } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
 import * as vaultApi from '../../lib/vaultApi';
 import type { RecoveryDto } from '../../lib/vaultApi';
-import { completeRecovery, localRecovery, startRecovery, syncLocalRecovery, type CompleteResult } from '../../lib/vaultRecovery';
+import { completeRecovery, localRecovery, openRecoveryContext, startRecovery, syncLocalRecovery, type CompleteResult } from '../../lib/vaultRecovery';
+import type { VaultCodecCtx } from '../../lib/vaultCodec';
 import type { KeyringDto } from '../../lib/vaultSession';
 import { RECOVERY_CHANGED_EVENT, setCeremonyOpen } from '../../lib/vaultEvents';
 import { normalizeKit } from '../../utils/vaultKit';
@@ -15,6 +17,9 @@ import { checkPin } from './PinPolicy';
 import PinInput from './PinInput';
 import RecoveryCodeForm from './RecoveryCodeForm';
 import RecoveryKitSheet from './RecoveryKitSheet';
+import StaleNotesDialog, { type StaleItem } from './StaleNotesDialog';
+import { deleteDamagedThenFinish, markStale, rewrapThenFinish, rewrapTargets } from './staleActions';
+import { finishRotation, type RotationResult } from './vaultMigration';
 import { appControl, outcomeOf, type Outcome, type OutcomeAction } from './recoveryOutcome';
 
 export type RecoveryNext = 'unlock' | 'regenerate' | 'none';
@@ -37,6 +42,19 @@ type View =
 
 type Confirm = { kind: 'cancel' | 'redo'; id: string };
 
+/**
+ * Note rimaste illeggibili dopo la rotazione precedente, trovate PRIMA del complete con le chiavi dell'escrow (`ctx`, mai in Dexie ne' storage). Un solo proprietario: VaultRecovery.
+ * `open` = dialog visibile (chiuso: resta la riga nel form), `last` = esito del tentativo che ha lasciato un residuo.
+ */
+interface StaleState { ctx: VaultCodecCtx; items: StaleItem[]; open: boolean; last?: { rewrapped: number } }
+
+/** Esito di `prepare`: `true` = si puo' completare; `false` = serve l'utente (dialog aperto); stringa = chiave i18n dell'errore da mostrare nel form. */
+type Prepared = boolean | string;
+
+const isMigrationError = (e: unknown): e is { name: 'MigrationError'; code: string } => (e as { name?: string } | null)?.name === 'MigrationError';
+/** Residuo di un giro di finishRotation che non e' un'illeggibile: la rotazione non e' finita (`unverified` no: sono note gia' all'epoch corrente). */
+const hasResidue = (r: RotationResult) => [r.tooLarge, r.failed, r.conflicts].some((a) => (a?.length ?? 0) > 0);
+
 /** Il rilascio e' gia' avvenuto (o non si sa): annullare lo fa perdere. Derivato dalla vista corrente, cosi' un poll che porta a RELEASED aggiorna anche il dialogo aperto. */
 const isReleased = (v: View) =>
   v.k === 'complete'
@@ -56,10 +74,18 @@ const ACTION_LABEL: Record<OutcomeAction, string> = {
   cancelAndRedo: 'cancelAndRedo', update: 'update', reload: 'reload', backToStatus: 'backToStatus', restart: 'restart',
 };
 const isNotFound = (e: unknown) => (e as { status?: number } | null)?.status === 404;
+const ROTATION_PENDING = 'vault.recovery.errors.rotationPending';
+/** Chiave i18n per un errore di finishRotation: epoch cambiata altrove, altra scheda al lavoro, o un fallimento generico (rete, ritiro, ...). */
+const finishErrorKey = (e: unknown) => {
+  if (!isMigrationError(e)) return 'vault.rotation.finishFailed';
+  return e.code === 'epochChanged' ? 'errors.vault.epochChanged' : e.code === 'busy' ? 'vault.recovery.errors.busy' : 'vault.rotation.finishFailed';
+};
+const BANNER = 'rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300 flex items-center justify-between gap-2';
+const BANNER_ACTION = 'min-h-[44px] px-2 font-medium underline flex-shrink-0 disabled:opacity-50 disabled:pointer-events-none';
 
 /** Form di completamento: Kit + nuovo PIN due volte. Una sola completeRecovery per montaggio utile (sentRef): ogni CompleteResult lo smonta il padre. */
-function CompleteForm({ userId, requestId, onResult, onAction, onCancel, onClose }: {
-  userId: string; requestId: string; onResult: (r: CompleteResult) => void; onAction: (a: OutcomeAction) => void; onCancel: () => void; onClose: () => void;
+function CompleteForm({ userId, requestId, locked, onBusy, prepare, onResult, onAction, onCancel, onClose }: {
+  userId: string; requestId: string; locked: boolean; onBusy: (b: boolean) => void; prepare: (kit: string) => Promise<Prepared>; onResult: (r: CompleteResult) => void; onAction: (a: OutcomeAction) => void; onCancel: () => void; onClose: () => void;
 }) {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
@@ -72,12 +98,13 @@ function CompleteForm({ userId, requestId, onResult, onAction, onCancel, onClose
   const sentRef = useRef(false);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]); // il padre disabilita la riga stale mentre prepare/completeRecovery sono in volo
 
   const ready = normalizeKit(kit).length === KIT_LEN && pin !== '' && again !== '';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (sentRef.current || !ready) return;
+    if (sentRef.current || !ready || locked) return; // locked: il dialog delle note sta lavorando
     sentRef.current = true; // sincrono: `busy` non fa in tempo a bloccare un doppio clic
     setBusy(true);
     setError(null);
@@ -87,6 +114,12 @@ function CompleteForm({ userId, requestId, onResult, onAction, onCancel, onClose
       const check = await checkPin(pin, { name: user?.name, surname: user?.surname, email: user?.email });
       if (!check.ok) { setErrorKey(`vault.pinPolicy.${check.reason}`); return; }
       if (pin !== again) { setErrorKey('vault.pinMismatch'); return; }
+      // la rotazione precedente si finisce PRIMA: con note da rivedere si apre il dialog del genitore e qui si resta (Kit e PIN restano nei campi)
+      const ready = await prepare(kit);
+      if (ready !== true) {
+        if (typeof ready === 'string') setErrorKey(ready);
+        return;
+      }
       const res = await completeRecovery({ userId, requestId, kit, newPin: pin });
       done = true;
       setKit('');
@@ -136,7 +169,7 @@ function CompleteForm({ userId, requestId, onResult, onAction, onCancel, onClose
         </Button>
       )}
       {busy && <p role="status" className="text-sm text-neutral-500 dark:text-neutral-400">{t('vault.recovery.complete.working')}</p>}
-      <Button type="submit" variant="primary" className="w-full min-h-[44px]" isLoading={busy} disabled={!ready || busy}>
+      <Button type="submit" variant="primary" className="w-full min-h-[44px]" isLoading={busy} disabled={!ready || busy || locked}>
         {error?.action === 'retry' ? t('vault.recovery.actions.retry') : t('vault.recovery.complete.submit')}
       </Button>
       <div className="flex flex-col pt-1.5">
@@ -155,6 +188,12 @@ export default function VaultRecovery({ userId, onClose }: Props) {
   const [reason, setReason] = useState('');
   const [introError, setIntroError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [stale, setStale] = useState<StaleState | null>(null);
+  const [staleBusy, setStaleBusy] = useState(false); // rewrap o eliminazione in corso: il dialog disabilita i pulsanti
+  const [formBusy, setFormBusy] = useState(false); // prepare/completeRecovery in volo nel form: la riga stale non si riapre
+  const staleRef = useRef<StaleState | null>(null); // gli handler leggono lo stato corrente, non quello della chiusura
+  const busyRef = useRef(false); // single-flight di rewrap ed eliminazione
+  const putStale = useCallback((s: StaleState | null) => { staleRef.current = s; setStale(s); }, []);
   const viewRef = useRef<View>(view);
   const nav = useRef(0); // ogni cambio di vista lo incrementa: una risposta di rete arrivata dopo si scarta
   const completeN = useRef(0);
@@ -176,7 +215,8 @@ export default function VaultRecovery({ userId, onClose }: Props) {
     viewRef.current = v;
     setViewState(v);
     setNotice(null);
-  }, []);
+    if (v.k !== 'complete') putStale(null); // le chiavi dell'escrow e le note da rivedere valgono solo dentro il form di completamento
+  }, [putStale]);
 
   /** Legge la richiesta: RELEASED apre il form di completamento (l'unico ingresso), altrimenti la schermata di stato. */
   const read = useCallback(async (id: string, fp: string) => {
@@ -292,6 +332,82 @@ export default function VaultRecovery({ userId, onClose }: Props) {
     if (r.verdict === 'applied' && r.kit && r.escrowHash) setView({ k: 'kit', kit: r.kit, escrowHash: r.escrowHash });
     else setView({ k: 'outcome', o: outcomeOf(r), id, fp });
   };
+
+  /**
+   * Prima del complete (che ruota sempre la VK): apre la VK dall'escrow col Kit e, se restano note all'epoch precedente, finisce la rotazione con quelle chiavi (`live:false`).
+   * Note illeggibili -> dialog e si resta; residuo senza illeggibili o errore di finishRotation -> chiave i18n da mostrare nel form; altrimenti `true` e il form lancia completeRecovery.
+   * Errori di openRecoveryContext (kitInvalid, keyringChanged, busy, ...) salgono al form, che li mostra con outcomeOf.
+   */
+  const prepare = async (id: string, kit: string): Promise<Prepared> => {
+    setNotice(null); // l'esito di un giro precedente non vale piu'
+    const n0 = nav.current; // vista cambiata durante gli await (es. richiesta annullata): niente stato stale con le chiavi dell'escrow, niente complete
+    const gone = () => !alive.current || nav.current !== n0;
+    // si va a `complete`: lo stato stale di un giro precedente (banner, dialog) non deve restare visibile ne' azionabile mentre completeRecovery e' in volo
+    // nav++: un rewrap/eliminazione partito prima (da riga o dialog) non deve rimettere dialog o notice dopo il via al complete
+    const ready = (): true => { nav.current++; putStale(null); setNotice(null); return true; };
+    const o = await openRecoveryContext({ userId, requestId: id, kit });
+    if (gone()) return false;
+    if (!o || o.staleCount === 0) return ready();
+    let fin: RotationResult;
+    try {
+      fin = await finishRotation({ ctx: o.ctx, live: false });
+    } catch (e) {
+      return gone() ? false : finishErrorKey(e);
+    }
+    if (gone()) return false;
+    if (fin.unreadable.length > 0) {
+      putStale({ ctx: o.ctx, items: fin.unreadable.map((u) => markStale(u)), open: true });
+      return false;
+    }
+    return hasResidue(fin) ? ROTATION_PENDING : ready();
+  };
+
+  // Rewrap ed eliminazione sono mutuamente esclusivi (busyRef): un secondo avvio mentre il primo e' in volo non fa nulla.
+  const exclusive = async (fn: () => Promise<void>) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setStaleBusy(true);
+    try { await fn(); } catch { /* fn gestisce i propri errori */ }
+    busyRef.current = false;
+    if (alive.current) setStaleBusy(false);
+  };
+
+  /** Esito di un giro dal dialog: il residuo (dal server) riapre il dialog; vuoto lo chiude e l'utente ripreme "Recupera accesso" (nessun avvio automatico). */
+  const applyFin = (ctx: VaultCodecCtx, fin: RotationResult, last?: { rewrapped: number }, refused: string[] = [], gone?: Set<string>) => {
+    const left = fin.unreadable.filter((u) => !gone?.has(u.id));
+    if (left.length > 0) return putStale({ ctx, items: left.map((u) => markStale(u, refused)), open: true, last });
+    putStale(null);
+    if (hasResidue(fin)) setNotice(ROTATION_PENDING); // senza illeggibili ma con conflitti o failed: la rotazione non e' finita
+  };
+
+  const confirmRewrap = () => exclusive(async () => {
+    const cur = staleRef.current;
+    if (!cur || rewrapTargets(cur.items).length === 0) return; // le tooLarge: D si eliminano (D7), K e U non si toccano (D16)
+    putStale({ ...cur, open: false }); // chiuso ma non perso: se qualcosa va storto la riga nel form lo riapre
+    const n0 = nav.current; // vista cambiata durante il giro: il risultato si scarta (le chiavi dell'escrow non devono tornare in stato)
+    try {
+      const done = await rewrapThenFinish(cur.ctx, cur.items, { live: false });
+      if (!done || !alive.current || nav.current !== n0) return;
+      if (done.fin.unreadable.length === 0 && !hasResidue(done.fin)) toast.success(t('vault.rotation.rewrapDone', { count: done.rw.rewrapped.length }));
+      applyFin(cur.ctx, done.fin, { rewrapped: done.rw.rewrapped.length }, done.rw.tooLarge);
+    } catch (e) {
+      if (alive.current && nav.current === n0) toast.error(t(finishErrorKey(e)));
+    }
+  });
+
+  // D18/D20: solo le D oltre il limite si eliminano, dopo il ricontrollo (staleActions); K e U oltre il limite non si toccano mai.
+  const deleteDamaged = () => exclusive(async () => {
+    const cur = staleRef.current;
+    if (!cur) return;
+    const n0 = nav.current;
+    try {
+      const done = await deleteDamagedThenFinish(cur.ctx, cur.items, { live: false, onDeleted: (n) => toast.success(t('vault.rotation.deletedTooLarge', { count: n })), onSkipped: (n) => toast.error(t('vault.rotation.deleteSkippedPending', { count: n })), onBusy: (n) => toast.error(t('vault.rotation.deleteSkippedBusy', { count: n })), onPendingSync: (n) => toast.error(t('vault.rotation.deletePendingSync', { count: n })) });
+      if (!done || !alive.current || nav.current !== n0) return;
+      applyFin(cur.ctx, done.fin, undefined, [], done.gone);
+    } catch (e) {
+      if (alive.current && nav.current === n0) toast.error(t(finishErrorKey(e)));
+    }
+  });
 
   const start = async () => {
     if (starting) return;
@@ -434,15 +550,26 @@ export default function VaultRecovery({ userId, onClose }: Props) {
       }
       case 'complete':
         return (
-          <CompleteForm
-            key={view.n}
-            userId={userId}
-            requestId={view.id}
-            onResult={(r) => onResult(r, view.id, view.fp)}
-            onAction={(a) => runAction(a, view.id, view.fp)}
-            onCancel={() => setConfirm({ kind: 'cancel', id: view.id })}
-            onClose={() => onClose('unlock')}
-          />
+          <div className="space-y-4">
+            {stale && !stale.open && (
+              <div role="status" className={BANNER}>
+                <span>{t('vault.rotation.banner', { count: stale.items.length })}</span>
+                <button type="button" disabled={formBusy} onClick={() => putStale({ ...stale, open: true })} className={BANNER_ACTION}>{t('vault.rotation.bannerAction')}</button>
+              </div>
+            )}
+            <CompleteForm
+              key={view.n}
+              userId={userId}
+              requestId={view.id}
+              locked={staleBusy}
+              onBusy={setFormBusy}
+              prepare={(kit) => prepare(view.id, kit)}
+              onResult={(r) => onResult(r, view.id, view.fp)}
+              onAction={(a) => runAction(a, view.id, view.fp)}
+              onCancel={() => setConfirm({ kind: 'cancel', id: view.id })}
+              onClose={() => onClose('unlock')}
+            />
+          </div>
         );
       case 'outcome': {
         const { o } = view;
@@ -473,6 +600,17 @@ export default function VaultRecovery({ userId, onClose }: Props) {
           {notice && <p role="alert" className={`${ERR} mt-4`}>{t(notice)}</p>}
         </div>
       </div>
+
+      {view.k === 'complete' && stale?.open && (
+        <StaleNotesDialog
+          items={stale.items}
+          last={stale.last}
+          busy={staleBusy}
+          onConfirm={() => { void confirmRewrap(); }}
+          onDeleteDamaged={() => { void deleteDamaged(); }}
+          onCancel={() => putStale({ ...stale, open: false })}
+        />
+      )}
 
       {view.k === 'kit' && <RecoveryKitSheet kit={view.kit} userId={userId} escrowHash={view.escrowHash} onDone={() => onClose('none')} />}
 
