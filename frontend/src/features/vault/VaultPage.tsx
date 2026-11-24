@@ -78,14 +78,14 @@ const BARRIER_MS = 30_000; // T12b: oltre questo l'editor monta comunque (giro c
 // arrivi all'epoch, o BARRIER_MS. Online, epoch e riga di partenza sono catturati al mount; `ready` va solo da false a true (R1a: il latch `opened`), quindi nessun cambio
 // successivo di chiavi, rete o riga smonta un editor aperto. Il confronto della riga e' con `epoch0` (quello del mount), non con l'epoch corrente: e' voluto.
 const envEpochOf = (c: string | undefined) => Number(ENVELOPE_RE.exec(c ?? '')?.[1] ?? Infinity); // non-envelope: nulla da riportare
-function EditorBarrier({ noteId, content, syncStatus, epoch, online, settledSeq, roundSeq, runRef, onOpen, children }: {
-  noteId: string; content: string | undefined; syncStatus: string | undefined; epoch: number | null; online: boolean; settledSeq: number;
+function EditorBarrier({ noteId, content, syncStatus, epoch, online, rotationPending, settledSeq, roundSeq, runRef, onOpen, children }: {
+  noteId: string; content: string | undefined; syncStatus: string | undefined; epoch: number | null; online: boolean; rotationPending: boolean; settledSeq: number;
   roundSeq: { current: number }; runRef: { current: (retry?: boolean) => void }; onOpen: (id: string | null) => void; children: ReactNode;
 }) {
   const { t } = useTranslation();
   const [epoch0] = useState(epoch);
-  // R1d: una riga gia' sincronizzata non ha modifiche locali da spingere, l'editor la idrata da solo sotto il suo lock shared
-  const [waits] = useState(() => online && syncStatus !== 'synced' && envEpochOf(content) < (epoch ?? -1));
+  // R1d: una riga gia' sincronizzata non ha modifiche locali da spingere, l'editor la idrata da solo sotto il suo lock shared; R2a: non con una rotazione pendente al mount (il server la riscrive e una PUT subito dopo prenderebbe 409)
+  const [waits] = useState(() => online && envEpochOf(content) < (epoch ?? -1) && (syncStatus !== 'synced' || rotationPending));
   const [opened, setOpened] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const seq0 = useRef<number | null>(null);
@@ -310,6 +310,9 @@ export default function VaultPage() {
   const runRef = useRef<(retry?: boolean) => void>(() => {});
   const rotatedFor = useRef<unknown>(null); // keys per cui finishRotation e' gia' partito
   const rotating = useRef(false); // un finishRotation e' in corso (anche con force non se ne lancia un secondo)
+  const [rotationBusy, setRotationBusy] = useState(false); // specchio di `rotating` leggibile nel render (il lint vieta di leggere il ref): la barriera lo cattura al mount (R2a)
+  const deferredSeq = useRef(0); // R2b: giro piu' alto il cui settle e' stato rimandato al follow-up di rotateStale
+  const reconcileEnabledRef = useRef(false); // R2c: un giro in volo non deve armare T-f dopo che il reconcile e' stato spento
   const rotateRef = useRef<() => Promise<void>>(async () => {}); // rotateStale senza opzioni, per rilanciarsi da dentro
   const seenRef = useRef<{ keys: unknown; ids: Set<string> } | null>(null); // memo di T-d/T-h, per sessione sbloccata
   useEffect(() => {
@@ -332,19 +335,23 @@ export default function VaultPage() {
     const ctx = sessionCtx();
     if (!ctx || !navigator.onLine || rotating.current || (!o.force && rotatedFor.current === ctx.keys)) return;
     rotating.current = true;
+    setRotationBusy(true);
     rotatedFor.current = ctx.keys; // niente loop: se restano stale, riprova al prossimo sblocco
     try {
       const r = await finishRotation({ ctx });
       rotating.current = false;
+      setRotationBusy(false);
       if (!aliveRef.current) return;
+      setKeyringStale(false); // R2a: rotazione finita per queste chiavi, quel che resta e' illeggibile/troppo grande e non una rotazione pendente
       applyResult(ctx.keys, r);
       runRef.current();
     } catch (err) {
       rotating.current = false;
+      setRotationBusy(false);
       const code = (err as { name?: string; code?: string } | null)?.name === 'MigrationError' ? (err as { code?: string }).code : undefined;
       if (code !== 'busy') rotatedFor.current = null; // ripresa fallita (rete, 429, ...): un altro trigger puo' riprovare; con busy un altro giro sta gia' lavorando
       if (code === 'busy') return;
-      if (aliveRef.current) setSettledSeq((n) => Math.max(n, roundSeq.current)); // R1c: la rotazione fallita non lascia la barriera fino ai 30 s
+      if (aliveRef.current) setSettledSeq((n) => Math.max(n, deferredSeq.current)); // R1c: la rotazione fallita non lascia la barriera fino ai 30 s; R2b: assesta solo i giri rimandati, uno partito dopo e ancora in volo si assesta da solo
       setDeferKit((d) => (d?.why === 'stale' ? null : d)); // fallita: il foglio forzato deve poter ricomparire; un rinvio local aspetta la sua condizione
       if (!aliveRef.current) return;
       if (code === 'locked') {
@@ -398,16 +405,17 @@ export default function VaultPage() {
         }
         let rotatingNow = false; // R1c: con una rotazione in corso a assestare e' il giro di follow-up di rotateStale
         if (r.staleLeft > 0) { void rotateStale(); rotatingNow = rotating.current; }
-        const settleNow = () => { if (!rotatingNow) settle(); };
+        const settleNow = () => { if (!rotatingNow) settle(); else deferredSeq.current = Math.max(deferredSeq.current, seq); };
         if (r.conflictsResolved + r.reactivated > 0) void syncPush().catch(() => false); // T-g: ACK e REQUEUE non svegliano la push reattiva
         if (!r.later) { laterTry.current = 0; settleNow(); return; }
-        if (r.aborted || openNoteRef.current || laterTry.current >= LATER_RETRY_MS.length) { settleNow(); return; } // T-f
+        if (r.aborted || openNoteRef.current || !reconcileEnabledRef.current || laterTry.current >= LATER_RETRY_MS.length) { settleNow(); return; } // T-f; R2c: reconcile spento (recupero) = nessun retry
         clearTimeout(laterTimer.current); // single-flight: due .then possono arrivare qui, il primo timer non va perso
-        laterTimer.current = setTimeout(() => { if (aliveRef.current && !openNoteRef.current) runRef.current(true); }, LATER_RETRY_MS[laterTry.current++]);
+        laterTimer.current = setTimeout(() => { if (aliveRef.current && !openNoteRef.current && reconcileEnabledRef.current) runRef.current(true); }, LATER_RETRY_MS[laterTry.current++]);
       })
       .catch(() => { settle(); /* il prossimo trigger riprova */ });
   }, [rotateStale]);
   useEffect(() => { runRef.current = runReconcile; }, [runReconcile]);
+  useEffect(() => { reconcileEnabledRef.current = reconcileEnabled; }, [reconcileEnabled]);
 
 
   // Rewrap ed eliminazione sono mutuamente esclusivi (busyRef): un secondo avvio mentre il primo e' in volo non fa nulla.
@@ -953,6 +961,7 @@ export default function VaultPage() {
           syncStatus={selectedNote.syncStatus}
           epoch={epoch}
           online={online}
+          rotationPending={rotationBusy || keyringStale}
           settledSeq={settledSeq}
           roundSeq={roundSeq}
           runRef={runRef}

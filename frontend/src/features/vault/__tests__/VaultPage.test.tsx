@@ -1227,11 +1227,15 @@ describe('VaultPage: T12b, barriera per istanza di editor', () => {
       return ctls;
     };
 
-    it('R1a: editor aperto su nv3.2. (riga vuota di epoch), poi la riga scende a nv3.1. -> stesso elemento, nessun placeholder', async () => {
+    it('R1a: riga e1 non synced con giro pendente -> placeholder; la riga arriva a nv3.2. e l\'editor monta, poi torna a nv3.1. -> stesso elemento, nessun placeholder (latch opened)', async () => {
       unlock2();
-      pushRow('CREDENTIAL', ENV2('alpha'));
+      pushRow('CREDENTIAL');
       h.reconcile.mockImplementation(() => new Promise(() => {}));
       mount('/?noteId=a');
+      await tick();
+      held('cred-form');
+      h.rows[0].content = ENV2('alpha');
+      await notifyLive();
       await tick();
       const el = screen.getByTestId('cred-form');
       h.rows[0].content = ENV('alpha');
@@ -1342,6 +1346,129 @@ describe('VaultPage: T12b, barriera per istanza di editor', () => {
       await tick();
       expect(screen.getByTestId('recovery')).toBeTruthy();
       await tick(25_000);
+      expect(h.reconcile.mock.calls.length).toBe(before);
+    });
+  });
+
+  describe('R2, review della barriera', () => {
+    it('R2a: riga e1 synced con rotazione pendente (staleCount > 0, finishRotation in corso) -> placeholder; a rotazione finita il giro di follow-up assesta e l\'editor monta', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      h.rows[0].syncStatus = 'synced';
+      h.refreshCache.mockResolvedValue({ staleCount: 2 });
+      let finishOk: () => void = () => {};
+      h.finish.mockImplementation(() => new Promise((r) => { finishOk = () => r({ unreadable: [] }); }));
+      h.reconcile.mockResolvedValueOnce(res({ staleLeft: 1 })).mockResolvedValueOnce(res({ staleLeft: 1 })); // T-a, barriera; poi il follow-up (default)
+      mount('/?noteId=a');
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      held('cred-form');
+      await act(async () => { finishOk(); });
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R2a: riga e1 synced senza rotazione pendente -> editor subito, nessun giro in piu\' (R1d)', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      h.rows[0].syncStatus = 'synced';
+      h.reconcile.mockImplementation(() => new Promise(() => {}));
+      mount('/?noteId=a');
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
+    });
+
+    it('R2b: il catch di rotateStale assesta solo i giri rimandati: un giro B ancora in volo tiene la barriera chiusa finche\' non si risolve', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      let finishFail: () => void = () => {};
+      h.finish.mockImplementation(() => new Promise((_r, rej) => { finishFail = () => rej(new Error('rete')); }));
+      const ctls: Array<() => void> = [];
+      h.reconcile
+        .mockResolvedValueOnce(res({ staleLeft: 1 })) // T-a (A): soppresso dalla rotazione in corso
+        .mockImplementationOnce(() => new Promise((r) => { ctls.push(() => r(res())); })); // barriera (B), in volo
+      mount('/');
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByText('card:a'));
+      await tick();
+      expect(ctls).toHaveLength(1);
+      held('cred-form');
+      await act(async () => { finishFail(); });
+      await tick();
+      held('cred-form'); // B non e' ancora risolto
+      await act(async () => { ctls[0](); });
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('R2c: giro in volo con later 1 quando si apre il recupero -> nessun retry T-f armato alla sua risoluzione', async () => {
+      unlock2();
+      h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+      let done: () => void = () => {};
+      h.reconcile.mockImplementation(() => new Promise((r) => { done = () => r(res({ later: 1 })); }));
+      function Go() { const n = useNavigate(); return <button onClick={() => n('/?recovery=1')}>go-recovery</button>; }
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter initialEntries={['/']}><VaultPage /><Go /></MemoryRouter>
+        </QueryClientProvider>,
+      );
+      await tick();
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByText('go-recovery'));
+      await tick();
+      expect(screen.getByTestId('recovery')).toBeTruthy();
+      await act(async () => { done(); });
+      await tick(5_000);
+      await tick(20_000);
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
+    });
+
+    it('R2c: il giro in volo che si risolve a reconcile spento (later 1) non arma il timer T-f: alla riaccensione (offline, niente T-a) nessun retry', async () => {
+      unlock2();
+      h.getKeyring.mockResolvedValue({ status: 'READY', legacyCount: 0 });
+      let done: () => void = () => {};
+      h.reconcile.mockImplementation(() => new Promise((r) => { done = () => r(res({ later: 1 })); }));
+      function Go() { const n = useNavigate(); return <button onClick={() => n('/?recovery=1')}>go-recovery</button>; }
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter initialEntries={['/']}><VaultPage /><Go /></MemoryRouter>
+        </QueryClientProvider>,
+      );
+      await tick();
+      fireEvent.click(screen.getByText('go-recovery'));
+      await tick();
+      expect(screen.getByTestId('recovery')).toBeTruthy();
+      await act(async () => { done(); });
+      await tick();
+      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true }); // la riaccensione non lancia T-a, che azzererebbe un timer stantio
+      fireEvent.click(screen.getByText('rec-unlock'));
+      await tick();
+      expect(screen.queryByTestId('recovery')).toBeNull();
+      const before = h.reconcile.mock.calls.length;
+      await tick(5_000);
+      await tick(20_000);
+      expect(h.reconcile.mock.calls.length).toBe(before);
+    });
+
+    it('R2a: dopo una finishRotation riuscita la rotazione non e\' piu\' pendente (keyringStale azzerato): riga e1 synced aperta dopo -> editor subito, nessun giro dalla barriera', async () => {
+      unlock2();
+      pushRow('CREDENTIAL');
+      h.rows[0].syncStatus = 'synced';
+      h.refreshCache.mockResolvedValue({ staleCount: 2 });
+      h.finish.mockResolvedValue({ unreadable: [] });
+      h.reconcile.mockImplementation(() => new Promise(() => {}));
+      mount('/');
+      await tick();
+      expect(h.finish).toHaveBeenCalledTimes(1);
+      const before = h.reconcile.mock.calls.length;
+      fireEvent.click(screen.getByText('card:a'));
+      await tick();
+      expect(screen.getByTestId('cred-form')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
       expect(h.reconcile.mock.calls.length).toBe(before);
     });
   });
