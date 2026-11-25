@@ -1582,6 +1582,10 @@
     "gotIt": "Got it",
     "entries": {
       "vaultE2EE": "New end-to-end encrypted vault with PIN protection, offline unlock, recovery kit and migration of existing items",
+      "vaultPinRecovery": "Forgot your vault PIN? Recover access with your Recovery Kit, after administrator approval and a waiting period",
+      "vaultKeyRotation": "Generating a new Recovery Kit now also renews the vault key and re-encrypts your items",
+      "vaultSaveOnClose": "Vault notes and credentials are saved even if you close the app or switch away right after an edit",
+      "vaultOtherDevicesOnlineUnlock": "After a recovery or a new Recovery Kit, your other devices need one online unlock before they can unlock offline again",
       "vaultMobileExperience": "Vault setup, credentials, password generator and note editor now adapt to mobile screens, with improved accessibility and contrast",
       "vaultOfflineReliability": "Offline edits, multi-device changes and moves into or out of the vault now reconcile without losing text",
       "reminderLocalTime": "The reminder picker now preserves the local time you selected",

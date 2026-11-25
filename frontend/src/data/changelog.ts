@@ -11,6 +11,16 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.15.0',
+    date: '2026-11-25',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.vaultPinRecovery' },
+      { type: 'feature', titleKey: 'whatsNew.entries.vaultKeyRotation' },
+      { type: 'fix', titleKey: 'whatsNew.entries.vaultSaveOnClose' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultOtherDevicesOnlineUnlock' },
+    ],
+  },
+  {
     version: '1.14.0',
     date: '2026-10-28',
     entries: [
