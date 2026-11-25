@@ -474,3 +474,114 @@ describe('CredentialForm credenziale non envelope (PIN precedente)', () => {
     expect(encryptItem).not.toHaveBeenCalled();
   });
 });
+
+describe('CredentialForm: flush su visibilitychange/pagehide', () => {
+  const hide = () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  const pagehide = () => window.dispatchEvent(new Event('pagehide'));
+  const edit = (v = 'Posta') => fireEvent.change(screen.getByPlaceholderText('vault.credential.untitled'), { target: { value: v } });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    updateNote.mockReset().mockResolvedValue(undefined);
+    toastError.mockClear();
+    permanentlyDeleteNote.mockReset().mockResolvedValue(undefined);
+    state.keys = {};
+    lock.held = false; lock.gate = null; lock.nolocks = false; lock.reject = false;
+    decryptItem.mockReset().mockResolvedValue({ t: 'Mail', c: JSON.stringify({ siteUrl: '', username: 'bob', password: 'pw', notes: '' }) });
+    encryptItem.mockReset().mockResolvedValue(ENV);
+    dbNote.get.mockReset().mockResolvedValue(undefined);
+    hydrateVaultNote.mockReset().mockResolvedValue(false);
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'visibilityState');
+    vi.useRealTimers();
+  });
+  async function mount() {
+    const r = render(<CredentialForm note={loadedNote} onBack={() => {}} />);
+    await flush();
+    return r;
+  }
+
+  it('hidden con modifica pendente: scrive subito, poi il timer non scrive di nuovo', async () => {
+    await mount();
+    edit();
+    await act(async () => { hide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+    expect(updateNote).toHaveBeenCalledWith('n1', { content: ENV });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('pagehide con modifica pendente: scrive subito, poi il timer non scrive di nuovo', async () => {
+    await mount();
+    edit();
+    await act(async () => { pagehide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('visibilitychange con stato visible: nessuna scrittura prima del timer', async () => {
+    await mount();
+    edit();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('niente di pendente: hidden e pagehide non scrivono', async () => {
+    await mount();
+    await act(async () => { hide(); pagehide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  it('dopo la cancellazione hidden non scrive', async () => {
+    await mount();
+    edit('x');
+    fireEvent.click(screen.getByTitle('common.delete'));
+    await act(async () => { fireEvent.click(screen.getByText('common.delete')); await Promise.resolve(); });
+    await flush();
+    await act(async () => { hide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  it('vault bloccato (keys null): hidden non scrive', async () => {
+    await mount();
+    edit();
+    state.keys = null;
+    await act(async () => { hide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  it('hidden prima che la decifratura si risolva: nessuna scrittura', async () => {
+    decryptItem.mockReturnValue(new Promise(() => {}));
+    render(<CredentialForm note={loadedNote} onBack={() => {}} />);
+    await flush();
+    await act(async () => { hide(); pagehide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  it('dopo lo smontaggio i listener sono rimossi', async () => {
+    const dAdd = vi.spyOn(document, 'addEventListener');
+    const wAdd = vi.spyOn(window, 'addEventListener');
+    const dRem = vi.spyOn(document, 'removeEventListener');
+    const wRem = vi.spyOn(window, 'removeEventListener');
+    const r = await mount();
+    r.unmount();
+    await flush();
+    const vis = dAdd.mock.calls.find((c) => c[0] === 'visibilitychange')?.[1];
+    const ph = wAdd.mock.calls.find((c) => c[0] === 'pagehide')?.[1];
+    expect(typeof vis).toBe('function');
+    expect(typeof ph).toBe('function');
+    expect(dRem).toHaveBeenCalledWith('visibilitychange', vis);
+    expect(wRem).toHaveBeenCalledWith('pagehide', ph);
+    const n = updateNote.mock.calls.length;
+    await act(async () => { hide(); pagehide(); await vi.advanceTimersByTimeAsync(0); });
+    expect(updateNote.mock.calls.length).toBe(n);
+    [dAdd, wAdd, dRem, wRem].forEach((x) => x.mockRestore());
+  });
+});

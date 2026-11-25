@@ -16,6 +16,7 @@ import { withNoteLock } from '../../lib/vaultNoteLock';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { db } from '../../lib/db';
 import { hydrateVaultNote } from '../../lib/vaultReconcile';
+import { useFlushOnHide } from './useFlushOnHide';
 
 interface CredentialFormProps {
   note: Note;
@@ -190,6 +191,15 @@ export default function CredentialForm({ note, onBack, onDelete, onReleased, onL
       }),
     []
   );
+
+  // Scheda nascosta/chiusa: salva subito la modifica pendente (solo locale)
+  useFlushOnHide(() => {
+    if ((saveTimerRef.current || dirtyRef.current) && useVaultStore.getState().keys) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+      void saveNowRef.current(dataRef.current, titleRef.current);
+    }
+  });
 
   const updateField = (field: keyof CredentialData, value: string) => {
     const newData = { ...dataRef.current, [field]: value };

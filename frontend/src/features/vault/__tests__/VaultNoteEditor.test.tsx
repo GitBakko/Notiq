@@ -579,3 +579,117 @@ describe('VaultNoteEditor: drop su editor non modificabile', () => {
     expect(imagesBlocked()).toHaveLength(0);
   });
 });
+
+describe('VaultNoteEditor: flush su visibilitychange/pagehide', () => {
+  const hide = () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  const pagehide = () => window.dispatchEvent(new Event('pagehide'));
+  const edit = () => fireEvent.change(screen.getByTestId('editor'), { target: { value: 'nuovo' } });
+  afterEach(() => { Reflect.deleteProperty(document, 'visibilityState'); });
+
+  it('hidden con modifica pendente: scrive subito, poi il timer non scrive di nuovo', async () => {
+    await open();
+    edit();
+    await act(async () => { hide(); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+    expect(h.updateNote).toHaveBeenCalledWith('n1', { content: ENV('Titolo', 'nuovo') }, { userId: 'u1' });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('pagehide con modifica pendente: scrive subito, poi il timer non scrive di nuovo', async () => {
+    await open();
+    edit();
+    await act(async () => { pagehide(); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('visibilitychange con stato visible: nessuna scrittura prima del timer', async () => {
+    await open();
+    edit();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('niente di pendente: hidden e pagehide non scrivono', async () => {
+    await open();
+    await act(async () => { hide(); pagehide(); });
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+  });
+
+  it('dopo la cancellazione hidden non scrive', async () => {
+    await open();
+    edit();
+    fireEvent.click(screen.getByLabelText('common.delete'));
+    await act(async () => { fireEvent.click(screen.getByText('confirm:vault.deletePermanently')); });
+    await flushAsync();
+    await act(async () => { hide(); });
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+  });
+
+  it('VaultLockedError: nessuna scrittura e nessun toast', async () => {
+    h.encrypt.mockRejectedValue(Object.assign(new Error('locked'), { name: 'VaultLockedError' }));
+    await open();
+    edit();
+    await act(async () => { hide(); });
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+    expect(h.toastError).not.toHaveBeenCalled();
+  });
+
+  it('uscita (moveOut in sospeso): hidden non scrive', async () => {
+    h.moveOut.mockReturnValue(new Promise(() => {}));
+    await open();
+    edit();
+    fireEvent.click(screen.getByLabelText('notes.removeFromVault'));
+    await act(async () => { fireEvent.click(screen.getByText('confirm:vault.exitTitle')); });
+    await flushAsync();
+    await act(async () => { hide(); });
+    await flushAsync();
+    expect(h.updateNote).not.toHaveBeenCalled();
+  });
+
+  it('dopo lo smontaggio i listener sono rimossi', async () => {
+    const dAdd = vi.spyOn(document, 'addEventListener');
+    const wAdd = vi.spyOn(window, 'addEventListener');
+    const dRem = vi.spyOn(document, 'removeEventListener');
+    const wRem = vi.spyOn(window, 'removeEventListener');
+    const { unmount } = await open();
+    unmount();
+    await flushAsync();
+    const vis = dAdd.mock.calls.find((c) => c[0] === 'visibilitychange')?.[1];
+    const ph = wAdd.mock.calls.find((c) => c[0] === 'pagehide')?.[1];
+    expect(typeof vis).toBe('function');
+    expect(typeof ph).toBe('function');
+    expect(dRem).toHaveBeenCalledWith('visibilitychange', vis);
+    expect(wRem).toHaveBeenCalledWith('pagehide', ph);
+    const n = h.updateNote.mock.calls.length;
+    await act(async () => { hide(); pagehide(); });
+    await flushAsync();
+    expect(h.updateNote.mock.calls.length).toBe(n);
+    [dAdd, wAdd, dRem, wRem].forEach((x) => x.mockRestore());
+  });
+
+  it('hidden e pagehide ravvicinati: una sola scrittura', async () => {
+    await open();
+    edit();
+    await act(async () => { hide(); pagehide(); });
+    await flushAsync();
+    expect(h.updateNote).toHaveBeenCalledTimes(1);
+  });
+});

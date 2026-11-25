@@ -19,6 +19,7 @@ import { useAuthStore } from '../../store/authStore';
 import { ENVELOPE_RE } from '../../utils/vaultCrypto';
 import { stripRemoteImagesFromContent } from '../../components/editor/extensions/remoteImages';
 import VaultNotLoaded from './VaultNotLoaded';
+import { useFlushOnHide } from './useFlushOnHide';
 import { toDatetimeLocal } from '../../utils/format';
 
 // Vault v3 (T18, plan 5.6/5.9): editor delle note vault. Niente noteId/provider/collaboration: per costruzione niente
@@ -183,6 +184,9 @@ export default function VaultNoteEditor({ note, onBack, onReleased }: Props) {
     // con uno spostamento in corso flush() non scrive: si aspetta l'esito e, se e' fallito, le modifiche vanno in locale ora
     return useVaultStore.getState().registerPreLock(async (ctx) => { await movePromise.current; await flush(ctx); });
   }, [ready, flush]);
+
+  // Scheda nascosta/chiusa: salva subito la modifica pendente (solo locale)
+  useFlushOnHide(() => { if (dirty.current && !moving.current) void flush(); });
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
