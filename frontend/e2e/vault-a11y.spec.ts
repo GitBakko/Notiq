@@ -1,6 +1,6 @@
 import { test, expect, type Locator } from '@playwright/test';
 import { createNote, registerAndLogin } from './helpers';
-import { apiFor, createCredentialUi, lockUi, setupVaultUi, unlockUi } from './vault-helpers';
+import { apiFor, contentOnServer, createCredentialUi, lockUi, setupVaultUi, unlockUi, waitForServerEdit } from './vault-helpers';
 
 async function sizeOf(locator: Locator) {
   const box = await locator.boundingBox();
@@ -58,8 +58,10 @@ test('M.3/M.5/M.6: target 44 px, dialog, contrasti e tema system', async ({ page
   const user = await registerAndLogin(page, { name: 'Vault Accessibility' });
   const api = await apiFor(page);
   await setupVaultUi(page, user);
-  await createCredentialUi(page, api, { title: 'A11y Credential', siteUrl: 'https://example.com', username: 'bob@example.com', password: 'pw-a11y', notes: '' });
+  const id = await createCredentialUi(page, api, { title: 'A11y Credential', username: 'bob@example.com', password: 'pw-a11y', notes: '' });
+  const before = await contentOnServer(api, id);
   await page.locator('input[type="url"]').fill('https://example.com');
+  await waitForServerEdit(api, id, before);
 
   for (const width of [320, 375, 412]) {
     await page.setViewportSize({ width, height: 800 });

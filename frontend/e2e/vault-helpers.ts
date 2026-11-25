@@ -151,7 +151,7 @@ async function openCreateMenu(page: Page) {
 }
 
 /** Contenuto del server per l'id; '' se la nota non c'e' ancora. */
-async function contentOnServer(api: APIRequestContext, id: string): Promise<string> {
+export async function contentOnServer(api: APIRequestContext, id: string): Promise<string> {
   const r = await api.get(`/api/notes/${id}`);
   return r.ok() ? ((await r.json()).content as string) : '';
 }
@@ -180,9 +180,10 @@ export async function createCredentialUi(
   api: APIRequestContext,
   c: { title: string; username: string; password: string; notes?: string },
 ): Promise<string> {
+  const prev = new URL(page.url()).searchParams.get('noteId');
   await openCreateMenu(page);
   await page.locator('[data-create-menu] > div button', { hasText: 'New Credential' }).click();
-  await expect(page).toHaveURL(/noteId=/, { timeout: 15000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get('noteId'), { timeout: 15000 }).not.toBe(prev);
   const id = noteIdOf(page);
   const before = await waitForEnvelopeOnServer(api, id);
   await page.getByPlaceholder('Untitled Credential').fill(c.title);
@@ -194,9 +195,10 @@ export async function createCredentialUi(
 }
 
 export async function createSecureNoteUi(page: Page, api: APIRequestContext, n: { title: string; body: string }): Promise<string> {
+  const prev = new URL(page.url()).searchParams.get('noteId');
   await openCreateMenu(page);
   await page.locator('[data-create-menu] > div button', { hasText: 'New Secure Note' }).click();
-  await expect(page).toHaveURL(/noteId=/, { timeout: 15000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get('noteId'), { timeout: 15000 }).not.toBe(prev);
   const id = noteIdOf(page);
   const before = await waitForEnvelopeOnServer(api, id);
   await page.getByPlaceholder('Note Title').fill(n.title);
