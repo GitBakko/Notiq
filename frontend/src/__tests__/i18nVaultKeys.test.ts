@@ -70,7 +70,7 @@ const BACKEND_ERRORS = [
     'invalidRootKey', 'invalidSeal', 'invalidSealInput', 'locked', 'notReady', 'pepperMismatch', 'plaintextRejected', 'plaintextRequired',
     'rotateNotSupported', 'rotationPending', 'setupDisabled', 'stale', 'staleRev', 'unavailable',
   ]),
-  ...family('errors.vault', ['rateLimited', 'offlineUnavailable', 'kitNotUpdated', 'keyringRollback', 'epochChanged', 'localPending']), // generate lato client
+  ...family('errors.vault', ['rateLimited', 'offlineUnavailable', 'kitNotUpdated', 'keyringRollback', 'epochChanged', 'localPending', 'serverOutdated']), // generate lato client
   ...family('errors.common', ['networkError', 'unknownError']),
   'errors.notes.restoreConflict',
   'errors.notes.restoreUnsupportedLive',

@@ -2078,6 +2078,7 @@
       "rotationPending": "Alcune note del vault usano ancora la chiave precedente. L'aggiornamento è partito: se qualche nota richiede la tua attenzione, un avviso o un banner nel vault te lo dirà. Poi riprova.",
       "epochChanged": "Il vault è stato aggiornato su un altro dispositivo. Sbloccalo di nuovo, poi riprova.",
       "localPending": "Alcune modifiche del vault su questo dispositivo non sono ancora sincronizzate. Apri il vault online per completare la sincronizzazione, poi riprova.",
+      "serverOutdated": "Il server non supporta ancora questa operazione. Ricarica la pagina e riprova più tardi.",
       "keyringRollback": "I dati del vault dal server sono più vecchi di quelli su questo dispositivo. Rimuovi il vault da questo dispositivo, poi sbloccalo di nuovo.",
       "setupDisabled": "Il vault non è ancora disponibile.",
       "stale": "Il vault è stato aggiornato su un altro dispositivo. Sbloccalo di nuovo e riprova.",

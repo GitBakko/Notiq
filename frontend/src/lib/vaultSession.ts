@@ -58,6 +58,7 @@ export type VaultSessionCode =
   | 'keyringRollback' // il keyring del server ha un'epoch piu' bassa di quella in cache su questo dispositivo (backup ripristinato): non si sblocca
   | 'localPending' // envelope locali non sincronizzati di un'altra epoch: rotare li renderebbe illeggibili
   | 'pinChangedElsewhere' // changePin al 409: il wrap e' cambiato altrove (recupero o altro cambio PIN), niente da rimandare
+  | 'serverOutdated' // GET /keyring senza staleCount (backend 1.14): scarterebbe rotate/serverShare in silenzio
   | 'keyringInvalid';
 
 /** `key` e' una chiave i18n; `lockedUntil` solo per pinLocked. */
@@ -88,6 +89,8 @@ const isCurrent = (userId: string) => useAuthStore.getState().user?.id === userI
 const zero = (...bufs: (Uint8Array | null | undefined)[]) => { for (const b of bufs) b?.fill(0); };
 
 const fetchKeyring = () => vaultApi.getKeyring<KeyringDto>();
+/** La 1.15 manda sempre staleCount, la 1.14 mai: senza, la sua PUT /keyring scarterebbe in silenzio rotate e wrap.serverShare (lockout dopo la rotazione). */
+const assertRotationServer = (kr: { staleCount?: number }) => { if (typeof kr.staleCount !== 'number') throw new VaultSessionError('serverOutdated', 'errors.vault.serverOutdated'); };
 
 /** Scrittura della cache PRIMA di aver verificato il PIN (AEAD di wrappedVkPin): mai con un'epoch oltre quella verificata in cache, e mai senza una cache (B5). */
 export function cacheUnverified(userId: string, kr: KeyringDto, offline: boolean) {
@@ -487,8 +490,10 @@ export async function changePin(args: { userId: string; currentPin: string; newP
   const { userId, currentPin, newPin } = args;
   requireUnlocked(userId);
   let kr = await fetchKeyring();
+  assertRotationServer(kr);
   const o = await openKeyring(userId, currentPin, kr);
   kr = o.kr; // keyring riletto da openKeyring dopo un 409 staleRev
+  assertRotationServer(kr);
   await assertEpochInMemory(kr, o);
   const kdf = plainKdf(DEFAULT_KDF);
   const newSalt = rnd(16);
@@ -606,6 +611,7 @@ export async function rotateVault(args: { userId: string; pin: string; rootKey: 
   const keys0 = store().keys; // la sessione che ruota: se cambia durante le Argon2 (lock) il commit non la risblocca
   const pendingErr = () => new VaultSessionError('rotationPending', 'errors.vault.rotationPending');
   let kr = await fetchKeyring();
+  assertRotationServer(kr);
   // Epoch diversa da quella in memoria (rotazione fatta altrove): vince sul resto, prima di staleCount/rotationPending e di ogni tentativo di PIN.
   if (kr.status === 'READY' && kr.epoch !== store().epoch) {
     await store().lockVault();
@@ -614,6 +620,7 @@ export async function rotateVault(args: { userId: string; pin: string; rootKey: 
   if ((kr.staleCount ?? 0) > 0) throw pendingErr(); // prima di spendere un tentativo di PIN
   const o = await openKeyring(userId, pin, kr);
   kr = o.kr;
+  assertRotationServer(kr);
   await assertEpochInMemory(kr, o);
   const epochOld = kr.epoch;
   const epochNew = epochOld + 1;

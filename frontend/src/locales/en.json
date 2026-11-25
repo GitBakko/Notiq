@@ -2078,6 +2078,7 @@
       "rotationPending": "Some vault notes still use the previous key. The update has started: if some notes need your attention, a dialog or a banner in the vault will tell you. Then try again.",
       "epochChanged": "The vault was updated on another device. Unlock it again, then retry.",
       "localPending": "Some vault changes on this device are not synced yet. Open the vault online to finish syncing, then retry.",
+      "serverOutdated": "The server does not support this operation yet. Reload the page and try again later.",
       "keyringRollback": "The vault data from the server is older than the one on this device. Remove the vault from this device, then unlock again.",
       "setupDisabled": "The vault is not available yet.",
       "stale": "The vault was updated on another device. Unlock it again and retry.",

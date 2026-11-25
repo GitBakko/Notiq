@@ -1803,3 +1803,69 @@ describe('(k) rotationParts: i pezzi della rotazione, con sonde', () => {
     await expect(session.rotationParts(vkOldRaw, vkOld, U, EO)).rejects.toMatchObject({ code: 'keyringInvalid' });
   });
 });
+
+describe('guardia contro backend 1.14 (serverOutdated)', () => {
+  beforeEach(async () => {
+    await doSetup();
+    await session.confirmKit(U, lastHash);
+    vi.mocked(deriveS).mockClear();
+  });
+  /** Un backend 1.14 non manda mai staleCount: dalla n-esima GET (0 = sempre) in poi lo toglie. */
+  const dropStaleCountFrom = (from: number, onFirst?: () => void) => {
+    const real = h.server.getKeyring.bind(h.server);
+    let n = 0;
+    h.server.getKeyring = async () => {
+      const k = await real();
+      if (n++ === 0) onFirst?.();
+      if (n - 1 >= from) delete k.staleCount;
+      return k;
+    };
+  };
+  const snapshot = () => ({ epoch: st().epoch, keys: st().keys, entry: JSON.stringify(st().byUser[U]), unlocked: st().unlockedUserId });
+  const expectUntouched = (before: ReturnType<typeof snapshot>) => {
+    expect(h.server.puts).toHaveLength(0);
+    expect(st().epoch).toBe(before.epoch);
+    expect(st().keys).toBe(before.keys);
+    expect(JSON.stringify(st().byUser[U])).toBe(before.entry);
+    expect(st().unlockedUserId).toBe(before.unlocked);
+    expect(kitMarkers()).toHaveLength(0);
+    expect(raw('pending').size).toBe(0);
+  };
+  const outdated = { code: 'serverOutdated', key: 'errors.vault.serverOutdated' };
+
+  it('(a) rotateVault: prima GET senza staleCount -> serverOutdated, nessun unlock/Argon2/PUT, store invariato', async () => {
+    dropStaleCountFrom(0);
+    const before = snapshot();
+    const unlocks = h.server.unlockCalls;
+    await expect(session.rotateVault({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject(outdated);
+    expect(h.server.unlockCalls).toBe(unlocks);
+    expect(deriveS).not.toHaveBeenCalled();
+    expectUntouched(before);
+  });
+
+  it('(b) rotateVault: GET riletta da openKeyring senza staleCount -> serverOutdated, 0 PUT, store invariato', async () => {
+    dropStaleCountFrom(1, () => { h.server.row!.rev++; }); // la rev cambia fra GET e unlock: 409 staleRev, openKeyring rilegge
+    const before = snapshot();
+    await expect(session.rotateVault({ userId: U, pin: PIN, rootKey: ROOT })).rejects.toMatchObject(outdated);
+    expect(h.server.unlockRevs).toHaveLength(2); // prima unlock -> 409 staleRev, seconda sul keyring riletto
+    expectUntouched(before);
+  });
+
+  it('(c) changePin: GET senza staleCount -> serverOutdated, nessun unlock/Argon2/PUT, store invariato', async () => {
+    dropStaleCountFrom(0);
+    const before = snapshot();
+    const unlocks = h.server.unlockCalls;
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject(outdated);
+    expect(h.server.unlockCalls).toBe(unlocks);
+    expect(deriveS).not.toHaveBeenCalled();
+    expectUntouched(before);
+  });
+
+  it('(d) changePin: GET riletta da openKeyring senza staleCount -> serverOutdated, 0 PUT, store invariato', async () => {
+    dropStaleCountFrom(1, () => { h.server.row!.rev++; });
+    const before = snapshot();
+    await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject(outdated);
+    expect(h.server.unlockRevs).toHaveLength(2); // prima unlock -> 409 staleRev, seconda sul keyring riletto
+    expectUntouched(before);
+  });
+});
