@@ -34,6 +34,7 @@ type View =
   | { k: 'loadFailed'; key: string }
   | { k: 'intro' }
   | { k: 'noRequest' }
+  | { k: 'retired' } // chiave root dell'escrow ritirata (1.15.1): il recupero non e' disponibile, nessuna POST
   | { k: 'foreign'; openId: string; status: string }
   | { k: 'status'; id: string; fp: string; rec: RecoveryDto | null; gone?: boolean; failed?: boolean }
   | { k: 'complete'; id: string; fp: string; n: number }
@@ -254,7 +255,8 @@ export default function VaultRecovery({ userId, onClose }: Props) {
       const st = useVaultStore.getState();
       const locked = !(st.unlockedUserId === userId && st.keys);
       // l'intro vale solo da bloccato con keyring READY (piano §1): altrimenti non c'e' nulla da avviare
-      setView(kr.openRecovery ? { k: 'foreign', openId: kr.openRecovery.id, status: kr.openRecovery.status } : kr.status === 'READY' && locked ? { k: 'intro' } : { k: 'noRequest' });
+      setView(kr.openRecovery ? { k: 'foreign', openId: kr.openRecovery.id, status: kr.openRecovery.status }
+        : kr.status === 'READY' && locked ? (kr.rootKeyRetired ? { k: 'retired' } : { k: 'intro' }) : { k: 'noRequest' });
     } catch (e) {
       if (!stale()) setView({ k: 'loadFailed', key: outcomeOf(e).key });
     }
@@ -472,6 +474,13 @@ export default function VaultRecovery({ userId, onClose }: Props) {
         return (
           <div className="space-y-4 text-left">
             <p role="status" className={TEXT}>{t('vault.recovery.noOpenRequest')}</p>
+            {closeBtn}
+          </div>
+        );
+      case 'retired':
+        return (
+          <div className="space-y-4 text-left">
+            <p role="alert" className={ERR}>{t('errors.vault.recoveryRootKeyRetired')}</p>
             {closeBtn}
           </div>
         );

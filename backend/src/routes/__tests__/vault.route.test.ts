@@ -9,7 +9,7 @@ vi.mock('../../services/vault.service', async () => {
   return {
     b64url: actual.b64url,
     pepperStatus: actual.pepperStatus,
-    KDF_T_MIN: actual.KDF_T_MIN,
+    KDF_T_MIN: actual.KDF_T_MIN, isRootKey: actual.isRootKey,
     getKeyring: vi.fn(),
     createKeyring: vi.fn(),
     unlock: vi.fn(),

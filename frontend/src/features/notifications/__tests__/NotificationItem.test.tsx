@@ -24,6 +24,16 @@ const renderItem = (n: Notification) =>
 
 beforeEach(() => nav.mockReset());
 
+describe('NotificationItem SYSTEM vaultRecovery.admin', () => {
+  it('testo con l email e click verso la tab admin del recupero vault', () => {
+    const n = { ...notif({ localizationKey: 'notifications.vaultRecovery.adminRequested', localizationArgs: { email: 'mario@example.com' }, requestId: 'r1' }), type: 'SYSTEM' } as Notification;
+    renderItem(n);
+    expect(screen.getByText(/mario@example\.com requested a vault recovery/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Vault recovery: new request'));
+    expect(nav).toHaveBeenCalledWith('/admin?tab=vaultRecovery');
+  });
+});
+
 describe('NotificationItem VAULT_RECOVERY', () => {
   it('localizationArgs.fingerprint: testo tradotto con il fingerprint, non il message del server', () => {
     renderItem(notif({ localizationKey: 'notifications.vaultRecovery.requested', localizationArgs: { fingerprint: 'ABCD-1234' } }));

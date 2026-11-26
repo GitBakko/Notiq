@@ -680,6 +680,14 @@ describe('updateKeyring', () => {
     expect((await fail(updateKeyring('u1', raw, sig))).message).toBe('errors.vault.invalidRootKey');
   });
 
+  it('escrow con la chiave root ritirata (rk_68a265761e7e37c7) -> 400 invalidRootKey, nessuna scrittura', async () => {
+    const { raw, sig } = signed(rotation({ escrow: escrow('rk_68a265761e7e37c7') }));
+    const e = await fail(updateKeyring('u1', raw, sig));
+    expect(e.statusCode).toBe(400);
+    expect(e.message).toBe('errors.vault.invalidRootKey');
+    expect(mp.vaultKeyring.updateMany).not.toHaveBeenCalled();
+  });
+
   describe('rilascio di recupero aperto', () => {
     it('escrow con RECOVERY RELEASED non scaduta -> 409 recoveryInProgress, nessuna scrittura', async () => {
       mp.vaultRequest.findFirst.mockResolvedValue({ id: 'r1' });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
 import {
@@ -35,7 +35,13 @@ const TABS: { id: TabId; icon: typeof LayoutDashboard; label: string; labelKey?:
 
 export default function AdminPage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [params, setParams] = useSearchParams();
+  const tabParam = TABS.find((x) => x.id === params.get('tab'))?.id; // link delle notifiche: /admin?tab=vaultRecovery
+  const [activeTab, setActiveTab] = useState<TabId>(tabParam ?? 'dashboard');
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizza la tab con il parametro quando si naviga da /admin a /admin?tab=...
+    if (tabParam) setActiveTab(tabParam);
+  }, [tabParam]);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
@@ -84,7 +90,7 @@ export default function AdminPage() {
           {TABS.map(({ id, icon: Icon, label, labelKey }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => { setActiveTab(id); setParams({ tab: id }, { replace: true }); }} // il parametro segue la tab: una navigazione successiva a ?tab=... lo cambia e riapre la tab
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                 activeTab === id
                   ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'

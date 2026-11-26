@@ -35,6 +35,7 @@ import VaultNoteEditor from './VaultNoteEditor';
 import VaultOfflineNotice from './VaultOfflineNotice';
 import VaultRecovery, { type RecoveryNext } from './VaultRecovery';
 import VaultSettingsSheet from './VaultSettingsSheet';
+import { rotationOf, type KitRotationReason } from './kitRotation';
 import StaleNotesDialog, { type StaleItem } from './StaleNotesDialog';
 import VaultSetup from './VaultSetup';
 import VaultUnlock from './VaultUnlock';
@@ -54,8 +55,6 @@ type Gate =
   | { k: 'resetPending' }
   | { k: 'setupDisabled'; legacyCount: number };
 
-// F10: con un rilascio aperto il PUT con l'escrow darebbe 409 recoveryInProgress, il foglio non serve (e non si puo' completare)
-const rotationOf = (kr: KeyringDto) => kr.kitRotationRequired === true && kr.openRecovery?.status !== 'RELEASED';
 
 // Note che nessuna chiave apre dopo una rotazione (Fase 5): UN solo proprietario dello stato. `items` = tutte quelle ancora da risolvere (`tooLarge` = envelope oltre
 // MAX_REWRAP_LEN o rifiutato dal rewrap: D7), `open` = dialog visibile (chiuso: resta il banner), `last` = esito del tentativo che ha lasciato un residuo.
@@ -163,14 +162,14 @@ export default function VaultPage() {
   const [retrying, setRetrying] = useState(false);
   const [alreadySetup, setAlreadySetup] = useState(false); // il setup ha scoperto un keyring gia' creato altrove: avviso sullo sblocco
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [kitRotation, setKitRotation] = useState(false); // letto dal GET /keyring fatto da bloccato (nessun polling)
+  const [kitRotation, setKitRotation] = useState<KitRotationReason | false>(false); // letto dal GET /keyring fatto da bloccato (nessun polling)
   const [showResume, setShowResume] = useState(false);
   const [legacyLeft, setLegacyLeft] = useState(0);
   const [keyringStale, setKeyringStale] = useState(false); // il keyring riletto da sbloccato ha staleCount > 0
   const [stale, setStale] = useState<StaleState | null>(null);
   // Il foglio forzato cede il posto al dialog delle note (409 rotationPending: 'stale') o al giro di sincronizzazione (localPending: 'local'), altrimenti l'utente resta
   // bloccato. Vale solo per le chiavi con cui e' stato deciso (un nuovo sblocco lo azzera). 'stale' finisce quando il residuo si chiude, 'local' al prossimo giro del reconcile.
-  const [deferKit, setDeferKit] = useState<{ why: 'stale' | 'local'; keys: unknown } | null>(null);
+  const [deferKit, setDeferKit] = useState<{ why: 'stale' | 'local' | 'error'; keys: unknown } | null>(null);
   const [incompleteKeys, setIncompleteKeys] = useState<unknown>(null); // keys per cui finishRotation e' chiuso senza illeggibili ma con un residuo (tooLarge, failed, conflicts): a chiavi diverse non vale
   const deferRef = useRef(deferKit); // letto dal reconcile senza ricrearlo
   useEffect(() => { deferRef.current = deferKit; }, [deferKit]);
@@ -224,7 +223,7 @@ export default function VaultPage() {
     window.addEventListener('offline', off);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
-  const forceKit = unlocked && kitRotation && !recoveryOpen && online && !!rootKey && !(deferKit && deferKit.keys === keys);
+  const forceKit = unlocked && !!kitRotation && !recoveryOpen && online && !!rootKey && !(deferKit && deferKit.keys === keys);
 
   // --- keyring: UNKNOWN / NONE / READY (piano 5.3) -------------------------------------------------
   const seqRef = useRef(0);
@@ -234,7 +233,7 @@ export default function VaultPage() {
     const seq = ++seqRef.current;
     const rs = ++rotSeqRef.current;
     let next: Gate;
-    let rotation: boolean | null = null; // null = GET fallita: il valore precedente resta
+    let rotation: KitRotationReason | false | null = null; // null = GET fallita: il valore precedente resta
     try {
       // setupAllowed (kill switch D2) arriva dal server; assente (backend vecchio) = consentito
       const kr = await getKeyring<KeyringDto & { setupAllowed?: boolean }>();
@@ -352,7 +351,8 @@ export default function VaultPage() {
       if (code !== 'busy') rotatedFor.current = null; // ripresa fallita (rete, 429, ...): un altro trigger puo' riprovare; con busy un altro giro sta gia' lavorando
       if (code === 'busy') return;
       if (aliveRef.current) setSettledSeq((n) => Math.max(n, deferredSeq.current)); // R1c: la rotazione fallita non lascia la barriera fino ai 30 s; R2b: assesta solo i giri rimandati, uno partito dopo e ancora in volo si assesta da solo
-      setDeferKit((d) => (d?.why === 'stale' ? null : d)); // fallita: il foglio forzato deve poter ricomparire; un rinvio local aspetta la sua condizione
+      // fallita: con `locked` (benigno) il foglio forzato puo' ricomparire; con un errore vero resta chiuso per questo sblocco (altrimenti loop: invia, rotationPending, riapre); un rinvio local aspetta la sua condizione
+      setDeferKit((d) => (d?.why === 'stale' ? (code === 'locked' ? null : { why: 'error', keys: d.keys }) : d));
       if (!aliveRef.current) return;
       if (code === 'locked') {
         // il giro era partito con chiavi vecchie e una rotazione le ha cambiate nel frattempo: con le nuove si rilancia (onKitDone, nel mentre, era un no-op)
@@ -1061,11 +1061,19 @@ export default function VaultPage() {
       <VaultSettingsSheet
         isOpen={settingsOpen || forceKit}
         forceKit={forceKit}
+        forceReason={kitRotation || undefined}
         onKitStart={() => setKitCeremony(true)}
         onKitDone={() => { rotSeqRef.current++; setKitCeremony(false); setKitRotation(false); setSettingsOpen(false); void rotateStale(); if (userId) void refreshKeyringCache(userId); }}
         onClose={() => setSettingsOpen(false)}
         onLegacyLeft={setLegacyLeft}
         onRotationPending={() => { setSettingsOpen(false); if (forceKit) setDeferKit({ why: 'stale', keys }); toast.error(tRef.current('errors.vault.rotationPending')); void rotateStale({ force: true }); }}
+        onKitFailed={(key) => {
+          // errore non da PIN con il foglio forzato: si chiude per questo sblocco (le chiavi cambiano al blocco, al prossimo sblocco ricompare)
+          setSettingsOpen(false);
+          if (forceKit) setDeferKit({ why: 'error', keys });
+          if (userId) void refreshKeyringCache(userId); // PUT forse gia' committata con risposta persa: se il server e' a epoch+1 la sync del keyring blocca il vault
+          toast.error(tRef.current(key ==='errors.vault.invalidRootKey' ? 'errors.vault.kitReloadRequired' : key));
+        }}
         onLocalPending={() => {
           setSettingsOpen(false);
           if (forceKit) setDeferKit({ why: 'local', keys });

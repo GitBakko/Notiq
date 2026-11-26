@@ -49,6 +49,11 @@ export const VAULT_RECOVERY_TEXTS: Record<string, Record<Locale, { title: string
     en: { title: 'Recovery expired', body: 'Your vault recovery request expired. You can start a new one.' },
     it: { title: 'Recupero scaduto', body: 'La tua richiesta di recupero del vault è scaduta. Puoi avviarne una nuova.' },
   },
+  // Per i SUPERADMIN (non e' un evento di notifyRecovery): {{email}} = utente che chiede il recupero.
+  adminRequested: {
+    en: { title: 'Vault recovery: new request', body: '{{email}} requested a vault recovery. Review it in the Vault recovery tab of the admin area.' },
+    it: { title: 'Recupero vault: nuova richiesta', body: '{{email}} ha richiesto il recupero del vault. Verificala nella scheda Recupero vault dell\'area admin.' },
+  },
 };
 
 const translations: Record<string, Record<Locale, string>> = {

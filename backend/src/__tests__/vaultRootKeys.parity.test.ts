@@ -4,7 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import { VAULT_ROOT_KEYS, VAULT_E2E_ROOT_KEYS } from '../utils/vaultRootKeys';
 
-const PROD_KEY_ID = 'rk_68a265761e7e37c7';
+const PROD_KEY_ID = 'rk_160b1fd2a596b806';
+// Ritirata il 25/11/2026 (passphrase persa): non deve mai tornare in nessuna mappa, ne' BE ne' FE.
+const RETIRED_KEY_ID = 'rk_68a265761e7e37c7';
 const E2E_KEY_ID = 'rk_42f37978a7909b3e';
 
 const b64u = (s: string) => Buffer.from(s, 'base64url');
@@ -54,9 +56,26 @@ describe('vaultRootKeys parita backend/frontend', () => {
       const { VAULT_ROOT_KEYS: keys } = await import('../utils/vaultRootKeys');
       expect(Object.keys(keys)).toEqual([PROD_KEY_ID]);
       expect(keys).not.toHaveProperty(E2E_KEY_ID);
+      expect(keys).not.toHaveProperty(RETIRED_KEY_ID);
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it('la chiave ritirata non e in nessuna mappa (BE, FE, anche con i flag E2E) ne e id attivo del frontend; puo restare in un commento', async () => {
+    expect(VAULT_ROOT_KEYS).not.toHaveProperty(RETIRED_KEY_ID);
+    expect(VAULT_E2E_ROOT_KEYS).not.toHaveProperty(RETIRED_KEY_ID);
+    vi.resetModules();
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('VAULT_E2E', '1');
+    try {
+      const { VAULT_ROOT_KEYS: keys } = await import('../utils/vaultRootKeys');
+      expect(Object.keys(keys).sort()).toEqual([E2E_KEY_ID, PROD_KEY_ID].sort());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(Object.keys(feKeys)).not.toContain(RETIRED_KEY_ID);
+    expect(feActive).not.toBe(RETIRED_KEY_ID);
   });
 
   // Confronto SOLO con la mappa di PRODUZIONE: il blocco E2E del frontend e' stato rimosso dal sorgente prima del parsing.

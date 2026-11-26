@@ -428,6 +428,7 @@
     "kitRotation": {
       "title": "Replace your Recovery Kit",
       "warning": "A recovery of this vault was released and then cancelled or expired. Your current Recovery Kit is no longer safe: create a new one to keep using the vault.",
+      "retiredWarning": "The recovery key that protected your Recovery Kit has been replaced. Your current Recovery Kit can no longer be used for recovery: create a new one to keep the vault recoverable.",
       "destroyOld": "Your previous Recovery Kit no longer opens the vault. You can destroy every copy of it (downloaded PDF, prints, notes).",
       "lock": "Lock vault"
     },
@@ -1141,6 +1142,8 @@
     "chatMessage_TITLE": "New Message",
     "vaultRecovery": {
       "requested": "A vault recovery request was opened on your account. Request code: {{fingerprint}}. If it was not you, cancel it from the vault page.",
+      "adminRequested": "{{email}} requested a vault recovery. Review it in the Vault recovery tab of the admin area.",
+      "adminRequested_TITLE": "Vault recovery: new request",
       "requested_TITLE": "Vault recovery requested",
       "code": "Your request was approved. Open the vault page to see the first half of the code; the second half was sent by email.",
       "code_TITLE": "Recovery codes ready",
@@ -1882,6 +1885,7 @@
         "invalidPassphrase": "The passphrase is not valid.",
         "rateLimited": "Too many release attempts. Try again in 15 minutes.",
         "rootKeyUnavailable": "The root key is not available on the server.",
+        "rootKeyRetired": "The user's vault is protected by a retired root key: this recovery cannot be released. The user must unlock the vault with the PIN and generate a new Recovery Kit.",
         "keyringChanged": "The user's vault changed during the release. Nothing was released: try again.",
         "stateConflict": "The request changed. The data was reloaded: check it and try again.",
         "generic": "The operation failed. The data was reloaded."
@@ -2070,6 +2074,7 @@
       "invalidSeal": "The vault keys could not be verified.",
       "invalidSealInput": "The vault keys could not be verified.",
       "kitNotUpdated": "The Recovery Kit was not updated. Please try again.",
+      "kitReloadRequired": "The vault configuration is out of date. Reload the app, then unlock the vault again to generate the new Recovery Kit.",
       "pinChangedElsewhere": "The PIN already appears to have been changed, here or on another device, so nothing was changed now. Unlock with the most recently chosen PIN.",
       "locked": "The vault is locked. Unlock it with your PIN; after too many wrong attempts, wait before trying again.",
       "notReady": "The vault isn't ready yet. Try again in a moment.",
@@ -2097,6 +2102,7 @@
       "recoveryRateLimited": "Too many recovery requests. Try again later.",
       "recoveryReleaseRateLimited": "Too many failed attempts. Try again later.",
       "recoveryStateConflict": "This recovery request changed in the meantime. Reload and try again.",
+      "recoveryRootKeyRetired": "Recovery is not available for this vault. Unlock it with your PIN and generate a new Kit.",
       "recoveryKeyringChanged": "The user's vault changed during the release. Nothing was released. Try again.",
       "releaseSignatureInvalid": "The release could not be verified and was not saved.",
       "rootKeyUnavailable": "The recovery key is not available on the server.",

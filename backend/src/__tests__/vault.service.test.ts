@@ -10,6 +10,7 @@ import {
   getVaultGuard,
   assertVaultContent,
   verifyVkProof,
+  isRootKey,
 } from '../services/vault.service';
 
 const mockPrisma = prisma as any;
@@ -314,7 +315,7 @@ describe('createKeyring: root key di produzione', () => {
     delete process.env.VAULT_SETUP_USERS;
     const compare = await spyCompare();
     try {
-      await expect(run('rk_68a265761e7e37c7')).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.setupDisabled' });
+      await expect(run('rk_160b1fd2a596b806')).rejects.toMatchObject({ statusCode: 503, message: 'errors.vault.setupDisabled' });
       noReads(compare);
     } finally {
       if (prev !== undefined) process.env.VAULT_SETUP_USERS = prev;
@@ -325,5 +326,15 @@ describe('createKeyring: root key di produzione', () => {
     const { VAULT_ROOT_KEYS } = await import('../utils/vaultRootKeys');
     expect(Object.isFrozen(VAULT_ROOT_KEYS)).toBe(true);
     for (const k of Object.values(VAULT_ROOT_KEYS)) expect(Object.isFrozen(k)).toBe(true);
+  });
+});
+
+describe('isRootKey', () => {
+  it('true per la chiave di produzione, false per la ritirata (25/11/2026), per id ignoti e per le proprieta di Object', () => {
+    expect(isRootKey('rk_160b1fd2a596b806')).toBe(true);
+    expect(isRootKey('rk_68a265761e7e37c7')).toBe(false);
+    expect(isRootKey('rk_x')).toBe(false);
+    expect(isRootKey('')).toBe(false);
+    expect(isRootKey('toString')).toBe(false);
   });
 });

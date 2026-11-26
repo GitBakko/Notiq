@@ -4,7 +4,7 @@ import jwt from '@fastify/jwt';
 
 vi.mock('../../services/vault.service', async () => {
   const actual = await vi.importActual<typeof import('../../services/vault.service')>('../../services/vault.service');
-  return { b64url: actual.b64url, pepperStatus: actual.pepperStatus, KDF_T_MIN: actual.KDF_T_MIN, getKeyring: vi.fn() };
+  return { b64url: actual.b64url, pepperStatus: actual.pepperStatus, KDF_T_MIN: actual.KDF_T_MIN, isRootKey: actual.isRootKey, getKeyring: vi.fn() };
 });
 vi.mock('../../services/vaultRecovery.service', () => ({ getOpenRecovery: vi.fn(), kitRotationRequired: vi.fn() }));
 
@@ -55,6 +55,8 @@ describe.each([
     expect(s.e2e.isVaultE2E()).toBe(false);
     expect((await s.call('GET', `/recovery/${RID}/code-b`)).statusCode).toBe(404);
     expect((await s.call('POST', `/recovery/${RID}/advance`)).statusCode).toBe(404);
+    expect((await s.call('POST', '/retire-root-key')).statusCode).toBe(404);
+    expect(s.prisma.vaultKeyring.updateMany).not.toHaveBeenCalled();
     expect(Object.keys(s.keys.VAULT_ROOT_KEYS)).not.toContain(TEST_KEY_ID);
     expect(Object.isFrozen(s.keys.VAULT_ROOT_KEYS)).toBe(true);
     s.e2e.putE2eCodeB(RID, 'ABCDEFGH');
@@ -68,7 +70,7 @@ describe('hook E2E accesi (NODE_ENV=test e VAULT_E2E=1)', () => {
   it('la chiave di test e in VAULT_ROOT_KEYS (congelata), la produzione resta', async () => {
     const s = await setup(ON);
     current = s.app;
-    expect(Object.keys(s.keys.VAULT_ROOT_KEYS)).toEqual(expect.arrayContaining([TEST_KEY_ID, 'rk_68a265761e7e37c7']));
+    expect(Object.keys(s.keys.VAULT_ROOT_KEYS)).toEqual(expect.arrayContaining([TEST_KEY_ID, 'rk_160b1fd2a596b806']));
     expect(s.keys.VAULT_E2E_ROOT_KEYS[TEST_KEY_ID]).toBeDefined();
     expect(Object.isFrozen(s.keys.VAULT_ROOT_KEYS)).toBe(true);
   });
@@ -109,10 +111,24 @@ describe('hook E2E accesi (NODE_ENV=test e VAULT_E2E=1)', () => {
     expect(q.data.notBefore.getTime()).toBeGreaterThan(before - 5000);
   });
 
+  it('retire-root-key: imposta la chiave ritirata sul solo keyring READY dell utente; 409 senza keyring', async () => {
+    const s = await setup(ON);
+    current = s.app;
+    s.prisma.vaultKeyring.updateMany.mockResolvedValue({ count: 0 });
+    expect((await s.call('POST', '/retire-root-key')).statusCode).toBe(409);
+    s.prisma.vaultKeyring.updateMany.mockResolvedValue({ count: 1 });
+    const res = await s.call('POST', '/retire-root-key');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(s.prisma.vaultKeyring.updateMany.mock.calls[1][0]).toEqual({ where: { userId: 'user-1', status: 'READY' }, data: { rootKeyId: 'rk_68a265761e7e37c7' } });
+    expect(Object.keys(s.keys.VAULT_ROOT_KEYS)).not.toContain('rk_68a265761e7e37c7');
+  });
+
   it('senza token 401', async () => {
     const s = await setup(ON);
     current = s.app;
     const res = await s.app.inject({ method: 'GET', url: `/api/vault/__e2e/recovery/${RID}/code-b` });
     expect(res.statusCode).toBe(401);
+    expect((await s.app.inject({ method: 'POST', url: '/api/vault/__e2e/retire-root-key' })).statusCode).toBe(401);
   });
 });

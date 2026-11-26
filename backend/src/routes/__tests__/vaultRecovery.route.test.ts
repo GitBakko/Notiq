@@ -9,7 +9,7 @@ vi.mock('../../services/vault.service', async () => {
   return {
     b64url: actual.b64url,
     pepperStatus: actual.pepperStatus,
-    KDF_T_MIN: actual.KDF_T_MIN,
+    KDF_T_MIN: actual.KDF_T_MIN, isRootKey: actual.isRootKey,
     getKeyring: vi.fn(),
     createKeyring: vi.fn(),
     unlock: vi.fn(),
@@ -120,7 +120,7 @@ describe('GET /keyring con openRecovery', () => {
     rs.getOpenRecovery.mockResolvedValue(open);
     const res = await call('GET', '/keyring');
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: 'READY', epoch: 1, openRecovery: open, kitRotationRequired: false });
+    expect(res.json()).toEqual({ status: 'READY', epoch: 1, openRecovery: open, kitRotationRequired: false, rootKeyRetired: false });
     expect(rs.getOpenRecovery).toHaveBeenCalledWith('user-1');
   });
 
@@ -128,6 +128,18 @@ describe('GET /keyring con openRecovery', () => {
     vs.getKeyring.mockResolvedValue({ status: 'NONE' });
     rs.getOpenRecovery.mockResolvedValue(null);
     expect((await call('GET', '/keyring')).json()).toEqual({ status: 'NONE', openRecovery: null, kitRotationRequired: false });
+  });
+
+  it('rootKeyRetired: true con keyring READY e rootKeyId ritirato, false con quello attivo o senza rootKeyId, assente con stato NONE', async () => {
+    rs.getOpenRecovery.mockResolvedValue(null);
+    vs.getKeyring.mockResolvedValue({ status: 'READY', rootKeyId: 'rk_68a265761e7e37c7' });
+    expect((await call('GET', '/keyring')).json().rootKeyRetired).toBe(true);
+    vs.getKeyring.mockResolvedValue({ status: 'READY', rootKeyId: 'rk_160b1fd2a596b806' });
+    expect((await call('GET', '/keyring')).json().rootKeyRetired).toBe(false);
+    vs.getKeyring.mockResolvedValue({ status: 'READY', rootKeyId: null });
+    expect((await call('GET', '/keyring')).json().rootKeyRetired).toBe(false);
+    vs.getKeyring.mockResolvedValue({ status: 'NONE', rootKeyId: null });
+    expect(Object.keys((await call('GET', '/keyring')).json())).not.toContain('rootKeyRetired');
   });
 
   it('T1: kitRotationRequired dal service con utente ed escrowHash del keyring', async () => {

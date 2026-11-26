@@ -44,6 +44,8 @@ function getNotificationUrl(notification: Notification): string | null {
     case 'VAULT_RECOVERY':
       return '/vault?recovery=1';
     case 'SYSTEM': {
+      // Admin: richiesta di recupero vault di un altro utente -> tab admin
+      if (data.localizationKey?.includes('vaultRecovery.admin')) return '/admin?tab=vaultRecovery';
       // Friend requests → Chat page
       if (data.localizationKey?.includes('friendRequest')) return '/shared?tab=friends';
       // Share responses
@@ -137,6 +139,9 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   // the number 0-as-string, so test for null/undefined, not falsiness.
   if (src.count !== undefined && src.count !== null) args.count = String(src.count);
   if (src.summary) args.summary = src.summary;
+
+  // email — used by vaultRecovery.adminRequested
+  if (src.email) args.email = src.email;
 
   // fingerprint — used by vaultRecovery.*
   if (src.fingerprint) args.fingerprint = src.fingerprint;

@@ -133,6 +133,15 @@ describe('RecoveryCodeForm', () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
   });
 
+  it('409 recoveryRootKeyRetired: messaggio inline, niente onChange (rileggere la richiesta non cambierebbe nulla)', async () => {
+    await ready();
+    vi.mocked(confirmRecovery).mockRejectedValue(new VaultApiError(409, 'errors.vault.recoveryRootKeyRetired', 'conflict', true));
+    typeB('K7Q2M9ZX');
+    fireEvent.click(submitBtn());
+    expect((await screen.findByRole('alert')).textContent).toContain('errors.vault.recoveryRootKeyRetired');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('429: "troppi tentativi, riprova tra 15 minuti"', async () => {
     await ready();
     vi.mocked(confirmRecovery).mockRejectedValue(new VaultApiError(429, 'errors.vault.rateLimited', 'rateLimited', true));

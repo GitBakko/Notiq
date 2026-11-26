@@ -53,6 +53,7 @@ const ALL: Case[] = [
   ['rete', new VaultApiError(0, 'errors.common.networkError', 'network'), 'errors.common.networkError', 'retry'],
   ['429 del server', new VaultApiError(429, 'errors.vault.recoveryRateLimited', 'rateLimited', true), 'errors.vault.recoveryRateLimited', 'retry'],
   ['409 recoveryAlreadyOpen dal server (VaultApiError)', new VaultApiError(409, 'errors.vault.recoveryAlreadyOpen', 'conflict', true), 'errors.vault.recoveryAlreadyOpen', 'restart'],
+  ['409 recoveryRootKeyRetired (chiave root ritirata): niente retry, allo sblocco', new VaultApiError(409, 'errors.vault.recoveryRootKeyRetired', 'conflict', true), 'errors.vault.recoveryRootKeyRetired', 'goUnlock'],
   ['errore qualunque', new Error('boom'), 'errors.common.unknownError', 'retry'],
 ];
 

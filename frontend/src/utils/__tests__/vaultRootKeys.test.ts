@@ -6,14 +6,18 @@ describe('vaultRootKeys', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
 
   it('lista congelata con la chiave di produzione attiva', () => {
-    expect(Object.keys(VAULT_ROOT_KEYS)).toEqual(['rk_68a265761e7e37c7']);
+    expect(Object.keys(VAULT_ROOT_KEYS)).toEqual(['rk_160b1fd2a596b806']);
     expect(Object.isFrozen(VAULT_ROOT_KEYS)).toBe(true);
-    expect(Object.isFrozen(VAULT_ROOT_KEYS.rk_68a265761e7e37c7)).toBe(true);
-    expect(ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_68a265761e7e37c7');
+    expect(Object.isFrozen(VAULT_ROOT_KEYS.rk_160b1fd2a596b806)).toBe(true);
+    expect(ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_160b1fd2a596b806');
     const k = getActiveRootKey();
-    expect(k?.id).toBe('rk_68a265761e7e37c7');
+    expect(k?.id).toBe('rk_160b1fd2a596b806');
     expect(k?.ecdhSpki).toBeInstanceOf(Uint8Array);
     expect(k?.ecdhSpki.length).toBe(120);
+  });
+
+  it('la chiave ritirata in 1.15.1 non sta nella mappa', () => {
+    expect(VAULT_ROOT_KEYS).not.toHaveProperty('rk_68a265761e7e37c7');
   });
 
   it('id attivo assente dalla lista -> null; presente -> id e SPKI decodificato', () => {
@@ -32,14 +36,14 @@ describe('vaultRootKeys', () => {
     vi.stubEnv('VITE_VAULT_E2E', '');
     vi.resetModules();
     const off = await import('../vaultRootKeys');
-    expect(Object.keys(off.VAULT_ROOT_KEYS)).toEqual(['rk_68a265761e7e37c7']);
-    expect(off.ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_68a265761e7e37c7');
+    expect(Object.keys(off.VAULT_ROOT_KEYS)).toEqual(['rk_160b1fd2a596b806']);
+    expect(off.ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_160b1fd2a596b806');
 
     vi.stubEnv('VITE_VAULT_E2E', '1');
     vi.stubEnv('MODE', 'development');
     vi.resetModules();
     const on = await import('../vaultRootKeys');
-    expect(Object.keys(on.VAULT_ROOT_KEYS)).toEqual(['rk_68a265761e7e37c7', 'rk_42f37978a7909b3e']);
+    expect(Object.keys(on.VAULT_ROOT_KEYS)).toEqual(['rk_160b1fd2a596b806', 'rk_42f37978a7909b3e']);
     expect(on.ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_42f37978a7909b3e');
     expect(on.getActiveRootKey()?.ecdhSpki.length).toBe(120);
     expect(Object.isFrozen(on.VAULT_ROOT_KEYS.rk_42f37978a7909b3e)).toBe(true);
@@ -52,7 +56,7 @@ describe('vaultRootKeys', () => {
     vi.stubEnv('MODE', mode);
     vi.resetModules();
     const m = await import('../vaultRootKeys');
-    expect(Object.keys(m.VAULT_ROOT_KEYS)).toEqual(['rk_68a265761e7e37c7']);
-    expect(m.ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_68a265761e7e37c7');
+    expect(Object.keys(m.VAULT_ROOT_KEYS)).toEqual(['rk_160b1fd2a596b806']);
+    expect(m.ACTIVE_VAULT_ROOT_KEY_ID).toBe('rk_160b1fd2a596b806');
   });
 });

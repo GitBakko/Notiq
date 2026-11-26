@@ -5,7 +5,8 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
-const PROD_ID = 'rk_68a265761e7e37c7';
+const PROD_ID = 'rk_160b1fd2a596b806';
+const RETIRED_ID = 'rk_68a265761e7e37c7'; // ritirata in 1.15.1: nel bundle e' una fuga come la chiave di test
 const TEST_ID = 'rk_42f37978a7909b3e';
 const TEST_SPKI = [
   'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEcfIJTVDdJbPPRd4-B2T-cGQ3DqTHR7soIEat06LaQ4WlUuG-N8cWNHocaDihzzuD_oCLS1QeeTbh0zaC7TozMc1axF0j2gwk-2iGYr9cVytb2AracHycVs-r9TDNfLbg',
@@ -28,7 +29,7 @@ let files;
 try { files = allFiles(dist); } catch { files = []; }
 if (!files.length) { console.error(`check-bundle-root-keys: nessun file in ${dist} (build mancante?)`); process.exit(1); }
 
-const needles = [TEST_ID];
+const needles = [TEST_ID, RETIRED_ID];
 for (const spki of TEST_SPKI) for (let i = HEADER; i + FRAG <= spki.length; i++) needles.push(spki.slice(i, i + FRAG));
 
 let prodFound = false;
@@ -42,7 +43,7 @@ for (const f of files) {
 if (leaks.length) {
   // Senza index.html la dist avvelenata non si serve ne' si impacchetta per errore (Build-Package richiede index.html).
   try { rmSync(join(dist, 'index.html'), { force: true }); } catch { /* best effort */ }
-  console.error(`check-bundle-root-keys: la chiave root di TEST e' nel bundle di produzione:\n  ${leaks.join('\n  ')}\ndist/index.html eliminato. Il blocco E2E in src/utils/vaultRootKeys.ts deve restare dietro MODE development.`);
+  console.error(`check-bundle-root-keys: una chiave root vietata (TEST o ritirata) e' nel bundle di produzione:\n  ${leaks.join('\n  ')}\ndist/index.html eliminato. Il blocco E2E in src/utils/vaultRootKeys.ts deve restare dietro MODE development.`);
   process.exit(1);
 }
 if (!prodFound) { console.error(`check-bundle-root-keys: l'id di produzione ${PROD_ID} NON e' nel bundle (controllo positivo fallito).`); process.exit(1); }

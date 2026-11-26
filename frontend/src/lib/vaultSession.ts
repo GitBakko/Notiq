@@ -39,6 +39,8 @@ export interface KeyringDto {
   openRecovery?: OpenRecovery | null;
   /** Un recupero rilasciato e poi annullato o scaduto: il Kit attuale va sostituito (Fase 4, F2). */
   kitRotationRequired?: boolean;
+  /** 1.15.1: l'escrow e' sigillato con una chiave root ritirata (rootKeyId fuori dalla mappa del server): serve rigenerare il Kit. Assente con un server precedente. */
+  rootKeyRetired?: boolean;
   /** AES-GCM(VK_new, VK_old) dell'ultima rotazione (b64url, 60 B); null prima della prima. Assente con un server precedente alla rotazione. */
   prevVkWrap?: string | null;
   /** Note vault ancora a un'epoch precedente: > 0 = rotazione da finire, e il server rifiuta una nuova rotazione (409 rotationPending). */

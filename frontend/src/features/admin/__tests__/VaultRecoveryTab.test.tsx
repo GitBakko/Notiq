@@ -135,6 +135,14 @@ describe('VaultRecoveryTab: dettaglio e azioni', () => {
     await waitFor(() => expect(h.get).toHaveBeenCalledWith('/admin/vault-recovery/r1'));
   });
 
+  it('approva: 409 recoveryRootKeyRetired -> testo rootKeyRetired in un alert', async () => {
+    h.post.mockRejectedValue(apiErr(409, 'errors.vault.recoveryRootKeyRetired'));
+    const d = await openDetail();
+    fireEvent.click(d.getByText('admin.vaultRecovery.approve'));
+    const alert = await screen.findByText('admin.vaultRecovery.errors.rootKeyRetired');
+    expect(alert.closest('[role="alert"]')).toBeTruthy();
+  });
+
   it('rifiuta: senza motivo il pulsante e disabilitato; con il motivo serve la conferma, poi POST reject col motivo', async () => {
     const d = await openDetail();
     const btn = d.getByText('admin.vaultRecovery.reject').closest('button') as HTMLButtonElement;
@@ -222,6 +230,7 @@ describe('VaultRecoveryTab: rilascio', () => {
     [503, 'errors.vault.rootKeyUnavailable', 'admin.vaultRecovery.errors.rootKeyUnavailable'],
     [409, 'errors.vault.recoveryKeyringChanged', 'admin.vaultRecovery.errors.keyringChanged'],
     [409, 'errors.vault.recoveryStateConflict', 'admin.vaultRecovery.errors.stateConflict'],
+    [409, 'errors.vault.recoveryRootKeyRetired', 'admin.vaultRecovery.errors.rootKeyRetired'],
     [500, 'errors.common.unknownError', 'admin.vaultRecovery.errors.generic'],
   ])('errore %i %s -> testo dedicato, campo vuoto, dettaglio riletto', async (status, message, text) => {
     ready();

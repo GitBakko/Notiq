@@ -8,7 +8,7 @@ import { putE2eCodeB } from '../utils/vaultE2e';
 import { logEvent } from './audit.service';
 import { notifyRecovery, notifySuperadmins, type RecoveryEvent } from './vaultRecoveryNotify';
 import { assertPointOnCurve, releaseRootShare, sealRecoveryCode } from './vaultRootKey.service';
-import { authVerifierOf, b64url, countStaleVaultNotes, deleteOutOfEpochVersions, keyringUpdatePayloadSchema, pepperStatus, rotateSchema, rotationUpdate, sha256hex, verifierKey, verifyVkProof } from './vault.service';
+import { authVerifierOf, b64url, countStaleVaultNotes, deleteOutOfEpochVersions, keyringUpdatePayloadSchema, isRootKey, pepperStatus, rotateSchema, rotationUpdate, sha256hex, verifierKey, verifyVkProof } from './vault.service';
 
 const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -105,6 +105,8 @@ export async function createRecoveryRequest(userId: string, clientEphPub: Uint8A
   assertPub(clientEphPub);
   const keyring = await prisma.vaultKeyring.findUnique({ where: { userId }, select: { status: true, sealedRootShare: true, rootKeyId: true } });
   if (!keyring || keyring.status !== 'READY' || !keyring.sealedRootShare || !keyring.rootKeyId) throw new AppError(409, 'errors.vault.recoveryNoKeyring');
+  // Escrow sigillato con una chiave root ritirata: nessun rilascio sarebbe possibile. Prima di righe e quota.
+  if (!isRootKey(keyring.rootKeyId)) throw new AppError(409, 'errors.vault.recoveryRootKeyRetired');
   // Lock per utente: senza, richieste concorrenti passano tutte il controllo "nessuna aperta" e ne creano piu' d'una.
   let lapsed: LapsedRow[] = [];
   const row = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -135,6 +137,7 @@ export async function createRecoveryRequest(userId: string, clientEphPub: Uint8A
   await announceExpired(lapsed);
   await logEvent(userId, 'vault.recovery.requested', { requestId: row.id, fingerprint: row.fingerprint });
   notify(userId, 'requested', { requestId: row.id, fingerprint: row.fingerprint ?? undefined });
+  notifyAdminsInBackground('requested', row.id, userId);
   return { id: row.id, fingerprint: row.fingerprint };
 }
 
@@ -144,6 +147,9 @@ export async function approveRecovery(adminId: string, requestId: string) {
     select: { userId: true, clientEphPub: true },
   });
   if (!row?.clientEphPub) throw new AppError(409, 'errors.vault.recoveryStateConflict');
+  // Copre anche le richieste aperte prima del ritiro della chiave: il rilascio fallirebbe dopo i 3 giorni di attesa.
+  const keyring = await prisma.vaultKeyring.findUnique({ where: { userId: row.userId }, select: { rootKeyId: true } });
+  if (!isRootKey(keyring?.rootKeyId ?? '')) throw new AppError(409, 'errors.vault.recoveryRootKeyRetired');
   const code = newCode();
   const codeA = code.slice(0, 8);
   const codeB = code.slice(8);
@@ -180,6 +186,9 @@ export async function rejectRecovery(adminId: string, requestId: string, reason:
 }
 
 export async function confirmRecovery(userId: string, requestId: string, codeA: string, codeB: string) {
+  // Prima di consumare un tentativo: con l'escrow sigillato da una chiave ritirata il rilascio non e' possibile, WAITING sarebbe un'attesa di 72 ore inutile.
+  const keyring = await prisma.vaultKeyring.findUnique({ where: { userId }, select: { rootKeyId: true } });
+  if (!isRootKey(keyring?.rootKeyId ?? '')) throw new AppError(409, 'errors.vault.recoveryRootKeyRetired');
   const updated = await prisma.vaultRequest.updateMany({
     where: { id: requestId, userId, type: 'RECOVERY', status: 'PENDING_CODE', attempts: { lt: MAX_CODE_ATTEMPTS }, expiresAt: { gt: new Date() } },
     data: { attempts: { increment: 1 } },
@@ -246,8 +255,10 @@ async function checkReleaseRate(adminId: string): Promise<void> {
 }
 
 export async function releaseRecovery(adminId: string, requestId: string, passphrase: string) {
-  await checkReleaseRate(adminId);
   const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, type: 'RECOVERY', status: 'WAITING', notBefore: { lte: new Date() }, expiresAt: { gt: new Date() } }, include: { user: { select: { vaultKeyring: true } } } });
+  // Chiave ritirata: nessun rilascio possibile, quindi niente quota, Argon2id, audit release_failed o notifiche.
+  if (row?.user.vaultKeyring && !isRootKey(row.user.vaultKeyring.rootKeyId ?? '')) throw new AppError(409, 'errors.vault.recoveryRootKeyRetired');
+  await checkReleaseRate(adminId);
   if (!row?.user.vaultKeyring?.sealedRootShare || !row.user.vaultKeyring.rootKeyId || !row.clientEphPub || !row.fingerprint || !row.notBefore) {
     throw new AppError(409, 'errors.vault.recoveryStateConflict');
   }

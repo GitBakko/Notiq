@@ -4,10 +4,11 @@ import { isVaultE2E } from './vaultE2e';
 // id = rk_ + sha256(ecdhSpki DER || ecdsaSpki DER) hex [0:16]; SPKI EC secp384r1 in base64url.
 type RootKeyMap = Readonly<Record<string, { ecdhSpki: string; ecdsaSpki: string }>>;
 
+// rk_68a265761e7e37c7 ritirata il 25/11/2026: la passphrase del suo file e' persa.
 const PRODUCTION_ROOT_KEYS: RootKeyMap = {
-  rk_68a265761e7e37c7: Object.freeze({
-    ecdhSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE9UaYkpTPMfyJoTc6nnvLCB8F8Syd9j9Uy9JMQmeyRuBo8FLYCgLPRmq8djnO4sawRKTUzp4famYsn6M3kfFI9y9UQgWBIuZ8sZ61OBUpuRCH7sJ4LbLkYElNDqRo3YU_',
-    ecdsaSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEG2wXXQ9NrQeaMQIzyJod3M56-bTKPI--i3klBSzqYOnBILPGmeSy6BIryUvUBLF8RlVOoUpJ-gsOk5HiKZHBtM4e-NEJBda2zIEYj-RUHfygIRkcmAg9pIAaOFO417uJ',
+  rk_160b1fd2a596b806: Object.freeze({
+    ecdhSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEdkP7hpynx89MiprBGugF23FetHrZ-bZr5druKGFQqNz7wHncyd2PKaXs19pC4S94gSVTT__SAeeiCpAiZrEOSsKRb3O_IKfG_C-gKPlTlfciCHSviZLEksL9tzNp3_GL',
+    ecdsaSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAErNl1hpE1D5EqxrRcp55N241JbmzTqp73hxVYhH5a6SuPEVf4f9vOGkNn-SMYiomTLAYDQXAuFxfVWmH4j1VoQ-JgV7SmcVfWiYm--br0Jqr6o7vRFe2VLQdHeYgGLMQc',
   }),
 };
 

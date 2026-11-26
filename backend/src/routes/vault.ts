@@ -120,6 +120,8 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
       ...keyring,
       openRecovery: await recoveryService.getOpenRecovery(request.user.id),
       kitRotationRequired: await recoveryService.kitRotationRequired(request.user.id, keyring.escrowHash),
+      // Solo con un keyring READY: un escrow sigillato con una chiave root ritirata va ri-sigillato (rigenerazione del Kit).
+      ...(keyring.status === 'READY' ? { rootKeyRetired: !!keyring.rootKeyId && !vaultService.isRootKey(keyring.rootKeyId) } : {}),
     };
   });
 

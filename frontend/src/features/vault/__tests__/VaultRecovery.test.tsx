@@ -147,6 +147,25 @@ describe('VaultRecovery: caricamento e intro', () => {
     expect(h.getRecovery).toHaveBeenCalledWith('r9');
   });
 
+  it('chiave root ritirata (rootKeyRetired): messaggio, nessuna intro e nessuna POST', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', epoch: 0, rev: 1, openRecovery: null, rootKeyRetired: true });
+    mount();
+    expect(await screen.findByText('errors.vault.recoveryRootKeyRetired')).toBeTruthy();
+    expect(screen.queryByText(L('intro.warning'))).toBeNull();
+    expect(h.startRecovery).not.toHaveBeenCalled();
+  });
+
+  it('409 recoveryRootKeyRetired alla POST: messaggio, nessun secondo tentativo', async () => {
+    h.startRecovery.mockRejectedValue(new VaultApiError(409, 'errors.vault.recoveryRootKeyRetired', 'conflict', true));
+    mount();
+    await screen.findByText(L('intro.warning'));
+    h.getKeyring.mockClear();
+    fireEvent.click(btn(L('intro.start')));
+    expect(await screen.findByText('errors.vault.recoveryRootKeyRetired')).toBeTruthy();
+    expect(h.startRecovery).toHaveBeenCalledTimes(1);
+    expect(h.getKeyring).not.toHaveBeenCalled();
+  });
+
   it('il motivo e limitato a 500 caratteri e assente se vuoto', async () => {
     h.startRecovery.mockResolvedValue({ id: 'r9', fingerprint: 'FP99' });
     h.getRecovery.mockResolvedValue(rec('PENDING_APPROVAL'));

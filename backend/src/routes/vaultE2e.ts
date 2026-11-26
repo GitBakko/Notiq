@@ -27,4 +27,11 @@ export default async function vaultE2eRoutes(fastify: FastifyInstance) {
     if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
     return { ok: true };
   });
+
+  // Porta il keyring dell'utente di test allo stato "chiave root ritirata" (rootKeyId della produzione ritirata il 25/11/2026).
+  fastify.post('/__e2e/retire-root-key', { onRequest: [fastify.authenticate] }, async (request) => {
+    const r = await prisma.vaultKeyring.updateMany({ where: { userId: request.user.id, status: 'READY' }, data: { rootKeyId: 'rk_68a265761e7e37c7' } });
+    if (r.count !== 1) throw new AppError(409, 'errors.vault.notReady');
+    return { ok: true };
+  });
 }

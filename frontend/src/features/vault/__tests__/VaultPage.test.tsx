@@ -140,10 +140,12 @@ vi.mock('../VaultSettingsSheet', async () => {
       const [kit, setKit] = useState(false);
       if (kit) return <div data-testid="kit-mock"><button onClick={() => { setKit(false); p.onKitDone(); }}>kit-done</button></div>;
       return p.isOpen ? (
-        <div data-testid="settings" data-force={p.forceKit ? '1' : ''}>
+        <div data-testid="settings" data-force={p.forceKit ? '1' : ''} data-reason={p.forceReason ?? ''}>
           <button onClick={p.onKitDone}>kit-done</button>
           <button onClick={p.onRotationPending}>rotation-pending</button>
           <button onClick={p.onLocalPending}>local-pending</button>
+          <button onClick={() => p.onKitFailed('vault.migrate.errors.flushTimeout')}>kit-failed</button>
+          <button onClick={() => p.onKitFailed('errors.vault.invalidRootKey')}>kit-failed-root</button>
           <button onClick={() => { setKit(true); p.onKitStart(); p.onClose(); }}>kit-start</button> {/* onClose: il flag e' stato azzerato, il foglio non e' piu' "aperto" ma la cerimonia resta montata */}
           <button onClick={p.onClose}>settings-close</button>
         </div>
@@ -2131,6 +2133,13 @@ describe('VaultPage: rotazione obbligatoria del Kit (Fase 4, T7)', () => {
     expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
   });
 
+  it('rootKeyRetired (1.15.1): foglio obbligatorio con motivo "retired", anche senza kitRotationRequired', async () => {
+    await mountAndUnlock({ kitRotationRequired: false, rootKeyRetired: true, openRecovery: null });
+    const s = await screen.findByTestId('settings');
+    expect(s.getAttribute('data-force')).toBe('1');
+    expect(s.getAttribute('data-reason')).toBe('retired');
+  });
+
   it('kitRotationRequired con una richiesta aperta non RELEASED: il foglio compare lo stesso', async () => {
     await mountAndUnlock({ kitRotationRequired: true, openRecovery: { id: 'r', status: 'WAITING' } });
     expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
@@ -2366,13 +2375,37 @@ describe('VaultPage: rotazione obbligatoria del Kit + 409 rotationPending (fogli
     expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
   });
 
-  it('9: rotateStale fallita (rete) dopo il rinvio: toast e il foglio forzato ricompare', async () => {
+  it('9: rotateStale fallita (rete) dopo il rinvio: toast e il foglio forzato resta chiuso per questo sblocco (niente loop)', async () => {
     const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
     await mountForced();
     h.finish.mockRejectedValue(new Error('rete'));
     fireEvent.click(screen.getByText('rotation-pending'));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('vault.rotation.finishFailed'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('9b: rotateStale fallita con MigrationError invalid: il foglio forzato resta chiuso', async () => {
+    await mountForced();
+    h.finish.mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'invalid' }));
+    fireEvent.click(screen.getByText('rotation-pending'));
+    await waitFor(() => expect(h.finish).toHaveBeenCalled());
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('9c: rotateStale fallita con locked (benigno): il foglio forzato ricompare', async () => {
+    await mountForced();
+    h.finish.mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'locked' }));
+    fireEvent.click(screen.getByText('rotation-pending'));
     expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('14b: onKitFailed con il foglio forzato: refreshKeyringCache con lo userId (PUT forse committata, risposta persa)', async () => {
+    await mountForced();
+    h.refreshCache.mockClear();
+    fireEvent.click(screen.getByText('kit-failed'));
+    expect(h.refreshCache).toHaveBeenCalledWith('u1');
   });
 
   it('10: nessuna illeggibile ma residuo (failed/tooLarge/conflicts/unverified): banner di rotazione incompleta e il foglio forzato resta rinviato', async () => {
@@ -2402,6 +2435,24 @@ describe('VaultPage: rotazione obbligatoria del Kit + 409 rotationPending (fogli
     expect(screen.queryByTestId('settings')).toBeNull();
     await waitFor(() => expect(h.syncPush).toHaveBeenCalled());
     expect((await screen.findByTestId('settings')).getAttribute('data-force')).toBe('1');
+  });
+
+  it('14: foglio forzato, errore non da PIN (flushTimeout): foglio chiuso con toast e resta chiuso per questo sblocco', async () => {
+    const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+    await mountForced();
+    fireEvent.click(screen.getByText('kit-failed'));
+    expect(toast.error).toHaveBeenCalledWith('vault.migrate.errors.flushTimeout');
+    expect(screen.queryByTestId('settings')).toBeNull();
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('14: foglio forzato, invalidRootKey: toast che chiede di ricaricare l app', async () => {
+    const toast = (await import('react-hot-toast')).default as unknown as { error: ReturnType<typeof vi.fn> };
+    await mountForced();
+    fireEvent.click(screen.getByText('kit-failed-root'));
+    expect(toast.error).toHaveBeenCalledWith('errors.vault.kitReloadRequired');
+    expect(screen.queryByTestId('settings')).toBeNull();
   });
 
   it('12: dialog mai sopra la cerimonia del Kit: anche se il foglio non e piu aperto, finche non arriva onKitDone', async () => {

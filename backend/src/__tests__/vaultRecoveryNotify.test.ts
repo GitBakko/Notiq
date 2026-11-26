@@ -209,6 +209,65 @@ describe('notifySuperadmins', () => {
     expect(p1.title).not.toBe(p2.title);
   });
 
+  describe('requested', () => {
+    const ids = [{ id: 'admin-1', email: 'a1@example.com', locale: 'en' }, { id: 'admin-2', email: 'a2@example.com', locale: 'it' }];
+
+    it('una email e una notifica in-app SYSTEM per ogni altro SUPERADMIN, richiedente escluso; dati solo requestId ed email', async () => {
+      mp.user.findUnique.mockResolvedValue({ email: 'req@example.com' });
+      mp.user.findMany.mockResolvedValue(ids);
+      await notifySuperadmins('requested', { requestId: RID, actorId: 'user-9' });
+
+      expect(mp.user.findMany.mock.calls[0][0].where).toEqual({ role: 'SUPERADMIN', id: { not: 'user-9' } });
+      expect(sendNotificationEmail).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(sendNotificationEmail).mock.calls.map((c) => c[0])).toEqual(['a1@example.com', 'a2@example.com']);
+      for (const c of vi.mocked(sendNotificationEmail).mock.calls) {
+        expect(c[1]).toBe('VAULT_RECOVERY');
+        expect(c[2].body).toContain('req@example.com');
+        expect(c[2].codeB).toBeUndefined();
+      }
+      expect(createNotification).toHaveBeenCalledTimes(2);
+      const calls = vi.mocked(createNotification).mock.calls as any[][];
+      expect(calls.map((c) => c[0])).toEqual(['admin-1', 'admin-2']);
+      for (const [, type, title, message, data] of calls) {
+        expect(type).toBe('SYSTEM');
+        expect(title).toBeTruthy();
+        expect(message).toContain('req@example.com');
+        expect(data).toEqual({ localizationKey: 'notifications.vaultRecovery.adminRequested', localizationArgs: { email: 'req@example.com' }, requestId: RID });
+      }
+      expect(calls[0][2]).not.toBe(calls[1][2]);
+    });
+
+    it('i testi en/it hanno le chiavi di locale per il push', () => {
+      const t = VAULT_RECOVERY_TEXTS.adminRequested;
+      expect(t.en.body).toContain('{{email}}');
+      expect(t.it.body).toContain('{{email}}');
+      expect(resolveNotification('notifications.vaultRecovery.adminRequested', { email: 'x@y.z' }, 'it', 'f', 'f')).toEqual({ title: t.it.title, body: t.it.body.replace('{{email}}', 'x@y.z') });
+    });
+
+    it('un errore SMTP o di createNotification su un admin non blocca gli altri e non lancia', async () => {
+      mp.user.findUnique.mockResolvedValue({ email: 'req@example.com' });
+      mp.user.findMany.mockResolvedValue(ids);
+      vi.mocked(sendNotificationEmail).mockRejectedValueOnce(new Error('SMTP down'));
+      vi.mocked(createNotification).mockRejectedValueOnce(new Error('db down'));
+      await expect(notifySuperadmins('requested', { requestId: RID, actorId: 'user-9' })).resolves.toBeUndefined();
+      expect(sendNotificationEmail).toHaveBeenCalledTimes(2);
+      expect(createNotification).toHaveBeenCalledTimes(2);
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it('nessun codice nei dati o nei log; gli altri eventi non creano notifiche in-app', async () => {
+      mp.user.findUnique.mockResolvedValue({ email: 'req@example.com' });
+      mp.user.findMany.mockResolvedValue(ids);
+      vi.mocked(createNotification).mockRejectedValue(new Error('db down'));
+      await notifySuperadmins('requested', { requestId: RID, actorId: 'user-9' });
+      expect(loggedText()).not.toMatch(/codeA|codeB|sealedCodeA/);
+      vi.mocked(createNotification).mockClear();
+      await notifySuperadmins('selfAction', { requestId: RID, actorId: 'user-9' });
+      await notifySuperadmins('releaseFailed', { requestId: RID, actorId: 'user-9' });
+      expect(createNotification).not.toHaveBeenCalled();
+    });
+  });
+
   it('releaseFailed: include tutti i SUPERADMIN, attore compreso', async () => {
     mp.user.findUnique.mockResolvedValue({ email: 'actor@example.com' });
     mp.user.findMany.mockResolvedValue(admins);

@@ -14,6 +14,7 @@ import { flushPending } from './vaultMigration';
 import { checkPin } from './PinPolicy';
 import PinInput from './PinInput';
 import RecoveryKitSheet from './RecoveryKitSheet';
+import type { KitRotationReason } from './kitRotation';
 
 interface Props {
   isOpen: boolean;
@@ -22,6 +23,8 @@ interface Props {
   onLegacyLeft?: (n: number) => void;
   /** Rotazione obbligatoria del Kit (recupero rilasciato e poi annullato o scaduto): non chiudibile, solo la sezione Kit, uscita "Blocca vault". */
   forceKit?: boolean;
+  /** Motivo della rotazione forzata: `retired` = chiave root ritirata (il testo non parla di un recupero rilasciato). */
+  forceReason?: KitRotationReason;
   /** Kit rigenerato e confermato (cerimonia finita). */
   onKitDone?: () => void;
   /** 409 rotationPending: note ancora all'epoch precedente. La pagina chiude il foglio, avvisa e porta a termine la rotazione (finishRotation e dialog delle note illeggibili). */
@@ -30,6 +33,8 @@ interface Props {
   onLocalPending?: () => void;
   /** La cerimonia del Kit e' partita (PUT riuscito): la pagina non apre il dialog delle note sopra di essa, qualunque cosa succeda al flag di rotazione. */
   onKitStart?: () => void;
+  /** Foglio forzato: rotateVault/flushPending falite per un motivo che non e' il PIN (rete, timeout, 5xx, invalidRootKey). La pagina chiude il foglio e lo rinvia: senza, l'utente resta bloccato. */
+  onKitFailed?: (key: string) => void;
 }
 
 const INPUT =
@@ -43,6 +48,12 @@ const errKey = (e: unknown) => {
   // MigrationError (flushPending, finishRotation): stesse chiavi del wizard di migrazione
   if (name === 'MigrationError' && typeof code === 'string') return `vault.migrate.errors.${code}`;
   return 'errors.common.unknownError';
+};
+
+// PIN errato o bloccato (rotateVault -> openKeyring): resta l'errore inline, il foglio forzato non si rinvia.
+const isPinError = (e: unknown, key: string) => {
+  const code = (e as { code?: unknown } | null)?.code;
+  return code === 'wrongPin' || code === 'pinLocked' || key === 'errors.vault.invalidPin' || key === 'errors.vault.locked' || key === 'errors.vault.rateLimited';
 };
 
 function useOnline() {
@@ -65,7 +76,7 @@ function useOnline() {
  * elementi da aggiornare (reconcile, con banner legacyLeft e motivi unresolved).
  * Il Kit esiste solo nello stato di questo componente, e solo dopo il PUT riuscito (lo mostra RecoveryKitSheet).
  */
-export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forceKit = false, onKitDone, onRotationPending, onLocalPending, onKitStart }: Props) {
+export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forceKit = false, forceReason, onKitDone, onRotationPending, onLocalPending, onKitStart, onKitFailed }: Props) {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const unlocked = useVaultStore((s) => !!user && s.unlockedUserId === user.id);
@@ -165,6 +176,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
       // note ancora all'epoch precedente: la pagina finisce quella rotazione (e il dialog/banner dice cosa serve), poi l'utente riprova
       if (key === 'errors.vault.rotationPending') onRotationPending?.();
       if (key === 'errors.vault.localPending') onLocalPending?.();
+      else if (forceKit && !isPinError(err, key) && key !== 'errors.vault.rotationPending') onKitFailed?.(key);
     } finally {
       setKitBusy(false);
       setKitPin('');
@@ -214,7 +226,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
         </div>
         {forceKit && (
           <div role="alert" className={`${ALERT} mb-4 space-y-2`}>
-            <p>{t('vault.kitRotation.warning')}</p>
+            <p>{t(forceReason === 'retired' ? 'vault.kitRotation.retiredWarning' : 'vault.kitRotation.warning')}</p>
             {/* ogni nuovo Kit ruota la VK (Fase 5): il vecchio Kit non apre il nuovo escrow, il testo lo dice */}
             <p className="font-medium">{t('vault.kitRotation.destroyOld')}</p>
           </div>

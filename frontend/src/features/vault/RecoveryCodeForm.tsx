@@ -77,6 +77,8 @@ export default function RecoveryCodeForm({ userId, requestId, fingerprint, attem
     } catch (err) {
       if (!alive.current) return;
       const x = err as { name?: string; status?: number; kind?: string; key?: string } | null;
+      // chiave root ritirata: la richiesta non cambia stato, rileggerla non direbbe nulla all'utente
+      if (x?.name === 'VaultApiError' && x.status === 409 && x.key === 'errors.vault.recoveryRootKeyRetired') { setError(x.key); return; }
       if (x?.name === 'VaultApiError' && (x.status === 410 || x.status === 409)) { onChangeRef.current(); return; }
       if (x?.name === 'VaultApiError' && x.status === 403 && x.key === 'errors.vault.recoveryInvalidCode') {
         setError('errors.vault.recoveryInvalidCode');

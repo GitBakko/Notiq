@@ -96,7 +96,7 @@ TDD: i test si scrivono prima del codice.
 4. SQL prima del deploy:
    - `SELECT "rootKeyId", status, count(*) FROM "VaultKeyring" GROUP BY 1, 2;`
    - `SELECT r.id, r.status, r."userId" FROM "VaultRequest" r WHERE r.type = 'RECOVERY' AND r.status IN ('PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED');`
-5. Rifiutare dalla tab admin le richieste aperte, con un motivo, PRIMA del deploy (dopo, approve dà comunque 409).
+5. Rifiutare dalla tab admin le richieste aperte, con un motivo, PRIMA del deploy (dopo, approve dà comunque 409). Il rifiuto accetta solo `PENDING_APPROVAL`. Le richieste in `PENDING_CODE`, `WAITING` o `RELEASED` non si possono rifiutare: dalla 1.15.1 confirm e release rispondono 409 `recoveryRootKeyRetired` senza cambiare stato, poi la richiesta scade da sola o l'utente la annulla.
 6. `VAULT_ROOT_KEY_PATH` sul file nuovo in `E:\www\Notiq\backend\.env`, deploy (con `pm2 restart`), log OK.
 7. Canary SUPERADMIN: sblocco, foglio col testo della chiave ritirata, rigenerazione. SQL: `rootKeyId` nuovo ed epoch+1. Poi avvio e annullamento di un recupero: email e in-app arrivano agli altri admin.
 8. Decisione 5: recupero completo su un account di prova (richiesta, approvazione, codice, 3 giorni, rilascio con la passphrase nuova, `complete`).
@@ -108,3 +108,21 @@ TDD: i test si scrivono prima del codice.
 - La notifica in-app `SYSTEM` può essere cancellata dall'admin; l'email resta.
 - I backup già fatti contengono escrow non apribili: innocuo.
 - Fuori scope: P3 (reset del vault), più chiavi attive insieme, rotazione periodica della chiave root.
+
+### Esito delle review (26/11) e rischi accettati
+
+Corretti:
+- Guardia della chiave ritirata anche in `confirmRecovery` e `releaseRecovery`. In release la guardia sta prima del rate limit e di Argon2.
+- Foglio forzato: un errore tecnico (`flushTimeout`, errore di rete, 400 `invalidRootKey`) lo rinvia fino al prossimo sblocco. Prima l'utente restava bloccato dietro il foglio. Con un PIN sbagliato il foglio resta aperto.
+- La tab admin si apre da `?tab=` anche dopo un cambio di tab.
+
+Accettati:
+- Il limite di route `POST /recovery`, 3 all'ora, conta anche le risposte 409. Un client 1.15.0 che riprova resta bloccato al massimo per un'ora. «Quota» nel §5 indica il contatore del servizio.
+- Un ciclo crea/annulla genera al massimo 3 notifiche all'ora per utente verso gli admin. Gli utenti arrivano solo su invito.
+- Il bottone dell'email `requested` porta a `/vault`, non alla tab admin, perché il template `VAULT_RECOVERY` sta in `email.service.ts`, file TIER 2. Il link corretto c'è solo nella notifica in-app.
+- Una richiesta `PENDING_APPROVAL` su chiave ritirata mostra all'utente «in attesa di approvazione» finché l'admin non la rifiuta (passo 5 del runbook).
+- Alla prossima sostituzione della chiave root un client in cache sigillerebbe con l'id vecchio e riceverebbe 400. Il rinvio sugli errori tecnici evita il blocco.
+- I limiti di route su release (3 ogni 15 minuti) e confirm (5 ogni 15 minuti) contano anche i 409 della chiave ritirata. Runbook: non cliccare Rilascia sulle richieste `WAITING` con chiave ritirata, altrimenti la prova del passo 8 può prendere 429 per 15 minuti.
+- Un errore tecnico che si ripete a ogni sblocco, per esempio un elemento della coda sempre `pending` che fa scattare `flushTimeout`, rinvia il ri-sigillo per sempre. Il segnale è il conteggio per `rootKeyId` del passo 9: i keyring rimasti sulla chiave ritirata vanno guardati uno per uno.
+
+Secondo giro (red-team del 26/11, corretto): un fallimento ripetuto di `finishRotation` non riapre più il foglio in loop, perché il rinvio diventa `'error'`. Dopo un errore del foglio il client rilegge il keyring: se la PUT era già andata a buon fine, l'epoch avanti blocca il vault.

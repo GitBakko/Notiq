@@ -59,6 +59,8 @@ export function outcomeOf(x: unknown): Outcome {
   if (e?.name === 'VaultSessionError' && e.code === 'notReady') return { key: `${E}sessionChanged`, action: 'reload' };
   const key = typeof e?.key === 'string' && e.key.startsWith('errors.') ? e.key : UNKNOWN_KEY;
   // 409 del server su createRecovery: un'altra richiesta e' aperta, si rilegge lo stato (foreign)
+  // 409 chiave root ritirata (1.15.1): riprovare non serve, si torna allo sblocco dove il foglio del Kit risigilla l'escrow
+  if (key === 'errors.vault.recoveryRootKeyRetired') return { key, action: 'goUnlock' };
   return { key, action: key === 'errors.vault.recoveryAlreadyOpen' ? 'restart' : 'retry' };
 }
 

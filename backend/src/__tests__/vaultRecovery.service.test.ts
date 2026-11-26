@@ -31,6 +31,8 @@ const E2E_FIXTURE = path.resolve(__dirname, '../../../frontend/e2e/fixtures/vaul
 const E2E_PASSPHRASE = 'notiq-e2e-test-root-passphrase-NOT-A-SECRET';
 
 const mp = prisma as any;
+const ACTIVE_RK = 'rk_42f37978a7909b3e'; // nella mappa di questo file (mock sopra)
+const RETIRED_RK = 'rk_68a265761e7e37c7'; // ritirata il 25/11/2026: fuori da VAULT_ROOT_KEYS
 const U = 'user-1';
 const ADMIN = 'admin-1';
 const RID = 'recovery-1';
@@ -77,7 +79,7 @@ beforeEach(() => {
   mp.vaultRequest.findMany.mockReset().mockResolvedValue([]);
   mp.vaultRequest.findFirst.mockResolvedValue(null);
   mp.vaultRequest.findUnique.mockResolvedValue(null);
-  mp.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', sealedRootShare: Buffer.alloc(157, 1), rootKeyId: 'rk_test' });
+  mp.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', sealedRootShare: Buffer.alloc(157, 1), rootKeyId: ACTIVE_RK });
   mp.vaultKeyring.updateMany.mockResolvedValue({ count: 1 });
   mp.vaultRequest.count.mockResolvedValue(0);
   mp.vaultRequest.create.mockImplementation(async ({ data }: any) => ({ id: RID, ...data }));
@@ -116,6 +118,29 @@ describe('richiesta e approvazione', () => {
     expect(data.clientEphPub).toHaveLength(97);
     expect(data.expiresAt.getTime()).toBeGreaterThan(Date.now() + 6 * 24 * 60 * 60 * 1000);
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'requested', { requestId: RID, fingerprint: result.fingerprint });
+  });
+
+  it('chiave root ritirata: 409 recoveryRootKeyRetired prima di ogni scrittura, nessuna riga, nessuna quota, nessuna notifica', async () => {
+    for (const rootKeyId of [RETIRED_RK, 'rk_unknown']) {
+      mp.vaultKeyring.findUnique.mockResolvedValue({ status: 'READY', sealedRootShare: Buffer.alloc(157, 1), rootKeyId });
+      await expect(createRecoveryRequest(U, pub(), undefined, 'ip', 'ua')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryRootKeyRetired' });
+    }
+    expect(mp.$transaction).not.toHaveBeenCalled();
+    expect(mp.vaultRequest.count).not.toHaveBeenCalled();
+    expect(mp.vaultRequest.create).not.toHaveBeenCalled();
+    expect(notifyRecovery).not.toHaveBeenCalled();
+    expect(notifySuperadmins).not.toHaveBeenCalled();
+  });
+
+  it('requested: dopo la creazione avvisa gli admin in background con requestId e richiedente', async () => {
+    await createRecoveryRequest(U, pub(), undefined, 'ip', 'ua');
+    expect(notifySuperadmins).toHaveBeenCalledTimes(1);
+    expect(notifySuperadmins).toHaveBeenCalledWith('requested', { requestId: RID, actorId: U });
+  });
+
+  it('requested: un notifySuperadmins che lancia non fa fallire la richiesta', async () => {
+    vi.mocked(notifySuperadmins).mockRejectedValue(new Error('smtp'));
+    await expect(createRecoveryRequest(U, pub(), undefined, 'ip', 'ua')).resolves.toMatchObject({ id: RID });
   });
 
   it('F2: advisory lock per utente eseguito nella transazione prima delle letture e della create', async () => {
@@ -251,6 +276,17 @@ describe('richiesta e approvazione', () => {
     });
   });
 
+  it('approve con chiave root ritirata sul keyring: 409 recoveryRootKeyRetired, stato invariato, nessuna notifica', async () => {
+    mp.vaultRequest.findFirst.mockResolvedValue(pendingApprovalRow(client()));
+    mp.vaultKeyring.findUnique.mockResolvedValue({ rootKeyId: RETIRED_RK });
+    await expect(approveRecovery(ADMIN, RID)).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryRootKeyRetired' });
+    mp.vaultKeyring.findUnique.mockResolvedValue(null);
+    await expect(approveRecovery(ADMIN, RID)).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryRootKeyRetired' });
+    expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
+    expect(notifyRecovery).not.toHaveBeenCalled();
+    expect(getE2eCodeB(RID)).toBeUndefined();
+  });
+
   it('approve: richiesta non in PENDING_APPROVAL o transizione persa -> 409, nessuna notify', async () => {
     await expect(approveRecovery(ADMIN, RID)).rejects.toMatchObject({ statusCode: 409 });
     mp.vaultRequest.findFirst.mockResolvedValue(pendingApprovalRow(client()));
@@ -276,7 +312,7 @@ describe('richiesta e approvazione', () => {
     await expect(confirmRecovery(U, RID, 'AAAAAAAA', 'BBBBBBBB')).resolves.toMatchObject({ status: 'WAITING' });
     await expect(cancelRecovery(U, RID)).resolves.toEqual({ status: 'CANCELLED' });
     const clientPub = pub();
-    mp.vaultRequest.findFirst.mockResolvedValue({ userId: U, clientEphPub: clientPub, fingerprint: fingerprintOf(clientPub), notBefore: new Date(Date.now() - 1000), user: { vaultKeyring: { epoch: 2, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1), escrowBlob: Buffer.alloc(60, 4) } } });
+    mp.vaultRequest.findFirst.mockResolvedValue({ userId: U, clientEphPub: clientPub, fingerprint: fingerprintOf(clientPub), notBefore: new Date(Date.now() - 1000), user: { vaultKeyring: { epoch: 2, rootKeyId: ACTIVE_RK, sealedRootShare: Buffer.alloc(157, 1), escrowBlob: Buffer.alloc(60, 4) } } });
     (releaseRootShare as any).mockResolvedValue({ rootShareForClient: Buffer.alloc(157, 2), rootSignature: Buffer.alloc(64, 3) });
     await expect(releaseRecovery(ADMIN, RID, 'p')).resolves.toEqual({ status: 'RELEASED' });
     expect(notifyRecovery).toHaveBeenCalledTimes(5);
@@ -311,6 +347,17 @@ describe('conferma e annullamento', () => {
     expect(data.codeAHash).toBeNull();
     expect(data.codeBHash).toBeNull();
     expect(notifyRecovery).toHaveBeenCalledWith(U, 'waiting', { requestId: RID, fingerprint: 'FP123456', notBefore: result.notBefore });
+  });
+
+  it('chiave root ritirata sul keyring: 409 recoveryRootKeyRetired, stato invariato (nessun tentativo consumato), nessuna notifica', async () => {
+    mp.vaultRequest.findUnique.mockResolvedValue(pendingCodeRow(1));
+    mp.vaultKeyring.findUnique.mockResolvedValue({ rootKeyId: RETIRED_RK });
+    await expect(confirmRecovery(U, RID, 'AAAAAAAA', 'BBBBBBBB')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryRootKeyRetired' });
+    mp.vaultKeyring.findUnique.mockResolvedValue(null);
+    await expect(confirmRecovery(U, RID, 'AAAAAAAA', 'BBBBBBBB')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryRootKeyRetired' });
+    expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
+    expect(mp.vaultRequest.update).not.toHaveBeenCalled();
+    expect(notifyRecovery).not.toHaveBeenCalled();
   });
 
   it('codice errato -> 403 e notify codeFailed', async () => {
@@ -451,7 +498,7 @@ describe('rilascio', () => {
       clientEphPub: clientPub,
       fingerprint: fingerprintOf(clientPub),
       notBefore: new Date(Date.now() - 1000),
-      user: { vaultKeyring: { epoch: 2, rev: 5, rootKeyId: 'rk_test', sealedRootShare: Buffer.alloc(157, 1), escrowBlob: ESCROW } },
+      user: { vaultKeyring: { epoch: 2, rev: 5, rootKeyId: ACTIVE_RK, sealedRootShare: Buffer.alloc(157, 1), escrowBlob: ESCROW } },
     };
   }
 
@@ -466,6 +513,18 @@ describe('rilascio', () => {
     await releaseRecovery(ADMIN, RID, 'passphrase');
     expect(mp.vaultKeyring.updateMany).toHaveBeenCalledWith({ where: { userId: U, status: 'READY', epoch: 2, rev: 5 }, data: { rev: { increment: 1 } } });
     expect(order).toEqual(['tx', 'keyring', 'request', 'commit', 'audit']);
+  });
+
+  it('chiave root ritirata sul keyring: 409 recoveryRootKeyRetired prima di rate limit, passphrase, audit e notifica', async () => {
+    const row = waitingRow();
+    mp.vaultRequest.findFirst.mockResolvedValue({ ...row, user: { vaultKeyring: { ...row.user.vaultKeyring, rootKeyId: RETIRED_RK } } });
+    await expect(releaseRecovery(ADMIN, RID, 'p')).rejects.toMatchObject({ statusCode: 409, message: 'errors.vault.recoveryRootKeyRetired' });
+    expect(mp.auditLog.count).not.toHaveBeenCalled();
+    expect(releaseRootShare).not.toHaveBeenCalled();
+    expect(mp.auditLog.create).not.toHaveBeenCalled();
+    expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
+    expect(notifyRecovery).not.toHaveBeenCalled();
+    expect(notifySuperadmins).not.toHaveBeenCalled();
   });
 
   it('CAS sul keyring fallito (count 0): 409, richiesta non toccata, buffer azzerati, niente audit/notify', async () => {
@@ -711,7 +770,7 @@ describe('lettura admin (nessun segreto)', () => {
     createdAt: new Date(), expiresAt: new Date(Date.now() + 7 * 24 * 3600_000), notBefore: new Date(Date.now() - 1000), approvedById: ADMIN, approvedAt: new Date(), rejectReason: null,
     releasedById: null, releasedAt: null, releaseExpiresAt: null, completedAt: null, cancelledAt: null, cancelledBy: null, attempts: 1,
     codeHash: 'h0', codeAHash: 'h1', codeBHash: 'h2', clientEphPub: Buffer.alloc(97), rootShareForClient: Buffer.alloc(157), rootSignature: Buffer.alloc(64), completedPayloadHash: 'h3',
-    user: { email: 'a@example.com', vaultKeyring: { status: 'READY', rootKeyId: 'rk_test' } },
+    user: { email: 'a@example.com', vaultKeyring: { status: 'READY', rootKeyId: ACTIVE_RK } },
     ...over,
   });
 
@@ -728,7 +787,7 @@ describe('lettura admin (nessun segreto)', () => {
     expect(item.attempts).toBe(1);
     expect(item.userEmail).toBe('a@example.com');
     expect(item.keyringStatus).toBe('READY');
-    expect(item.rootKeyId).toBe('rk_test');
+    expect(item.rootKeyId).toBe(ACTIVE_RK);
     const q = mp.vaultRequest.findMany.mock.calls[0][0];
     expect(q.where).toEqual({ type: 'RECOVERY', status: 'WAITING', userId: U });
     expect(q.skip).toBe(20);
@@ -779,7 +838,7 @@ describe('completamento', () => {
     return crypto.sign('sha256', Buffer.from(msg), { key: pair.privateKey, dsaEncoding: 'ieee-p1363' });
   };
   const wrap = () => ({ kdf: 'argon2id', kdfParams: { m: 65536, t: 10, p: 1 }, pinSalt: Buffer.alloc(16).toString('base64url'), wrappedVkPin: Buffer.alloc(60).toString('base64url'), authKey: Buffer.alloc(32).toString('base64url'), serverShare: Buffer.alloc(32, 7).toString('base64url') });
-  const escrow = () => ({ escrowBlob: Buffer.alloc(60).toString('base64url'), sealedRootShare: Buffer.alloc(157).toString('base64url'), rootKeyId: 'rk_68a265761e7e37c7', userShareUnderVk: Buffer.alloc(48).toString('base64url') });
+  const escrow = () => ({ escrowBlob: Buffer.alloc(60).toString('base64url'), sealedRootShare: Buffer.alloc(157).toString('base64url'), rootKeyId: ACTIVE_RK, userShareUnderVk: Buffer.alloc(48).toString('base64url') });
   const rotate = (o: any = {}) => ({ vkSigPub: Buffer.alloc(91, 8).toString('base64url'), wrappedVkSigKey: Buffer.alloc(100, 9).toString('base64url'), prevVkWrap: Buffer.alloc(60, 7).toString('base64url'), ...o });
   beforeEach(() => { mp.note.count.mockReset().mockResolvedValue(0); });
   const setup = () => {

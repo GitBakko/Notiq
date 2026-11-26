@@ -22,15 +22,16 @@ const E2E: { activeId: string; keys: Record<string, { ecdhSpki: string; ecdsaSpk
 // E2E-KEYS-END
 
 export const VAULT_ROOT_KEYS: Readonly<Record<string, { ecdhSpki: string; ecdsaSpki: string }>> = Object.freeze({
-  rk_68a265761e7e37c7: Object.freeze({
-    ecdhSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE9UaYkpTPMfyJoTc6nnvLCB8F8Syd9j9Uy9JMQmeyRuBo8FLYCgLPRmq8djnO4sawRKTUzp4famYsn6M3kfFI9y9UQgWBIuZ8sZ61OBUpuRCH7sJ4LbLkYElNDqRo3YU_',
-    ecdsaSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEG2wXXQ9NrQeaMQIzyJod3M56-bTKPI--i3klBSzqYOnBILPGmeSy6BIryUvUBLF8RlVOoUpJ-gsOk5HiKZHBtM4e-NEJBda2zIEYj-RUHfygIRkcmAg9pIAaOFO417uJ',
+  // Ritirata in 1.15.1 (passphrase persa): rk_68a265761e7e37c7. Non rimetterla qui, ne' nel bundle (postbuild).
+  rk_160b1fd2a596b806: Object.freeze({
+    ecdhSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEdkP7hpynx89MiprBGugF23FetHrZ-bZr5druKGFQqNz7wHncyd2PKaXs19pC4S94gSVTT__SAeeiCpAiZrEOSsKRb3O_IKfG_C-gKPlTlfciCHSviZLEksL9tzNp3_GL',
+    ecdsaSpki: 'MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAErNl1hpE1D5EqxrRcp55N241JbmzTqp73hxVYhH5a6SuPEVf4f9vOGkNn-SMYiomTLAYDQXAuFxfVWmH4j1VoQ-JgV7SmcVfWiYm--br0Jqr6o7vRFe2VLQdHeYgGLMQc',
   }),
   ...E2E?.keys,
 });
 
 /** Id della chiave usata dai nuovi setup/rigenerazioni (T25); deve esistere in VAULT_ROOT_KEYS. Con il flag E2E e' quella di test. */
-export const ACTIVE_VAULT_ROOT_KEY_ID: string | null = E2E?.activeId ?? 'rk_68a265761e7e37c7';
+export const ACTIVE_VAULT_ROOT_KEY_ID: string | null = E2E?.activeId ?? 'rk_160b1fd2a596b806';
 
 /** Chiave attiva nel formato di `lib/vaultSession` (`RootKeyInfo`), o null se la lista e' vuota o l'id non c'e'. */
 export function getActiveRootKey(

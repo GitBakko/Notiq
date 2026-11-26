@@ -180,6 +180,40 @@ describe('VaultSettingsSheet', () => {
     expect(rotateVault).not.toHaveBeenCalled();
   });
 
+  it('forzato: errore non da PIN (flushTimeout) -> onKitFailed con la chiave, una volta', async () => {
+    vi.mocked(flushPending).mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'flushTimeout' }));
+    const onKitFailed = vi.fn();
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} onKitFailed={onKitFailed} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(onKitFailed).toHaveBeenCalledTimes(1));
+    expect(onKitFailed).toHaveBeenCalledWith('vault.migrate.errors.flushTimeout');
+  });
+
+  it('forzato: PIN errato o bloccato -> nessun onKitFailed, errore inline', async () => {
+    vi.mocked(rotateVault).mockRejectedValueOnce({ name: 'VaultSessionError', code: 'wrongPin', key: 'errors.vault.invalidPin' });
+    const onKitFailed = vi.fn();
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} onKitFailed={onKitFailed} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('errors.vault.invalidPin')).toBeTruthy());
+    vi.mocked(rotateVault).mockRejectedValueOnce({ name: 'VaultSessionError', code: 'pinLocked', key: 'errors.vault.locked' });
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('errors.vault.locked')).toBeTruthy());
+    expect(onKitFailed).not.toHaveBeenCalled();
+  });
+
+  it('non forzato: errore non da PIN -> nessun onKitFailed (il foglio si chiude da solo)', async () => {
+    vi.mocked(flushPending).mockRejectedValue(Object.assign(new Error('x'), { name: 'MigrationError', code: 'flushTimeout' }));
+    const onKitFailed = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={() => {}} onKitFailed={onKitFailed} />);
+    type('vault.settings.kitPin', 'old111');
+    fireEvent.click(screen.getByText('vault.settings.kitButton'));
+    await waitFor(() => expect(screen.getByText('vault.migrate.errors.flushTimeout')).toBeTruthy());
+    expect(onKitFailed).not.toHaveBeenCalled();
+  });
+
   it('(n) rotationPending (409): il foglio chiama onRotationPending una volta e non lancia finishRotation ne il reconcile', async () => {
     vi.mocked(rotateVault).mockRejectedValue({ name: 'VaultSessionError', code: 'rotationPending', key: 'errors.vault.rotationPending' });
     const onRotationPending = vi.fn();
@@ -360,6 +394,20 @@ describe('VaultSettingsSheet: forceKit', () => {
     render(<VaultSettingsSheet isOpen forceKit onClose={onClose} />);
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('dialog').parentElement as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('common.close')).toBeNull();
+  });
+
+  it('motivo chiave root ritirata: testo dedicato, sempre non chiudibile', () => {
+    const onClose = vi.fn();
+    const { unmount } = render(<VaultSettingsSheet isOpen forceKit onClose={onClose} />);
+    expect(screen.getByRole('alert').textContent).toContain('vault.kitRotation.warning');
+    unmount();
+    render(<VaultSettingsSheet isOpen forceKit forceReason="retired" onClose={onClose} />);
+    const alert = screen.getByRole('alert').textContent ?? '';
+    expect(alert).toContain('vault.kitRotation.retiredWarning');
+    expect(alert).not.toContain('vault.kitRotation.warning');
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('common.close')).toBeNull();
   });

@@ -14,7 +14,13 @@ const LABELS: Record<Locale, { cta: string; fp: string; notBefore: string; codeB
   it: { cta: 'Apri Notiq', reason: 'Motivo', fp: 'Codice richiesta', notBefore: 'Disponibile da', codeB: 'La seconda metà del codice è riportata qui sotto.' },
 };
 
-const ADMIN_TEXTS: Record<'releaseFailed' | 'selfAction', Record<Locale, { title: string; body: (requestId: string, actor: string) => string }>> = {
+type AdminEvent = 'releaseFailed' | 'selfAction' | 'requested';
+
+const ADMIN_TEXTS: Record<AdminEvent, Record<Locale, { title: string; body: (requestId: string, actor: string) => string }>> = {
+  requested: {
+    en: { title: VAULT_RECOVERY_TEXTS.adminRequested.en.title, body: (_r, a) => VAULT_RECOVERY_TEXTS.adminRequested.en.body.replace('{{email}}', a) },
+    it: { title: VAULT_RECOVERY_TEXTS.adminRequested.it.title, body: (_r, a) => VAULT_RECOVERY_TEXTS.adminRequested.it.body.replace('{{email}}', a) },
+  },
   releaseFailed: {
     en: { title: 'Vault recovery: release failed', body: (r, a) => `A wrong root passphrase was entered by ${a} while releasing recovery request ${r}.` },
     it: { title: 'Recupero vault: rilascio fallito', body: (r, a) => `${a} ha inserito una passphrase root errata rilasciando la richiesta di recupero ${r}.` },
@@ -74,12 +80,13 @@ export async function notifyRecovery(
   }
 }
 
-export async function notifySuperadmins(event: 'releaseFailed' | 'selfAction', args: { requestId: string; actorId: string }): Promise<void> {
+// requested: email + notifica in-app SYSTEM (dati: solo requestId ed email del richiedente, mai i codici). Non lancia mai.
+export async function notifySuperadmins(event: AdminEvent, args: { requestId: string; actorId: string }): Promise<void> {
   try {
     const [actor, admins] = await Promise.all([
       prisma.user.findUnique({ where: { id: args.actorId }, select: { email: true } }),
-      // selfAction: the actor already knows; releaseFailed: everyone, actor included.
-      prisma.user.findMany({ where: { role: 'SUPERADMIN', ...(event === 'selfAction' ? { id: { not: args.actorId } } : {}) }, select: { email: true, locale: true } }),
+      // selfAction/requested: the actor already knows; releaseFailed: everyone, actor included.
+      prisma.user.findMany({ where: { role: 'SUPERADMIN', ...(event !== 'releaseFailed' ? { id: { not: args.actorId } } : {}) }, select: { id: true, email: true, locale: true } }),
     ]);
     const actorEmail = actor?.email ?? args.actorId;
     await Promise.all(admins.map(async (a) => {
@@ -89,6 +96,16 @@ export async function notifySuperadmins(event: 'releaseFailed' | 'selfAction', a
         await sendNotificationEmail(a.email, 'VAULT_RECOVERY', { title: t.title, body: t.body(args.requestId, actorEmail), cta: LABELS[lang].cta });
       } catch (err) {
         logger.error({ err, requestId: args.requestId }, 'Vault recovery superadmin email failed');
+      }
+      if (event !== 'requested') return;
+      try {
+        await createNotification(a.id, 'SYSTEM', t.title, t.body(args.requestId, actorEmail), {
+          localizationKey: 'notifications.vaultRecovery.adminRequested',
+          localizationArgs: { email: actorEmail },
+          requestId: args.requestId,
+        });
+      } catch (err) {
+        logger.error({ err, requestId: args.requestId }, 'Vault recovery superadmin notification failed');
       }
     }));
   } catch (err) {

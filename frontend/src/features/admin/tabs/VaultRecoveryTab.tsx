@@ -58,6 +58,7 @@ function actionErrorKey(e: unknown, release: boolean): string {
   if (release && status === 429) return 'rateLimited';
   if (release && status === 503) return 'rootKeyUnavailable';
   if (status === 409 && msg === 'errors.vault.recoveryKeyringChanged') return 'keyringChanged';
+  if (status === 409 && msg === 'errors.vault.recoveryRootKeyRetired') return 'rootKeyRetired';
   if (status === 409 && msg === 'errors.vault.recoveryStateConflict') return 'stateConflict';
   return 'generic';
 }
