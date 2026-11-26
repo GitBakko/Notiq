@@ -1639,6 +1639,8 @@
       "vaultKeyRotation": "Generating a new Recovery Kit now also renews the vault key and re-encrypts your items",
       "vaultSaveOnClose": "Vault notes and credentials are saved even if you close the app or switch away right after an edit",
       "vaultOtherDevicesOnlineUnlock": "After a recovery or a new Recovery Kit, your other devices need one online unlock before they can unlock offline again",
+      "vaultReset": "Vault reset: if you lost both your PIN and your Recovery Kit, you can reset the vault. It is deleted after 7 days, and you can cancel until then.",
+      "vaultDialogsAccessible": "Vault dialogs are now announced correctly by screen readers.",
       "vaultNewRecoveryKey": "Vault: new recovery key. The next time you unlock the vault you will be asked to generate a new Recovery Kit.",
       "vaultRecoveryAdminNotify": "Administrators are notified by email and in the app when someone requests a vault recovery.",
       "vaultKitSheetNoDeadEnd": "The Recovery Kit screen no longer blocks the vault after a network error.",

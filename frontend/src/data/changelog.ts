@@ -11,6 +11,14 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.16.0',
+    date: '2026-11-26',
+    entries: [
+      { type: 'feature', titleKey: 'whatsNew.entries.vaultReset' },
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultDialogsAccessible' },
+    ],
+  },
+  {
     version: '1.15.1',
     date: '2026-11-26',
     entries: [

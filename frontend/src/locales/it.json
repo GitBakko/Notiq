@@ -1225,6 +1225,8 @@
       "vaultKeyRotation": "Generare un nuovo Kit di recupero ora rinnova anche la chiave del vault e cifra di nuovo i tuoi elementi",
       "vaultSaveOnClose": "Note e credenziali del vault vengono salvate anche se chiudi l'app o passi ad altro subito dopo una modifica",
       "vaultOtherDevicesOnlineUnlock": "Dopo un recupero o un nuovo Kit di recupero, gli altri dispositivi devono sbloccare il vault una volta online prima di poterlo sbloccare di nuovo offline",
+      "vaultReset": "Reset del vault: se hai perso sia il PIN sia il Kit di recupero puoi azzerare il vault. Viene cancellato dopo 7 giorni e fino ad allora puoi annullare.",
+      "vaultDialogsAccessible": "Le finestre del vault ora vengono annunciate correttamente dai lettori di schermo.",
       "vaultNewRecoveryKey": "Vault: nuova chiave di recupero. Al prossimo sblocco del vault ti verrà chiesto di generare un nuovo Kit di recupero.",
       "vaultRecoveryAdminNotify": "Gli amministratori ricevono un'email e una notifica nell'app quando qualcuno chiede il recupero del vault.",
       "vaultKitSheetNoDeadEnd": "La schermata del Kit di recupero non blocca più il vault dopo un errore di rete.",
