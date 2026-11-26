@@ -11,6 +11,15 @@ export interface VersionEntry {
 
 export const changelog: VersionEntry[] = [
   {
+    version: '1.15.1',
+    date: '2026-11-26',
+    entries: [
+      { type: 'improvement', titleKey: 'whatsNew.entries.vaultNewRecoveryKey' },
+      { type: 'feature', titleKey: 'whatsNew.entries.vaultRecoveryAdminNotify' },
+      { type: 'fix', titleKey: 'whatsNew.entries.vaultKitSheetNoDeadEnd' },
+    ],
+  },
+  {
     version: '1.15.0',
     date: '2026-11-25',
     entries: [
