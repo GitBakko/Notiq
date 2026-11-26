@@ -11,6 +11,12 @@ export const timeAgo = (date: Date | string, locale?: Locale): string => {
   return formatDistanceToNow(clamped, { addSuffix: true, locale });
 };
 
+/** Data e ora per l'utente nella lingua dell'app ("3 dic 2026, 12:10"): mai il numerico ambiguo 12/3/2026. Data non valida: stringa vuota. */
+export const formatDateTimeMedium = (iso: string, locale?: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+};
+
 export const toDatetimeLocal = (iso: string): string => {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';

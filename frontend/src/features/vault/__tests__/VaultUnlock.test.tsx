@@ -21,6 +21,7 @@ vi.mock('../../../lib/vaultSession', () => {
   return { unlockOnline: vi.fn(), unlockOffline: vi.fn(), removeFromDevice: vi.fn(), VaultSessionError };
 });
 
+vi.mock('../VaultResetDialog', () => ({ default: (p: { isOpen: boolean; onClose: () => void; onScheduled?: (d: string) => void }) => (p.isOpen ? <div data-testid="reset-dialog"><button onClick={() => p.onScheduled?.('2026-12-04T10:00:00.000Z')}>reset-scheduled</button><button onClick={p.onClose}>reset-close</button></div> : null) }));
 import VaultUnlock from '../VaultUnlock';
 import toast from 'react-hot-toast';
 import { unlockOnline, unlockOffline, removeFromDevice, VaultSessionError } from '../../../lib/vaultSession';
@@ -242,5 +243,24 @@ describe('VaultUnlock', () => {
     expect(screen.getByText('vault.unlock.forgotBody')).toBeTruthy(); // l'avviso resta
     fireEvent.click(screen.getByRole('button', { name: 'vault.unlock.forgotAction' }));
     expect(onForgot).toHaveBeenCalledTimes(1);
+  });
+
+  it('P3: "PIN e Kit persi" nel pannello del PIN dimenticato apre il dialog del reset (anche senza onForgot); il dialog non c\'e\' prima', () => {
+    render(<VaultUnlock />);
+    expect(screen.queryByTestId('reset-dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'vault.reset.entry' })).toBeNull(); // il pannello e' chiuso
+    fireEvent.click(screen.getByText('vault.forgotPin'));
+    fireEvent.click(screen.getByRole('button', { name: 'vault.reset.entry' }));
+    expect(screen.getByTestId('reset-dialog')).toBeTruthy();
+    fireEvent.click(screen.getByText('reset-close'));
+    expect(screen.queryByTestId('reset-dialog')).toBeNull();
+  });
+
+  it('P3: reset programmato -> il dialog si chiude', () => {
+    render(<VaultUnlock />);
+    fireEvent.click(screen.getByText('vault.forgotPin'));
+    fireEvent.click(screen.getByRole('button', { name: 'vault.reset.entry' }));
+    fireEvent.click(screen.getByText('reset-scheduled'));
+    expect(screen.queryByTestId('reset-dialog')).toBeNull();
   });
 });

@@ -48,3 +48,36 @@ describe('NotificationItem VAULT_RECOVERY', () => {
     expect(nav).toHaveBeenCalledWith('/vault?recovery=1');
   });
 });
+
+// P3: reset del vault (SYSTEM, localizationKey notifications.vaultReset.*)
+describe('NotificationItem SYSTEM vaultReset', () => {
+  const sys = (key: string, args?: Record<string, unknown>) =>
+    ({ ...notif({ localizationKey: key, localizationArgs: args, requestId: 'r1' }), type: 'SYSTEM' }) as Notification;
+
+  it('scheduled (utente): testo con la data, click verso /vault', () => {
+    renderItem(sys('notifications.vaultReset.scheduled', { date: '4 Dec 2026, 10:00' }));
+    expect(screen.getByText(/deleted on 4 Dec 2026, 10:00/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Vault reset scheduled'));
+    expect(nav).toHaveBeenCalledWith('/vault');
+  });
+
+  it.each([
+    ['cancelled', 'Vault reset cancelled', /reset on your account was cancelled/],
+    ['completed', 'Vault reset completed', /Your vault was reset/],
+  ])('%s (utente): titolo e testo tradotti, click verso /vault', (k, title, text) => {
+    renderItem(sys(`notifications.vaultReset.${k}`));
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(text)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(title));
+    expect(nav).toHaveBeenCalledWith('/vault');
+  });
+
+  it.each(['adminScheduled', 'adminCancelled', 'adminCompleted'])('%s (admin): testo con l\'email del proprietario, click verso la tab admin', (k) => {
+    renderItem(sys(`notifications.vaultReset.${k}`, { email: 'mario@example.com' }));
+    expect(screen.getByText(/mario@example\.com/)).toBeInTheDocument();
+    expect(screen.queryByText('SERVER_TITLE')).toBeNull();
+    fireEvent.click(screen.getByText(/mario@example\.com/));
+    // type=RESET: la tab filtra RECOVERY di default e l'admin non vedrebbe la richiesta di reset
+    expect(nav).toHaveBeenCalledWith('/admin?tab=vaultRecovery&type=RESET');
+  });
+});

@@ -1,4 +1,5 @@
 // Fase 4 (T9): tab admin del recupero vault. Nessun QueryClientProvider: il rilascio passa da api.post e mai da useMutation.
+import { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 
@@ -19,7 +20,14 @@ vi.mock('../../../store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: { id: h.me } }),
 }));
 
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import VaultRecoveryTab from '../tabs/VaultRecoveryTab';
+
+// la tab legge ?type= (link della notifica di reset): serve un Router
+let loc = '';
+let nav: ReturnType<typeof useNavigate>;
+function Probe() { const l = useLocation(); const n = useNavigate(); useEffect(() => { nav = n; loc = l.pathname + l.search; }); return null; }
+const renderTab = (url = '/admin?tab=vaultRecovery') => render(<MemoryRouter initialEntries={[url]}><VaultRecoveryTab /><Probe /></MemoryRouter>);
 
 const UID = '8f1c2b7e-0000-4000-8000-000000000002';
 const FUTURE = '2099-01-01T00:00:00.000Z';
@@ -50,7 +58,7 @@ beforeEach(() => {
 });
 
 const openDetail = async () => {
-  render(<VaultRecoveryTab />);
+  renderTab();
   fireEvent.click(await screen.findByText('mario@example.com'));
   return within(await screen.findByRole('dialog', { name: 'admin.vaultRecovery.detail.title' }));
 };
@@ -58,7 +66,7 @@ const openDetail = async () => {
 describe('VaultRecoveryTab: lista', () => {
   it('di default carica le richieste aperte (un GET per stato aperto) e le mostra', async () => {
     items.WAITING = [view({ id: 'r2', userEmail: 'anna@example.com', status: 'WAITING' })];
-    render(<VaultRecoveryTab />);
+    renderTab();
     await screen.findByText('mario@example.com');
     await screen.findByText('anna@example.com');
     const statuses = h.get.mock.calls.filter((c) => c[0] === '/admin/vault-recovery').map((c) => c[1].params.status).sort();
@@ -66,7 +74,7 @@ describe('VaultRecoveryTab: lista', () => {
   });
 
   it('filtro "tutte": un solo GET senza status', async () => {
-    render(<VaultRecoveryTab />);
+    renderTab();
     await screen.findByText('mario@example.com');
     h.get.mockClear();
     fireEvent.change(screen.getByLabelText('admin.vaultRecovery.filterLabel'), { target: { value: 'all' } });
@@ -74,7 +82,7 @@ describe('VaultRecoveryTab: lista', () => {
   });
 
   it('filtro per utente: userId valido nei parametri, non valido ignorato con avviso', async () => {
-    render(<VaultRecoveryTab />);
+    renderTab();
     await screen.findByText('mario@example.com');
     h.get.mockClear();
     const input = screen.getByLabelText('admin.vaultRecovery.userIdLabel');
@@ -87,7 +95,7 @@ describe('VaultRecoveryTab: lista', () => {
 
   it('nessuna richiesta: testo vuoto', async () => {
     items = { PENDING_APPROVAL: [], PENDING_CODE: [], WAITING: [], RELEASED: [] };
-    render(<VaultRecoveryTab />);
+    renderTab();
     await screen.findByText('admin.vaultRecovery.empty');
   });
 });
@@ -270,5 +278,129 @@ describe('VaultRecoveryTab: rilascio', () => {
     await startRelease();
     await screen.findByText('admin.vaultRecovery.releaseConfirmMessage');
     expect(screen.queryByText(/releaseConfirmSelf/)).toBeNull();
+  });
+});
+
+// P3: richieste di reset del vault (type RESET) e annullo dell'admin
+describe('VaultRecoveryTab: reset del vault (P3)', () => {
+  const resetView = (o: Record<string, unknown> = {}) => view({ id: 'x1', type: 'RESET', status: 'WAITING', userEmail: 'luigi@example.com', fingerprint: null, notBefore: FUTURE, ...o });
+  const setReset = (o: Record<string, unknown> = {}) => {
+    const list = [resetView(o)];
+    detail = { ...resetView(o), audit: [] };
+    h.get.mockImplementation(async (url: string, cfg?: { params?: Record<string, unknown> }) => {
+      if (url === '/admin/vault-recovery') {
+        const st = cfg?.params?.status as string | undefined;
+        const out = cfg?.params?.type === 'RESET' ? list.filter((r) => !st || r.status === st) : [];
+        return { data: { items: out, total: out.length, page: 1, limit: 50 } };
+      }
+      return { data: detail };
+    });
+  };
+  const openReset = async (filter?: string) => {
+    renderTab();
+    await waitFor(() => expect(h.get).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText('admin.vaultRecovery.typeLabel'), { target: { value: 'RESET' } });
+    if (filter) fireEvent.change(screen.getByLabelText('admin.vaultRecovery.filterLabel'), { target: { value: filter } });
+    fireEvent.click(await screen.findByText('luigi@example.com'));
+    return within(await screen.findByRole('dialog', { name: 'admin.vaultRecovery.detail.title' }));
+  };
+
+  it('di default nessun parametro type (il server usa RECOVERY)', async () => {
+    renderTab();
+    await screen.findByText('mario@example.com');
+    const calls = h.get.mock.calls.filter((c) => c[0] === '/admin/vault-recovery');
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) expect(c[1].params).not.toHaveProperty('type');
+  });
+
+  it('tipo "reset": GET con type RESET, solo per gli stati aperti di un reset (PENDING_CODE, WAITING)', async () => {
+    setReset();
+    renderTab();
+    await waitFor(() => expect(h.get).toHaveBeenCalled());
+    h.get.mockClear();
+    fireEvent.change(screen.getByLabelText('admin.vaultRecovery.typeLabel'), { target: { value: 'RESET' } });
+    await screen.findByText('luigi@example.com');
+    const calls = h.get.mock.calls.filter((c) => c[0] === '/admin/vault-recovery');
+    expect(calls.map((c) => c[1].params.status).sort()).toEqual(['PENDING_CODE', 'WAITING']);
+    for (const c of calls) expect(c[1].params.type).toBe('RESET');
+  });
+
+  it('dettaglio di un reset in attesa: "Annulla reset" con conferma, POST cancel-reset con body {}, nessun rilascio/passphrase', async () => {
+    setReset();
+    const d = await openReset();
+    expect(d.queryByLabelText('admin.vaultRecovery.passphrase')).toBeNull();
+    expect(d.queryByText('admin.vaultRecovery.approve')).toBeNull();
+    h.get.mockClear();
+    fireEvent.click(d.getByRole('button', { name: 'admin.vaultRecovery.resetCancel' }));
+    expect(h.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'admin.vaultRecovery.resetCancelConfirm' }));
+    await waitFor(() => expect(h.post).toHaveBeenCalledWith('/admin/vault-recovery/x1/cancel-reset', {}));
+    await waitFor(() => expect(h.toastOk).toHaveBeenCalledWith('admin.vaultRecovery.resetCancelled'));
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith('/admin/vault-recovery/x1'));
+  });
+
+  it('409 resetNotCancellable: errore dedicato in un alert', async () => {
+    setReset();
+    h.post.mockRejectedValue(apiErr(409, 'errors.vault.resetNotCancellable'));
+    const d = await openReset();
+    fireEvent.click(d.getByRole('button', { name: 'admin.vaultRecovery.resetCancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'admin.vaultRecovery.resetCancelConfirm' }));
+    const alert = await screen.findByText('admin.vaultRecovery.errors.resetNotCancellable');
+    expect(alert.closest('[role="alert"]')).toBeTruthy();
+  });
+
+  it('reset completato o annullato: nessun pulsante di annullo', async () => {
+    setReset({ status: 'COMPLETED' });
+    const d = await openReset('all');
+    await d.findByText('admin.vaultRecovery.detail.status');
+    expect(d.queryByRole('button', { name: 'admin.vaultRecovery.resetCancel' })).toBeNull();
+  });
+
+  it('un recupero normale in WAITING non ha l\'annullo del reset', async () => {
+    items.WAITING = [view({ id: 'r7', userEmail: 'anna@example.com', status: 'WAITING', type: 'RECOVERY' })];
+    detail = { ...view({ id: 'r7', status: 'WAITING', type: 'RECOVERY' }), audit: [] };
+    renderTab();
+    fireEvent.click(await screen.findByText('anna@example.com'));
+    const d = within(await screen.findByRole('dialog', { name: 'admin.vaultRecovery.detail.title' }));
+    await d.findByText('admin.vaultRecovery.releaseTitle');
+    expect(d.queryByRole('button', { name: 'admin.vaultRecovery.resetCancel' })).toBeNull();
+  });
+});
+
+// P3: il tipo parte da ?type= (notifica admin di un reset) e il parametro segue la select
+describe('VaultRecoveryTab: parametro ?type= (P3)', () => {
+  const typeSelect = () => screen.getByLabelText('admin.vaultRecovery.typeLabel') as HTMLSelectElement;
+  const listCalls = () => h.get.mock.calls.filter((c) => c[0] === '/admin/vault-recovery');
+
+  it('?type=RESET: select su RESET e il primo GET e\' gia\' type RESET (nessun GET di recupero)', async () => {
+    renderTab('/admin?tab=vaultRecovery&type=RESET');
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(0));
+    expect(typeSelect().value).toBe('RESET');
+    for (const c of listCalls()) expect(c[1].params.type).toBe('RESET');
+  });
+
+  it.each(['/admin?tab=vaultRecovery', '/admin?tab=vaultRecovery&type=foo', '/admin?tab=vaultRecovery&type=reset'])('%s: valore non valido o assente = RECOVERY, nessun type nei GET', async (url) => {
+    renderTab(url);
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(0));
+    expect(typeSelect().value).toBe('RECOVERY');
+    for (const c of listCalls()) expect(c[1].params).not.toHaveProperty('type');
+  });
+
+  it('cambiando la select il parametro segue (RESET lo scrive, RECOVERY lo toglie) e conserva ?tab=', async () => {
+    renderTab();
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(0));
+    fireEvent.change(typeSelect(), { target: { value: 'RESET' } });
+    await waitFor(() => expect(loc).toBe('/admin?tab=vaultRecovery&type=RESET'));
+    fireEvent.change(typeSelect(), { target: { value: 'RECOVERY' } });
+    await waitFor(() => expect(loc).toBe('/admin?tab=vaultRecovery'));
+  });
+
+  it('una navigazione successiva a ?type=RESET (notifica cliccata a tab gia\' aperta) cambia il tipo', async () => {
+    renderTab();
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(0));
+    expect(typeSelect().value).toBe('RECOVERY');
+    act(() => { nav('/admin?tab=vaultRecovery&type=RESET'); });
+    await waitFor(() => expect(typeSelect().value).toBe('RESET'));
+    await waitFor(() => expect(listCalls().some((c) => c[1].params.type === 'RESET')).toBe(true));
   });
 });

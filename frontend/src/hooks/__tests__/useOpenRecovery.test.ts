@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-const h = vi.hoisted(() => ({ getKeyring: vi.fn(), userId: 'u1' as string | undefined }));
+const h = vi.hoisted(() => ({ getKeyring: vi.fn(), sync: vi.fn(), userId: 'u1' as string | undefined }));
 vi.mock('../../lib/vaultApi', () => ({ getKeyring: (...a: unknown[]) => h.getKeyring(...a) }));
+vi.mock('../../lib/vaultSession', () => ({ syncKeyringCache: (...a: unknown[]) => h.sync(...a) }));
 vi.mock('../../store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ user: h.userId ? { id: h.userId } : null }),
 }));
@@ -12,10 +13,12 @@ import { useOpenRecovery } from '../useOpenRecovery';
 const REC = { id: 'r1', status: 'WAITING', fingerprint: 'ABCD-1234', createdAt: '2026-11-12T10:00:00Z', notBefore: '2026-11-13T10:00:00Z' };
 const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 
+beforeAll(async () => { await import('../../lib/vaultSession'); }); // il hook lo importa in modo dinamico: gia' in cache, si risolve in pochi microtask
 beforeEach(() => {
   vi.useFakeTimers();
   h.userId = 'u1';
   h.getKeyring.mockReset().mockResolvedValue({ openRecovery: REC });
+  h.sync.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => vi.useRealTimers());
 
@@ -183,5 +186,65 @@ describe('useOpenRecovery', () => {
     await tick(31 * 60_000);
     expect(h.getKeyring).not.toHaveBeenCalled();
     expect(result.current.openRecovery).toBeNull();
+  });
+
+  // P3 (reset del vault)
+  const KR_RESET = { status: 'RESET_PENDING', epoch: 1, rev: 2, openRecovery: null, resetScheduledAt: '2026-12-03T10:00:00.000Z' };
+
+  it('espone resetScheduledAt dal keyring (null se assente o fuori da RESET_PENDING)', async () => {
+    h.getKeyring.mockResolvedValue(KR_RESET);
+    const { result } = renderHook(() => useOpenRecovery());
+    await tick(0);
+    expect(result.current.resetScheduledAt).toBe('2026-12-03T10:00:00.000Z');
+    h.getKeyring.mockResolvedValue({ status: 'READY', resetScheduledAt: null, openRecovery: null });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.resetScheduledAt).toBeNull();
+    h.getKeyring.mockResolvedValue({ status: 'READY', openRecovery: null });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.resetScheduledAt).toBeNull();
+  });
+
+  it('applica la regola del reset (syncKeyringCache) a ogni keyring letto con successo', async () => {
+    h.getKeyring.mockResolvedValue(KR_RESET);
+    renderHook(() => useOpenRecovery());
+    await tick(0);
+    await tick(0);
+    expect(h.sync).toHaveBeenCalledWith('u1', KR_RESET);
+  });
+
+  it('errore di rete: nessuna regola applicata e il valore resta', async () => {
+    h.getKeyring.mockResolvedValue(KR_RESET);
+    const { result } = renderHook(() => useOpenRecovery());
+    await tick(0);
+    h.sync.mockClear();
+    h.getKeyring.mockRejectedValue(new Error('network'));
+    await act(async () => { await result.current.refresh(); });
+    await tick(0);
+    expect(h.sync).not.toHaveBeenCalled();
+    expect(result.current.resetScheduledAt).toBe(KR_RESET.resetScheduledAt);
+  });
+
+  it('risposta superata: la regola non si applica', async () => {
+    const { result } = renderHook(() => useOpenRecovery());
+    await tick(0);
+    h.sync.mockClear();
+    let late!: (v: unknown) => void;
+    h.getKeyring.mockReturnValueOnce(new Promise((r) => { late = r; }));
+    let slow!: Promise<void>;
+    act(() => { slow = result.current.refresh(); });
+    h.getKeyring.mockResolvedValueOnce({ openRecovery: null });
+    await act(async () => { await result.current.refresh(); });
+    h.sync.mockClear();
+    await act(async () => { late(KR_RESET); await slow; });
+    await tick(0);
+    expect(h.sync).not.toHaveBeenCalled();
+  });
+
+  it('un errore di syncKeyringCache non rompe il hook', async () => {
+    h.sync.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useOpenRecovery());
+    await tick(0);
+    await tick(0);
+    expect(result.current.openRecovery).toEqual(REC);
   });
 });

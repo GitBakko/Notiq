@@ -162,9 +162,9 @@ describe('GET / e GET /:id', () => {
   it('lista: default page 1 e limit 20, filtri passati al service', async () => {
     rs.listRecoveriesForAdmin.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
     expect((await call('GET', '')).statusCode).toBe(200);
-    expect(rs.listRecoveriesForAdmin).toHaveBeenLastCalledWith({ page: 1, limit: 20 });
+    expect(rs.listRecoveriesForAdmin).toHaveBeenLastCalledWith({ page: 1, limit: 20, type: 'RECOVERY' });
     await call('GET', `?page=2&limit=100&status=WAITING&userId=${UUID}`);
-    expect(rs.listRecoveriesForAdmin).toHaveBeenLastCalledWith({ page: 2, limit: 100, status: 'WAITING', userId: UUID });
+    expect(rs.listRecoveriesForAdmin).toHaveBeenLastCalledWith({ page: 2, limit: 100, status: 'WAITING', userId: UUID, type: 'RECOVERY' });
   });
 
   it.each(['limit=101', 'page=0', 'status=BOH', 'userId=non-uuid'])('query %s -> 400', async (q) => {

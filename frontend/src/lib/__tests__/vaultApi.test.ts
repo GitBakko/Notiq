@@ -249,7 +249,7 @@ describe('forma delle risposte 2xx', () => {
   const cases: [string, () => Promise<unknown>, unknown[], unknown][] = [
     ['getKeyring', () => vaultApi.getKeyring(), [{ status: 'x', epoch: 0, rev: 0 }, { status: 'READY', epoch: -1, rev: 0 }, { status: 'READY', epoch: 0, rev: 1.5 }, { status: 'READY', epoch: '0', rev: 0 }, { status: 'READY', epoch: 0 }, { epoch: 0, rev: 0 },
       { ...KEYRING_OK, staleCount: -1 }, { ...KEYRING_OK, staleCount: '1' }, { ...KEYRING_OK, staleCount: 1.5 },
-      { ...KEYRING_OK, prevVkWrap: 5 }], KEYRING_OK],
+      { ...KEYRING_OK, prevVkWrap: 5 }, { ...KEYRING_OK, lastResetEpoch: -1 }, { ...KEYRING_OK, lastResetEpoch: '1' }, { ...KEYRING_OK, lastResetEpoch: 1.5 }, { ...KEYRING_OK, resetScheduledAt: 5 }], KEYRING_OK],
     ['getRecovery', () => vaultApi.getRecovery('r1'), [{ status: 'DONE' }, { id: 'r1' }], { status: 'COMPLETED' }],
     ['completeRecovery', () => vaultApi.completeRecovery('r1', '{}', 'p'), [{ status: 'WAITING' }, { status: 'completed' }], { status: 'COMPLETED' }],
     ['updateKeyring', () => vaultApi.updateKeyring('{}', 'p'), [{ rev: '4' }, { rev: 1.5 }, { rev: -1 }, { status: 'READY' }, { rev: 4 }, { rev: 4, epoch: -1 }, { rev: 4, epoch: '1' }, { epoch: 1 }], { rev: 4, epoch: 1 }],
@@ -314,6 +314,8 @@ describe('valori legittimi del backend (guardia di forma)', () => {
     ['READY con prevVkWrap non base64url (B8): la GET non si blocca, lo gestisce resolvePrev/openKeyring (classe K)', { ...keyringReady, prevVkWrap: 'a+b/=' + 'A'.repeat(75) }],
     ['READY senza rotazione (prevVkWrap null, staleCount 0)', { ...keyringReady, prevVkWrap: null, staleCount: 0 }],
     ['RESET_PENDING', { ...keyringReady, status: 'RESET_PENDING', resetScheduledAt: ISO, migrationState: 'IN_PROGRESS' }],
+    ['P3: lastResetEpoch numero', { ...keyringReady, lastResetEpoch: 3 }],
+    ['P3: lastResetEpoch null, resetScheduledAt ISO', { ...keyringReady, status: 'RESET_PENDING', lastResetEpoch: null, resetScheduledAt: ISO }],
   ])('getKeyring: %s', async (_n, body) => {
     request.mockResolvedValue({ data: body });
     await expect(vaultApi.getKeyring()).resolves.toEqual(body);
@@ -415,5 +417,49 @@ describe('forma delle risposte 2xx: unlock, items, migrate, finalize, confirm, c
       request.mockResolvedValue({ data: body });
       expect(await fail(fn())).toMatchObject(NET);
     });
+  });
+});
+
+// P3 (reset del vault): contratto §12 del piano.
+describe('reset del vault', () => {
+  const ISO = '2026-12-03T10:00:00.000Z';
+  const CH = { requestId: 'r1', code: 'ABCD-EFGH-JKMN', expiresAt: ISO, counts: { notes: 2, tags: 1, attachments: 0 } };
+
+  it('resetChallenge: POST /vault/reset/challenge', async () => {
+    request.mockResolvedValue({ data: CH });
+    await expect(vaultApi.resetChallenge()).resolves.toEqual(CH);
+    expect(request.mock.calls[0][0]).toMatchObject({ method: 'post', url: '/vault/reset/challenge' });
+  });
+
+  it('confirmReset: POST /vault/reset con requestId, code e password', async () => {
+    request.mockResolvedValue({ data: { scheduledAt: ISO } });
+    await expect(vaultApi.confirmReset('r1', 'ABCDEFGHJKMN', 'pw')).resolves.toEqual({ scheduledAt: ISO });
+    expect(request.mock.calls[0][0]).toMatchObject({ method: 'post', url: '/vault/reset', data: { requestId: 'r1', code: 'ABCDEFGHJKMN', password: 'pw' } });
+  });
+
+  it('cancelReset: POST /vault/reset/cancel', async () => {
+    request.mockResolvedValue({ data: { ok: true } });
+    await expect(vaultApi.cancelReset()).resolves.toEqual({ ok: true });
+    expect(request.mock.calls[0][0]).toMatchObject({ method: 'post', url: '/vault/reset/cancel' });
+  });
+
+  it.each([
+    ['resetChallenge', () => vaultApi.resetChallenge(), [{ ...CH, counts: { notes: -1, tags: 0, attachments: 0 } }, { ...CH, code: 5 }, { ...CH, counts: null }, { requestId: 'r1' }]],
+    ['confirmReset', () => vaultApi.confirmReset('r', 'c', 'p'), [{ scheduledAt: 5 }, { scheduledAt: 'non una data' }, {}]],
+    ['cancelReset', () => vaultApi.cancelReset(), [{ ok: false }, {}, { status: 'ok' }]],
+  ])('%s: body non del vault -> errore di rete', async (_n, fn, bad) => {
+    for (const body of ['<html>portal</html>', null, [], ...bad]) {
+      request.mockResolvedValue({ data: body });
+      expect(await fail(fn())).toMatchObject({ status: 0, kind: 'network' });
+    }
+  });
+
+  it('errori: la chiave del server arriva intatta (403 password, 410 scaduto, 409 non annullabile)', async () => {
+    request.mockRejectedValueOnce(axErr(403, 'errors.vault.resetInvalidPassword'));
+    expect(await fail(vaultApi.confirmReset('r', 'c', 'p'))).toMatchObject({ status: 403, kind: 'forbidden', key: 'errors.vault.resetInvalidPassword' });
+    request.mockRejectedValueOnce(axErr(410, 'errors.vault.resetExpired'));
+    expect(await fail(vaultApi.confirmReset('r', 'c', 'p'))).toMatchObject({ status: 410, key: 'errors.vault.resetExpired', fromServer: true });
+    request.mockRejectedValueOnce(axErr(409, 'errors.vault.resetNotCancellable'));
+    expect(await fail(vaultApi.cancelReset())).toMatchObject({ status: 409, kind: 'conflict', key: 'errors.vault.resetNotCancellable' });
   });
 });

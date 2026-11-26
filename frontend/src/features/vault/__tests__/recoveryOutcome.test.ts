@@ -4,7 +4,7 @@ import it_ from '../../../locales/it.json';
 import { VaultRecoveryError, type VaultRecoveryCode, type CompleteResult } from '../../../lib/vaultRecovery';
 import { VaultSessionError } from '../../../lib/vaultSession';
 import { VaultApiError } from '../../../lib/vaultApi';
-import { appControl, outcomeOf, type OutcomeAction } from '../recoveryOutcome';
+import { appControl, offersReset, outcomeOf, type OutcomeAction } from '../recoveryOutcome';
 
 const has = (loc: unknown, key: string) =>
   typeof key.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), loc) === 'string';
@@ -88,6 +88,18 @@ describe('outcomeOf', () => {
     expect(it_.vault.recovery.noOpenRequest).toBe('Non ci sono richieste di recupero aperte.');
     expect(en.vault.pendingPinNotApplied).toMatch(/never reached the server/);
     expect(it_.vault.pendingPinNotApplied).toMatch(/non è mai arrivato al server/);
+  });
+});
+
+describe('offersReset (P3): quando il recupero non è possibile si rimanda al reset', () => {
+  it('chiave root ritirata e richiesta rifiutata: si', () => {
+    expect(offersReset(outcomeOf(new VaultApiError(409, 'errors.vault.recoveryRootKeyRetired', 'conflict', true)))).toBe(true);
+    expect(offersReset(outcomeOf(result('notApplied', 'rejected')))).toBe(true);
+  });
+  it('errori transitori o gia\' gestiti: no', () => {
+    expect(offersReset(outcomeOf(new VaultApiError(0, 'errors.common.networkError', 'network')))).toBe(false);
+    expect(offersReset(outcomeOf(new VaultRecoveryError('kitInvalid')))).toBe(false);
+    expect(offersReset(outcomeOf(result('applied')))).toBe(false);
   });
 });
 

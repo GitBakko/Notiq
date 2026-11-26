@@ -787,12 +787,11 @@ describe('allineamento cache al keyring del server (J.6)', () => {
     expect(st().byUser[U]).toEqual(stale);
   });
 
-  it('nessuna cache, NONE, RESET_PENDING, keyring incompleto, errore di rete: nessuna scrittura e nessun throw', async () => {
+  it('nessuna cache, NONE, keyring incompleto, errore di rete: nessuna scrittura e nessun throw', async () => {
     const kr = await h.server.getKeyring() as unknown as session.KeyringDto;
     session.syncKeyringCache('altro', kr);
     expect(st().byUser['altro']).toBeUndefined();
     session.syncKeyringCache(U, { ...kr, status: 'NONE' });
-    session.syncKeyringCache(U, { ...kr, status: 'RESET_PENDING' });
     session.syncKeyringCache(U, { ...kr, wrappedVkPin: null });
     h.server.getKeyring = async () => { throw apiErr(0, 'errors.common.networkError'); };
     await expect(session.refreshKeyringCache(U)).resolves.toBeUndefined();
@@ -1268,8 +1267,8 @@ describe('syncKeyringCache: epoch del server oltre quella in memoria', () => {
     session.syncKeyringCache(U, await krAt({ epoch: 2, rev: 3 }));
     expect(st().unlockedUserId).toBeNull();
   });
-  it('keyring non READY: nessun lock', async () => {
-    session.syncKeyringCache(U, await krAt({ status: 'RESET_PENDING', epoch: 2 }));
+  it('keyring NONE alla stessa epoch: nessun lock (RESET_PENDING e reset avvenuto: vedi la regola P3 in fondo)', async () => {
+    session.syncKeyringCache(U, await krAt({ status: 'NONE', epoch: 0 }));
     await Promise.resolve();
     expect(st().unlockedUserId).toBe(U);
   });
@@ -1867,5 +1866,249 @@ describe('guardia contro backend 1.14 (serverOutdated)', () => {
     await expect(session.changePin({ userId: U, currentPin: PIN, newPin: PIN2 })).rejects.toMatchObject(outdated);
     expect(h.server.unlockRevs).toHaveLength(2); // prima unlock -> 409 staleRev, seconda sul keyring riletto
     expectUntouched(before);
+  });
+});
+
+// P3 (reset del vault, piano §2.7): una regola sola, solo su un 200 validato (mai 404, 5xx, rete).
+describe('syncKeyringCache: regola del reset (P3)', () => {
+  beforeEach(async () => { await doSetup(); await session.confirmKit(U, lastHash); });
+  const krWith = async (over: Partial<session.KeyringDto>) => ({ ...(await h.server.getKeyring() as unknown as session.KeyringDto), ...over });
+  const vaultRows = () => {
+    h.notes.push({ id: 'v1', userId: U, isVault: true, syncStatus: 'updated' }, { id: 'p1', userId: U, isVault: false, syncStatus: 'synced' });
+    h.tags.push({ id: 't1', userId: U, isVault: true, syncStatus: 'synced' });
+    h.queue.push({ entity: 'NOTE', userId: U, entityId: 'v1', type: 'UPDATE', data: { isVault: true, content: 'nv3.0.aa.bb' } });
+  };
+
+  // il server dice RESET_PENDING anche alla rilettura di conferma (P3: la risposta che ha avviato la sospensione puo' essere vecchia)
+  const stillPending = async (over: Partial<session.KeyringDto> = {}) => {
+    const pending = await krWith({ status: 'RESET_PENDING', resetScheduledAt: '2026-12-03T10:00:00.000Z', ...over });
+    h.server.getKeyring = async () => pending as unknown as Record<string, unknown>;
+    return pending;
+  };
+
+  it('RESET_PENDING da sbloccato: blocca il vault e cancella lo share; cache e righe Dexie restano', async () => {
+    vaultRows();
+    const before = structuredClone(st().byUser[U]);
+    const stale0 = await stillPending();
+    await session.syncKeyringCache(U, stale0);
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().keys).toBeNull();
+    expect(raw('shares').size).toBe(0);
+    expect(st().byUser[U]).toEqual(before);
+    expect(h.notes.map((n) => n.id)).toEqual(['v1', 'p1']);
+    expect(h.queue).toHaveLength(1);
+    await expect(session.unlockOffline(U, PIN)).rejects.toMatchObject({ code: 'offlineUnavailable' });
+  });
+
+  it('risposta RESET_PENDING vecchia (annullo -> READY -> sblocco online nel frattempo): da sbloccato si rilegge una volta e NON si blocca ne\' si cancella lo share', async () => {
+    vaultRows();
+    const staleReply = await krWith({ status: 'RESET_PENDING', resetScheduledAt: '2026-12-03T10:00:00.000Z' });
+    const ready = await krWith({}); // il server ora e' READY
+    const get = vi.fn(async () => ready as unknown as Record<string, unknown>);
+    h.server.getKeyring = get;
+    expect(raw('shares').size).toBe(1);
+    await session.syncKeyringCache(U, staleReply);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(st().unlockedUserId).toBe(U);
+    expect(st().keys).not.toBeNull();
+    expect(raw('shares').size).toBe(1);
+    expect(h.notes).toHaveLength(2);
+  });
+
+  it('RESET_PENDING confermato dalla rilettura: si sospende (una sola lettura in piu\')', async () => {
+    const stale = await stillPending();
+    const get = vi.fn(h.server.getKeyring.bind(h.server));
+    h.server.getKeyring = get;
+    await session.syncKeyringCache(U, stale);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(st().unlockedUserId).toBeNull();
+    expect(raw('shares').size).toBe(0);
+  });
+
+  it('rilettura fallita (rete, 5xx): non si puo\' confermare, quindi niente blocco', async () => {
+    const stale = await krWith({ status: 'RESET_PENDING' });
+    h.server.getKeyring = async () => { throw apiErr(0, 'errors.common.networkError'); };
+    await session.syncKeyringCache(U, stale);
+    expect(st().unlockedUserId).toBe(U);
+    expect(raw('shares').size).toBe(1);
+  });
+
+  it('vault bloccato (o in sblocco) e risposta vecchia: la rilettura dice READY, quindi lo share NON si cancella (lo sblocco offline resta)', async () => {
+    await st().lockVault();
+    const stale = await krWith({ status: 'RESET_PENDING' });
+    const ready = await krWith({});
+    const get = vi.fn(async () => ready as unknown as Record<string, unknown>);
+    h.server.getKeyring = get;
+    await session.syncKeyringCache(U, stale);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(raw('shares').size).toBe(1);
+  });
+
+  it('vault bloccato e RESET_PENDING confermato dalla rilettura: lo share si cancella', async () => {
+    await st().lockVault();
+    const stale = await stillPending();
+    await session.syncKeyringCache(U, stale);
+    expect(raw('shares').size).toBe(0);
+  });
+
+  it('due chiamate ravvicinate (due istanze di useOpenRecovery): una sola rilettura', async () => {
+    const stale = await stillPending();
+    const real = h.server.getKeyring.bind(h.server);
+    const get = vi.fn(async () => { await new Promise((r) => setTimeout(r, 5)); return real(); });
+    h.server.getKeyring = get;
+    await Promise.all([session.syncKeyringCache(U, stale), session.syncKeyringCache(U, stale)]);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(st().unlockedUserId).toBeNull();
+    // finito il giro il guard e' libero: una nuova sospensione rilegge di nuovo
+    await session.syncKeyringCache(U, stale);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  describe('utente non piu\' quello corrente (cambio account: closure vecchia con il token di un altro)', () => {
+    const switchUser = () => useAuthStore.setState({ user: { id: 'u2', email: 'x@y.z' } });
+
+    it('purge: nessuna cancellazione ne\' blocco', async () => {
+      vaultRows();
+      const kr = await krWith({ status: 'NONE', epoch: 1, rev: 0, lastResetEpoch: 1 });
+      switchUser();
+      await session.syncKeyringCache(U, kr);
+      expect(st().byUser[U]).toBeDefined();
+      expect(h.notes).toHaveLength(2);
+      expect(h.queue).toHaveLength(1);
+      expect(raw('shares').size).toBe(1);
+    });
+
+    it('RESET_PENDING: nessuna rilettura, nessun blocco, nessun deleteShare', async () => {
+      const stale = await stillPending();
+      const get = vi.fn(h.server.getKeyring.bind(h.server));
+      h.server.getKeyring = get;
+      switchUser();
+      await session.syncKeyringCache(U, stale);
+      expect(get).not.toHaveBeenCalled();
+      expect(raw('shares').size).toBe(1);
+    });
+
+    it('l\'utente cambia durante la rilettura: niente blocco ne\' deleteShare', async () => {
+      const pending = await krWith({ status: 'RESET_PENDING' });
+      h.server.getKeyring = async () => { switchUser(); return pending as unknown as Record<string, unknown>; };
+      await session.syncKeyringCache(U, pending);
+      expect(raw('shares').size).toBe(1);
+    });
+
+    it('l\'utente cambia durante il lock del purge: le righe non si cancellano', async () => {
+      vaultRows();
+      const un = st().registerPreLock(async () => { switchUser(); });
+      await session.syncKeyringCache(U, await krWith({ status: 'NONE', epoch: 1, rev: 0 }));
+      un();
+      expect(st().byUser[U]).toBeDefined();
+      expect(h.notes).toHaveLength(2);
+      expect(h.queue).toHaveLength(1);
+    });
+
+    it('l\'utente cambia durante il lock della sospensione: lo share resta', async () => {
+      const stale = await stillPending();
+      const un = st().registerPreLock(async () => { switchUser(); });
+      await session.syncKeyringCache(U, stale);
+      un();
+      expect(raw('shares').size).toBe(1);
+    });
+  });
+
+  it('RESET_PENDING con il vault di un altro utente sbloccato: non lo blocca', async () => {
+    useVaultStore.setState({ byUser: { ...st().byUser, altro: st().byUser[U] } });
+    await session.syncKeyringCache('altro', await krWith({ status: 'RESET_PENDING' }));
+    expect(st().unlockedUserId).toBe(U);
+  });
+
+  it('NONE con epoch maggiore della cache: purge (lock, righe vault, coda, cache, share); le note normali restano', async () => {
+    vaultRows();
+    await session.syncKeyringCache(U, await krWith({ status: 'NONE', epoch: 1, rev: 0 }));
+    expect(st().unlockedUserId).toBeNull();
+    expect(st().byUser[U]).toBeUndefined();
+    expect(h.notes.map((n) => n.id)).toEqual(['p1']);
+    expect(h.tags).toEqual([]);
+    expect(h.queue).toEqual([]);
+    expect(raw('deviceKeys').size + raw('shares').size + raw('pending').size).toBe(0);
+  });
+
+  it('READY con lastResetEpoch maggiore dell\'epoch in cache: purge', async () => {
+    vaultRows();
+    await session.syncKeyringCache(U, await krWith({ epoch: 1, rev: 3, lastResetEpoch: 1 }));
+    expect(st().byUser[U]).toBeUndefined();
+    expect(h.notes.map((n) => n.id)).toEqual(['p1']);
+  });
+
+  it('una rotazione (lastResetEpoch null, assente o <= cache) non fa il purge', async () => {
+    vaultRows();
+    await session.syncKeyringCache(U, await krWith({ epoch: 1, rev: 3, lastResetEpoch: null }));
+    await session.syncKeyringCache(U, await krWith({ epoch: 1, rev: 3 }));
+    await session.syncKeyringCache(U, await krWith({ epoch: 3, rev: 3, lastResetEpoch: 0 }));
+    expect(st().byUser[U]).toBeDefined();
+    expect(h.notes).toHaveLength(2);
+    expect(h.queue).toHaveLength(1);
+  });
+
+  it('NONE alla stessa epoch della cache: nessun purge', async () => {
+    vaultRows();
+    await session.syncKeyringCache(U, await krWith({ status: 'NONE', epoch: 0 }));
+    expect(st().byUser[U]).toBeDefined();
+    expect(h.notes).toHaveLength(2);
+  });
+
+  it('senza cache non c\'e\' niente da purgare ne\' da bloccare', async () => {
+    vaultRows();
+    await session.syncKeyringCache('altro', await krWith({ status: 'NONE', epoch: 5 }));
+    expect(h.notes).toHaveLength(2);
+    expect(st().unlockedUserId).toBe(U);
+  });
+
+  it('il flusher pre-lock gira PRIMA della cancellazione delle righe', async () => {
+    vaultRows();
+    const seen: number[] = [];
+    const un = st().registerPreLock(async () => { await Promise.resolve(); seen.push(h.notes.filter((n) => n.isVault).length); });
+    await session.syncKeyringCache(U, await krWith({ status: 'NONE', epoch: 1, rev: 0 }));
+    un();
+    expect(seen).toEqual([1]);
+    expect(h.notes.filter((n) => n.isVault)).toEqual([]);
+  });
+
+  it('guard in-flight: due sync ravvicinate fanno un solo giro (un solo lock con i flusher)', async () => {
+    vaultRows();
+    let flushes = 0;
+    const un = st().registerPreLock(async () => { flushes++; });
+    const kr = await krWith({ status: 'NONE', epoch: 1, rev: 0 });
+    await Promise.all([session.syncKeyringCache(U, kr), session.syncKeyringCache(U, kr)]);
+    un();
+    expect(flushes).toBe(1);
+    expect(st().byUser[U]).toBeUndefined();
+  });
+
+  it('durante la rotazione propria nessun purge', async () => {
+    vaultRows();
+    const kr = await krWith({ status: 'NONE', epoch: 1, rev: 0 });
+    h.server.onPut = () => { void session.syncKeyringCache(U, kr); };
+    await session.rotateVault({ userId: U, pin: PIN, rootKey: ROOT });
+    await Promise.resolve();
+    expect(st().byUser[U]).toBeDefined();
+    expect(h.notes).toHaveLength(2);
+  });
+
+  it('refreshKeyringCache: GET fallita (404, 5xx, rete) = nessun purge, nessun blocco', async () => {
+    vaultRows();
+    for (const e of [apiErr(404, 'errors.vault.notFound'), apiErr(500, 'errors.common.unknownError'), apiErr(0, 'errors.common.networkError')]) {
+      h.server.getKeyring = async () => { throw e; };
+      await expect(session.refreshKeyringCache(U)).resolves.toBeUndefined();
+    }
+    expect(st().byUser[U]).toBeDefined();
+    expect(st().unlockedUserId).toBe(U);
+    expect(h.notes).toHaveLength(2);
+  });
+
+  it('refreshKeyringCache aspetta il purge', async () => {
+    vaultRows();
+    h.server.getKeyring = async () => ({ status: 'NONE', epoch: 1, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: null, lockedUntil: null, escrowHash: null, legacyCount: 0, lastResetEpoch: 1 });
+    await session.refreshKeyringCache(U);
+    expect(st().byUser[U]).toBeUndefined();
+    expect(h.notes.map((n) => n.id)).toEqual(['p1']);
   });
 });

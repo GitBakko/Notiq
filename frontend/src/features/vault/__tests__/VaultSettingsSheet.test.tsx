@@ -19,6 +19,7 @@ vi.mock('../../../lib/vaultSession', () => ({ changePin: vi.fn(), rotateVault: v
 vi.mock('../../../utils/vaultRootKeys', () => ({ getActiveRootKey: vi.fn() }));
 vi.mock('../PinPolicy', () => ({ checkPin: vi.fn(async () => ({ ok: true })) }));
 
+vi.mock('../VaultResetDialog', () => ({ default: (p: { isOpen: boolean; onClose: () => void; onScheduled?: (d: string) => void }) => (p.isOpen ? <div data-testid="reset-dialog"><button onClick={() => p.onScheduled?.('2026-12-04T10:00:00.000Z')}>reset-scheduled</button><button onClick={p.onClose}>reset-close</button></div> : null) }));
 import VaultSettingsSheet from '../VaultSettingsSheet';
 import { changePin, rotateVault } from '../../../lib/vaultSession';
 import { vaultReconcile } from '../../../lib/vaultReconcile';
@@ -465,5 +466,28 @@ describe('VaultSettingsSheet: forceKit', () => {
     expect(screen.queryByText('vault.kitRotation.title')).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('P3: sezione "Reset del vault" da sbloccato: apre il dialog; a reset programmato il foglio si chiude', () => {
+    const onClose = vi.fn();
+    render(<VaultSettingsSheet isOpen onClose={onClose} />);
+    expect(screen.queryByTestId('reset-dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'vault.reset.settingsButton' }));
+    expect(screen.getByTestId('reset-dialog')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' }); // l'Esc e' del dialog, non del foglio
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('reset-scheduled'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('P3: nessuna sezione di reset con il foglio forzato del Kit', () => {
+    render(<VaultSettingsSheet isOpen forceKit onClose={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'vault.reset.settingsButton' })).toBeNull();
+  });
+
+  it('P3: offline il pulsante di reset e\' disabilitato', () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    render(<VaultSettingsSheet isOpen onClose={() => {}} />);
+    expect((screen.getByRole('button', { name: 'vault.reset.settingsButton' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

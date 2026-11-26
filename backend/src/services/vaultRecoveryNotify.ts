@@ -3,7 +3,7 @@ import logger from '../utils/logger';
 import { logEvent } from './audit.service';
 import { createNotification } from './notification.service';
 import { sendNotificationEmail } from './email.service';
-import { VAULT_RECOVERY_TEXTS } from '../utils/notificationI18n';
+import { VAULT_RECOVERY_TEXTS, VAULT_RESET_TEXTS } from '../utils/notificationI18n';
 
 export type RecoveryEvent = 'requested' | 'code' | 'codeFailed' | 'waiting' | 'reminder' | 'released' | 'completed' | 'cancelled' | 'rejected' | 'expired';
 
@@ -110,5 +110,62 @@ export async function notifySuperadmins(event: AdminEvent, args: { requestId: st
     }));
   } catch (err) {
     logger.error({ err, requestId: args.requestId }, 'Vault recovery notifySuperadmins failed');
+  }
+}
+
+export type ResetEvent = 'scheduled' | 'cancelled' | 'completed';
+
+const fill = (text: string, vars: Record<string, string>) => text.replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? '-');
+
+// Reset del vault (P3): email + notifica SYSTEM all'utente. Mai il codice di conferma (non arriva qui). Non lancia mai.
+export async function notifyReset(userId: string, event: ResetEvent, args: { requestId: string; scheduledAt?: Date }): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, locale: true } });
+    if (!user) return;
+    const lang = localeOf(user.locale);
+    const date = args.scheduledAt ? utc(args.scheduledAt) : '';
+    const { title, body } = VAULT_RESET_TEXTS[event][lang];
+    const text = fill(body, { date });
+    const [notif, mail] = await Promise.allSettled([
+      createNotification(userId, 'SYSTEM', title, text, {
+        localizationKey: `notifications.vaultReset.${event}`,
+        localizationArgs: event === 'scheduled' ? { date } : {},
+        requestId: args.requestId,
+      }),
+      sendNotificationEmail(user.email, 'VAULT_RECOVERY', { title, body: text, cta: LABELS[lang].cta }),
+    ]);
+    if (notif.status === 'rejected') logger.error({ err: notif.reason, requestId: args.requestId }, 'Vault reset notification failed');
+    if (mail.status === 'rejected') logger.error({ err: mail.reason, requestId: args.requestId }, 'Vault reset email failed');
+  } catch (err) {
+    logger.error({ err, requestId: args.requestId }, 'Vault reset notify failed');
+  }
+}
+
+// Tutti i SUPERADMIN tranne chi compie l'azione. `email` nel testo = l'account proprietario del vault. Non lancia mai.
+export async function notifySuperadminsReset(event: ResetEvent, args: { requestId: string; ownerId: string; actorId: string }): Promise<void> {
+  try {
+    const [owner, admins] = await Promise.all([
+      prisma.user.findUnique({ where: { id: args.ownerId }, select: { email: true } }),
+      prisma.user.findMany({ where: { role: 'SUPERADMIN', id: { not: args.actorId } }, select: { id: true, email: true, locale: true } }),
+    ]);
+    const email = owner?.email ?? args.ownerId;
+    const key = `admin${event[0].toUpperCase()}${event.slice(1)}`;
+    await Promise.all(admins.map(async (a) => {
+      const lang = localeOf(a.locale);
+      const { title, body } = VAULT_RESET_TEXTS[key][lang];
+      const text = fill(body, { email });
+      try {
+        await sendNotificationEmail(a.email, 'VAULT_RECOVERY', { title, body: text, cta: LABELS[lang].cta });
+      } catch (err) {
+        logger.error({ err, requestId: args.requestId }, 'Vault reset superadmin email failed');
+      }
+      try {
+        await createNotification(a.id, 'SYSTEM', title, text, { localizationKey: `notifications.vaultReset.${key}`, localizationArgs: { email }, requestId: args.requestId });
+      } catch (err) {
+        logger.error({ err, requestId: args.requestId }, 'Vault reset superadmin notification failed');
+      }
+    }));
+  } catch (err) {
+    logger.error({ err, requestId: args.requestId }, 'Vault reset notifySuperadmins failed');
   }
 }

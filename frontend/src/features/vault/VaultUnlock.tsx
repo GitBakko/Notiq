@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
+import VaultResetDialog from './VaultResetDialog';
 import { removeFromDevice, unlockOffline, unlockOnline, VaultSessionError } from '../../lib/vaultSession';
 
 interface Props {
@@ -45,6 +46,7 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
   const [showForgot, setShowForgot] = useState(false);
   const [rollback, setRollback] = useState(false); // keyringRollback: lo sblocco e' rifiutato, resta solo la rimozione dal dispositivo
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false); // P3: reset del vault (PIN e Kit persi)
   const submitting = useRef(false); // doppio submit nello stesso tick: `busy` (stato) non fa in tempo
 
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -197,6 +199,7 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
         >
           {t('vault.forgotPin')}
         </button>
+        <VaultResetDialog isOpen={resetOpen} onClose={() => setResetOpen(false)} onScheduled={() => setResetOpen(false)} />
         {showForgot && (
           <div className="mt-2 flex items-start gap-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/40 p-4 text-left">
             <Info size={18} className="flex-shrink-0 mt-0.5 text-neutral-500 dark:text-neutral-400" aria-hidden="true" />
@@ -208,6 +211,10 @@ export default function VaultUnlock({ onUnlocked, notice, onForgot }: Props = {}
                   {t('vault.unlock.forgotAction')}
                 </Button>
               )}
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-3">{t('vault.reset.entryHint')}</p>
+              <Button type="button" variant="secondary" className="w-full min-h-[44px] mt-2" onClick={() => setResetOpen(true)}>
+                {t('vault.reset.entry')}
+              </Button>
             </div>
           </div>
         )}

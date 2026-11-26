@@ -4,6 +4,7 @@ import crypto from 'crypto';
 vi.mock('../services/audit.service', () => ({ logEvent: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../services/vaultRecoveryNotify', () => ({ notifyRecovery: vi.fn().mockResolvedValue(undefined), notifySuperadmins: vi.fn().mockResolvedValue(undefined) }));
 // sealRecoveryCode resta reale: codeA si ricava solo aprendo il seal. Solo il rilascio (Argon2id + file root) e' mockato.
+vi.mock('../services/vaultReset.service', () => ({ runResetJobs: vi.fn().mockResolvedValue(0) }));
 vi.mock('../services/vaultRootKey.service', async (importOriginal) => ({ ...(await importOriginal<typeof import('../services/vaultRootKey.service')>()), releaseRootShare: vi.fn() }));
 
 import prisma from '../plugins/prisma';
@@ -11,6 +12,7 @@ import { AppError } from '../utils/errors';
 import { logEvent } from '../services/audit.service';
 import { notifyRecovery, notifySuperadmins } from '../services/vaultRecoveryNotify';
 import { releaseRootShare } from '../services/vaultRootKey.service';
+import { runResetJobs } from '../services/vaultReset.service';
 import path from 'path';
 import { getE2eCodeB } from '../utils/vaultE2e';
 import { openRootKeyFile } from '../utils/vaultRootKeyFile';
@@ -764,7 +766,7 @@ describe('lettura per l\'utente', () => {
 
 describe('lettura admin (nessun segreto)', () => {
   const FORBIDDEN = ['codeAHash', 'codeBHash', 'clientEphPub', 'rootShareForClient', 'rootSignature', 'codeHash', 'completedPayloadHash'];
-  const LIST_KEYS = ['approvedAt', 'approvedById', 'attempts', 'cancelledAt', 'completedAt', 'createdAt', 'expiresAt', 'fingerprint', 'id', 'keyringStatus', 'notBefore', 'readyForRelease', 'reason', 'rejectReason', 'releaseExpiresAt', 'releasedAt', 'releasedById', 'requestIp', 'requestUserAgent', 'rootKeyId', 'status', 'userEmail', 'userId'];
+  const LIST_KEYS = ['approvedAt', 'approvedById', 'attempts', 'cancelledAt', 'completedAt', 'createdAt', 'expiresAt', 'fingerprint', 'id', 'keyringStatus', 'notBefore', 'readyForRelease', 'reason', 'rejectReason', 'releaseExpiresAt', 'releasedAt', 'releasedById', 'requestIp', 'requestUserAgent', 'rootKeyId', 'status', 'type', 'userEmail', 'userId'];
   const secretRow = (over: Record<string, unknown> = {}) => ({
     id: RID, userId: U, type: 'RECOVERY', status: 'WAITING', fingerprint: 'FP', reason: 'forgot', requestIp: '192.0.2.1', requestUserAgent: 'ua',
     createdAt: new Date(), expiresAt: new Date(Date.now() + 7 * 24 * 3600_000), notBefore: new Date(Date.now() - 1000), approvedById: ADMIN, approvedAt: new Date(), rejectReason: null,
@@ -825,6 +827,25 @@ describe('lettura admin (nessun segreto)', () => {
     expect(res.audit).toEqual(audit);
     expect(mp.auditLog.findMany.mock.calls[0][0]).toMatchObject({ where: { details: { path: ['requestId'], equals: RID } }, orderBy: { createdAt: 'asc' } });
     expect(Object.keys(mp.auditLog.findMany.mock.calls[0][0].select).sort()).toEqual(['createdAt', 'details', 'event', 'userId']);
+  });
+
+  it('reset WAITING con expiresAt nel passato (residuo della challenge): resta WAITING in lista e dettaglio, mai EXPIRED; PENDING_CODE scaduto resta EXPIRED', async () => {
+    const past = new Date(Date.now() - 3600_000);
+    const resetWaiting = secretRow({ type: 'RESET', status: 'WAITING', expiresAt: past, notBefore: new Date(Date.now() + 6 * 24 * 3600_000) });
+    mp.vaultRequest.findMany.mockResolvedValue([resetWaiting, secretRow({ type: 'RESET', status: 'PENDING_CODE', expiresAt: past })]);
+    mp.vaultRequest.count.mockResolvedValue(2);
+    const { items } = await listRecoveriesForAdmin({ page: 1, limit: 50, type: 'RESET' });
+    expect(items.map((i: any) => [i.type, i.status, i.readyForRelease])).toEqual([['RESET', 'WAITING', false], ['RESET', 'EXPIRED', false]]);
+    mp.vaultRequest.findFirst.mockResolvedValue(resetWaiting);
+    mp.auditLog.findMany.mockResolvedValue([]);
+    expect(await getRecoveryForAdmin(RID)).toMatchObject({ type: 'RESET', status: 'WAITING', readyForRelease: false });
+  });
+
+  it('il job di scadenza ignora i reset: la query e ristretta a RECOVERY e un reset WAITING non viene mai marcato EXPIRED', async () => {
+    mp.vaultRequest.findMany.mockResolvedValue([]);
+    await expireRecoveryRequests(new Date(Date.now() + 30 * 24 * 3600_000));
+    expect(mp.vaultRequest.findMany.mock.calls[0][0].where).toMatchObject({ type: 'RECOVERY' });
+    expect(mp.vaultRequest.updateMany).not.toHaveBeenCalled();
   });
 
   it('dettaglio di id inesistente -> 404', async () => {
@@ -1198,7 +1219,15 @@ describe('scadenze (T7)', () => {
   describe('runRecoveryJobs', () => {
     it('esegue entrambe in sequenza e ritorna i conteggi', async () => {
       mp.vaultRequest.findMany.mockResolvedValue([]);
-      expect(await runRecoveryJobs()).toEqual({ expired: 0, reminded: 0 });
+      expect(await runRecoveryJobs()).toEqual({ expired: 0, reminded: 0, resetCompleted: 0 });
+      expect(mp.vaultRequest.findMany).toHaveBeenCalledTimes(2);
+      expect(runResetJobs).toHaveBeenCalledTimes(1);
+    });
+
+    it('un errore del job reset non blocca le altre e viene rilanciato', async () => {
+      mp.vaultRequest.findMany.mockResolvedValue([]);
+      vi.mocked(runResetJobs).mockRejectedValueOnce(new Error('reset down'));
+      await expect(runRecoveryJobs()).rejects.toThrow('reset down');
       expect(mp.vaultRequest.findMany).toHaveBeenCalledTimes(2);
     });
 

@@ -99,6 +99,7 @@ vi.mock('../plugins/prisma', () => {
     },
     auditLog: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
     },
     invitation: {

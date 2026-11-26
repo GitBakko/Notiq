@@ -6,6 +6,7 @@ import { clientIpKey } from '../utils/clientIpKey';
 import * as vaultService from '../services/vault.service';
 import { b64url, pepperStatus, KDF_T_MIN } from '../services/vault.service';
 import * as recoveryService from '../services/vaultRecovery.service';
+import * as resetService from '../services/vaultReset.service';
 import { isVaultE2E } from '../utils/vaultE2e';
 import vaultE2eRoutes from './vaultE2e';
 
@@ -54,6 +55,7 @@ const recoveryCreateSchema = z.object({ clientEphPub: b64url(97), reason: z.stri
 const recoveryIdSchema = z.object({ id: z.string().uuid() });
 const recoveryCode = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{8}$/);
 const recoveryConfirmSchema = z.object({ codeA: recoveryCode, codeB: recoveryCode });
+const resetConfirmSchema = z.object({ requestId: z.string().uuid(), code: z.string().min(1).max(64), password: z.string().min(1).max(1024) });
 const recoveryCompleteSchema = z.object({ payload: z.string().max(65536), vkProof: b64url(64) });
 const toB64 = (v: Uint8Array | null) => (v ? Buffer.from(v).toString('base64url') : null);
 
@@ -89,11 +91,16 @@ function assertRotateP256(payload: string) {
 
 // Per-utente (non per IP spoofabile via X-Forwarded-For); fase onRequest di default: dopo authenticate (hook di istanza), prima del parsing del body.
 // perIp: chiave utente+sessione(sid del JWT)+IP per le sole route che la vittima di un JWT rubato deve poter usare (banner, annullo, rotazione Kit, completamento): un bucket condiviso le farebbe esaurire da fuori.
-const limit = (max: number, timeWindow: string, perIp = false) => ({
+// rateKey: chiave i18n del 429 (altrimenti il messaggio di default del plugin).
+const limit = (max: number, timeWindow: string, perIp = false, rateKey?: string) => ({
   config: {
-    rateLimit: { max, timeWindow, keyGenerator: (req: FastifyRequest) => (perIp ? `${req.user.id}:${req.user.sid ?? ''}:${clientIpKey(req)}` : req.user.id) },
+    rateLimit: {
+      max, timeWindow, keyGenerator: (req: FastifyRequest) => (perIp ? `${req.user.id}:${req.user.sid ?? ''}:${clientIpKey(req)}` : req.user.id),
+      ...(rateKey ? { errorResponseBuilder: () => new AppError(429, rateKey) } : {}),
+    },
   },
 });
+const resetLimit = (max: number, timeWindow: string, perIp = false) => limit(max, timeWindow, perIp, 'errors.vault.resetRateLimited');
 
 export default async function vaultRoutes(fastify: FastifyInstance) {
   // Defense in depth (RT-13): Fastify 5.7.x restituisce gia' un messaggio FST_ERR_CTP costante; questo handler garantisce
@@ -205,6 +212,16 @@ export default async function vaultRoutes(fastify: FastifyInstance) {
     assertRotateP256(b.payload);
     return recoveryService.completeRecovery(request.user.id, id, b.payload, bytes(b.vkProof));
   });
+
+  // Reset del vault (P3). L'annullo basta col JWT (D4): chi ha perso la password deve poter annullare; per questo e' perIp e mai 401.
+  fastify.post('/reset/challenge', resetLimit(5, '1 hour'), async (request) => resetService.createResetChallenge(request.user.id));
+
+  fastify.post('/reset', resetLimit(3, '15 minutes'), async (request) => {
+    const b = parse(resetConfirmSchema, request.body);
+    return resetService.confirmReset(request.user.id, b.requestId, b.code, b.password);
+  });
+
+  fastify.post('/reset/cancel', resetLimit(10, '1 minute', true), async (request) => resetService.cancelReset(request.user.id));
 
   if (isVaultE2E()) {
     fastify.log.warn('vault E2E hooks enabled: never in production');

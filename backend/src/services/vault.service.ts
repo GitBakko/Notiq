@@ -178,6 +178,13 @@ function isSetupAllowed(userId: string): boolean {
   return allow === '*' || allow.split(',').some((u) => u.trim() === userId);
 }
 
+/** Epoch scritta dall'ultimo reset completato (AuditLog usato come stato, indice [userId, createdAt]); null se l'utente non ha mai fatto un reset. Distingue un reset da una rotazione sul client. */
+async function lastResetEpoch(userId: string): Promise<number | null> {
+  const last = await prisma.auditLog.findFirst({ where: { userId, event: 'vault.reset.completed' }, orderBy: { createdAt: 'desc' }, select: { details: true } });
+  const epoch = (last?.details as { epoch?: unknown } | null | undefined)?.epoch;
+  return typeof epoch === 'number' ? epoch : null;
+}
+
 export async function getKeyring(userId: string) {
   if (!userId) throw new Error('getKeyring: userId required');
   const row = await prisma.vaultKeyring.findUnique({
@@ -194,7 +201,7 @@ export async function getKeyring(userId: string) {
       status: 'NONE', epoch: 0, rev: 0, kdf: null, kdfParams: null, pinSalt: null, wrappedVkPin: null,
       wrappedVkSigKey: null, rootKeyId: null, migrationState: 'NONE', lockedUntil: null,
       resetScheduledAt: null, escrowHash: null, legacyCount, setupAllowed: isSetupAllowed(userId),
-      prevVkWrap: null, staleCount: 0,
+      prevVkWrap: null, staleCount: 0, lastResetEpoch: null,
     };
   }
   const { escrowBlob, ...rest } = row;
@@ -205,6 +212,8 @@ export async function getKeyring(userId: string) {
     : null;
   return {
     ...rest,
+    resetScheduledAt: row.status === 'RESET_PENDING' ? row.resetScheduledAt : null,
+    lastResetEpoch: await lastResetEpoch(userId),
     escrowHash,
     pinSalt: toB64(row.pinSalt),
     wrappedVkPin: toB64(row.wrappedVkPin),

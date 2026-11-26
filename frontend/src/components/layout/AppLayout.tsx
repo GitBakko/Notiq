@@ -9,6 +9,7 @@ import clsx from 'clsx';
 import CommandMenu from '../search/CommandMenu';
 import WhatsNewModal from '../WhatsNewModal';
 import RecoveryBanner from '../vault/RecoveryBanner';
+import ResetPendingBanner from '../vault/ResetPendingBanner';
 import AnnouncementBanner from '../../features/announcements/AnnouncementBanner';
 import NetworkStatusIndicator from './NetworkStatusIndicator';
 import SyncStatusIndicator from './SyncStatusIndicator';
@@ -96,6 +97,7 @@ export default function AppLayout() {
         <NetworkStatusIndicator />
         <SyncStatusIndicator />
         <RecoveryBanner />
+        <ResetPendingBanner />
         <AnnouncementBanner />
         <ErrorBoundary>
           <Outlet />

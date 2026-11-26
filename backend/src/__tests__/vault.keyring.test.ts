@@ -330,6 +330,41 @@ describe('getKeyring', () => {
     await expect(getKeyring('')).rejects.toThrow();
   });
 
+  describe('reset (P3): lastResetEpoch e resetScheduledAt', () => {
+    const base = {
+      status: 'READY', epoch: 4, rev: 1, kdf: 'argon2id', kdfParams: { m: 1 }, pinSalt: null,
+      wrappedVkPin: null, wrappedVkSigKey: null, rootKeyId: RK, migrationState: 'NONE', lockedUntil: null, escrowBlob: null,
+    };
+    const when = new Date('2026-12-03T10:00:00.000Z');
+
+    it('lastResetEpoch viene dall ultimo audit vault.reset.completed dell utente (piu recente per createdAt)', async () => {
+      mp.vaultKeyring.findUnique.mockResolvedValue({ ...base, resetScheduledAt: null });
+      mp.auditLog.findFirst.mockResolvedValue({ details: { requestId: 'r', epoch: 3, counts: { notes: 1, tags: 0, attachments: 0 } } });
+      expect(((await getKeyring('u1')) as any).lastResetEpoch).toBe(3);
+      expect(mp.auditLog.findFirst).toHaveBeenCalledWith({ where: { userId: 'u1', event: 'vault.reset.completed' }, orderBy: { createdAt: 'desc' }, select: { details: true } });
+    });
+
+    it('lastResetEpoch null senza audit, con details malformati o senza riga keyring (sempre presente)', async () => {
+      mp.vaultKeyring.findUnique.mockResolvedValue({ ...base, resetScheduledAt: null });
+      mp.auditLog.findFirst.mockResolvedValue(null);
+      expect(await getKeyring('u1')).toHaveProperty('lastResetEpoch', null);
+      mp.auditLog.findFirst.mockResolvedValue({ details: { epoch: 'x' } });
+      expect(((await getKeyring('u1')) as any).lastResetEpoch).toBeNull();
+      mp.auditLog.findFirst.mockResolvedValue({ details: null });
+      expect(((await getKeyring('u1')) as any).lastResetEpoch).toBeNull();
+      mp.vaultKeyring.findUnique.mockResolvedValue(null);
+      expect(await getKeyring('u1')).toHaveProperty('lastResetEpoch', null);
+    });
+
+    it('resetScheduledAt solo con RESET_PENDING: con altri stati e null anche se la colonna e valorizzata', async () => {
+      mp.auditLog.findFirst.mockResolvedValue(null);
+      mp.vaultKeyring.findUnique.mockResolvedValue({ ...base, status: 'RESET_PENDING', resetScheduledAt: when });
+      expect(((await getKeyring('u1')) as any).resetScheduledAt).toEqual(when);
+      mp.vaultKeyring.findUnique.mockResolvedValue({ ...base, status: 'READY', resetScheduledAt: when });
+      expect(((await getKeyring('u1')) as any).resetScheduledAt).toBeNull();
+    });
+  });
+
   it('setupAllowed segue il kill switch di createKeyring, letto a ogni chiamata (NONE e con riga)', async () => {
     const row = {
       status: 'READY', epoch: 0, rev: 1, kdf: 'argon2id', kdfParams: { m: 1 }, pinSalt: null,

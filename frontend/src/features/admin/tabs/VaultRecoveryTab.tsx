@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { KeyRound, X } from 'lucide-react';
 import api from '../../../lib/api';
 import { useAuthStore } from '../../../store/authStore';
@@ -11,16 +12,23 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 
 const BASE = '/admin/vault-recovery';
 const OPEN = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
+const OPEN_RESET = ['PENDING_CODE', 'WAITING'] as const; // P3: un reset non ha approvazione ne' rilascio
+const TYPES = ['RECOVERY', 'RESET'] as const;
 const STATUSES = [...OPEN, 'COMPLETED', 'CANCELLED', 'EXPIRED', 'REJECTED'] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REASON_MAX = 500;
 
 type Filter = 'open' | 'all' | (typeof STATUSES)[number];
+type ReqType = (typeof TYPES)[number];
+/** ?type= (link della notifica admin di un reset): valore valido o RECOVERY. */
+const parseType = (v: string | null): ReqType => (TYPES as readonly string[]).includes(v ?? '') ? (v as ReqType) : 'RECOVERY';
 
 interface RecoveryView {
   id: string;
   userId: string;
   userEmail?: string;
+  /** P3: assente con un server precedente (= RECOVERY). */
+  type?: ReqType;
   status: string;
   fingerprint: string | null;
   reason: string | null;
@@ -60,6 +68,8 @@ function actionErrorKey(e: unknown, release: boolean): string {
   if (status === 409 && msg === 'errors.vault.recoveryKeyringChanged') return 'keyringChanged';
   if (status === 409 && msg === 'errors.vault.recoveryRootKeyRetired') return 'rootKeyRetired';
   if (status === 409 && msg === 'errors.vault.recoveryStateConflict') return 'stateConflict';
+  if (status === 409 && msg === 'errors.vault.resetNotCancellable') return 'resetNotCancellable';
+  if (status === 404 && msg === 'errors.vault.recoveryNotFound') return 'notFound';
   return 'generic';
 }
 
@@ -85,7 +95,7 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [passphrase, setPassphrase] = useState('');
-  const [confirm, setConfirm] = useState<'reject' | 'release' | null>(null);
+  const [confirm, setConfirm] = useState<'reject' | 'release' | 'cancelReset' | null>(null);
   useFocusTrap(ref, true);
 
   const reload = useCallback(async () => {
@@ -130,6 +140,8 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
   };
 
   const approve = () => run(() => api.post(`${BASE}/${id}/approve`), false, 'admin.vaultRecovery.approved');
+  // P3: annullo del reset da parte dell'admin (difesa contro un reset non voluto); il body {} serve: con content-type JSON un body vuoto da' 400
+  const cancelResetNow = () => run(() => api.post(`${BASE}/${id}/cancel-reset`, {}), false, 'admin.vaultRecovery.resetCancelled');
   const rejectNow = () => {
     const r = reason.trim();
     setReason('');
@@ -153,6 +165,7 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
 
   const d = detail;
   const self = !!d && d.userId === me;
+  const isReset = d?.type === 'RESET';
   const notBeforeMs = d?.notBefore ? new Date(d.notBefore).getTime() - Date.now() : 0;
   const reasonOk = reason.trim().length >= 1 && reason.length <= REASON_MAX;
 
@@ -190,6 +203,7 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
           <div className="space-y-5">
             <dl className="space-y-2">
               {row(t('admin.vaultRecovery.detail.email'), d.userEmail ?? d.userId)}
+              {isReset && row(t('admin.vaultRecovery.detail.type'), t('admin.vaultRecovery.typeReset'))}
               {row(t('admin.vaultRecovery.detail.status'), <StatusBadge status={d.status} />)}
               {row(t('admin.vaultRecovery.detail.created'), fmt(d.createdAt))}
               {row(t('admin.vaultRecovery.detail.expires'), fmt(d.expiresAt))}
@@ -237,7 +251,16 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
               </div>
             )}
 
-            {d.status === 'WAITING' && (
+            {isReset && d.status === 'WAITING' && (
+              <div className="space-y-3 border-t border-neutral-200 dark:border-neutral-700 pt-4">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('admin.vaultRecovery.resetWaiting', { date: fmt(d.notBefore) })}</p>
+                <Button type="button" variant="danger" className="w-full min-h-[44px]" disabled={busy} onClick={() => setConfirm('cancelReset')}>
+                  {t('admin.vaultRecovery.resetCancel')}
+                </Button>
+              </div>
+            )}
+
+            {!isReset && d.status === 'WAITING' && (
               <div className="space-y-3 border-t border-neutral-200 dark:border-neutral-700 pt-4">
                 <h3 className="flex items-center gap-2 font-semibold text-neutral-900 dark:text-white">
                   <KeyRound size={18} aria-hidden="true" />
@@ -304,6 +327,15 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
         variant="danger"
       />
       <ConfirmDialog
+        isOpen={confirm === 'cancelReset'}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => { void cancelResetNow(); }}
+        title={t('admin.vaultRecovery.resetCancelTitle')}
+        message={t('admin.vaultRecovery.resetCancelMessage')}
+        confirmText={t('admin.vaultRecovery.resetCancelConfirm')}
+        cancelText={t('common.cancel')}
+      />
+      <ConfirmDialog
         isOpen={confirm === 'release'}
         onClose={() => setConfirm(null)}
         onConfirm={() => { void releaseNow(); }}
@@ -319,6 +351,18 @@ function DetailSheet({ id, onClose, onChanged, onHistory }: DetailProps) {
 export default function VaultRecoveryTab() {
   const { t, i18n } = useTranslation();
   const [filter, setFilter] = useState<Filter>('open');
+  const [params, setParams] = useSearchParams();
+  const typeParam = parseType(params.get('type'));
+  const [type, setType] = useState<ReqType>(typeParam);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizza il tipo con il parametro quando si naviga a /admin?tab=vaultRecovery&type=... a tab gia' aperta
+    setType(typeParam);
+  }, [typeParam]);
+  // la select scrive il parametro (replace): una navigazione successiva a ?type=RESET lo cambia e riapre il tipo; RECOVERY e' il default e lo toglie
+  const changeType = (v: ReqType) => {
+    setType(v);
+    setParams((p) => { const n = new URLSearchParams(p); if (v === 'RESET') n.set('type', v); else n.delete('type'); return n; }, { replace: true });
+  };
   const [userId, setUserId] = useState('');
   const [items, setItems] = useState<RecoveryView[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -330,11 +374,12 @@ export default function VaultRecoveryTab() {
 
   const load = useCallback(async () => {
     const my = ++seq.current;
-    const base = { limit: 50, ...(activeUser ? { userId: activeUser } : {}) };
+    // RECOVERY e' il default del server: il parametro parte solo per RESET
+    const base = { limit: 50, ...(activeUser ? { userId: activeUser } : {}), ...(type === 'RESET' ? { type } : {}) };
     try {
       // il backend filtra per un solo stato: "aperte" = un GET per stato aperto, unite per data
       const lists = filter === 'open'
-        ? await Promise.all(OPEN.map((status) => api.get(BASE, { params: { ...base, status } })))
+        ? await Promise.all((type === 'RESET' ? OPEN_RESET : OPEN).map((status) => api.get(BASE, { params: { ...base, status } })))
         : [await api.get(BASE, { params: filter === 'all' ? base : { ...base, status: filter } })];
       if (my !== seq.current) return;
       const merged = lists.flatMap((r) => r.data.items as RecoveryView[]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -343,7 +388,7 @@ export default function VaultRecoveryTab() {
     } catch {
       if (my === seq.current) setFailed(true);
     }
-  }, [filter, activeUser]);
+  }, [filter, activeUser, type]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch asincrono: lo stato si imposta dopo l'await
@@ -363,7 +408,13 @@ export default function VaultRecoveryTab() {
           <KeyRound size={20} aria-hidden="true" /> {t('admin.vaultRecovery.title')}
         </h3>
 
-        <div className="grid gap-3 sm:grid-cols-2 mb-4">
+        <div className="grid gap-3 sm:grid-cols-3 mb-4">
+          <div>
+            <label htmlFor="vr-type" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('admin.vaultRecovery.typeLabel')}</label>
+            <select id="vr-type" value={type} onChange={(e) => changeType(parseType(e.target.value))} className={INPUT}>
+              {TYPES.map((v) => <option key={v} value={v}>{t(v === 'RESET' ? 'admin.vaultRecovery.typeReset' : 'admin.vaultRecovery.typeRecovery')}</option>)}
+            </select>
+          </div>
           <div>
             <label htmlFor="vr-filter" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">{t('admin.vaultRecovery.filterLabel')}</label>
             <select id="vr-filter" value={filter} onChange={(e) => setFilter(e.target.value as Filter)} className={INPUT}>
@@ -391,6 +442,7 @@ export default function VaultRecoveryTab() {
                   className="w-full min-h-[44px] py-3 text-left flex flex-wrap items-center gap-x-3 gap-y-1 hover:bg-neutral-50 dark:hover:bg-neutral-700/50"
                 >
                   <span className="font-medium text-neutral-900 dark:text-white break-all">{r.userEmail ?? r.userId}</span>
+                  {r.type === 'RESET' && <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">{t('admin.vaultRecovery.typeReset')}</span>}
                   <StatusBadge status={r.status} />
                   <span className="text-sm text-neutral-500 dark:text-neutral-400">{new Date(r.createdAt).toLocaleString(i18n.language)}</span>
                 </button>

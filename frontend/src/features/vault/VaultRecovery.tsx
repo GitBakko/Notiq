@@ -20,7 +20,8 @@ import RecoveryKitSheet from './RecoveryKitSheet';
 import StaleNotesDialog, { type StaleItem } from './StaleNotesDialog';
 import { deleteDamagedThenFinish, markStale, rewrapThenFinish, rewrapTargets } from './staleActions';
 import { finishRotation, type RotationResult } from './vaultMigration';
-import { appControl, outcomeOf, type Outcome, type OutcomeAction } from './recoveryOutcome';
+import { appControl, offersReset, outcomeOf, type Outcome, type OutcomeAction } from './recoveryOutcome';
+import VaultResetDialog from './VaultResetDialog';
 
 export type RecoveryNext = 'unlock' | 'regenerate' | 'none';
 
@@ -187,6 +188,7 @@ export default function VaultRecovery({ userId, onClose }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [reason, setReason] = useState('');
+  const [resetOpen, setResetOpen] = useState(false); // P3: recupero impossibile -> reset del vault
   const [introError, setIntroError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [stale, setStale] = useState<StaleState | null>(null);
@@ -431,6 +433,9 @@ export default function VaultRecovery({ userId, onClose }: Props) {
   const closeBtn = (
     <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={() => onClose('unlock')}>{t('vault.recovery.actions.close')}</Button>
   );
+  const resetBtn = (
+    <Button type="button" variant="secondary" className="w-full min-h-[44px]" onClick={() => setResetOpen(true)}>{t('vault.reset.recoveryAction')}</Button>
+  );
   const cancelBtn = (id: string) => (
     <Button type="button" variant="ghost" className="w-full min-h-[44px]" onClick={() => setConfirm({ kind: 'cancel', id })}>{t('vault.recovery.actions.cancelRequest')}</Button>
   );
@@ -481,6 +486,8 @@ export default function VaultRecovery({ userId, onClose }: Props) {
         return (
           <div className="space-y-4 text-left">
             <p role="alert" className={ERR}>{t('errors.vault.recoveryRootKeyRetired')}</p>
+            <p className={TEXT}>{t('vault.reset.recoveryHint')}</p>
+            {resetBtn}
             {closeBtn}
           </div>
         );
@@ -539,6 +546,7 @@ export default function VaultRecovery({ userId, onClose }: Props) {
               </>
             )}
             {st === 'EXPIRED' && <p role="status" className={TEXT}>{t('vault.recovery.status.expired')}</p>}
+            {(st === 'REJECTED' || st === 'EXPIRED') && resetBtn}
             {st === 'CANCELLED' && <p role="status" className={TEXT}>{t('vault.recovery.status.cancelled')}</p>}
             {st === 'COMPLETED' && <p role="status" className={TEXT}>{t('vault.recovery.status.completed')}</p>}
             {st === 'COMPLETED' && (
@@ -588,6 +596,7 @@ export default function VaultRecovery({ userId, onClose }: Props) {
             <Button type="button" variant="primary" className="w-full min-h-[44px]" onClick={() => runAction(o.action, view.id, view.fp)}>
               {t(`vault.recovery.actions.${ACTION_LABEL[o.action]}`)}
             </Button>
+            {offersReset(o) && resetBtn}
           </div>
         );
       }
@@ -622,6 +631,8 @@ export default function VaultRecovery({ userId, onClose }: Props) {
       )}
 
       {view.k === 'kit' && <RecoveryKitSheet kit={view.kit} userId={userId} escrowHash={view.escrowHash} onDone={() => onClose('none')} />}
+
+      <VaultResetDialog isOpen={resetOpen} onClose={() => setResetOpen(false)} onScheduled={() => { setResetOpen(false); onClose('unlock'); }} />
 
       <ConfirmDialog
         isOpen={confirm !== null}

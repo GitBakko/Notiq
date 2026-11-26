@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, KeyRound, Lock, RefreshCw, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, KeyRound, Lock, RefreshCw, Trash2, WifiOff, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
@@ -14,6 +14,7 @@ import { flushPending } from './vaultMigration';
 import { checkPin } from './PinPolicy';
 import PinInput from './PinInput';
 import RecoveryKitSheet from './RecoveryKitSheet';
+import VaultResetDialog from './VaultResetDialog';
 import type { KitRotationReason } from './kitRotation';
 
 interface Props {
@@ -97,25 +98,26 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
   const [kit, setKit] = useState<Uint8Array | null>(null);
   const [kitHash, setKitHash] = useState('');
 
+  const [resetOpen, setResetOpen] = useState(false); // P3: reset del vault (distruttivo, 7 giorni di attesa)
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<ReconcileResult | null>(null);
 
   const closeGen = useRef(0); // cambia a ogni chiusura: un controllo partito prima non scrive l'esito dopo
   const busy = pinBusy || kitBusy;
-  useFocusTrap(ref, isOpen && !kit);
+  useFocusTrap(ref, isOpen && !kit && !resetOpen); // con il dialog del reset aperto il trap e' il suo
 
   useEffect(() => {
     if (isOpen) return;
     closeGen.current++;
-    setCurPin(''); setNewPin(''); setNewPin2(''); setKitPin(''); setPinError(null); setKitError(null); setResult(null);
+    setCurPin(''); setNewPin(''); setNewPin2(''); setKitPin(''); setPinError(null); setKitError(null); setResult(null); setResetOpen(false);
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || kit) return;
+    if (!isOpen || kit || resetOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy && !forceKit) onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, kit, busy, forceKit, onClose]);
+  }, [isOpen, kit, resetOpen, busy, forceKit, onClose]);
 
   // Prima del guard su isOpen: una chiusura del padre durante la cerimonia non smonta RecoveryKitSheet (smontare azzera il buffer del Kit).
   // Il keep-alive dell'auto-lock durante la cerimonia sta dentro RecoveryKitSheet.
@@ -200,6 +202,7 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
   const err = (k: string | null) => k && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{t(k)}</p>;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 dark:bg-black/70" onClick={() => !busy && !forceKit && onClose()}>
       <div
         ref={ref}
@@ -324,9 +327,24 @@ export default function VaultSettingsSheet({ isOpen, onClose, onLegacyLeft, forc
               )}
             </div>
             )}
+
+            {!forceKit && (
+              <div className="space-y-3 border-t border-neutral-200 dark:border-neutral-700 pt-6">
+                <h3 className="flex items-center gap-2 font-semibold text-neutral-900 dark:text-white">
+                  <Trash2 size={18} aria-hidden="true" />
+                  {t('vault.reset.settingsTitle')}
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('vault.reset.settingsBody')}</p>
+                <Button type="button" variant="danger" className="w-full min-h-[44px]" disabled={!online} onClick={() => setResetOpen(true)}>
+                  {t('vault.reset.settingsButton')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
+    <VaultResetDialog isOpen={resetOpen} onClose={() => setResetOpen(false)} onScheduled={() => { setResetOpen(false); onClose(); }} />
+    </>
   );
 }

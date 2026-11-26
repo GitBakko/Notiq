@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../plugins/prisma';
 import { AppError } from '../utils/errors';
 import { getE2eCodeB } from '../utils/vaultE2e';
+import { runResetJobs } from '../services/vaultReset.service';
 
 const idSchema = z.object({ id: z.string().uuid() });
 
@@ -26,6 +27,13 @@ export default async function vaultE2eRoutes(fastify: FastifyInstance) {
     });
     if (r.count !== 1) throw new AppError(409, 'errors.vault.recoveryStateConflict');
     return { ok: true };
+  });
+
+  // Reset (P3): porta nel passato la scadenza dell'utente e lancia il job solo per lui (niente attesa di 7 giorni nei test).
+  fastify.post('/__e2e/reset/advance', { onRequest: [fastify.authenticate] }, async (request) => {
+    const r = await prisma.vaultKeyring.updateMany({ where: { userId: request.user.id, status: 'RESET_PENDING' }, data: { resetScheduledAt: new Date(Date.now() - 60_000) } });
+    if (r.count !== 1) throw new AppError(409, 'errors.vault.resetStateConflict');
+    return { ok: true, completed: await runResetJobs({ userId: request.user.id }) };
   });
 
   // Porta il keyring dell'utente di test allo stato "chiave root ritirata" (rootKeyId della produzione ritirata il 25/11/2026).

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { RESET_CHANGED_EVENT } from '../../../lib/vaultEvents';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -13,6 +14,7 @@ const h = vi.hoisted(() => ({
   qUpdate: vi.fn(),
   lockBusy: false,
   getKeyring: vi.fn(),
+  cancelReset: vi.fn(),
   reconcile: vi.fn(),
   hydrate: vi.fn(),
   checkPending: vi.fn(),
@@ -35,7 +37,7 @@ const h = vi.hoisted(() => ({
 }));
 
 // con `count` il testo porta il numero (chiave:n), cosi' i test leggono i conteggi del dialog delle note stale
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string, o?: { count?: number }) => (typeof o?.count === 'number' ? `${k}:${o.count}` : k) }) }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string, o?: { count?: number }) => (typeof o?.count === 'number' ? `${k}:${o.count}` : k), i18n: { language: 'en' } }) }));
 vi.mock('react-hot-toast', () => {
   const toast: any = vi.fn();
   toast.success = vi.fn();
@@ -74,7 +76,7 @@ vi.mock('../../../lib/db', () => ({
     transaction: async (_m: string, _a: unknown, _b: unknown, fn: () => Promise<unknown>) => fn(),
   },
 }));
-vi.mock('../../../lib/vaultApi', () => ({ getKeyring: (...a: unknown[]) => h.getKeyring(...a) }));
+vi.mock('../../../lib/vaultApi', () => ({ getKeyring: (...a: unknown[]) => h.getKeyring(...a), cancelReset: (...a: unknown[]) => h.cancelReset(...a) }));
 vi.mock('../../../lib/vaultReconcile', () => ({
   vaultReconcile: (...a: unknown[]) => h.reconcile(...a),
   hydrateVaultNote: (...a: unknown[]) => h.hydrate(...a),
@@ -361,11 +363,69 @@ describe('VaultPage: macchina a stati da bloccato', () => {
     expect(h.getKeyring).toHaveBeenCalledTimes(2);
   });
 
-  it('RESET_PENDING -> "vault non disponibile", nessun form', async () => {
-    h.getKeyring.mockResolvedValue({ status: 'RESET_PENDING', legacyCount: 0 });
+  it('RESET_PENDING -> schermata del reset in attesa con data e "Annulla reset", nessun form, regola del reset applicata', async () => {
+    const kr = { status: 'RESET_PENDING', legacyCount: 0, epoch: 1, rev: 2, resetScheduledAt: '2026-12-04T10:00:00.000Z' };
+    h.getKeyring.mockResolvedValue(kr);
     mount();
-    await screen.findByText('vault.resetPending');
+    await screen.findByText('vault.reset.pending.title');
+    expect(screen.getByText(/vault\.reset\.pending\.text/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'vault.reset.cancel' })).toBeTruthy();
     expect(screen.queryByTestId('unlock')).toBeNull();
+    expect(h.syncCache).toHaveBeenCalledWith('u1', kr);
+  });
+
+  it('RESET_PENDING: Annulla reset -> cancelReset, poi il keyring si rilegge e si torna allo sblocco', async () => {
+    h.getKeyring.mockResolvedValueOnce({ status: 'RESET_PENDING', legacyCount: 0, resetScheduledAt: '2026-12-04T10:00:00.000Z' }).mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    h.cancelReset.mockResolvedValue({ ok: true });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'vault.reset.cancel' }));
+    await screen.findByTestId('unlock');
+    expect(h.cancelReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('reset annullato su un altro dispositivo: al focus (o quando la scheda torna visibile) la schermata di attesa si rilegge e lascia resetPending', async () => {
+    h.getKeyring.mockResolvedValueOnce({ status: 'RESET_PENDING', legacyCount: 0, resetScheduledAt: '2026-12-04T10:00:00.000Z' }).mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    mount();
+    await screen.findByText('vault.reset.pending.title');
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    await screen.findByTestId('unlock');
+    expect(screen.queryByText('vault.reset.pending.title')).toBeNull();
+  });
+
+  it('resetPending: la rilettura parte anche da visibilitychange; con un altro gate focus non rilegge', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'RESET_PENDING', legacyCount: 0, resetScheduledAt: null });
+    mount();
+    await screen.findByText('vault.reset.pending.title');
+    h.getKeyring.mockClear();
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    await waitFor(() => expect(h.getKeyring).toHaveBeenCalledTimes(1));
+    cleanup();
+    h.getKeyring.mockReset().mockResolvedValue({ status: 'READY', legacyCount: 0 });
+    mount();
+    await screen.findByTestId('unlock');
+    h.getKeyring.mockClear();
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.getKeyring).not.toHaveBeenCalled();
+  });
+
+  it('cerimonia di recupero aperta e reset confermato altrove: la schermata del reset in attesa (con Annulla) ha la precedenza sul wizard', async () => {
+    h.getKeyring.mockResolvedValueOnce({ status: 'READY', legacyCount: 0 }).mockResolvedValue({ status: 'RESET_PENDING', legacyCount: 0, resetScheduledAt: '2026-12-04T10:00:00.000Z' });
+    mount();
+    fireEvent.click(await screen.findByText('forgot'));
+    await screen.findByTestId('recovery');
+    act(() => { window.dispatchEvent(new Event(RESET_CHANGED_EVENT)); });
+    await screen.findByText('vault.reset.pending.title');
+    expect(screen.queryByTestId('recovery')).toBeNull();
+    expect(screen.getByRole('button', { name: 'vault.reset.cancel' })).toBeTruthy();
+  });
+
+  it('un reset programmato altrove (RESET_CHANGED_EVENT) rilegge il keyring', async () => {
+    h.getKeyring.mockResolvedValueOnce({ status: 'READY', legacyCount: 0 }).mockResolvedValue({ status: 'RESET_PENDING', legacyCount: 0, resetScheduledAt: null });
+    mount();
+    await screen.findByTestId('unlock');
+    act(() => { window.dispatchEvent(new Event(RESET_CHANGED_EVENT)); });
+    await screen.findByText('vault.reset.pending.title');
   });
 
   it('durante il caricamento non c\'e\' mai il setup', async () => {
@@ -523,10 +583,18 @@ describe('VaultPage: sbloccato', () => {
     expect(h.syncCache).toHaveBeenCalledWith('u1', kr);
   });
 
-  it('J.6: keyring NONE -> nessun syncKeyringCache', async () => {
-    h.getKeyring.mockResolvedValue({ status: 'NONE', legacyCount: 0 });
+  it('P3: la regola del reset (syncKeyringCache) gira per OGNI stato del keyring, NONE compreso', async () => {
+    const kr = { status: 'NONE', legacyCount: 0, epoch: 2, rev: 0 };
+    h.getKeyring.mockResolvedValue(kr);
     mount();
     await screen.findByTestId('setup');
+    expect(h.syncCache).toHaveBeenCalledWith('u1', kr);
+  });
+
+  it('P3: GET fallita (offline, 404, 5xx) -> nessun syncKeyringCache: niente purge', async () => {
+    h.getKeyring.mockRejectedValue(apiErr(404, 'errors.vault.notFound'));
+    mount();
+    await screen.findByText('vault.offline.title');
     expect(h.syncCache).not.toHaveBeenCalled();
   });
 

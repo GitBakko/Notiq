@@ -4,6 +4,7 @@ import prisma from '../plugins/prisma';
 import { AppError } from '../utils/errors';
 import { pepperStatus } from '../services/vault.service';
 import * as recoveryService from '../services/vaultRecovery.service';
+import * as resetService from '../services/vaultReset.service';
 
 const idSchema = z.object({ id: z.string().uuid() });
 const listSchema = z.object({
@@ -11,6 +12,7 @@ const listSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
   status: z.enum(['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED', 'COMPLETED', 'CANCELLED', 'EXPIRED', 'REJECTED']).optional(),
   userId: z.string().uuid().optional(),
+  type: z.enum(['RECOVERY', 'RESET']).optional().default('RECOVERY'),
 });
 const NO_CTRL = /^(?:[^\p{Cc}]|[\t\n\r])*$/u; // vieta i caratteri di controllo (NUL, ESC, DEL...) tranne tab, LF, CR: Postgres rifiuta NUL con un 500
 const rejectSchema = z.object({ reason: z.string().min(1).max(500).regex(NO_CTRL) });
@@ -67,6 +69,12 @@ export default async function vaultAdminRoutes(fastify: FastifyInstance) {
     const { id } = parse(idSchema, request.params);
     const b = parse(rejectSchema, request.body);
     return recoveryService.rejectRecovery(request.user.id, id, b.reason);
+  });
+
+  // Annullo di un reset in attesa (P3, D2): unica difesa rapida se l'account e' compromesso. Solo RESET: gli altri tipi non passano di qui.
+  fastify.post('/:id/cancel-reset', limit(30, '1 minute'), async (request) => {
+    const { id } = parse(idSchema, request.params);
+    return resetService.cancelResetByAdmin(request.user.id, id);
   });
 
   // Il contatore DB (checkReleaseRate) sopravvive al restart; questo limite ferma le richieste parallele.

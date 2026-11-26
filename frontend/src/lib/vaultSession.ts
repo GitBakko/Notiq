@@ -4,7 +4,7 @@
 // tiene nello stato del componente e fa fill(0) a fine cerimonia, poi chiama confirmKit.
 import * as vaultApi from './vaultApi';
 import type { OpenRecovery, VaultApiError } from './vaultApi';
-import { purgeApiCache } from './apiCache';
+import { purgeApiCache, purgeVaultCache } from './apiCache';
 import { db } from './db';
 import * as device from './deviceKeyStore';
 import { useVaultStore, type VaultKeys } from '../store/vaultStore';
@@ -45,6 +45,10 @@ export interface KeyringDto {
   prevVkWrap?: string | null;
   /** Note vault ancora a un'epoch precedente: > 0 = rotazione da finire, e il server rifiuta una nuova rotazione (409 rotationPending). */
   staleCount?: number;
+  /** P3: epoch dell'ultimo reset completato (null: mai). Distingue un reset da una rotazione quando il vault torna READY a un'epoch piu' alta. Assente con un server precedente. */
+  lastResetEpoch?: number | null;
+  /** P3: data della cancellazione definitiva, solo con `status === 'RESET_PENDING'`. */
+  resetScheduledAt?: string | null;
 }
 
 export type VaultSessionCode =
@@ -121,27 +125,88 @@ export function cacheKeyring(userId: string, kr: KeyringDto, offlineUnlock: bool
  * Allinea la cache al keyring del server (J.6): un cambio PIN fatto da un altro dispositivo alza `rev`, e senza questo
  * il vecchio PIN continuerebbe a sbloccare offline. Solo avanti per `rev` a PARITA' di epoch: una GET partita prima di un cambio
  * PIN locale non riporta indietro la cache. L'epoch della cache NON sale mai da qui (B5): sale solo dopo l'unwrap AEAD di wrappedVkPin
- * (sblocco) o col commit di rotateVault; un'epoch non autenticata nella cache farebbe rifiutare poi il keyring vero come rollback. Senza cache o con keyring non READY/incompleto non fa nulla.
+ * (sblocco) o col commit di rotateVault; un'epoch non autenticata nella cache farebbe rifiutare poi il keyring vero come rollback. Senza cache non fa nulla.
  * Limite intrinseco: un dispositivo sempre offline non vede il cambio.
+ *
+ * P3 (reset del vault, piano §2.7). Va chiamata SOLO con una risposta 200 validata di GET /keyring, mai su 404, 5xx o errore di rete.
+ * - RESET_PENDING: blocca il vault di questo utente e cancella lo share (niente sblocco offline); le righe Dexie restano, perche' un annullo deve poterle ripristinare.
+ * - Reset avvenuto (cache presente e `lastResetEpoch > cache.epoch`, oppure NONE con `epoch > cache.epoch`): purge di righe, coda, cache e chiave del dispositivo, dopo il lock
+ *   (i flusher pre-lock scrivono prima della cancellazione). Non con una rotazione propria in corso. Un guard in-flight evita purge doppi.
+ * Restituisce una promise che non rifiuta mai; la parte sincrona (lock, aggiornamento della cache) avviene prima del ritorno, come prima di P3.
  */
-export function syncKeyringCache(userId: string, kr: KeyringDto): void {
+export function syncKeyringCache(userId: string, kr: KeyringDto): Promise<void> {
   const c = store().byUser[userId];
-  if (!c || kr.status !== 'READY') return;
+  if (!c) return Promise.resolve();
+  // I rami distruttivi (sospensione, purge) valgono solo per l'utente corrente: una closure vecchia attorno a un cambio account puo' portare il keyring di un altro
+  // (token di Y, userId di X) e cancellerebbe le righe di X su questo dispositivo.
+  if (kr.status === 'RESET_PENDING') return isCurrent(userId) ? suspendForReset(userId) : Promise.resolve();
+  const last = kr.lastResetEpoch;
+  const resetDone = (typeof last === 'number' && last > c.epoch) || (kr.status === 'NONE' && kr.epoch > c.epoch);
+  if (resetDone && !rotating) return isCurrent(userId) ? purgeAfterReset(userId) : Promise.resolve();
+  if (kr.status !== 'READY') return Promise.resolve();
   // Rotazione fatta altrove: le chiavi in memoria sono di un'epoch che il server non accetta piu' (il PIN invariato riapre l'epoch nuova allo sblocco online).
   // Non vale durante la rotazione di QUESTA sessione (dalla PUT al commit locale): l'epoch piu' alta e' la nostra e il commit sta per allinearsi.
   const s = store();
   if (!rotating && s.unlockedUserId === userId && s.epoch !== null && kr.epoch > s.epoch) void s.lockVault();
   // Epoch del server oltre quella verificata: la cache NON sale, ma lo share del dispositivo si cancella: lo sblocco offline aprirebbe la VK vecchia (offlineUnavailable fino a uno sblocco online).
   if (kr.epoch > c.epoch) void device.deleteShare(userId).catch(() => {});
-  if (!(kr.epoch === c.epoch && kr.rev > c.rev)) return;
+  if (!(kr.epoch === c.epoch && kr.rev > c.rev)) return Promise.resolve();
   try { cacheKeyring(userId, kr, c.offlineUnlock); } catch { /* keyring incompleto: cache invariata */ }
+  return Promise.resolve();
+}
+
+/** Lock di QUESTO utente (un altro utente sbloccato non si tocca): i flusher pre-lock scrivono in locale prima di qualunque cancellazione. */
+const lockIfUnlocked = (userId: string) => (store().unlockedUserId === userId ? store().lockVault() : Promise.resolve());
+
+const suspending = new Map<string, Promise<void>>();
+
+/**
+ * RESET_PENDING: vault bloccato (se sbloccato) e share cancellato, righe Dexie intatte.
+ * La risposta puo' essere vecchia (piu' istanze di useOpenRecovery e loadKeyring non si ordinano fra loro, e il backend non alza `rev` a conferma o annullo):
+ * un RESET_PENDING arrivato dopo annullo -> READY -> sblocco online bloccherebbe un vault appena riaperto, o cancellerebbe lo share (sblocco offline perso) da bloccato o in sblocco.
+ * In OGNI caso si rilegge il keyring una volta e si sospende solo se dice ancora RESET_PENDING (rilettura fallita: non si puo' confermare, nessun effetto; il prossimo 200 riprova).
+ * Dopo ogni await si ricontrolla che l'utente sia ancora quello corrente. Un guard per utente evita che due chiamate ravvicinate rileggano due volte.
+ */
+function suspendForReset(userId: string): Promise<void> {
+  const running = suspending.get(userId);
+  if (running) return running;
+  const p = (async () => {
+    try {
+      let fresh: KeyringDto;
+      try { fresh = await fetchKeyring(); } catch { return; }
+      if (fresh.status !== 'RESET_PENDING' || !isCurrent(userId)) return;
+      await lockIfUnlocked(userId);
+      if (!isCurrent(userId)) return;
+      await device.deleteShare(userId);
+    } catch { /* best effort: il prossimo 200 riprova */ }
+  })().finally(() => { suspending.delete(userId); });
+  suspending.set(userId, p);
+  return p;
+}
+
+const purging = new Map<string, Promise<void>>();
+
+/** Reset completato: lock, righe e coda vault, cache e chiave del dispositivo, cache SW del vault. Un solo giro alla volta per utente. */
+function purgeAfterReset(userId: string): Promise<void> {
+  const running = purging.get(userId);
+  if (running) return running;
+  const p = (async () => {
+    try {
+      await lockIfUnlocked(userId);
+      if (!isCurrent(userId)) return; // l'account e' cambiato durante il lock (i flusher scrivono): niente cancellazione
+      await removeFromDevice(userId, { force: true });
+      await purgeVaultCache();
+    } catch { /* best effort: la cache resta, il prossimo 200 riprova */ }
+  })().finally(() => { purging.delete(userId); });
+  purging.set(userId, p);
+  return p;
 }
 
 /** GET del keyring + `syncKeyringCache`; errori di rete o server ignorati (best effort). Restituisce il keyring letto (undefined se la GET e' fallita). */
 export async function refreshKeyringCache(userId: string): Promise<KeyringDto | undefined> {
   try {
     const kr = await fetchKeyring();
-    syncKeyringCache(userId, kr);
+    await syncKeyringCache(userId, kr);
     return kr;
   } catch { /* offline o server giu': cache invariata */ }
 }

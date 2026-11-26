@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getKeyring, type OpenRecovery } from '../lib/vaultApi';
+import type { KeyringDto } from '../lib/vaultSession';
 import { useAuthStore } from '../store/authStore';
 
 const REFRESH_MS = 15 * 60_000; // GET /keyring: limite 60/min per utente, 15 min + focus sta largamente sotto
 
 /**
- * Recupero vault aperto sull'account (GET /api/vault/keyring -> openRecovery). Rilegge al mount, al focus, quando la
+ * Recupero vault aperto sull'account (GET /api/vault/keyring -> openRecovery) e data del reset in attesa (resetScheduledAt, P3). Rilegge al mount, al focus, quando la
  * scheda torna visibile e ogni 15 min. Su errore (rete, 503) tiene l'ultimo valore: un banner non sparisce per un blip.
+ * Ogni keyring letto con successo passa anche da syncKeyringCache (regola del reset: blocco con RESET_PENDING, purge a reset avvenuto): gira per ogni utente, anche senza offline unlock.
  * Vale solo l'ultima richiesta partita (e solo per l'utente corrente): una risposta superata viene scartata.
  */
 export function useOpenRecovery() {
   const userId = useAuthStore((s) => s.user?.id);
-  const [state, setState] = useState<{ userId: string; value: OpenRecovery | null } | null>(null);
+  const [state, setState] = useState<{ userId: string; value: OpenRecovery | null; resetScheduledAt: string | null } | null>(null);
   const seq = useRef(0); // numero dell'ultima richiesta partita; le risposte con numero minore sono superate
   const pending = useRef(0); // numero della richiesta in volo (0 = nessuna)
 
@@ -23,8 +25,12 @@ export function useOpenRecovery() {
     const my = ++seq.current;
     pending.current = my;
     try {
-      const kr = await getKeyring<{ openRecovery?: OpenRecovery | null }>();
-      if (my === seq.current && currentUser.current === userId) setState({ userId, value: kr.openRecovery ?? null });
+      const kr = await getKeyring<KeyringDto>();
+      if (my === seq.current && currentUser.current === userId) {
+        setState({ userId, value: kr.openRecovery ?? null, resetScheduledAt: kr.status === 'RESET_PENDING' ? (kr.resetScheduledAt ?? null) : null });
+        // import dinamico: vaultSession non entra nel chunk principale (come useKeyringRefresh); l'errore non tocca il banner
+        void import('../lib/vaultSession').then((m) => m.syncKeyringCache(userId, kr)).catch(() => {});
+      }
     } catch {
       // tiene l'ultimo valore
     } finally {
@@ -62,5 +68,6 @@ export function useOpenRecovery() {
     };
   }, [userId, refresh]);
 
-  return { openRecovery: userId && state?.userId === userId ? state.value : null, refresh, markCancelled };
+  const mine = userId && state?.userId === userId ? state : null;
+  return { openRecovery: mine?.value ?? null, resetScheduledAt: mine?.resetScheduledAt ?? null, refresh, markCancelled };
 }

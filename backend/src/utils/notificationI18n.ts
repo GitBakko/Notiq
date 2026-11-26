@@ -6,6 +6,35 @@
 
 type Locale = 'en' | 'it';
 
+// Vault reset (P3): same rules as above, never the confirmation code. {{date}} = UTC date of the deletion, {{email}} = account of the vault.
+// Keep in sync with the frontend locales (notifications.vaultReset.*).
+export const VAULT_RESET_TEXTS: Record<string, Record<Locale, { title: string; body: string }>> = {
+  scheduled: {
+    en: { title: 'Vault reset scheduled', body: 'A reset of your vault was scheduled. All vault notes, tags and attachments will be permanently deleted on {{date}}. If it was not you, cancel it now from the vault page and change your account password.' },
+    it: { title: 'Reset del vault programmato', body: 'È stato programmato il reset del tuo vault. Tutte le note, i tag e gli allegati del vault saranno cancellati definitivamente il {{date}}. Se non sei stato tu, annullalo subito dalla pagina del vault e cambia la password dell\'account.' },
+  },
+  cancelled: {
+    en: { title: 'Vault reset cancelled', body: 'The reset of your vault was cancelled. Your vault data was not deleted.' },
+    it: { title: 'Reset del vault annullato', body: 'Il reset del tuo vault è stato annullato. I dati del vault non sono stati cancellati.' },
+  },
+  completed: {
+    en: { title: 'Vault reset completed', body: 'Your vault was reset and its data deleted. Open the vault page to set it up again. If it was not you, change your account password now.' },
+    it: { title: 'Reset del vault completato', body: 'Il tuo vault è stato azzerato e i suoi dati cancellati. Apri la pagina del vault per configurarlo di nuovo. Se non sei stato tu, cambia subito la password dell\'account.' },
+  },
+  adminScheduled: {
+    en: { title: 'Vault reset scheduled', body: 'A vault reset was scheduled for {{email}}. You can cancel it from the vault recovery admin tab until it runs.' },
+    it: { title: 'Reset del vault programmato', body: 'È stato programmato il reset del vault di {{email}}. Puoi annullarlo dalla scheda admin del recupero vault finché non viene eseguito.' },
+  },
+  adminCancelled: {
+    en: { title: 'Vault reset cancelled', body: 'The vault reset of {{email}} was cancelled.' },
+    it: { title: 'Reset del vault annullato', body: 'Il reset del vault di {{email}} è stato annullato.' },
+  },
+  adminCompleted: {
+    en: { title: 'Vault reset completed', body: 'The vault of {{email}} was reset and its data deleted.' },
+    it: { title: 'Reset del vault completato', body: 'Il vault di {{email}} è stato azzerato e i suoi dati cancellati.' },
+  },
+};
+
 // Generic texts: they end up in the notification row and in the push (no codes, no personal detail).
 // Keep in sync with the frontend locales (notifications.vaultRecovery.*).
 export const VAULT_RECOVERY_TEXTS: Record<string, Record<Locale, { title: string; body: string }>> = {
@@ -246,6 +275,11 @@ const translations: Record<string, Record<Locale, string>> = {
   ...Object.fromEntries(Object.entries(VAULT_RECOVERY_TEXTS).flatMap(([ev, l]) => [
     [`notifications.vaultRecovery.${ev}`, { en: l.en.body, it: l.it.body }],
     [`notifications.vaultRecovery.${ev}_TITLE`, { en: l.en.title, it: l.it.title }],
+  ])),
+  // --- Vault reset ---
+  ...Object.fromEntries(Object.entries(VAULT_RESET_TEXTS).flatMap(([ev, l]) => [
+    [`notifications.vaultReset.${ev}`, { en: l.en.body, it: l.it.body }],
+    [`notifications.vaultReset.${ev}_TITLE`, { en: l.en.title, it: l.it.title }],
   ])),
   // --- UI labels ---
   'notifications.openApp': {

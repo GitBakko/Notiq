@@ -18,7 +18,7 @@ import { db, type LocalNote } from '../../lib/db';
 import { queryKeys } from '../../lib/queryKeys';
 import { LOCAL_FIRST } from '../../lib/networkMode';
 import { getKeyring } from '../../lib/vaultApi';
-import { RECOVERY_CLOSED_EVENT } from '../../lib/vaultEvents';
+import { RECOVERY_CLOSED_EVENT, RESET_CHANGED_EVENT } from '../../lib/vaultEvents';
 import { decryptItem, encryptItem, type VaultNoteType } from '../../lib/vaultCodec';
 import { hydrateVaultNote, vaultReconcile } from '../../lib/vaultReconcile';
 import { checkPendingOnStart, hasForeignEpochPending, refreshKeyringCache, syncKeyringCache, type KeyringDto } from '../../lib/vaultSession';
@@ -33,6 +33,7 @@ import RecoveryKitSheet from './RecoveryKitSheet';
 import VaultMigrate from './VaultMigrate';
 import VaultNoteEditor from './VaultNoteEditor';
 import VaultOfflineNotice from './VaultOfflineNotice';
+import ResetPendingScreen from './ResetPendingScreen';
 import VaultRecovery, { type RecoveryNext } from './VaultRecovery';
 import VaultSettingsSheet from './VaultSettingsSheet';
 import { rotationOf, type KitRotationReason } from './kitRotation';
@@ -52,7 +53,7 @@ type Gate =
   | { k: 'unavailable' } // server raggiungibile ma vault non disponibile (503, es. pepper assente): non e' un problema di rete
   | { k: 'none'; legacyCount: number }
   | { k: 'ready' }
-  | { k: 'resetPending' }
+  | { k: 'resetPending'; scheduledAt: string | null } // P3: reset programmato, cancellazione definitiva a `scheduledAt`
   | { k: 'setupDisabled'; legacyCount: number };
 
 
@@ -238,10 +239,12 @@ export default function VaultPage() {
       // setupAllowed (kill switch D2) arriva dal server; assente (backend vecchio) = consentito
       const kr = await getKeyring<KeyringDto & { setupAllowed?: boolean }>();
       rotation = rotationOf(kr);
-      if (kr.status === 'READY') syncKeyringCache(userId, kr); // J.6: la cache offline segue il keyring del server (mai indietro)
+      // J.6: la cache offline segue il keyring del server (mai indietro). P3: la stessa regola blocca con RESET_PENDING e fa il purge a reset avvenuto,
+      // per OGNI stato e solo qui (200 validato: il catch sotto non cancella mai niente).
+      await syncKeyringCache(userId, kr);
       next = kr.status === 'NONE' ? (kr.setupAllowed === false ? { k: 'setupDisabled', legacyCount: kr.legacyCount ?? 0 } : { k: 'none', legacyCount: kr.legacyCount ?? 0 })
         : kr.status === 'READY' ? { k: 'ready' }
-        : { k: 'resetPending' };
+        : { k: 'resetPending', scheduledAt: kr.resetScheduledAt ?? null };
     } catch (err) {
       // Offline, 5xx o 404: con la copia locale si sblocca da li; senza, UNKNOWN. Mai il setup, mai un purge.
       const e = err as { status?: unknown; key?: unknown };
@@ -256,6 +259,24 @@ export default function VaultPage() {
   }, [userId]);
 
   useEffect(() => () => { seqRef.current++; }, []);
+
+  // P3: con il reset in attesa lo stato puo' cambiare altrove (annullo da un altro dispositivo): al ritorno in primo piano si rilegge, cosi' il gate lascia resetPending senza ricaricare
+  const pendingReset = !unlocked && gate.k === 'resetPending';
+  useEffect(() => {
+    if (!pendingReset) return;
+    const on = () => { if (document.visibilityState !== 'hidden') void loadKeyring(); };
+    window.addEventListener('focus', on);
+    document.addEventListener('visibilitychange', on);
+    return () => { window.removeEventListener('focus', on); document.removeEventListener('visibilitychange', on); };
+  }, [pendingReset, loadKeyring]);
+
+  // P3: un reset programmato o annullato (dialog, schermata di attesa, banner) cambia lo stato del keyring: da bloccato si rilegge
+  useEffect(() => {
+    if (unlocked) return;
+    const on = () => { void loadKeyring(); };
+    window.addEventListener(RESET_CHANGED_EVENT, on);
+    return () => window.removeEventListener(RESET_CHANGED_EVENT, on);
+  }, [unlocked, loadKeyring]);
 
   // Da bloccato (anche dopo l'auto-lock) si rilegge il keyring; da sbloccato no.
   useEffect(() => {
@@ -721,6 +742,9 @@ export default function VaultPage() {
 
   if (!userId) return infoScreen(t('common.loading'));
 
+  // P3: con il reset in attesa (confermato su un altro dispositivo) la schermata con "Annulla reset" vince su ogni wizard: sopra /vault il banner non c'e'
+  if (!unlocked && gate.k === 'resetPending') return <ResetPendingScreen scheduledAt={gate.scheduledAt} />;
+
   if (showWizard) {
     if (recoveryOpen) return <VaultRecovery userId={userId} onClose={closeRecovery} />;
     if (gate.k === 'none' && gate.legacyCount > 0) {
@@ -736,7 +760,6 @@ export default function VaultPage() {
       case 'unknown': return <VaultOfflineNotice onRetry={retryKeyring} retrying={retrying} />;
       case 'unavailable': return infoScreen(t('errors.vault.unavailable'), true);
       case 'setupDisabled': return infoScreen(t(gate.legacyCount > 0 ? 'vault.setupDisabledLegacy' : 'errors.vault.setupDisabled'), true);
-      case 'resetPending': return infoScreen(t('vault.resetPending'));
       case 'ready': return <VaultUnlock notice={alreadySetup ? 'alreadySetup' : undefined} onUnlocked={() => setAlreadySetup(false)} onForgot={() => setRecoveryFlag(true)} />;
       default: return infoScreen(t('common.loading'));
     }

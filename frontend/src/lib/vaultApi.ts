@@ -81,7 +81,9 @@ const RECOVERY_STATUSES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEA
 // una stringa, NON alfabeto ne' lunghezza: un valore corrotto deve arrivare a resolvePrev/openKeyring e diventare `broken` (K), non bloccare la GET del keyring.
 const okKeyring = (d: unknown) =>
   isObj(d) && KEYRING_STATUSES.includes(d.status as string) && isUint(d.epoch) && isUint(d.rev)
-  && optOf(d.prevVkWrap, isStr) && optOf(d.staleCount, isUint);
+  && optOf(d.prevVkWrap, isStr) && optOf(d.staleCount, isUint)
+  // P3: lastResetEpoch = epoch dell'ultimo reset completato (null: mai), resetScheduledAt solo con RESET_PENDING. Assenti con un server precedente.
+  && optOf(d.lastResetEpoch, isUint) && optOf(d.resetScheduledAt, isStr);
 // attemptsLeft/expiresAt/rejectReason: assenti con un server vecchio, null fuori dallo stato che li riguarda.
 const optOf = (v: unknown, ok: (x: unknown) => boolean) => v === undefined || v === null || ok(v);
 const okRecovery = (d: unknown) =>
@@ -100,6 +102,12 @@ const MIGRATE_STATUSES = ['ok', 'already', 'conflict', 'notFound', 'invalid'];
 const okUnlock = (d: unknown) => isObj(d) && isStr(d.serverShare) && B64URL.test(d.serverShare);
 const okConfirmed = (d: unknown) => isObj(d) && d.status === 'WAITING' && isStr(d.notBefore) && !Number.isNaN(Date.parse(d.notBefore));
 const okCancelled = (d: unknown) => isObj(d) && d.status === 'CANCELLED';
+const isIso = (v: unknown) => isStr(v) && !Number.isNaN(Date.parse(v));
+const okResetChallenge = (d: unknown) =>
+  isObj(d) && isStr(d.requestId) && d.requestId !== '' && isStr(d.code) && d.code !== '' && isIso(d.expiresAt)
+  && isObj(d.counts) && isUint(d.counts.notes) && isUint(d.counts.tags) && isUint(d.counts.attachments);
+const okResetScheduled = (d: unknown) => isObj(d) && isIso(d.scheduledAt);
+const okOk = (d: unknown) => isObj(d) && d.ok === true;
 // noteType solo come stringa: un valore nuovo di un server piu' recente non deve trasformare l'intera pagina in errore di rete e bloccare reconcile/migrazione.
 const okItem = (i: unknown) =>
   isObj(i) && isStr(i.id) && isStr(i.noteType) && isStr(i.title) && isStr(i.content) && isStr(i.contentHash) && isStr(i.updatedAt)
@@ -254,3 +262,29 @@ export const completeRecovery = (id: string, payload: string, vkProof: string) =
   call<{ status: 'COMPLETED' }>('post', `/vault/recovery/${encodeURIComponent(id)}/complete`, { payload, vkProof }, false, undefined, okCompleted);
 
 export const finalizeItems = <T = unknown>(ids: string[]) => call<T>('post', '/vault/finalize', { ids }, false, undefined, okFinalized);
+
+// ---------------------------------------------------------------- reset del vault (P3, contratto del piano §12)
+
+/** Conteggi di cio' che il reset cancella (note vault incluse quelle nel cestino, tag vault, allegati). */
+export interface ResetCounts {
+  notes: number;
+  tags: number;
+  attachments: number;
+}
+
+export interface ResetChallenge {
+  requestId: string;
+  /** Codice di sistema da riscrivere (Crockford, 12 caratteri, eventuali trattini solo di presentazione). */
+  code: string;
+  expiresAt: string;
+  counts: ResetCounts;
+}
+
+export const resetChallenge = () => call<ResetChallenge>('post', '/vault/reset/challenge', {}, false, undefined, okResetChallenge);
+
+/** La password dell'account va in chiaro al server (verifica lato server): mai in cache, mai in uno store. */
+export const confirmReset = (requestId: string, code: string, password: string) =>
+  call<{ scheduledAt: string }>('post', '/vault/reset', { requestId, code, password }, false, undefined, okResetScheduled);
+
+/** Annullo dell'utente (basta il JWT, nessuna password: D4 del piano). */
+export const cancelReset = () => call<{ ok: true }>('post', '/vault/reset/cancel', {}, false, undefined, okOk);

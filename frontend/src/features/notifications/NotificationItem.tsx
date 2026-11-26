@@ -46,6 +46,9 @@ function getNotificationUrl(notification: Notification): string | null {
     case 'SYSTEM': {
       // Admin: richiesta di recupero vault di un altro utente -> tab admin
       if (data.localizationKey?.includes('vaultRecovery.admin')) return '/admin?tab=vaultRecovery';
+      // P3: reset del vault, chiavi notifications.vaultReset.*: admin (vaultReset.admin*) -> tab admin, utente -> pagina del vault
+      if (data.localizationKey?.includes('vaultReset.admin')) return '/admin?tab=vaultRecovery&type=RESET'; // la tab filtra RECOVERY di default
+      if (data.localizationKey?.includes('vaultReset.')) return '/vault';
       // Friend requests → Chat page
       if (data.localizationKey?.includes('friendRequest')) return '/shared?tab=friends';
       // Share responses
@@ -140,8 +143,11 @@ function buildArgs(data: Record<string, any>): Record<string, string> {
   if (src.count !== undefined && src.count !== null) args.count = String(src.count);
   if (src.summary) args.summary = src.summary;
 
-  // email — used by vaultRecovery.adminRequested
+  // email — used by vaultRecovery.adminRequested, vaultReset.admin* (email del proprietario del vault)
   if (src.email) args.email = src.email;
+
+  // date — used by vaultReset.scheduled (data della cancellazione, gia' formattata dal server)
+  if (src.date) args.date = src.date;
 
   // fingerprint — used by vaultRecovery.*
   if (src.fingerprint) args.fingerprint = src.fingerprint;

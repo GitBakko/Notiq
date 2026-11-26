@@ -77,6 +77,7 @@ vi.mock('../RecoveryKitSheet', () => ({
   },
 }));
 
+vi.mock('../VaultResetDialog', () => ({ default: (p: { isOpen: boolean; onClose: () => void; onScheduled?: (d: string) => void }) => (p.isOpen ? <div data-testid="reset-dialog"><button onClick={() => p.onScheduled?.('2026-12-04T10:00:00.000Z')}>reset-scheduled</button><button onClick={p.onClose}>reset-close</button></div> : null) }));
 import VaultRecovery from '../VaultRecovery';
 import { VaultRecoveryError } from '../../../lib/vaultRecovery';
 import { VaultSessionError } from '../../../lib/vaultSession';
@@ -153,6 +154,31 @@ describe('VaultRecovery: caricamento e intro', () => {
     expect(await screen.findByText('errors.vault.recoveryRootKeyRetired')).toBeTruthy();
     expect(screen.queryByText(L('intro.warning'))).toBeNull();
     expect(h.startRecovery).not.toHaveBeenCalled();
+  });
+
+  it('P3: con la chiave root ritirata il recupero rimanda al reset; reset programmato -> onClose(unlock)', async () => {
+    h.getKeyring.mockResolvedValue({ status: 'READY', epoch: 0, rev: 1, openRecovery: null, rootKeyRetired: true });
+    mount();
+    await screen.findByText('errors.vault.recoveryRootKeyRetired');
+    expect(screen.queryByTestId('reset-dialog')).toBeNull();
+    fireEvent.click(btn('vault.reset.recoveryAction'));
+    expect(screen.getByTestId('reset-dialog')).toBeTruthy();
+    fireEvent.click(screen.getByText('reset-scheduled'));
+    expect(onClose).toHaveBeenCalledWith('unlock');
+  });
+
+  it('P3: richiesta REJECTED -> anche il pulsante del reset; con una richiesta in attesa no', async () => {
+    bound();
+    h.getRecovery.mockResolvedValue(rec('REJECTED'));
+    mount();
+    await screen.findByText(L('status.rejected'));
+    fireEvent.click(btn('vault.reset.recoveryAction'));
+    expect(screen.getByTestId('reset-dialog')).toBeTruthy();
+    cleanup();
+    h.getRecovery.mockResolvedValue(rec('WAITING', { notBefore: '2099-01-01T00:00:00.000Z' }));
+    mount();
+    await screen.findByText(/status\.waiting/);
+    expect(screen.queryByRole('button', { name: 'vault.reset.recoveryAction' })).toBeNull();
   });
 
   it('409 recoveryRootKeyRetired alla POST: messaggio, nessun secondo tentativo', async () => {

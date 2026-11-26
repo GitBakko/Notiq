@@ -76,3 +76,21 @@ describe('toDatetimeLocal', () => {
     expect(toDatetimeLocal('garbage')).toBe('');
   });
 });
+
+describe('formatDateTimeMedium', () => {
+  it('data e ora in formato esteso della lingua (mese in lettere, niente 12/3/2026 ambiguo)', async () => {
+    const { formatDateTimeMedium } = await import('../format');
+    const iso = '2026-12-03T12:10:02.000Z';
+    const en = formatDateTimeMedium(iso, 'en');
+    const it = formatDateTimeMedium(iso, 'it');
+    expect(en).toMatch(/Dec/);
+    expect(it).toMatch(/dic/);
+    expect(en).not.toMatch(/12\/3\/2026/);
+    expect(en).not.toMatch(/:02/); // niente secondi
+  });
+
+  it('data non valida: stringa vuota, nessuna eccezione', async () => {
+    const { formatDateTimeMedium } = await import('../format');
+    expect(formatDateTimeMedium('non una data', 'en')).toBe('');
+  });
+});

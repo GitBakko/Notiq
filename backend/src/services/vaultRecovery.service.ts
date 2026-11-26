@@ -8,6 +8,7 @@ import { putE2eCodeB } from '../utils/vaultE2e';
 import { logEvent } from './audit.service';
 import { notifyRecovery, notifySuperadmins, type RecoveryEvent } from './vaultRecoveryNotify';
 import { assertPointOnCurve, releaseRootShare, sealRecoveryCode } from './vaultRootKey.service';
+import { runResetJobs } from './vaultReset.service';
 import { authVerifierOf, b64url, countStaleVaultNotes, deleteOutOfEpochVersions, keyringUpdatePayloadSchema, isRootKey, pepperStatus, rotateSchema, rotationUpdate, sha256hex, verifierKey, verifyVkProof } from './vault.service';
 
 const OPEN_STATES = ['PENDING_APPROVAL', 'PENDING_CODE', 'WAITING', 'RELEASED'] as const;
@@ -37,11 +38,12 @@ function notifyAdminsInBackground(event: Parameters<typeof notifySuperadmins>[0]
   void (async () => { try { await notifySuperadmins(event, { requestId, actorId }); } catch { /* best effort */ } })();
 }
 
-function codeHash(requestId: string, part: 'A' | 'B', code: string): string {
+// 'R' = codice del reset (P3): dominio separato dalle due meta' del recupero.
+export function codeHash(requestId: string, part: 'A' | 'B' | 'R', code: string): string {
   return crypto.createHmac('sha256', verifierKey()).update(`recovery|${requestId}|${part}|${code}`).digest('hex');
 }
 
-function newCode(): string {
+export function newCode(): string {
   const bytes = crypto.randomBytes(16);
   let out = '';
   for (const b of bytes) out += ALPHABET[b % 32];
@@ -322,7 +324,9 @@ export async function releaseRecovery(adminId: string, requestId: string, passph
   return { status: 'RELEASED' as const };
 }
 
-function isLapsed(row: { status: string; expiresAt?: Date | null; releaseExpiresAt?: Date | null }, now: Date): boolean {
+function isLapsed(row: { status: string; type?: string; expiresAt?: Date | null; releaseExpiresAt?: Date | null }, now: Date): boolean {
+  // Un reset ha solo la scadenza del codice (PENDING_CODE): in WAITING l'attesa e' notBefore, expiresAt non conta.
+  if (row.type === 'RESET' && row.status !== 'PENDING_CODE') return false;
   if (row.status === 'RELEASED') return !!row.releaseExpiresAt && row.releaseExpiresAt <= now;
   return (TIMED_STATES as readonly string[]).includes(row.status) && !!row.expiresAt && row.expiresAt <= now;
 }
@@ -408,6 +412,7 @@ function adminView(row: AdminRow, now = new Date()) {
   return {
     id: row.id,
     userId: row.userId,
+    type: row.type,
     userEmail: row.user?.email,
     status,
     fingerprint: row.fingerprint,
@@ -428,12 +433,12 @@ function adminView(row: AdminRow, now = new Date()) {
     cancelledAt: row.cancelledAt,
     keyringStatus: (row.user?.vaultKeyring?.status ?? null),
     rootKeyId: (row.user?.vaultKeyring?.rootKeyId ?? null),
-    readyForRelease: status === 'WAITING' && !!row.notBefore && row.notBefore <= now,
+    readyForRelease: row.type === 'RECOVERY' && status === 'WAITING' && !!row.notBefore && row.notBefore <= now,
   };
 }
 
-export async function listRecoveriesForAdmin(opts: { page: number; limit: number; status?: Prisma.VaultRequestWhereInput['status']; userId?: string }) {
-  const where: Prisma.VaultRequestWhereInput = { type: 'RECOVERY', ...(opts.status ? { status: opts.status } : {}), ...(opts.userId ? { userId: opts.userId } : {}) };
+export async function listRecoveriesForAdmin(opts: { page: number; limit: number; type?: 'RECOVERY' | 'RESET'; status?: Prisma.VaultRequestWhereInput['status']; userId?: string }) {
+  const where: Prisma.VaultRequestWhereInput = { type: opts.type ?? 'RECOVERY', ...(opts.status ? { status: opts.status } : {}), ...(opts.userId ? { userId: opts.userId } : {}) };
   const [rows, total] = await Promise.all([
     prisma.vaultRequest.findMany({ where, include: ADMIN_INCLUDE, orderBy: { createdAt: 'desc' }, skip: (opts.page - 1) * opts.limit, take: opts.limit }),
     prisma.vaultRequest.count({ where }),
@@ -443,7 +448,8 @@ export async function listRecoveriesForAdmin(opts: { page: number; limit: number
 }
 
 export async function getRecoveryForAdmin(requestId: string) {
-  const row = await prisma.vaultRequest.findFirst({ where: { id: requestId, type: 'RECOVERY' }, include: ADMIN_INCLUDE });
+  // Qualsiasi tipo: il dettaglio serve anche ai reset (azioni di approve/reject/release restano filtrate su RECOVERY).
+  const row = await prisma.vaultRequest.findFirst({ where: { id: requestId }, include: ADMIN_INCLUDE });
   if (!row) throw new AppError(404, 'errors.vault.recoveryNotFound');
   const audit = await prisma.auditLog.findMany({
     where: { details: { path: ['requestId'], equals: requestId } },
@@ -550,13 +556,15 @@ export async function sendRecoveryReminders(now = new Date()) {
   return sent;
 }
 
-/** Le due passate sono indipendenti: un errore della prima non salta la seconda; il primo errore viene rilanciato per il log del chiamante. */
+/** Le tre passate sono indipendenti: un errore della prima non salta la seconda; il primo errore viene rilanciato per il log del chiamante. */
 export async function runRecoveryJobs() {
   let firstError: unknown;
   let expired = 0;
   let reminded = 0;
+  let resetCompleted = 0;
   try { expired = await expireRecoveryRequests(); } catch (err) { firstError = err; }
   try { reminded = await sendRecoveryReminders(); } catch (err) { firstError ??= err; }
+  try { resetCompleted = await runResetJobs(); } catch (err) { firstError ??= err; } // P3: hard delete dei reset scaduti
   if (firstError !== undefined) throw firstError;
-  return { expired, reminded };
+  return { expired, reminded, resetCompleted };
 }

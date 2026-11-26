@@ -308,6 +308,37 @@ Nessun file TIER 1 o TIER 2. Sono più di 3 file, quindi l'utente va avvisato pr
   - `VAULT_SETUP_USERS=*` in prod: dopo il reset il setup è aperto.
   - `ConfirmDialog` non ha campi di input (props `title`, `message`, `confirmText`, `cancelText`, `variant`). `VaultResetDialog` si costruisce sul primitive `Modal`, e `ConfirmDialog` serve solo per il passo finale.
 
+### Deviazioni dell'implementazione e esito delle review (26/11)
+
+Deviazioni accettate:
+- `filesFailed` non sta nell'audit `vault.reset.completed`, che si scrive dentro la transazione, prima degli unlink. Se un unlink fallisce si registra un evento a parte, `vault.reset.files_failed {requestId, filesFailed}`. Il passo 7 del runbook va quindi verificato con due query.
+- Il codice è `newCode().slice(0, 12)`. Il confronto ignora maiuscole, trattini e spazi, e tratta O come 0 e I/L come 1.
+- `resetScheduledAt` sta al primo livello di `GET /keyring`, non dentro `openRecovery`. Le POST di reset si mandano con body `{}`.
+- Conferma e annullo non incrementano il `rev` del keyring: lo fa solo il job.
+- Il client blocca il vault solo se è quello di questo utente a essere sbloccato.
+
+Corretti dopo reviewer e red-team:
+- Un reset in `WAITING` da più di 10 minuti appariva all'admin come `EXPIRED`, senza il pulsante di annullo: la scadenza ora vale solo per `RECOVERY`.
+- Con il pepper assente o errato il job non cancella: entrambi gli annulli rispondono 503.
+- La notifica all'admin apre la tab già filtrata su `RESET`.
+- Prima di bloccare per `RESET_PENDING` il client rilegge il keyring, così una risposta vecchia non riblocca un vault appena riaperto.
+- Il `ResetPendingScreen` ha la precedenza sul wizard di recupero.
+
+Accettati:
+- Se un `lockVault()` è già in corso quando parte il purge, un flusher può scrivere una riga a epoch vecchia dopo il drop. Il server la rifiuta e restano una riga fantasma e un item di coda bloccato. Serve un dispositivo sbloccato durante il purge, che in `RESET_PENDING` è bloccato. Il rimedio vero richiede di toccare `vaultStore.ts` (TIER 1).
+- Chi ha JWT e password può generare circa 24 email all'ora, alternando conferma e annullo. Il limite è quello delle rotte.
+
+Secondo giro (reviewer e red-team, 26/11), corretto:
+- Se la scadenza è passata da più di un'ora, il job non cancella: rinvia di 24 ore, avvisa e scrive l'audit `vault.reset.postponed`. Un'interruzione a cavallo della scadenza (pepper assente, rollback) non toglie quindi la finestra di annullo.
+- Il job prende l'advisory lock `vault-reset:<userId>`, come conferma e annullo.
+- Le challenge abbandonate in `PENDING_CODE` passano a `EXPIRED` nel job.
+- L'annullo, sia dell'utente sia dell'admin, chiude tutte le righe RESET in `WAITING` dell'utente.
+- Il client esegue purge e sospensione solo per l'utente corrente (`isCurrent`). Prima di cancellare lo share rilegge sempre il keyring, e un guard in-flight evita le letture doppie.
+
+Accettati:
+- La conferma del reset chiude anche una richiesta RECOVERY già scaduta ma non ancora marcata, senza audit dedicato. Si tratta di una riga sola, in una finestra di 15 minuti.
+- Ci sono due istanze di `useOpenRecovery`, una per banner, quindi a ogni focus partono due GET `/keyring`.
+
 ## 12. Contratto API (vincolante per backend e frontend)
 
 Tutte le rotte rispondono con `Cache-Control: no-store`. Gli errori sono `AppError`, con la stessa forma degli errori `errors.vault.recovery*`.

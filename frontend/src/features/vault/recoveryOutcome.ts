@@ -64,6 +64,12 @@ export function outcomeOf(x: unknown): Outcome {
   return { key, action: key === 'errors.vault.recoveryAlreadyOpen' ? 'restart' : 'retry' };
 }
 
+/**
+ * P3: il recupero non e' possibile (chiave root ritirata, richiesta rifiutata): la UI affianca il reset del vault, l'unica uscita senza PIN e Kit.
+ * Funzione a parte, non un campo di Outcome: la tabella `{ key, action }` resta com'e'.
+ */
+export const offersReset = (o: Outcome) => o.key === 'errors.vault.recoveryRootKeyRetired' || o.key === `${E}rejected`;
+
 /** Azioni sul processo dell'app, in un oggetto per poterle sostituire nei test (window.location.reload non si puo' spiare). */
 export const appControl = {
   /** Cerca un service worker nuovo e aspetta che prenda il controllo (max 5 s): serve a prendere un bundle con la chiave root che manca a quello vecchio. */
