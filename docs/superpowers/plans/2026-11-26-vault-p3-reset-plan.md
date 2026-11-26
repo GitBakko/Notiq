@@ -303,6 +303,48 @@ Nessun file TIER 1 o TIER 2. Sono più di 3 file, quindi l'utente va avvisato pr
 - Un dispositivo rimasto offline più di 7 giorni con modifiche vault non sincronizzate le perde. È voluto, perché il reset è distruttivo, e va scritto nel testo del dialog.
 - L'unlink dei file avviene dopo il commit. Se fallisce restano file orfani, non dati raggiungibili.
 - `syncKeyringCache` oggi è sincrona e gira anche durante `rotating`. Il purge va escluso quando `rotating` è true, per non scambiare una rotazione locale per un reset.
-- Non ancora verificato:
-  - se in prod ci sono altri SUPERADMIN, e il valore di `VAULT_SETUP_USERS`;
-  - se `ConfirmDialog` accetta un campo di input; in caso contrario il dialog si costruisce sul primitive `Modal`, e `ConfirmDialog` resta solo per il passo finale.
+- Verificato il 26/11:
+  - In prod c'è **un solo SUPERADMIN** (`superadmin@notiq.ai`). Quando il reset è il suo, nessun altro admin riceve le notifiche e nessuno può annullare al posto suo. La difesa del D2 non esiste per l'account admin, e lo accettiamo: l'admin può comunque annullare con il proprio JWT.
+  - `VAULT_SETUP_USERS=*` in prod: dopo il reset il setup è aperto.
+  - `ConfirmDialog` non ha campi di input (props `title`, `message`, `confirmText`, `cancelText`, `variant`). `VaultResetDialog` si costruisce sul primitive `Modal`, e `ConfirmDialog` serve solo per il passo finale.
+
+## 12. Contratto API (vincolante per backend e frontend)
+
+Tutte le rotte rispondono con `Cache-Control: no-store`. Gli errori sono `AppError`, con la stessa forma degli errori `errors.vault.recovery*`.
+
+**Utente** (prefisso `/api/vault`, autenticato):
+- `POST /reset/challenge`, body vuoto, limite 5/h.
+  - 200: `{ requestId: string, code: string, expiresAt: string (ISO), counts: { notes: number, tags: number, attachments: number } }`.
+  - Errori: 409 `errors.vault.notReady` se il keyring non è READY; 429 `errors.vault.resetRateLimited`.
+- `POST /reset`, body `{ requestId, code, password }`.
+  - 200: `{ scheduledAt: string (ISO) }`.
+  - Errori:
+    - 403 `errors.vault.resetInvalidCode`;
+    - 403 `errors.vault.resetInvalidPassword` (mai 401);
+    - 410 `errors.vault.resetExpired`, per codice scaduto o tentativi esauriti;
+    - 409 `errors.vault.resetStateConflict`;
+    - 429 `errors.vault.resetRateLimited`.
+- `POST /reset/cancel`, body vuoto.
+  - 200: `{ ok: true }`.
+  - Errori: 409 `errors.vault.resetNotCancellable`, quando non c'è nessun reset in attesa o il reset è già completato.
+- `GET /keyring` aggiunge due campi:
+  - `lastResetEpoch: number | null`, sempre presente;
+  - `resetScheduledAt: string | null`, valorizzato solo con `status === 'RESET_PENDING'`.
+- La risposta che legge `useOpenRecovery` (oggi `openRecovery`, sia nel DTO del keyring sia nell'endpoint che l'hook interroga) aggiunge `resetScheduledAt: string | null`.
+
+**Admin** (`vaultAdmin.ts`, prefisso `/api/vault-recovery`, solo SUPERADMIN):
+- La lista accetta `?type=RECOVERY|RESET`, con RECOVERY come default per compatibilità. Ogni riga ha `type`.
+- `POST /:id/cancel-reset`: 200 `{ ok: true }`. Errori: 404 `errors.vault.recoveryNotFound`, 409 `errors.vault.resetNotCancellable`.
+
+**Notifiche in-app** (tipo `SYSTEM`; `data = { localizationKey, localizationArgs, requestId }`):
+- Utente:
+  - chiavi `notifications.vaultReset.scheduled`, `.cancelled`, `.completed`, ciascuna con la sua `_TITLE`;
+  - `localizationArgs`: `{ date }` per scheduled, nessuno per gli altri due;
+  - il link porta a `/vault`.
+- Admin:
+  - chiavi `notifications.vaultReset.adminScheduled`, `.adminCancelled`, `.adminCompleted`, con `_TITLE`;
+  - `localizationArgs`: `{ email }`;
+  - il link porta a `/admin?tab=vaultRecovery`, perché la chiave contiene `vaultReset.admin`.
+
+**E2E** (solo con `NODE_ENV=test` e `VAULT_E2E=1`):
+- `POST /api/vault/__e2e/reset/advance`, autenticato: porta nel passato il `resetScheduledAt` dell'utente e lancia `runResetJobs({ userId })`. Risponde `{ ok: true, completed: number }`.
